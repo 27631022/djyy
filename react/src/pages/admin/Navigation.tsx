@@ -10,6 +10,7 @@ import {
   type NavCategoryDto,
   type NavItemDto,
   type CreateNavCategoryInput,
+  type UpdateNavCategoryInput,
   type CreateNavItemInput,
 } from "../../api/nav";
 import IconPicker, { LucideIcon } from "../../components/IconPicker";
@@ -409,7 +410,9 @@ function CategoryDialog({
   });
 
   const updateMut = useMutation({
-    mutationFn: (data: CreateNavCategoryInput) =>
+    // code 在编辑模式下不可改 —— mutationFn 类型用 UpdateNavCategoryInput(不含 code),
+    // 后端 ValidationPipe whitelist 会拒收多余字段,这里 TS 也帮忙挡一道
+    mutationFn: (data: UpdateNavCategoryInput) =>
       navApi.updateCategory(category!.id, data),
     onSuccess: () => { toast.success("分类已更新"); onSuccess(); },
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "更新失败"),
@@ -422,12 +425,21 @@ function CategoryDialog({
   });
 
   function submit() {
-    if (!form.code || !form.label) {
-      toast.error("code 和 label 必填");
+    if (!form.label) {
+      toast.error("显示名称必填");
       return;
     }
-    if (mode === "create") createMut.mutate(form);
-    else updateMut.mutate(form);
+    if (mode === "create") {
+      if (!form.code) {
+        toast.error("标识码必填");
+        return;
+      }
+      createMut.mutate(form);
+    } else {
+      // 编辑分类时把 code 剥掉再发,后端 UpdateNavCategoryDto 不接受这个字段
+      const { code: _code, ...updateData } = form;
+      updateMut.mutate(updateData);
+    }
   }
 
   function tryDelete() {
