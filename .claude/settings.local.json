@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -fsS http://localhost:3001/api/health)",
+      "Bash(curl -s http://localhost:3001/api/health)",
+      "Bash(exit 0)"
+    ]
+  }
+}

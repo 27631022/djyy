@@ -1,0 +1,845 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  ChevronRightIcon,
+  ChevronDownIcon,
+  PlusIcon,
+  Edit2Icon,
+  Trash2Icon,
+  RefreshCwIcon,
+  XIcon,
+  CheckIcon,
+  AlertTriangleIcon,
+  FlagIcon,
+  BuildingIcon,
+  SparklesIcon,
+  UsersIcon,
+  GripVerticalIcon,
+  EyeIcon,
+  EyeOffIcon,
+  RotateCcwIcon,
+  SearchIcon,
+} from "lucide-react";
+import {
+  organizationsApi,
+  ORG_TYPE_LABELS,
+  ORG_TYPE_COLORS,
+  PARTY_TYPE_OPTIONS,
+  ADMIN_TYPE_OPTIONS,
+  type OrgTreeNode,
+  type OrgType,
+  type OrgKind,
+  type CreateOrgInput,
+  type UpdateOrgInput,
+  type MovePosition,
+} from "@/api/organizations";
+import { matchesPinyin, highlightMatch } from "@/lib/pinyinSearch";
+
+interface EditingState {
+  mode: "create" | "edit";
+  kind: OrgKind;
+  parentId?: string | null;
+  parentName?: string;
+  target?: OrgTreeNode;
+}
+
+interface DragState {
+  draggedId: string | null;
+  draggedKind: OrgKind | null;
+  /** 鼠标当前 hover 在哪个节点的哪个相对位置 */
+  hover: { id: string; position: MovePosition } | null;
+}
+
+const KIND_META: Record<OrgKind, { label: string; icon: React.ElementType; color: string; bg: string }> = {
+  party: { label: "党组织", icon: FlagIcon,     color: "rgb(200, 0, 30)", bg: "rgb(255, 245, 245)" },
+  admin: { label: "行政机构", icon: BuildingIcon, color: "rgb(26, 107, 200)", bg: "rgb(238, 244, 255)" },
+};
+
+export default function OrganizationsPage() {
+  const [kind, setKind] = useState<OrgKind>("party");
+  const [tree, setTree] = useState<OrgTreeNode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<EditingState | null>(null);
+  const [confirmDel, setConfirmDel] = useState<OrgTreeNode | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
+  const [drag, setDrag] = useState<DragState>({ draggedId: null, draggedKind: null, hover: null });
+  const [moving, setMoving] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const flatCount = useMemo(() => {
+    const count = (nodes: OrgTreeNode[]): number =>
+      nodes.reduce((acc, n) => acc + 1 + count(n.children), 0);
+    return count(tree);
+  }, [tree]);
+
+  /** 按搜索过滤树:保留命中节点 + 所有祖先,删去无关分支 */
+  const filteredTree = useMemo(() => {
+    const q = search.trim();
+    if (!q) return tree;
+
+    const filter = (node: OrgTreeNode): OrgTreeNode | null => {
+      const selfHit = matchesPinyin(node.name, q);
+      const filteredChildren = node.children
+        .map(filter)
+        .filter((c): c is OrgTreeNode => c !== null);
+      if (selfHit || filteredChildren.length > 0) {
+        return { ...node, children: filteredChildren };
+      }
+      return null;
+    };
+    return tree.map(filter).filter((n): n is OrgTreeNode => n !== null);
+  }, [tree, search]);
+
+  const matchCount = useMemo(() => {
+    if (!search.trim()) return 0;
+    let n = 0;
+    const walk = (node: OrgTreeNode) => {
+      if (matchesPinyin(node.name, search)) n++;
+      node.children.forEach(walk);
+    };
+    tree.forEach(walk);
+    return n;
+  }, [tree, search]);
+
+  /** 搜索时强制展开所有可见节点;无搜索时用用户控制的 expanded */
+  const effectiveExpanded = useMemo(() => {
+    if (!search.trim()) return expanded;
+    const ids = new Set<string>(expanded);
+    const collect = (n: OrgTreeNode) => {
+      if (n.children.length > 0) {
+        ids.add(n.id);
+        n.children.forEach(collect);
+      }
+    };
+    filteredTree.forEach(collect);
+    return ids;
+  }, [filteredTree, search, expanded]);
+
+  const inactiveCount = useMemo(() => {
+    const walk = (nodes: OrgTreeNode[]): number =>
+      nodes.reduce((acc, n) => acc + (n.active ? 0 : 1) + walk(n.children), 0);
+    return walk(tree);
+  }, [tree]);
+
+  async function reload() {
+    setLoading(true);
+    setError(null);
+    try {
+      const t = await organizationsApi.tree(kind, showInactive);
+      setTree(t);
+      const ids = new Set<string>();
+      const walk = (n: OrgTreeNode) => {
+        if (n.children.length > 0) {
+          ids.add(n.id);
+          n.children.forEach(walk);
+        }
+      };
+      t.forEach(walk);
+      setExpanded(ids);
+    } catch (e: any) {
+      setError(e?.response?.data?.message ?? e?.message ?? "加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, showInactive]);
+
+  function toggle(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function handleSave(payload: CreateOrgInput | UpdateOrgInput) {
+    if (!editing) return;
+    try {
+      if (editing.mode === "create") {
+        await organizationsApi.create({
+          ...(payload as CreateOrgInput),
+          kind: editing.kind,
+          parentId: editing.parentId ?? null,
+        });
+      } else if (editing.target) {
+        await organizationsApi.update(editing.target.id, payload);
+      }
+      setEditing(null);
+      await reload();
+    } catch (e: any) {
+      const msg = e?.response?.data?.message ?? e?.message ?? "保存失败";
+      alert(Array.isArray(msg) ? msg.join("\n") : msg);
+    }
+  }
+
+  async function handleDelete(hard: boolean) {
+    if (!confirmDel) return;
+    try {
+      await organizationsApi.remove(confirmDel.id, hard);
+      setConfirmDel(null);
+      await reload();
+    } catch (e: any) {
+      const msg = e?.response?.data?.message ?? e?.message ?? "删除失败";
+      alert(msg);
+    }
+  }
+
+  /** 恢复已停用 (软删除的反向操作) */
+  async function handleRestore(node: OrgTreeNode) {
+    try {
+      await organizationsApi.update(node.id, { active: true });
+      await reload();
+    } catch (e: any) {
+      const msg = e?.response?.data?.message ?? e?.message ?? "恢复失败";
+      alert(msg);
+    }
+  }
+
+  /* ─── 拖拽事件 ─── */
+  function onDragStart(node: OrgTreeNode) {
+    setDrag({ draggedId: node.id, draggedKind: node.kind, hover: null });
+  }
+  function onDragEnd() {
+    setDrag({ draggedId: null, draggedKind: null, hover: null });
+  }
+  function onDragOverRow(e: React.DragEvent, node: OrgTreeNode) {
+    if (!drag.draggedId || drag.draggedId === node.id) return;
+    if (drag.draggedKind && drag.draggedKind !== node.kind) return;
+    e.preventDefault();
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const h = rect.height;
+    let position: MovePosition;
+    if (y < h * 0.25) position = "before";
+    else if (y > h * 0.75) position = "after";
+    else position = "inside";
+    setDrag((s) => ({ ...s, hover: { id: node.id, position } }));
+  }
+  function onDragLeaveRow(node: OrgTreeNode) {
+    setDrag((s) => (s.hover?.id === node.id ? { ...s, hover: null } : s));
+  }
+  async function onDropRow(node: OrgTreeNode) {
+    const src = drag.draggedId;
+    const hover = drag.hover;
+    setDrag({ draggedId: null, draggedKind: null, hover: null });
+    if (!src || !hover || hover.id !== node.id) return;
+    if (src === node.id) return;
+    setMoving(true);
+    try {
+      await organizationsApi.move(src, hover.id, hover.position);
+      await reload();
+    } catch (e: any) {
+      const msg = e?.response?.data?.message ?? e?.message ?? "移动失败";
+      alert(Array.isArray(msg) ? msg.join("\n") : msg);
+    } finally {
+      setMoving(false);
+    }
+  }
+
+  const meta = KIND_META[kind];
+
+  return (
+    <div className="p-6 max-w-[1200px]">
+      {/* Page header */}
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h1 className="text-xl font-bold text-[#1A1A1A]">组织管理</h1>
+          <p className="text-xs text-[#9CA3AF] mt-1">
+            可拖拽节点调整排序 / 上下级关系。党组织和行政机构两套并行,不能跨树拖拽。
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowInactive((v) => !v)}
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors ${
+              showInactive
+                ? "bg-orange-50 text-orange-600 border-orange-200"
+                : "text-[#6B7280] border-[#E9E9E9] hover:border-[#F5A0A8]"
+            }`}
+            title={showInactive ? "正在显示已停用组织" : "切换显示已停用组织"}
+          >
+            {showInactive ? <EyeIcon className="w-3.5 h-3.5" /> : <EyeOffIcon className="w-3.5 h-3.5" />}
+            {showInactive ? "正在显示已停用" : "显示已停用"}
+            {showInactive && inactiveCount > 0 && (
+              <span className="text-[10px] font-bold bg-orange-200 text-orange-700 px-1 rounded">
+                {inactiveCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={reload}
+            disabled={loading || moving}
+            className="flex items-center gap-1.5 text-xs text-[#6B7280] hover:text-[#C8001E] px-3 py-1.5 rounded-md border border-[#E9E9E9] hover:border-[#F5A0A8] transition-colors"
+          >
+            <RefreshCwIcon className={`w-3.5 h-3.5 ${loading || moving ? "animate-spin" : ""}`} />
+            刷新
+          </button>
+          <button
+            onClick={() => setEditing({ mode: "create", kind, parentId: null })}
+            className="flex items-center gap-1.5 text-xs text-white px-3 py-1.5 rounded-md font-medium transition-colors"
+            style={{ backgroundColor: meta.color }}
+          >
+            <PlusIcon className="w-3.5 h-3.5" />
+            新建{meta.label}根节点
+          </button>
+        </div>
+      </div>
+
+      {/* Kind Tabs + Search */}
+      <div className="flex items-center mb-4 gap-3">
+        <div className="flex gap-2">
+          {(["party", "admin"] as OrgKind[]).map((k) => {
+            const m = KIND_META[k];
+            const Icon = m.icon;
+            const active = k === kind;
+            return (
+              <button
+                key={k}
+                onClick={() => setKind(k)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all border-2"
+                style={{
+                  backgroundColor: active ? m.bg : "white",
+                  borderColor: active ? m.color : "#E9E9E9",
+                  color: active ? m.color : "#6B7280",
+                }}
+              >
+                <Icon className="w-4 h-4" />
+                {m.label}
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded-full font-bold"
+                  style={{
+                    backgroundColor: active ? m.color : "#F0F0F0",
+                    color: active ? "white" : "#9CA3AF",
+                  }}
+                >
+                  {active ? flatCount : "—"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 搜索框 — 中文 / 拼音 / 首字母 */}
+        <div className="relative ml-auto w-72">
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF] pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") setSearch(""); }}
+            placeholder="搜索组织(中文 / dangwei / dw)"
+            className="w-full pl-9 pr-9 py-2.5 text-sm rounded-lg border border-[#E9E9E9] bg-white focus:outline-none focus:border-[#C8001E] focus:ring-2 focus:ring-[#C8001E]/10 transition-all"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center hover:bg-[#F0F0F0] text-[#9CA3AF] hover:text-[#1A1A1A] transition-colors"
+              title="清空 (Esc)"
+            >
+              <XIcon className="w-3 h-3" />
+            </button>
+          )}
+          {search && (
+            <div className="absolute -bottom-5 left-2 text-[10px] text-[#9CA3AF]">
+              命中 <span className="font-semibold text-[#C8001E]">{matchCount}</span> 个组织
+            </div>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          ⚠ {error}
+        </div>
+      )}
+
+      {/* Tree */}
+      <div className="bg-white rounded-xl border border-[#E9E9E9] overflow-hidden relative">
+        {moving && (
+          <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center">
+            <div className="text-xs text-[#6B7280] flex items-center gap-2">
+              <RefreshCwIcon className="w-3.5 h-3.5 animate-spin" /> 移动中...
+            </div>
+          </div>
+        )}
+        {loading && tree.length === 0 ? (
+          <div className="p-10 text-center text-sm text-[#9CA3AF]">加载中...</div>
+        ) : tree.length === 0 ? (
+          <div className="p-10 text-center text-sm text-[#9CA3AF]">
+            暂无{meta.label},点击右上角新建
+          </div>
+        ) : filteredTree.length === 0 ? (
+          <div className="p-10 text-center text-sm text-[#9CA3AF]">
+            未找到与「<span className="text-[#C8001E] font-semibold">{search}</span>」匹配的组织
+          </div>
+        ) : (
+          <div className="py-1">
+            {filteredTree.map((node) => (
+              <TreeNode
+                key={node.id}
+                node={node}
+                depth={0}
+                expanded={effectiveExpanded}
+                drag={drag}
+                searchQuery={search}
+                onToggle={toggle}
+                onAddChild={(parent) =>
+                  setEditing({
+                    mode: "create",
+                    kind: parent.kind,
+                    parentId: parent.id,
+                    parentName: parent.name,
+                  })
+                }
+                onEdit={(n) => setEditing({ mode: "edit", kind: n.kind, target: n })}
+                onDelete={(n) => setConfirmDel(n)}
+                onRestore={handleRestore}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                onDragOverRow={onDragOverRow}
+                onDragLeaveRow={onDragLeaveRow}
+                onDropRow={onDropRow}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {editing && (
+        <OrgFormModal
+          editing={editing}
+          onCancel={() => setEditing(null)}
+          onSave={handleSave}
+        />
+      )}
+
+      {confirmDel && (
+        <DeleteConfirmModal
+          target={confirmDel}
+          onCancel={() => setConfirmDel(null)}
+          onConfirm={handleDelete}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Tree node row ─── */
+function TreeNode({
+  node, depth, expanded, drag, searchQuery,
+  onToggle, onAddChild, onEdit, onDelete, onRestore,
+  onDragStart, onDragEnd, onDragOverRow, onDragLeaveRow, onDropRow,
+}: {
+  node: OrgTreeNode;
+  depth: number;
+  expanded: Set<string>;
+  drag: DragState;
+  searchQuery: string;
+  onToggle: (id: string) => void;
+  onAddChild: (n: OrgTreeNode) => void;
+  onEdit: (n: OrgTreeNode) => void;
+  onDelete: (n: OrgTreeNode) => void;
+  onRestore: (n: OrgTreeNode) => void;
+  onDragStart: (n: OrgTreeNode) => void;
+  onDragEnd: () => void;
+  onDragOverRow: (e: React.DragEvent, n: OrgTreeNode) => void;
+  onDragLeaveRow: (n: OrgTreeNode) => void;
+  onDropRow: (n: OrgTreeNode) => void;
+}) {
+  const hasChildren = node.children.length > 0;
+  const isExpanded = expanded.has(node.id);
+  const color = ORG_TYPE_COLORS[node.type as OrgType] ?? "#6B7280";
+  const isDragged = drag.draggedId === node.id;
+  const hoverHere = drag.hover?.id === node.id ? drag.hover.position : null;
+  const nameSegments = highlightMatch(node.name, searchQuery);
+  const isMatch = searchQuery.trim() && matchesPinyin(node.name, searchQuery);
+
+  return (
+    <>
+      <div
+        draggable
+        onDragStart={() => onDragStart(node)}
+        onDragEnd={onDragEnd}
+        onDragOver={(e) => onDragOverRow(e, node)}
+        onDragLeave={() => onDragLeaveRow(node)}
+        onDrop={() => onDropRow(node)}
+        className="relative flex items-center gap-2 py-2 px-3 hover:bg-[#FAFBFC] border-b border-[#F5F5F5] group"
+        style={{
+          paddingLeft: `${12 + depth * 24}px`,
+          opacity: isDragged ? 0.4 : 1,
+          backgroundColor: hoverHere === "inside" ? "rgba(200,0,30,0.06)" : undefined,
+          cursor: drag.draggedId ? "grabbing" : undefined,
+        }}
+      >
+        {/* 拖入指示线:上方 */}
+        {hoverHere === "before" && (
+          <div className="absolute left-0 right-0 top-0 h-0.5 bg-[#C8001E] pointer-events-none" />
+        )}
+        {/* 拖入指示线:下方 */}
+        {hoverHere === "after" && (
+          <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-[#C8001E] pointer-events-none" />
+        )}
+
+        {/* 拖拽手柄 */}
+        <GripVerticalIcon className="w-3 h-3 text-[#C0C6D0] cursor-grab flex-shrink-0" />
+
+        {/* 折叠按钮 */}
+        <button
+          onClick={() => hasChildren && onToggle(node.id)}
+          className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${
+            hasChildren ? "hover:bg-[#F0F0F0] text-[#6B7280]" : "text-transparent"
+          }`}
+        >
+          {hasChildren ? (
+            isExpanded ? <ChevronDownIcon className="w-3.5 h-3.5" /> : <ChevronRightIcon className="w-3.5 h-3.5" />
+          ) : (
+            <span className="w-1 h-1 rounded-full bg-[#D1D5DB]" />
+          )}
+        </button>
+
+        {/* 类型徽标 — 只对党组织显示 */}
+        {node.kind === "party" && (
+          <span
+            className="text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0"
+            style={{ backgroundColor: `${color}15`, color }}
+          >
+            {ORG_TYPE_LABELS[node.type as OrgType] ?? node.type}
+          </span>
+        )}
+
+        {/* 虚拟徽标 */}
+        {node.isVirtual && (
+          <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 flex-shrink-0">
+            <SparklesIcon className="w-2.5 h-2.5" />
+            虚拟
+          </span>
+        )}
+
+        {/* 名称 (含搜索高亮) */}
+        <span
+          className={`text-sm flex-1 min-w-0 truncate ${node.active ? "text-[#1A1A1A]" : "text-[#9CA3AF] line-through"} ${isMatch ? "font-semibold" : ""}`}
+        >
+          {nameSegments.map((seg, i) =>
+            seg.highlight ? (
+              <mark key={i} className="bg-yellow-200 text-[#1A1A1A] rounded-sm px-0.5">
+                {seg.text}
+              </mark>
+            ) : (
+              <span key={i}>{seg.text}</span>
+            ),
+          )}
+        </span>
+
+        {/* 已停用徽标 */}
+        {!node.active && (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 flex-shrink-0">
+            已停用
+          </span>
+        )}
+
+        <span className="text-[10px] text-[#C0C6D0] font-mono flex-shrink-0">{node.code}</span>
+
+        {/* 成员数 */}
+        <span
+          className="flex items-center gap-1 text-[10px] flex-shrink-0 px-1.5 py-0.5 rounded"
+          style={{ backgroundColor: "#F7F8FA", color: "#6B7280" }}
+          title={`直接成员 ${node.directMembers} 人 · 含下级共 ${node.transitiveMembers} 人`}
+        >
+          <UsersIcon className="w-3 h-3" />
+          <span className="font-semibold" style={{ color: node.directMembers > 0 ? "#1A1A1A" : "#C0C6D0" }}>
+            {node.directMembers}
+          </span>
+          {node.transitiveMembers > node.directMembers && (
+            <span className="text-[#9CA3AF]">/ {node.transitiveMembers}</span>
+          )}
+        </span>
+
+        {/* 行动按钮 */}
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 flex-shrink-0">
+          {!node.active && (
+            <button
+              onClick={() => onRestore(node)}
+              className="w-7 h-7 rounded flex items-center justify-center hover:bg-green-50 text-green-600"
+              title="恢复"
+            >
+              <RotateCcwIcon className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {node.active && (
+            <>
+              <button
+                onClick={() => onAddChild(node)}
+                className="w-7 h-7 rounded flex items-center justify-center hover:bg-[#F0F0F0] text-[#6B7280]"
+                title="新建子组织"
+              >
+                <PlusIcon className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => onEdit(node)}
+                className="w-7 h-7 rounded flex items-center justify-center hover:bg-[#F0F0F0] text-[#6B7280]"
+                title="编辑"
+              >
+                <Edit2Icon className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => onDelete(node)}
+            className="w-7 h-7 rounded flex items-center justify-center hover:bg-red-50 text-red-500"
+            title="删除"
+          >
+            <Trash2Icon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {hasChildren && isExpanded && (
+        <>
+          {node.children.map((c) => (
+            <TreeNode
+              key={c.id}
+              node={c}
+              depth={depth + 1}
+              expanded={expanded}
+              drag={drag}
+              searchQuery={searchQuery}
+              onToggle={onToggle}
+              onAddChild={onAddChild}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onRestore={onRestore}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onDragOverRow={onDragOverRow}
+              onDragLeaveRow={onDragLeaveRow}
+              onDropRow={onDropRow}
+            />
+          ))}
+        </>
+      )}
+    </>
+  );
+}
+
+/* ─── Form modal ─── */
+function OrgFormModal({
+  editing, onCancel, onSave,
+}: {
+  editing: EditingState;
+  onCancel: () => void;
+  onSave: (input: any) => void;
+}) {
+  const isEdit = editing.mode === "edit";
+  const init = editing.target;
+  const kindMeta = KIND_META[editing.kind];
+  const isParty = editing.kind === "party";
+  const TYPE_OPTIONS = isParty ? PARTY_TYPE_OPTIONS : ADMIN_TYPE_OPTIONS;
+  const defaultType: OrgType = isParty ? "branch" : "level2";
+
+  const [form, setForm] = useState({
+    name: init?.name ?? "",
+    code: init?.code ?? "",
+    type: (init?.type ?? defaultType) as OrgType,
+    isVirtual: init?.isVirtual ?? false,
+    active: init?.active ?? true,
+  });
+
+  const valid = form.name.trim().length > 0 && form.code.trim().length > 0;
+
+  function handleSubmit() {
+    if (valid) onSave(form);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    // Enter (非 textarea / shift+enter) 触发保存;Esc 取消
+    if (e.key === "Enter" && !e.shiftKey && !(e.target instanceof HTMLTextAreaElement)) {
+      e.preventDefault();
+      handleSubmit();
+    } else if (e.key === "Escape") {
+      onCancel();
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
+      <div
+        className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[90vw]"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+      >
+        <div
+          className="flex items-center justify-between px-5 py-3.5 border-b border-[#E9E9E9]"
+          style={{ borderTopColor: kindMeta.color, borderTopWidth: 3, borderTopStyle: "solid" }}
+        >
+          <div className="flex items-center gap-2">
+            <kindMeta.icon className="w-4 h-4" style={{ color: kindMeta.color }} />
+            <h3 className="text-base font-bold text-[#1A1A1A]">
+              {isEdit ? "编辑" : "新建"}{kindMeta.label}
+            </h3>
+          </div>
+          <button onClick={onCancel} className="text-[#9CA3AF] hover:text-[#1A1A1A]">
+            <XIcon className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 flex flex-col gap-3.5">
+          {editing.mode === "create" && (
+            <p className="text-xs text-[#6B7280] bg-[#F7F8FA] px-3 py-2 rounded">
+              {editing.parentId
+                ? <>挂载到:<span className="text-[#1A1A1A] font-semibold">{editing.parentName}</span></>
+                : `作为${kindMeta.label}根节点(无上级)`}
+            </p>
+          )}
+
+          <Field label="名称" required>
+            <input
+              autoFocus
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder={editing.kind === "party" ? "如:第一党支部·机关综合处" : "如:财务审计处"}
+              className="w-full px-3 py-2 text-sm rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[#C8001E]"
+            />
+          </Field>
+
+          <Field label="编码" required>
+            <input
+              value={form.code}
+              onChange={(e) => setForm({ ...form, code: e.target.value })}
+              placeholder={editing.kind === "party" ? "PARTY-BR-11" : "ADMIN-NEW"}
+              className="w-full px-3 py-2 text-sm rounded-md border border-[#E9E9E9] font-mono focus:outline-none focus:border-[#C8001E]"
+            />
+          </Field>
+
+          <Field label={isParty ? "类型" : "单位层级"} required>
+            <select
+              value={form.type}
+              onChange={(e) => setForm({ ...form, type: e.target.value as OrgType })}
+              className="w-full px-3 py-2 text-sm rounded-md border border-[#E9E9E9] bg-white focus:outline-none focus:border-[#C8001E]"
+            >
+              {TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            {!isParty && (
+              <p className="text-[10px] text-[#9CA3AF] mt-1 leading-snug">
+                一级=公司 · 二级=分公司 / 总部部门 · 三级=配送中心 / 车队 / 二级部门 · 四级=项目部 / 班组
+              </p>
+            )}
+          </Field>
+
+          <Field label="性质">
+            <label className="flex items-start gap-2 px-3 py-2.5 rounded-md border border-[#E9E9E9] hover:border-violet-300 transition-colors cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.isVirtual}
+                onChange={(e) => setForm({ ...form, isVirtual: e.target.checked })}
+                className="mt-0.5"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-1.5 text-sm">
+                  <SparklesIcon className="w-3.5 h-3.5 text-violet-500" />
+                  <span className="font-medium text-[#1A1A1A]">虚拟组织</span>
+                </div>
+                <p className="text-[11px] text-[#9CA3AF] mt-0.5">
+                  专班 / 项目组 / 突击队等临时性组织。成员可跨实体组织灵活进出。
+                </p>
+              </div>
+            </label>
+          </Field>
+
+          {isEdit && (
+            <Field label="状态">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.active}
+                  onChange={(e) => setForm({ ...form, active: e.target.checked })}
+                />
+                启用
+              </label>
+            </Field>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[#E9E9E9]">
+          <button
+            onClick={onCancel}
+            className="px-4 py-1.5 text-sm text-[#6B7280] hover:text-[#1A1A1A] rounded-md"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!valid}
+            className="px-4 py-1.5 text-sm text-white rounded-md font-medium disabled:opacity-50"
+            style={{ backgroundColor: kindMeta.color }}
+            title="回车保存,Esc 取消"
+          >
+            <CheckIcon className="w-3.5 h-3.5 inline mr-1" />
+            保存 <span className="text-[10px] opacity-70 ml-1">↵</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs text-[#4B5563] font-medium">
+        {label}
+        {required && <span className="text-[#C8001E] ml-0.5">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function DeleteConfirmModal({
+  target, onCancel, onConfirm,
+}: {
+  target: OrgTreeNode;
+  onCancel: () => void;
+  onConfirm: (hard: boolean) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
+      <div className="bg-white rounded-xl shadow-2xl w-[400px] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+        <div className="p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangleIcon className="w-5 h-5 text-orange-500" />
+            <h3 className="text-base font-bold text-[#1A1A1A]">删除组织</h3>
+          </div>
+          <p className="text-sm text-[#4B5563] mb-1">
+            确认删除「<span className="font-semibold text-[#1A1A1A]">{target.name}</span>」?
+          </p>
+          <p className="text-xs text-[#9CA3AF] mb-4">
+            软删除会保留记录但停用,可在"显示已停用"模式下恢复;硬删除需先清空子节点和成员。
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[#E9E9E9]">
+          <button onClick={onCancel} className="px-4 py-1.5 text-sm text-[#6B7280] hover:text-[#1A1A1A] rounded-md">
+            取消
+          </button>
+          <button
+            onClick={() => onConfirm(false)}
+            className="px-4 py-1.5 text-sm text-white bg-orange-500 hover:bg-orange-600 rounded-md font-medium"
+          >
+            软删除(停用)
+          </button>
+          <button
+            onClick={() => onConfirm(true)}
+            className="px-4 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-md font-medium"
+          >
+            硬删除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

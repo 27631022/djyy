@@ -1,0 +1,14 @@
+# Claude Code IDE 状态
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Logs (兜底)
+*.log
