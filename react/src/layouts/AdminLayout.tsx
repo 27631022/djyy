@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   HomeIcon, ChevronLeftIcon, XIcon,
-  NetworkIcon, PuzzleIcon, UsersIcon, BarChart2Icon, SettingsIcon,
+  NetworkIcon, PuzzleIcon, BarChart2Icon, SettingsIcon,
   BuildingIcon, ShieldIcon, UserIcon, BookTextIcon,
   PackageIcon, EyeIcon, ThumbsUpIcon, MessageSquareIcon,
-  LogOutIcon, KeyIcon, SlidersHorizontalIcon,
+  LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 
@@ -29,8 +29,10 @@ const CATEGORIES: Category[] = [
     label: "系统设置",
     icon: SlidersHorizontalIcon,
     items: [
-      { path: "/admin/dictionaries",  label: "数据字典",         icon: BookTextIcon },
-      { path: "/admin/custom-fields", label: "用户自定义字段",   icon: SlidersHorizontalIcon },
+      { path: "/admin/dictionaries",   label: "数据字典",         icon: BookTextIcon },
+      { path: "/admin/custom-fields",  label: "用户自定义字段",   icon: SlidersHorizontalIcon },
+      { path: "/admin/site-settings",  label: "站点设置",         icon: PaletteIcon  },
+      { path: "/admin/navigation",     label: "首页导航",         icon: LayoutGridIcon },
     ],
   },
   {
@@ -156,19 +158,19 @@ export default function AdminLayout() {
       <header className="h-14 flex items-center bg-white border-b border-[#E9E9E9] shadow-sm flex-shrink-0">
         {/* 左上:Logo + 返回门户 */}
         <div className="w-60 flex-shrink-0 flex items-center gap-2 px-4 border-r border-[#F0F0F0]">
-          <div className="w-8 h-8 rounded-full bg-[#C8001E] flex items-center justify-center flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-[var(--party-primary)] flex items-center justify-center flex-shrink-0">
             <svg viewBox="0 0 40 40" width="22" height="22">
-              <polygon points="20,5 23.5,15 34,15 25.5,21.5 28.5,32 20,26 11.5,32 14.5,21.5 6,15 16.5,15" fill="#F5A623" />
+              <polygon points="20,5 23.5,15 34,15 25.5,21.5 28.5,32 20,26 11.5,32 14.5,21.5 6,15 16.5,15" fill="var(--party-accent)" />
             </svg>
           </div>
           <div className="flex flex-col leading-tight min-w-0">
-            <span className="text-sm font-bold text-[#C8001E] truncate">党建益友</span>
+            <span className="text-sm font-bold text-[var(--party-primary)] truncate">党建益友</span>
             <span className="text-[10px] text-[#9CA3AF]">管理后台</span>
           </div>
           <Link
             to="/"
             title="返回门户首页"
-            className="ml-auto flex items-center gap-0.5 px-2 py-1 rounded-md text-[11px] text-[#6B7280] hover:text-[#C8001E] hover:bg-[#FFF0F2] transition-colors flex-shrink-0"
+            className="ml-auto flex items-center gap-0.5 px-2 py-1 rounded-md text-[11px] text-[#6B7280] hover:text-[var(--party-primary)] hover:bg-party-soft transition-colors flex-shrink-0"
           >
             <ChevronLeftIcon className="w-3 h-3" />
             <HomeIcon className="w-3 h-3" />
@@ -186,9 +188,9 @@ export default function AdminLayout() {
                 onClick={() => switchCategory(c.id)}
                 className="flex items-center gap-1.5 px-4 h-9 rounded-md text-sm font-medium transition-all flex-shrink-0"
                 style={{
-                  color: active ? "rgb(200,0,30)" : "#4B5563",
-                  backgroundColor: active ? "#FFF0F2" : "transparent",
-                  boxShadow: active ? "inset 0 -2px 0 0 rgb(200,0,30)" : "none",
+                  color: active ? "var(--party-primary)" : "#4B5563",
+                  backgroundColor: active ? "color-mix(in srgb, var(--party-primary) 8%, white)" : "transparent",
+                  boxShadow: active ? "inset 0 -2px 0 0 var(--party-primary)" : "none",
                 }}
               >
                 <Icon className="w-4 h-4" />
@@ -208,7 +210,7 @@ export default function AdminLayout() {
         {/* 左下:二级菜单 */}
         <aside className="w-60 flex-shrink-0 bg-white border-r border-[#E9E9E9] flex flex-col">
           <div className="px-4 py-3 border-b border-[#F0F0F0] flex items-center gap-2">
-            <activeCat.icon className="w-4 h-4 text-[#C8001E]" />
+            <activeCat.icon className="w-4 h-4 text-[var(--party-primary)]" />
             <span className="text-sm font-bold text-[#1A1A1A]">{activeCat.label}</span>
           </div>
           <nav className="flex-1 py-2 px-2 flex flex-col gap-0.5 overflow-y-auto">
@@ -234,7 +236,7 @@ export default function AdminLayout() {
                   onClick={() => navigate(it.path)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
                     active
-                      ? "bg-[#FFF0F2] text-[#C8001E] font-semibold"
+                      ? "bg-party-soft text-[var(--party-primary)] font-semibold"
                       : "text-[#4B5563] hover:bg-[#F7F8FA]"
                   }`}
                 >
@@ -263,7 +265,7 @@ export default function AdminLayout() {
                     className="group flex items-center gap-1.5 h-full px-3 cursor-pointer border-r border-[#F0F0F0] transition-colors flex-shrink-0"
                     style={{
                       backgroundColor: active ? "#F7F8FA" : "transparent",
-                      borderBottom: active ? "2px solid rgb(200,0,30)" : "2px solid transparent",
+                      borderBottom: active ? "2px solid var(--party-primary)" : "2px solid transparent",
                       color: active ? "#1A1A1A" : "#6B7280",
                     }}
                   >
@@ -323,14 +325,14 @@ function UserSettingsMenu() {
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-[#F7F8FA] transition-colors max-w-full"
       >
-        <div className="w-7 h-7 rounded-full bg-[#C8001E] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+        <div className="w-7 h-7 rounded-full bg-[var(--party-primary)] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
           {avatarInitial}
         </div>
         <div className="flex flex-col leading-tight items-start min-w-0">
           <span className="text-xs font-medium text-[#1A1A1A] truncate max-w-[140px]">
             {displayName}
             {primaryParty && (
-              <span className="ml-1 text-[9px] px-1 py-px rounded bg-[#FFF0F2] text-[#C8001E] font-normal align-middle">
+              <span className="ml-1 text-[9px] px-1 py-px rounded bg-party-soft text-[var(--party-primary)] font-normal align-middle">
                 党员
               </span>
             )}
@@ -359,7 +361,7 @@ function UserSettingsMenu() {
                 ))}
                 {primaryParty && (
                   <span
-                    className="text-[9px] px-1.5 py-px rounded bg-[#FFF0F2] text-[#C8001E]"
+                    className="text-[9px] px-1.5 py-px rounded bg-party-soft text-[var(--party-primary)]"
                     title={primaryParty.org.name}
                   >
                     {primaryParty.org.name}

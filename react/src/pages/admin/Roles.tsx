@@ -21,7 +21,7 @@ import { SCOPE_LABELS } from "../../api/users";
 import { matchesPinyin, highlightMatch } from "../../lib/pinyinSearch";
 
 /* ─── Color tokens ─── */
-const PARTY = "rgb(200, 0, 30)";
+const PARTY = "var(--party-primary)";
 const PARTY_BG = "rgb(255, 240, 242)";
 const ADMIN = "rgb(26, 107, 200)";
 
@@ -72,7 +72,7 @@ export default function RolesPage() {
       {/* ════ 左侧:角色列表 ════ */}
       <aside className="w-72 flex-shrink-0 border-r border-[#E9E9E9] flex flex-col">
         <div className="px-3 py-2.5 border-b border-[#F0F0F0] flex items-center gap-2">
-          <ShieldIcon className="w-4 h-4 text-[#C8001E]" />
+          <ShieldIcon className="w-4 h-4 text-[var(--party-primary)]" />
           <span className="text-sm font-bold text-[#1A1A1A] flex-1">角色与权限</span>
           <button
             onClick={refreshAll}
@@ -99,7 +99,7 @@ export default function RolesPage() {
               placeholder="搜索 (支持拼音)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-7 pr-2 py-1.5 text-xs rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[#C8001E] w-full"
+              className="pl-7 pr-2 py-1.5 text-xs rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[var(--party-primary)] w-full"
             />
           </div>
         </div>
@@ -197,7 +197,7 @@ function RoleGroup({
           <button
             key={r.id}
             onClick={() => onSelect(r.id)}
-            className="w-full px-3 py-2 text-left border-b border-[#F0F0F0] hover:bg-[#FFF0F2] transition-colors flex items-center gap-2"
+            className="w-full px-3 py-2 text-left border-b border-[#F0F0F0] hover:bg-party-soft transition-colors flex items-center gap-2"
             style={{ backgroundColor: active ? PARTY_BG : undefined }}
           >
             <div
@@ -372,14 +372,14 @@ function RoleHeader({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="角色名"
-                className="text-base font-bold w-full px-2 py-1 border border-[#E9E9E9] rounded focus:outline-none focus:border-[#C8001E]"
+                className="text-base font-bold w-full px-2 py-1 border border-[#E9E9E9] rounded focus:outline-none focus:border-[var(--party-primary)]"
               />
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="角色描述"
                 rows={2}
-                className="text-xs w-full px-2 py-1 border border-[#E9E9E9] rounded focus:outline-none focus:border-[#C8001E] resize-none"
+                className="text-xs w-full px-2 py-1 border border-[#E9E9E9] rounded focus:outline-none focus:border-[var(--party-primary)] resize-none"
               />
             </div>
           ) : (
@@ -682,7 +682,7 @@ function UsersTab({ roleId }: { roleId: string }) {
   return (
     <div className="p-5">
       <div className="text-[10px] text-[#9CA3AF] mb-3">
-        如需分配/解除角色,请到 <span className="text-[#C8001E]">用户管理</span> 页面的"角色权限"标签
+        如需分配/解除角色,请到 <span className="text-[var(--party-primary)]">用户管理</span> 页面的"角色权限"标签
       </div>
       <div className="space-y-1">
         {usersQuery.data.map((u) => (
@@ -690,7 +690,7 @@ function UsersTab({ roleId }: { roleId: string }) {
             key={u.userId}
             className="flex items-center gap-3 px-3 py-2.5 border border-[#F0F0F0] rounded-md"
           >
-            <div className="w-8 h-8 rounded-full bg-[#C8001E] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-[var(--party-primary)] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
               {u.name.charAt(0)}
             </div>
             <div className="flex-1 min-w-0">
@@ -759,7 +759,7 @@ function CreateRoleDialog({
         <div className="w-full max-w-md bg-white rounded-xl shadow-2xl pointer-events-auto">
           <div className="px-5 py-4 border-b border-[#E9E9E9] flex items-center justify-between">
             <h2 className="text-base font-bold text-[#1A1A1A] flex items-center gap-2">
-              <ShieldIcon className="w-4 h-4 text-[#C8001E]" />
+              <ShieldIcon className="w-4 h-4 text-[var(--party-primary)]" />
               新建自定义角色
             </h2>
             <button onClick={onClose} className="p-1 rounded hover:bg-[#F7F8FA]">
@@ -772,7 +772,7 @@ function CreateRoleDialog({
                 value={form.code}
                 onChange={(e) => setForm({ ...form, code: e.target.value })}
                 placeholder="如 portal_admin"
-                className="w-full px-2.5 py-1.5 text-sm font-mono border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                className="w-full px-2.5 py-1.5 text-sm font-mono border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
               />
             </Field>
             <Field label="显示名 *">
@@ -780,7 +780,7 @@ function CreateRoleDialog({
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="如 门户管理员"
-                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
               />
             </Field>
             <Field label="描述">
@@ -789,7 +789,7 @@ function CreateRoleDialog({
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 rows={3}
                 placeholder="可选"
-                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E] resize-none"
+                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)] resize-none"
               />
             </Field>
             <div className="text-[10px] text-[#9CA3AF] bg-[#F7F8FA] border border-[#E9E9E9] rounded-md p-2.5">

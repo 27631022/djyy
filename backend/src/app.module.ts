@@ -10,6 +10,8 @@ import { RoleModule } from './role/role.module';
 import { PermissionModule } from './permission/permission.module';
 import { DictionaryModule } from './dictionary/dictionary.module';
 import { UserCustomFieldModule } from './user-custom-field/user-custom-field.module';
+import { SiteSettingModule } from './site-setting/site-setting.module';
+import { NavCategoryModule } from './nav-category/nav-category.module';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { UserCustomFieldModule } from './user-custom-field/user-custom-field.mod
     PermissionModule,
     DictionaryModule,
     UserCustomFieldModule,
+    SiteSettingModule,
+    NavCategoryModule,
   ],
   controllers: [HealthController],
 })

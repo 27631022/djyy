@@ -16,7 +16,7 @@ import {
 } from "../../api/userCustomFields";
 import { dictionariesApi, type DictionaryListItem } from "../../api/dictionaries";
 
-const PARTY = "rgb(200, 0, 30)";
+const PARTY = "var(--party-primary)";
 const PARTY_BG = "rgb(255, 240, 242)";
 const ADMIN = "rgb(26, 107, 200)";
 
@@ -53,7 +53,7 @@ export default function UserCustomFieldsPage() {
     <div className="h-full flex flex-col bg-white">
       <div className="flex-shrink-0 px-4 py-3 border-b border-[#E9E9E9] flex items-center gap-3 flex-wrap">
         <h1 className="text-base font-bold text-[#1A1A1A] flex items-center gap-2">
-          <SlidersHorizontalIcon className="w-4 h-4 text-[#C8001E]" />
+          <SlidersHorizontalIcon className="w-4 h-4 text-[var(--party-primary)]" />
           用户自定义字段
         </h1>
         <span className="text-xs text-[#9CA3AF]">
@@ -147,7 +147,7 @@ export default function UserCustomFieldsPage() {
                     </td>
                     <td className="px-4 py-2 text-center">
                       {f.required ? (
-                        <AsteriskIcon className="w-3.5 h-3.5 text-[#C8001E] inline" />
+                        <AsteriskIcon className="w-3.5 h-3.5 text-[var(--party-primary)] inline" />
                       ) : (
                         <span className="text-[#D1D5DB] text-[11px]">否</span>
                       )}
@@ -324,7 +324,7 @@ function FieldDialog({
                   onChange={(e) => setForm({ ...form, code: e.target.value })}
                   disabled={mode === "edit"}
                   placeholder="如 hire_date"
-                  className="w-full px-2.5 py-1.5 text-sm font-mono border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E] disabled:bg-[#F7F8FA]"
+                  className="w-full px-2.5 py-1.5 text-sm font-mono border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)] disabled:bg-[#F7F8FA]"
                 />
                 {codeDup && <p className="text-[10px] text-red-600 mt-1">代码已被占用</p>}
               </Field>
@@ -334,7 +334,7 @@ function FieldDialog({
                   onChange={(e) => setForm({ ...form, label: e.target.value })}
                   placeholder="如 入职日期"
                   autoFocus
-                  className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                  className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
                 />
               </Field>
             </div>
@@ -369,7 +369,7 @@ function FieldDialog({
                 <select
                   value={form.dictCode}
                   onChange={(e) => setForm({ ...form, dictCode: e.target.value })}
-                  className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                  className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
                 >
                   <option value="">-- 选择字典 --</option>
                   {dicts.map((d) => (
@@ -386,7 +386,7 @@ function FieldDialog({
                 value={form.placeholder}
                 onChange={(e) => setForm({ ...form, placeholder: e.target.value })}
                 placeholder="如 请输入身份证号"
-                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
               />
             </Field>
 
@@ -395,7 +395,7 @@ function FieldDialog({
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 placeholder="可选"
-                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
               />
             </Field>
 
@@ -405,7 +405,7 @@ function FieldDialog({
                   type="number"
                   value={form.sortOrder}
                   onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })}
-                  className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                  className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
                 />
               </Field>
               <Field label="必填">

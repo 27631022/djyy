@@ -47,15 +47,25 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#FFF7F0] via-white to-[#FFF0F2] p-6">
+    <div
+      className="min-h-screen flex items-center justify-center p-6"
+      style={{
+        background: "linear-gradient(to bottom right, color-mix(in srgb, var(--party-accent) 12%, white), white, color-mix(in srgb, var(--party-primary) 8%, white))",
+      }}
+    >
       <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl overflow-hidden border border-[#F0F0F0]">
         {/* 头部 */}
-        <div className="bg-gradient-to-r from-[#C8001E] to-[#A30019] px-8 py-6 flex items-center gap-4">
+        <div
+          className="px-8 py-6 flex items-center gap-4"
+          style={{
+            background: "linear-gradient(to right, var(--party-primary), color-mix(in srgb, var(--party-primary) 78%, black))",
+          }}
+        >
           <div className="w-14 h-14 rounded-full bg-white/15 flex items-center justify-center backdrop-blur-sm">
             <svg viewBox="0 0 40 40" width="36" height="36">
               <polygon
                 points="20,5 23.5,15 34,15 25.5,21.5 28.5,32 20,26 11.5,32 14.5,21.5 6,15 16.5,15"
-                fill="#F5A623"
+                fill="var(--party-accent)"
               />
             </svg>
           </div>
@@ -86,14 +96,14 @@ export default function LoginPage() {
                   key={acc.username}
                   onClick={() => handleLogin(acc)}
                   disabled={busy !== null}
-                  className="group text-left p-3 rounded-lg border border-[#E9E9E9] hover:border-[#C8001E] hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-wait"
+                  className="group text-left p-3 rounded-lg border border-[#E9E9E9] hover:border-[var(--party-primary)] hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-wait"
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-semibold text-[#1A1A1A] group-hover:text-[#C8001E]">
+                    <span className="text-sm font-semibold text-[#1A1A1A] group-hover:text-[var(--party-primary)]">
                       {acc.name}
                     </span>
                     {acc.badge && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#FFF0F2] text-[#C8001E]">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-party-soft text-[var(--party-primary)]">
                         {acc.badge}
                       </span>
                     )}
@@ -101,7 +111,7 @@ export default function LoginPage() {
                   <div className="text-[11px] text-[#6B7280] mb-1">员工编号 {acc.username}</div>
                   <div className="text-xs text-[#4B5563] leading-snug">{acc.description}</div>
                   {loading && (
-                    <div className="mt-1.5 text-[10px] text-[#C8001E] font-medium">登录中…</div>
+                    <div className="mt-1.5 text-[10px] text-[var(--party-primary)] font-medium">登录中…</div>
                   )}
                 </button>
               );

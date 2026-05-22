@@ -679,6 +679,146 @@ async function seedDictionaries() {
   }
 }
 
+/* ════════════════════════════════════════════════════
+ * 首页导航数据 (6 大分类 + 24 项)
+ * 用 upsert(by code/categoryId+label) 实现幂等
+ * ════════════════════════════════════════════════════ */
+const NAV_SEED: Array<{
+  code: string;
+  label: string;
+  color: string;
+  bgLight: string;
+  icon: string;
+  sortOrder: number;
+  items: Array<{ icon: string; label: string; color: string; common: boolean; desc: string; views: number; likes: number; url?: string }>;
+}> = [
+  {
+    code: 'party-affairs',
+    label: '党务办理',
+    color: 'rgb(200, 0, 30)',
+    bgLight: 'rgb(255, 245, 245)',
+    icon: 'ClipboardListIcon',
+    sortOrder: 10,
+    items: [
+      { icon: 'CreditCardIcon', label: '党费缴纳',  color: 'rgb(200, 0, 30)', common: true,  desc: '在线完成党费缴纳登记,支持历史查询', likes: 234, views: 1820 },
+      { icon: 'UsersIcon',      label: '组织关系',  color: 'rgb(200, 0, 30)', common: true,  desc: '党员组织关系转接、介绍信开具',       likes: 187, views: 1430 },
+      { icon: 'CalendarIcon',   label: '活动报名',  color: 'rgb(200, 0, 30)', common: false, desc: '查看近期党内活动并完成在线报名',     likes: 95,  views: 762 },
+      { icon: 'BellIcon',       label: '通知公告',  color: 'rgb(200, 0, 30)', common: true,  desc: '查阅党委最新通知、公告与文件',       likes: 312, views: 2546 },
+    ],
+  },
+  {
+    code: 'learning',
+    label: '学习资源',
+    color: 'rgb(232, 112, 10)',
+    bgLight: 'rgb(255, 246, 237)',
+    icon: 'BookOpenIcon',
+    sortOrder: 20,
+    items: [
+      { icon: 'BookOpenIcon',    label: '党章学习', color: 'rgb(232, 112, 10)', common: true,  desc: '在线阅读党章全文,支持逐章标注',     likes: 408, views: 3210 },
+      { icon: 'StarIcon',        label: '学习强国', color: 'rgb(232, 112, 10)', common: false, desc: '跳转学习强国平台,完成每日积分',     likes: 276, views: 2088 },
+      { icon: 'ScrollTextIcon',  label: '经典文献', color: 'rgb(232, 112, 10)', common: false, desc: '系统阅读马列经典文献与历史文件',     likes: 143, views: 986 },
+      { icon: 'GlobeIcon',       label: '红色网站', color: 'rgb(232, 112, 10)', common: false, desc: '精选推荐权威红色学习资源网站',       likes: 68,  views: 540 },
+    ],
+  },
+  {
+    code: 'statistics',
+    label: '统计管理',
+    color: 'rgb(26, 107, 200)',
+    bgLight: 'rgb(238, 244, 255)',
+    icon: 'BarChart2Icon',
+    sortOrder: 30,
+    items: [
+      { icon: 'FileTextIcon',   label: '党务公开', color: 'rgb(26, 107, 200)', common: false, desc: '查阅本单位党务公开信息与公示',       likes: 119, views: 930 },
+      { icon: 'AwardIcon',      label: '积分管理', color: 'rgb(26, 107, 200)', common: false, desc: '查询个人党建积分明细与兑换',         likes: 88,  views: 674 },
+      { icon: 'BarChart2Icon',  label: '党建统计', color: 'rgb(26, 107, 200)', common: false, desc: '生成党支部组织数据统计报表',         likes: 201, views: 1576 },
+      { icon: 'MapPinIcon',     label: '支部地图', color: 'rgb(26, 107, 200)', common: false, desc: '查看各党支部地理分布信息',           likes: 54,  views: 412 },
+    ],
+  },
+  {
+    code: 'rules',
+    label: '条例制度',
+    color: 'rgb(139, 0, 200)',
+    bgLight: 'rgb(247, 238, 255)',
+    icon: 'ScaleIcon',
+    sortOrder: 40,
+    items: [
+      { icon: 'ScrollTextIcon',    label: '党章全文', color: 'rgb(139, 0, 200)', common: true,  desc: '中国共产党章程全文在线阅读',         likes: 312, views: 4560 },
+      { icon: 'ScaleIcon',         label: '党纪条例', color: 'rgb(139, 0, 200)', common: false, desc: '中国共产党纪律处分条例查询',         likes: 176, views: 2310 },
+      { icon: 'ClipboardCheckIcon',label: '廉洁准则', color: 'rgb(139, 0, 200)', common: false, desc: '中国共产党廉洁自律准则',             likes: 98,  views: 1480 },
+      { icon: 'BookMarkedIcon',    label: '党规汇编', color: 'rgb(139, 0, 200)', common: false, desc: '党内法规规章制度汇编查询',           likes: 65,  views: 890 },
+    ],
+  },
+  {
+    code: 'tools',
+    label: '工具软件',
+    color: 'rgb(0, 120, 180)',
+    bgLight: 'rgb(235, 248, 255)',
+    icon: 'WrenchIcon',
+    sortOrder: 50,
+    items: [
+      { icon: 'MonitorIcon',    label: '党建平台', color: 'rgb(0, 120, 180)', common: true,  desc: '综合党建信息化管理平台入口',         likes: 407, views: 6820 },
+      { icon: 'DatabaseIcon',   label: '档案系统', color: 'rgb(0, 120, 180)', common: false, desc: '党员档案数字化管理系统',             likes: 253, views: 4130 },
+      { icon: 'SettingsIcon',   label: '党务管理', color: 'rgb(0, 120, 180)', common: false, desc: '党务工作流程化管理工具',             likes: 134, views: 2200 },
+      { icon: 'BarChart2Icon',  label: '统计报表', color: 'rgb(0, 120, 180)', common: false, desc: '一键生成各类党建统计报表',           likes: 87,  views: 1350 },
+    ],
+  },
+  {
+    code: 'tutorials',
+    label: '党建教程',
+    color: 'rgb(45, 160, 88)',
+    bgLight: 'rgb(237, 250, 243)',
+    icon: 'GraduationCapIcon',
+    sortOrder: 60,
+    items: [
+      { icon: 'VideoIcon',      label: '视频课程', color: 'rgb(45, 160, 88)', common: false, desc: '党建工作专题视频培训课程',           likes: 228, views: 3870 },
+      { icon: 'PlayCircleIcon', label: '学习专栏', color: 'rgb(45, 160, 88)', common: false, desc: '系列化党建学习专题专栏',             likes: 155, views: 2640 },
+      { icon: 'LibraryIcon',    label: '知识库',   color: 'rgb(45, 160, 88)', common: false, desc: '党建工作知识库与问答中心',           likes: 76,  views: 1180 },
+      { icon: 'BookOpenIcon',   label: '操作手册', color: 'rgb(45, 160, 88)', common: false, desc: '各类党务工作操作指南手册',           likes: 42,  views: 720 },
+    ],
+  },
+];
+
+async function seedNavigation() {
+  for (const cat of NAV_SEED) {
+    const navCat = await prisma.navCategory.upsert({
+      where: { code: cat.code },
+      create: {
+        code: cat.code, label: cat.label, color: cat.color, bgLight: cat.bgLight,
+        icon: cat.icon, sortOrder: cat.sortOrder, active: true,
+      },
+      update: {
+        label: cat.label, color: cat.color, bgLight: cat.bgLight,
+        icon: cat.icon, sortOrder: cat.sortOrder, active: true,
+      },
+    });
+    // 项目层面用 (categoryId + label) 做幂等键(NavItem 没有自带 unique,这里实现用先删后建)
+    const existingItems = await prisma.navItem.findMany({ where: { categoryId: navCat.id } });
+    for (let i = 0; i < cat.items.length; i++) {
+      const it = cat.items[i];
+      const found = existingItems.find((e) => e.label === it.label);
+      if (found) {
+        await prisma.navItem.update({
+          where: { id: found.id },
+          data: {
+            icon: it.icon, color: it.color, common: it.common, desc: it.desc,
+            likes: it.likes, views: it.views, sortOrder: (i + 1) * 10,
+            url: it.url ?? null, active: true,
+          },
+        });
+      } else {
+        await prisma.navItem.create({
+          data: {
+            categoryId: navCat.id,
+            icon: it.icon, label: it.label, color: it.color, common: it.common,
+            desc: it.desc, likes: it.likes, views: it.views,
+            sortOrder: (i + 1) * 10, url: it.url ?? null, active: true,
+          },
+        });
+      }
+    }
+  }
+}
+
 async function main() {
   console.log('🌱 开始 seed 数据...');
 
@@ -702,6 +842,9 @@ async function main() {
 
   await seedDemoUsers();
   console.log('  ✓ 演示用户已写入');
+
+  await seedNavigation();
+  console.log('  ✓ 首页导航已写入');
 
   const partyCount = await prisma.organization.count({ where: { kind: 'party' } });
   const adminCount = await prisma.organization.count({ where: { kind: 'admin' } });

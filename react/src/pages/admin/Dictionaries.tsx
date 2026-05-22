@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { matchesPinyin, highlightMatch } from "../../lib/pinyinSearch";
 
-const PARTY = "rgb(200, 0, 30)";
+const PARTY = "var(--party-primary)";
 const PARTY_BG = "rgb(255, 240, 242)";
 const ADMIN = "rgb(26, 107, 200)";
 
@@ -65,7 +65,7 @@ export default function DictionariesPage() {
       {/* ════ 左侧:字典列表 ════ */}
       <aside className="w-72 flex-shrink-0 border-r border-[#E9E9E9] flex flex-col">
         <div className="px-3 py-2.5 border-b border-[#F0F0F0] flex items-center gap-2">
-          <BookTextIcon className="w-4 h-4 text-[#C8001E]" />
+          <BookTextIcon className="w-4 h-4 text-[var(--party-primary)]" />
           <span className="text-sm font-bold text-[#1A1A1A] flex-1">数据字典</span>
           <button
             onClick={refreshAll}
@@ -92,7 +92,7 @@ export default function DictionariesPage() {
               placeholder="搜索 (支持拼音)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-7 pr-2 py-1.5 text-xs rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[#C8001E] w-full"
+              className="pl-7 pr-2 py-1.5 text-xs rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[var(--party-primary)] w-full"
             />
           </div>
         </div>
@@ -187,7 +187,7 @@ function DictGroup({
           <button
             key={d.id}
             onClick={() => onSelect(d.id)}
-            className="w-full px-3 py-2 text-left border-b border-[#F0F0F0] hover:bg-[#FFF0F2] transition-colors flex items-center gap-2"
+            className="w-full px-3 py-2 text-left border-b border-[#F0F0F0] hover:bg-party-soft transition-colors flex items-center gap-2"
             style={{ backgroundColor: active ? PARTY_BG : undefined }}
           >
             <div
@@ -314,14 +314,14 @@ function DictHeader({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="字典名"
-                className="text-base font-bold w-full px-2 py-1 border border-[#E9E9E9] rounded focus:outline-none focus:border-[#C8001E]"
+                className="text-base font-bold w-full px-2 py-1 border border-[#E9E9E9] rounded focus:outline-none focus:border-[var(--party-primary)]"
               />
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="字典描述"
                 rows={2}
-                className="text-xs w-full px-2 py-1 border border-[#E9E9E9] rounded focus:outline-none focus:border-[#C8001E] resize-none"
+                className="text-xs w-full px-2 py-1 border border-[#E9E9E9] rounded focus:outline-none focus:border-[var(--party-primary)] resize-none"
               />
             </div>
           ) : (
@@ -768,7 +768,7 @@ function ItemDialog({
                 <select
                   value={parentId ?? ""}
                   onChange={(e) => setParentId(e.target.value || null)}
-                  className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                  className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
                 >
                   {categories.length === 0 ? (
                     <option value="">(无可用分类,请先新增)</option>
@@ -788,7 +788,7 @@ function ItemDialog({
                 onChange={(e) => setCode(e.target.value)}
                 disabled={mode === "edit"}
                 placeholder={parentId === null ? "如 mgmt" : "如 manager"}
-                className="w-full px-2.5 py-1.5 text-sm font-mono border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E] disabled:bg-[#F7F8FA]"
+                className="w-full px-2.5 py-1.5 text-sm font-mono border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)] disabled:bg-[#F7F8FA]"
               />
               {codeDup && <p className="text-[10px] text-red-600 mt-1">代码已被其它项占用</p>}
             </Field>
@@ -798,7 +798,7 @@ function ItemDialog({
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder={parentId === null ? "如 管理类" : "如 经理"}
                 autoFocus
-                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
               />
             </Field>
             <Field label="描述">
@@ -806,7 +806,7 @@ function ItemDialog({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="可选"
-                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
               />
             </Field>
             <div className="grid grid-cols-2 gap-3">
@@ -815,7 +815,7 @@ function ItemDialog({
                   type="number"
                   value={sortOrder}
                   onChange={(e) => setSortOrder(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                  className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
                 />
               </Field>
               <Field label="状态">
@@ -886,7 +886,7 @@ function CreateDictDialog({
         <div className="w-full max-w-md bg-white rounded-xl shadow-2xl pointer-events-auto">
           <div className="px-5 py-4 border-b border-[#E9E9E9] flex items-center justify-between">
             <h2 className="text-base font-bold text-[#1A1A1A] flex items-center gap-2">
-              <BookTextIcon className="w-4 h-4 text-[#C8001E]" />
+              <BookTextIcon className="w-4 h-4 text-[var(--party-primary)]" />
               新建字典
             </h2>
             <button onClick={onClose} className="p-1 rounded hover:bg-[#F7F8FA]">
@@ -899,7 +899,7 @@ function CreateDictDialog({
                 value={form.code}
                 onChange={(e) => setForm({ ...form, code: e.target.value })}
                 placeholder="如 contract_type"
-                className="w-full px-2.5 py-1.5 text-sm font-mono border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                className="w-full px-2.5 py-1.5 text-sm font-mono border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
               />
             </Field>
             <Field label="显示名 *">
@@ -907,7 +907,7 @@ function CreateDictDialog({
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="如 合同类型"
-                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
               />
             </Field>
             <Field label="描述">
@@ -916,7 +916,7 @@ function CreateDictDialog({
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 rows={2}
                 placeholder="说明这个字典用于哪些场景"
-                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E] resize-none"
+                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)] resize-none"
               />
             </Field>
             {error && (

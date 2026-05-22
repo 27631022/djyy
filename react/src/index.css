@@ -3,13 +3,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@font-face {
-  font-family: "Poppins-Regular_6";
-  src: url("/fonts/Poppins-Regular_6.ttf") format("truetype");
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
+/* 字体栈:中文友好,优先使用系统已安装的清晰中文字体
+ * - 苹方(macOS / iOS)
+ * - 微软雅黑(Windows 中文)
+ * - PingFang SC / 思源黑体(降级)
+ * - 系统默认 sans-serif
+ *
+ * 之前用的 Poppins-Regular_6.ttf 是英文字体,且 public/fonts/ 目录从未存在,
+ * 在 dev server 上会被 SPA 路由 fallback 拦截返回 HTML,造成 OTS parsing error。
+ * 此处直接用系统字体,无网络请求、无 CORS、跨平台中文清晰度都好。
+ */
 
 @theme inline {
   --font-sans: var(--fontSans);
@@ -55,14 +58,19 @@
   --shadow-color: var(--shadow-color);
 }
 :root {
-  --fontSans: "Poppins-Regular_6";
+  --fontSans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "微软雅黑", "Noto Sans SC", "Source Han Sans SC", "Helvetica Neue", Arial, sans-serif;
   --radius: 0.5rem;
   --background: rgba(255, 255, 255, 1);
   --foreground: rgba(26, 26, 26, 1);
-  --party-red: #C8001E;
+  /* 主题色默认值,会被 NavPage 根 div 的 inline style 覆盖(由 site-settings 接口动态注入)
+     在 admin 后台或未注入 var 的页面,这些默认值生效 */
+  --party-primary: #C8001E;
+  --party-accent: #F5A623;
+  /* 兼容旧 class:saved 不重命名,值改成走主题变量 */
+  --party-red: var(--party-primary);
   --party-red-dark: #8B0000;
   --party-red-light: #E8002D;
-  --party-gold: #F5A623;
+  --party-gold: var(--party-accent);
   --party-bg-section: #F7F8FA;
   --card: rgba(255, 255, 255, 1);
   --card-foreground: rgba(10, 17, 32, 1);
@@ -145,38 +153,61 @@
   .shadow-custom {
     box-shadow: var(--shadow-x) var(--shadow-y) var(--shadow-blur) var(--shadow-spread) var(--shadow-color);
   }
+  /* Hero / Footer 红色渐变:用主题色 + color-mix 派生深色 */
   .party-hero-bg {
-    background: linear-gradient(135deg, #C8001E 0%, #8B0000 100%);
+    background: linear-gradient(
+      135deg,
+      var(--party-primary) 0%,
+      color-mix(in srgb, var(--party-primary) 60%, black) 100%
+    );
   }
   .party-footer-bg {
-    background: linear-gradient(90deg, #8B0000 0%, #C8001E 100%);
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--party-primary) 60%, black) 0%,
+      var(--party-primary) 100%
+    );
   }
   .party-section-title::before {
     content: '';
     display: inline-block;
     width: 4px;
     height: 1.2em;
-    background: #C8001E;
+    background: var(--party-primary);
     border-radius: 2px;
     margin-right: 10px;
     vertical-align: middle;
   }
   .party-nav-card:hover {
-    border-color: #C8001E;
+    border-color: var(--party-primary);
     transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(200, 0, 30, 0.15);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--party-primary) 15%, transparent);
   }
   .party-task-card:hover {
-    box-shadow: 0 8px 28px rgba(200, 0, 30, 0.12);
+    box-shadow: 0 8px 28px color-mix(in srgb, var(--party-primary) 12%, transparent);
   }
   .party-nav-gold:hover {
-    border-color: #E8700A !important;
+    border-color: var(--party-accent) !important;
     transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(245, 166, 35, 0.15);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--party-accent) 15%, transparent);
   }
   .party-nav-blue:hover {
     border-color: #1A6BC8 !important;
     transform: translateY(-4px);
     box-shadow: 0 8px 24px rgba(26, 107, 200, 0.15);
   }
+
+  /* ─── 主题色辅助 utility ─── */
+  /* 淡色背景(适合 hover 高亮、subtle 强调):primary 8%~15% 混白 */
+  .bg-party-soft     { background-color: color-mix(in srgb, var(--party-primary) 8%, white); }
+  .bg-party-softer   { background-color: color-mix(in srgb, var(--party-primary) 4%, white); }
+  .bg-party-stronger { background-color: color-mix(in srgb, var(--party-primary) 15%, white); }
+  .hover\:bg-party-soft:hover     { background-color: color-mix(in srgb, var(--party-primary) 8%, white); }
+  .hover\:bg-party-softer:hover   { background-color: color-mix(in srgb, var(--party-primary) 4%, white); }
+  /* primary 暗化(按钮 hover): 80% primary + 20% black */
+  .bg-party-primary-dark { background-color: color-mix(in srgb, var(--party-primary) 80%, black); }
+  /* 主色描边 alpha 版(focus ring) */
+  .ring-party-accent-40 { --tw-ring-color: color-mix(in srgb, var(--party-accent) 40%, transparent); }
+  .focus\:ring-party-primary-10:focus { --tw-ring-color: color-mix(in srgb, var(--party-primary) 10%, transparent); }
+  .focus\:ring-party-primary-20:focus { --tw-ring-color: color-mix(in srgb, var(--party-primary) 20%, transparent); }
 }

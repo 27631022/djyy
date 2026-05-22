@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   UserPlusIcon, SearchIcon, RefreshCwIcon, XIcon,
-  TrashIcon, EditIcon, PowerIcon, PowerOffIcon,
+  TrashIcon, PowerIcon, PowerOffIcon,
   ChevronRightIcon, ShieldIcon, NetworkIcon, IdCardIcon,
   PlusIcon, AlertCircleIcon, CheckIcon, SlidersHorizontalIcon,
 } from "lucide-react";
@@ -18,7 +18,7 @@ import {
   SCOPE_LABELS,
 } from "../../api/users";
 import { rolesApi, type RoleListItem } from "../../api/roles";
-import { organizationsApi, type OrgTreeNode, ORG_TYPE_LABELS } from "../../api/organizations";
+import { organizationsApi, type OrgTreeNode } from "../../api/organizations";
 import {
   dictionariesApi, DICT_CODES, buildDictTree,
   type DictItem, type DictionaryDetail,
@@ -29,7 +29,7 @@ import { matchesPinyin, highlightMatch } from "../../lib/pinyinSearch";
 /* ═══════════════════════════════════════════════════════════════
    Color tokens
    ═══════════════════════════════════════════════════════════════ */
-const PARTY = "rgb(200, 0, 30)";
+const PARTY = "var(--party-primary)";
 const PARTY_BG = "rgb(255, 240, 242)";
 const ADMIN = "rgb(26, 107, 200)";
 const ADMIN_BG = "rgb(238, 244, 255)";
@@ -205,7 +205,7 @@ function Toolbar({
   return (
     <div className="flex-shrink-0 px-4 py-3 border-b border-[#E9E9E9] flex items-center gap-3 flex-wrap">
       <h1 className="text-base font-bold text-[#1A1A1A] flex items-center gap-2">
-        <NetworkIcon className="w-4 h-4 text-[#C8001E]" />
+        <NetworkIcon className="w-4 h-4 text-[var(--party-primary)]" />
         用户管理
       </h1>
       <span className="text-xs text-[#9CA3AF]">
@@ -218,7 +218,7 @@ function Toolbar({
       <select
         value={query.adminOrgId ?? ""}
         onChange={(e) => setQuery({ ...query, adminOrgId: e.target.value || undefined, skip: 0 })}
-        className="text-xs px-2 py-1.5 rounded-md border border-[#E9E9E9] bg-white hover:border-[#C8001E] transition-colors max-w-[200px]"
+        className="text-xs px-2 py-1.5 rounded-md border border-[#E9E9E9] bg-white hover:border-[var(--party-primary)] transition-colors max-w-[200px]"
       >
         <option value="">全部行政机构</option>
         {adminOrgs.map((o) => (
@@ -265,7 +265,7 @@ function Toolbar({
           placeholder="搜索姓名/员工编号(支持拼音)"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          className="pl-7 pr-2 py-1.5 text-xs rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[#C8001E] w-56"
+          className="pl-7 pr-2 py-1.5 text-xs rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[var(--party-primary)] w-56"
         />
         {searchInput && (
           <button
@@ -334,7 +334,7 @@ function UsersTable({
             >
               <td className="px-4 py-2.5">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-[#C8001E] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-[var(--party-primary)] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                     {u.name.charAt(0)}
                   </div>
                   <div className="flex flex-col leading-tight min-w-0">
@@ -408,7 +408,7 @@ function UsersTable({
               </td>
               <td className="px-4 py-2.5 text-right">
                 <button
-                  className="p-1 rounded hover:bg-[#FFF0F2]"
+                  className="p-1 rounded hover:bg-party-soft"
                   onClick={(e) => {
                     e.stopPropagation();
                     onSelect(u);
@@ -481,7 +481,7 @@ function UserDetailDrawer({
         <div className="flex-shrink-0 px-5 py-4 border-b border-[#E9E9E9] flex items-center gap-3">
           {u ? (
             <>
-              <div className="w-10 h-10 rounded-full bg-[#C8001E] flex items-center justify-center text-white text-sm font-bold">
+              <div className="w-10 h-10 rounded-full bg-[var(--party-primary)] flex items-center justify-center text-white text-sm font-bold">
                 {u.name.charAt(0)}
               </div>
               <div className="flex flex-col leading-tight min-w-0 flex-1">
@@ -607,7 +607,7 @@ function BasicInfoTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
         />
       </Field>
       <Field label="员工编号" hint="同时作为登录账号,创建后不可修改">
@@ -623,7 +623,7 @@ function BasicInfoTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="可选"
-          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
         />
       </Field>
       <Field label="手机号">
@@ -631,7 +631,7 @@ function BasicInfoTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="可选"
-          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
         />
       </Field>
       <Field label="启用状态">
@@ -685,11 +685,12 @@ function BasicInfoTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
 
 /* ─── Tab: 组织归属 ─── */
 function MembershipsTab({
-  user, adminFlat, partyFlat, allOrgsById, onSaved,
+  user, adminFlat, partyFlat, onSaved,
 }: {
   user: UserDetail;
   adminFlat: FlatOrg[];
   partyFlat: FlatOrg[];
+  /** caller 还在传(签名兼容),本组件目前未直接消费 */
   allOrgsById: Map<string, FlatOrg>;
   onSaved: () => void;
 }) {
@@ -887,7 +888,7 @@ function MembershipsTab({
                 setPartyRow({ orgId: partyBranchOptions[0]?.id ?? "", position: "党员", isPrimary: true })
               }
               disabled={partyBranchOptions.length === 0}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs hover:bg-[#FFF0F2] disabled:opacity-50"
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs hover:bg-party-soft disabled:opacity-50"
               style={{ color: PARTY }}
             >
               <PlusIcon className="w-3 h-3" />
@@ -1016,7 +1017,7 @@ function RolesTab({
         <button
           onClick={addRow}
           disabled={rows.length >= roles.length}
-          className="flex items-center gap-1 px-2 py-1 rounded text-xs hover:bg-[#FFF0F2] disabled:opacity-50"
+          className="flex items-center gap-1 px-2 py-1 rounded text-xs hover:bg-party-soft disabled:opacity-50"
           style={{ color: PARTY }}
         >
           <PlusIcon className="w-3 h-3" />
@@ -1154,7 +1155,7 @@ function CreateUserDialog({ onClose, onCreated }: { onClose: () => void; onCreat
         <div className="w-full max-w-md bg-white rounded-xl shadow-2xl pointer-events-auto">
           <div className="px-5 py-4 border-b border-[#E9E9E9] flex items-center justify-between">
             <h2 className="text-base font-bold text-[#1A1A1A] flex items-center gap-2">
-              <UserPlusIcon className="w-4 h-4 text-[#C8001E]" />
+              <UserPlusIcon className="w-4 h-4 text-[var(--party-primary)]" />
               新建用户
             </h2>
             <button onClick={onClose} className="p-1 rounded hover:bg-[#F7F8FA]">
@@ -1167,7 +1168,7 @@ function CreateUserDialog({ onClose, onCreated }: { onClose: () => void; onCreat
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
                 placeholder="如 EMP001 或 zhang_san"
-                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
               />
             </Field>
             <Field label="姓名 *">
@@ -1175,7 +1176,7 @@ function CreateUserDialog({ onClose, onCreated }: { onClose: () => void; onCreat
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="如 张三"
-                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
               />
             </Field>
             <Field label="邮箱">
@@ -1184,7 +1185,7 @@ function CreateUserDialog({ onClose, onCreated }: { onClose: () => void; onCreat
                 value={form.email ?? ""}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="可选"
-                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
               />
             </Field>
             <Field label="手机号">
@@ -1192,7 +1193,7 @@ function CreateUserDialog({ onClose, onCreated }: { onClose: () => void; onCreat
                 value={form.phone ?? ""}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 placeholder="可选"
-                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+                className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
               />
             </Field>
             <div className="text-[10px] text-[#9CA3AF] bg-[#F7F8FA] border border-[#E9E9E9] rounded-md p-2.5">
@@ -1276,7 +1277,7 @@ function ExtensionTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
     return (
       <div className="p-8 text-center text-sm text-[#9CA3AF]">
         当前未启用任何自定义字段。<br />
-        请到 <span className="text-[#C8001E]">系统设置 → 用户自定义字段</span> 添加。
+        请到 <span className="text-[var(--party-primary)]">系统设置 → 用户自定义字段</span> 添加。
       </div>
     );
   }
@@ -1284,7 +1285,7 @@ function ExtensionTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
   return (
     <div className="p-5 space-y-4">
       <div className="text-[10px] text-[#9CA3AF] leading-relaxed bg-[#F7F8FA] border border-[#E9E9E9] rounded-md p-2.5">
-        以下字段在 <span className="text-[#C8001E]">系统设置 → 用户自定义字段</span> 定义,
+        以下字段在 <span className="text-[var(--party-primary)]">系统设置 → 用户自定义字段</span> 定义,
         所有用户共享同一份字段表。修改字段定义即时影响此处展示。
       </div>
 
@@ -1347,7 +1348,7 @@ function CustomFieldRow({
       <div className="flex items-baseline gap-2 mb-1">
         <span className="text-xs font-medium text-[#4B5563]">
           {def.label}
-          {def.required && <span className="text-[#C8001E] ml-0.5">*</span>}
+          {def.required && <span className="text-[var(--party-primary)] ml-0.5">*</span>}
         </span>
         <span className="text-[10px] text-[#9CA3AF] font-mono">{def.code}</span>
       </div>
@@ -1356,7 +1357,7 @@ function CustomFieldRow({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={def.placeholder ?? ""}
-          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
         />
       )}
       {def.type === "number" && (
@@ -1365,7 +1366,7 @@ function CustomFieldRow({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={def.placeholder ?? ""}
-          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
         />
       )}
       {def.type === "date" && (
@@ -1373,7 +1374,7 @@ function CustomFieldRow({
           type="date"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E]"
+          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]"
         />
       )}
       {def.type === "textarea" && (
@@ -1382,7 +1383,7 @@ function CustomFieldRow({
           onChange={(e) => onChange(e.target.value)}
           placeholder={def.placeholder ?? ""}
           rows={3}
-          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[#C8001E] resize-y"
+          className="w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)] resize-y"
         />
       )}
       {def.type === "select" && def.dictCode && (
@@ -1455,7 +1456,7 @@ function DictPositionPicker({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`text-xs px-2 py-1 border border-[#E9E9E9] rounded ${width} bg-white text-left truncate hover:border-[#C8001E] transition-colors`}
+        className={`text-xs px-2 py-1 border border-[#E9E9E9] rounded ${width} bg-white text-left truncate hover:border-[var(--party-primary)] transition-colors`}
         title={isLegacy ? `历史值,不在字典内:${value}` : (displayText || "点击选择")}
       >
         {value ? (
@@ -1561,7 +1562,7 @@ function PositionPickerDialog({
                 placeholder="搜索 (中文 / 拼音)"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-7 pr-2 py-1.5 text-xs rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[#C8001E] w-48"
+                className="pl-7 pr-2 py-1.5 text-xs rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[var(--party-primary)] w-48"
               />
               {search && (
                 <button

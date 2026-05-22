@@ -261,6 +261,72 @@ model UserCustomField {
 }
 
 // ─────────────────────────────────────────────────────────
+// 首页导航 (6 大分类 + 项目两级结构)
+// ─────────────────────────────────────────────────────────
+// NavPage 的 "全部导航" 区域由这两张表驱动。
+//
+// icon 字段存 lucide-react 图标的 PascalCase 名称(如 "BookOpenIcon"),
+// 前端运行时通过 `(lucide as any)[item.icon]` 解析为组件。
+//
+// color 字段存 hex/rgb 字符串,作为该分类/项目的视觉主色。这是"分类色",
+// 与主题色解耦 —— 不同分类用不同颜色区分(党务红、学习橙、统计蓝...)。
+model NavCategory {
+  id        String     @id @default(cuid())
+  code      String     @unique                // 程序内标识,如 'party-affairs'
+  label     String                             // 显示名,如 '党务办理'
+  color     String                             // 分类主色 hex,如 '#C8001E'
+  bgLight   String                             // 配套淡色背景 hex,如 '#FFF5F5'
+  icon      String                             // lucide 图标名,如 'ClipboardListIcon'
+  sortOrder Int        @default(0)
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  items     NavItem[]
+
+  @@index([active, sortOrder])
+}
+
+model NavItem {
+  id          String      @id @default(cuid())
+  categoryId  String
+  category    NavCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  icon        String                            // lucide 图标名
+  label       String                            // 显示名,如 '党费缴纳'
+  color       String                            // 项目色 hex
+  url         String?                           // 点击跳转 URL(站内 /plugins/... 或外链)
+  common      Boolean   @default(false)         // 是否常用(打 "常用" 标 + 出现在快捷条)
+  desc        String?                           // 一行描述
+  likes       Int       @default(0)             // 点赞数(后续接真实统计)
+  views       Int       @default(0)             // 浏览数
+  sortOrder   Int       @default(0)
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([categoryId, sortOrder])
+  @@index([active])
+}
+
+// ─────────────────────────────────────────────────────────
+// 站点设置 (品牌/首页文案/页脚/主题色 等)
+// ─────────────────────────────────────────────────────────
+// 单例表:全表只有一行,id 固定为 "default"。
+// data 字段存 JSON 字符串,前后端共享 TypeScript 类型 SiteSettingsData。
+//
+// 选择 JSON 而非每个字段一列的理由:
+//   1. 字段以后会持续增加 (页脚链接、导航菜单、配色、字号缩放等),用 JSON 加字段不需要 migrate
+//   2. 前后端契约由 TS 类型管,而不是数据库 schema
+//   3. 单例表只有 GET / PUT,无需复杂查询和索引
+//
+// 前台 (NavPage) 通过公开接口 GET /site-settings 获取;后台 (管理员) 通过 PUT /site-settings 更新。
+model SiteSetting {
+  id        String   @id                              // 固定 "default"
+  data      String                                    // JSON 字符串
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────
 // 审计日志
 // ─────────────────────────────────────────────────────────
 // 平台关键写操作 (角色/组织/权限变更) 与敏感读操作通过 AuditService.log()

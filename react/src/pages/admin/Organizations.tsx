@@ -50,7 +50,7 @@ interface DragState {
 }
 
 const KIND_META: Record<OrgKind, { label: string; icon: React.ElementType; color: string; bg: string }> = {
-  party: { label: "党组织", icon: FlagIcon,     color: "rgb(200, 0, 30)", bg: "rgb(255, 245, 245)" },
+  party: { label: "党组织", icon: FlagIcon,     color: "var(--party-primary)", bg: "rgb(255, 245, 245)" },
   admin: { label: "行政机构", icon: BuildingIcon, color: "rgb(26, 107, 200)", bg: "rgb(238, 244, 255)" },
 };
 
@@ -274,7 +274,7 @@ export default function OrganizationsPage() {
           <button
             onClick={reload}
             disabled={loading || moving}
-            className="flex items-center gap-1.5 text-xs text-[#6B7280] hover:text-[#C8001E] px-3 py-1.5 rounded-md border border-[#E9E9E9] hover:border-[#F5A0A8] transition-colors"
+            className="flex items-center gap-1.5 text-xs text-[#6B7280] hover:text-[var(--party-primary)] px-3 py-1.5 rounded-md border border-[#E9E9E9] hover:border-[#F5A0A8] transition-colors"
           >
             <RefreshCwIcon className={`w-3.5 h-3.5 ${loading || moving ? "animate-spin" : ""}`} />
             刷新
@@ -332,7 +332,7 @@ export default function OrganizationsPage() {
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") setSearch(""); }}
             placeholder="搜索组织(中文 / dangwei / dw)"
-            className="w-full pl-9 pr-9 py-2.5 text-sm rounded-lg border border-[#E9E9E9] bg-white focus:outline-none focus:border-[#C8001E] focus:ring-2 focus:ring-[#C8001E]/10 transition-all"
+            className="w-full pl-9 pr-9 py-2.5 text-sm rounded-lg border border-[#E9E9E9] bg-white focus:outline-none focus:border-[var(--party-primary)] focus:ring-2 focus:ring-party-primary-10 transition-all"
           />
           {search && (
             <button
@@ -345,7 +345,7 @@ export default function OrganizationsPage() {
           )}
           {search && (
             <div className="absolute -bottom-5 left-2 text-[10px] text-[#9CA3AF]">
-              命中 <span className="font-semibold text-[#C8001E]">{matchCount}</span> 个组织
+              命中 <span className="font-semibold text-[var(--party-primary)]">{matchCount}</span> 个组织
             </div>
           )}
         </div>
@@ -374,7 +374,7 @@ export default function OrganizationsPage() {
           </div>
         ) : filteredTree.length === 0 ? (
           <div className="p-10 text-center text-sm text-[#9CA3AF]">
-            未找到与「<span className="text-[#C8001E] font-semibold">{search}</span>」匹配的组织
+            未找到与「<span className="text-[var(--party-primary)] font-semibold">{search}</span>」匹配的组织
           </div>
         ) : (
           <div className="py-1">
@@ -477,11 +477,11 @@ function TreeNode({
       >
         {/* 拖入指示线:上方 */}
         {hoverHere === "before" && (
-          <div className="absolute left-0 right-0 top-0 h-0.5 bg-[#C8001E] pointer-events-none" />
+          <div className="absolute left-0 right-0 top-0 h-0.5 bg-[var(--party-primary)] pointer-events-none" />
         )}
         {/* 拖入指示线:下方 */}
         {hoverHere === "after" && (
-          <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-[#C8001E] pointer-events-none" />
+          <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-[var(--party-primary)] pointer-events-none" />
         )}
 
         {/* 拖拽手柄 */}
@@ -701,7 +701,7 @@ function OrgFormModal({
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder={editing.kind === "party" ? "如:第一党支部·机关综合处" : "如:财务审计处"}
-              className="w-full px-3 py-2 text-sm rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[#C8001E]"
+              className="w-full px-3 py-2 text-sm rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[var(--party-primary)]"
             />
           </Field>
 
@@ -710,7 +710,7 @@ function OrgFormModal({
               value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value })}
               placeholder={editing.kind === "party" ? "PARTY-BR-11" : "ADMIN-NEW"}
-              className="w-full px-3 py-2 text-sm rounded-md border border-[#E9E9E9] font-mono focus:outline-none focus:border-[#C8001E]"
+              className="w-full px-3 py-2 text-sm rounded-md border border-[#E9E9E9] font-mono focus:outline-none focus:border-[var(--party-primary)]"
             />
           </Field>
 
@@ -718,7 +718,7 @@ function OrgFormModal({
             <select
               value={form.type}
               onChange={(e) => setForm({ ...form, type: e.target.value as OrgType })}
-              className="w-full px-3 py-2 text-sm rounded-md border border-[#E9E9E9] bg-white focus:outline-none focus:border-[#C8001E]"
+              className="w-full px-3 py-2 text-sm rounded-md border border-[#E9E9E9] bg-white focus:outline-none focus:border-[var(--party-primary)]"
             >
               {TYPE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -793,7 +793,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
     <div className="flex flex-col gap-1.5">
       <label className="text-xs text-[#4B5563] font-medium">
         {label}
-        {required && <span className="text-[#C8001E] ml-0.5">*</span>}
+        {required && <span className="text-[var(--party-primary)] ml-0.5">*</span>}
       </label>
       {children}
     </div>
