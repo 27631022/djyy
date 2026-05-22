@@ -1,6 +1,24 @@
 # Claude Code IDE 状态
 .claude/
 
+# 依赖与产物
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# 环境变量(.env.example 模板可入库)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# SQLite 开发数据库
+prisma/*.db
+prisma/*.db-journal
+*.sqlite
+*.sqlite3
+
 # OS
 .DS_Store
 Thumbs.db
@@ -10,5 +28,6 @@ Thumbs.db
 .vscode/
 *.swp
 
-# Logs (兜底)
+# Logs
 *.log
+npm-debug.log*
