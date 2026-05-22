@@ -11,6 +11,3 @@ declare namespace JSX {
   type LibraryManagedAttributes<C, P> = React.JSX.LibraryManagedAttributes<C, P>
 }
 
-declare module "lucide-react" {
-  export * from "lucide-react/dist/lucide-react.suffixed";
-}

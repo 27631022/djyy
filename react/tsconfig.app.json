@@ -16,11 +16,14 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting */
+    /* Linting — 收紧后由 tsc + dev overlay 实时反馈,防止 unused / 隐式 any 等隐患
+       未开 "strict" 全家桶(strictNullChecks 等过于激进会一次炸出几百个 error),
+       只挑最有用的几条: */
     "strict": false,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": false,
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
       "@/*": [
@@ -28,5 +31,5 @@
       ]
     }
   },
-  "include": ["src","auto-imports.d.ts"]
+  "include": ["src"]
 }

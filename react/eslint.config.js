@@ -20,7 +20,48 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
-      "@typescript-eslint/no-unused-vars": "off",
+
+      // 真正会引发 bug 的规则保持 error:
+      //   unused 是 Vite + AutoImport 静默失败的元凶,必须 error
+      "@typescript-eslint/no-unused-vars": ["error", {
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+        destructuredArrayIgnorePattern: "^_",
+        ignoreRestSiblings: true,
+      }],
+
+      // React 19 + react-hooks v7 引入的新规则,过于激进
+      //   "useEffect 里 setState" 在很多合法 pattern 里都会触发(如从 props 同步状态)
+      //   降级为 warning,让你看到但不阻塞
+      "react-hooks/set-state-in-effect": "warn",
+
+      // 允许 explicit any —— 实际工程里少量必要的 any 比"装作有类型"更诚实
+      //   降级为 warning,鼓励但不强制
+      "@typescript-eslint/no-explicit-any": "warn",
+
+      // 表达式语句(如 `x && doSomething()`)虽然不推荐,但有时是清晰写法
+      "@typescript-eslint/no-unused-expressions": "warn",
+    },
+  },
+  {
+    // 类型声明文件(*.d.ts)允许空 interface 等历史兼容写法
+    files: ["**/*.d.ts"],
+    rules: {
+      "@typescript-eslint/no-empty-object-type": "off",
+    },
+  },
+  {
+    // shadcn/ui 是 vendor 代码(从模板复制,非我们维护),按它本身的风格
+    files: ["src/components/ui/**/*.{ts,tsx}"],
+    rules: {
+      "react-hooks/purity": "off",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/exhaustive-deps": "off",
+      "react-hooks/refs": "off",
+      "react-refresh/only-export-components": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-empty-object-type": "off",
     },
   },
 );

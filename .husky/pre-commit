@@ -1,0 +1,10 @@
+# 党建益友 pre-commit hook
+#
+# 在每次 git commit 前自动跑前端的 typecheck + eslint
+# 任何 ts 错误 / eslint error 都会阻止 commit
+#
+# 紧急情况想绕过:`git commit --no-verify`
+# 但建议先看一下报错是什么 —— 大概率是真的漏了 import 或漏了类型
+
+echo "🔍 [pre-commit] 跑前端 typecheck + lint..."
+npm run --silent check

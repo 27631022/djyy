@@ -1,0 +1,21 @@
+# 党建益友 monorepo 根级 gitignore
+# react/ 和 backend/ 各自有自己的 .gitignore 处理子项目特定文件
+
+# Node deps (新加的 root package.json 装了 husky)
+node_modules/
+
+# Husky 自动生成的工具脚本(由 npm install 触发的 husky init 重建)
+# 但保留 .husky/pre-commit 和其他用户编写的 hook
+.husky/_/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Claude Code IDE 状态
+.claude/

@@ -1,0 +1,13 @@
+{
+  "name": "djyy-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "党建益友 平台底座 monorepo (react + backend)",
+  "scripts": {
+    "prepare": "husky",
+    "check": "npm --prefix react run check"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}
