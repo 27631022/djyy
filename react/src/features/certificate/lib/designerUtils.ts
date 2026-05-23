@@ -234,12 +234,17 @@ export function createStampElement(opts?: Partial<StampElement>): StampElement {
     locked: false,
     name: "印章",
     text: "中共党建益友委员会",
-    centerText: "",
+    centerText: "证书专用章",
     color: "#C8001E",
     strokeWidth: 4,
     centerPattern: "star",
     ...opts,
   };
+}
+
+/** 判断元素拖角缩放时是否锁定宽高比(印章 / 二维码 是 1:1) */
+export function isAspectLocked(el: DesignerElement): boolean {
+  return el.type === "stamp" || el.type === "qrcode";
 }
 
 export function createQRCodeElement(

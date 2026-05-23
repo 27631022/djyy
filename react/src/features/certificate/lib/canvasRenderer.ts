@@ -438,13 +438,19 @@ function renderStamp(ctx: CanvasRenderingContext2D, el: StampElement): void {
     }
   }
 
-  // 底部小字
+  // 底部一行小字(如"证书专用章") — 细瘦的仿宋,横向压缩
   if (el.centerText) {
+    const cFont = Math.max(9, Math.min(14, r / 7.5));
+    ctx.save();
     ctx.fillStyle = el.color;
-    ctx.font = `${Math.max(10, Math.min(16, r / 6))}px system-ui, sans-serif`;
+    ctx.font = `normal ${cFont}px FangSong, "FangSong_GB2312", STFangsong, serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(el.centerText, cx, cy + r * 0.62);
+    // 横向压缩 0.85,字看起来更瘦更直立
+    ctx.translate(cx, cy + r * 0.66);
+    ctx.scale(0.85, 1);
+    ctx.fillText(el.centerText, 0, 0);
+    ctx.restore();
   }
 }
 
@@ -558,9 +564,7 @@ function drawPartyEmblem(
 }
 
 /**
- * 沿圆弧排列文字。
- * 起止角度按数学坐标(0=东,π/2=南,顺时针为正)。
- * 这里默认顶弧:从 7 点钟方向逆时针到 5 点钟方向(走顶部)。
+ * 沿圆弧排列文字。印章字风格:细瘦体(仿宋),横向压缩 0.85 让字看起来高挑。
  */
 function drawArcText(
   ctx: CanvasRenderingContext2D,
@@ -576,7 +580,8 @@ function drawArcText(
   if (text.length === 0) return;
   ctx.save();
   ctx.fillStyle = color;
-  ctx.font = `bold ${fontSize}px system-ui, 'Microsoft YaHei', sans-serif`;
+  // 不要 bold,仿宋是天然偏细的字体;实在没仿宋则退到 serif
+  ctx.font = `normal ${fontSize}px FangSong, "FangSong_GB2312", STFangsong, serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
@@ -584,14 +589,11 @@ function drawArcText(
   const charAngle = sweep / text.length;
   for (let i = 0; i < text.length; i++) {
     const a = startAngle + (i + 0.5) * charAngle;
-    // 我们想让文字"头朝外"沿弧排,数学角约定 0=右、逆时针为正。
-    // 但通常印章字朝向外是"局部 y 轴指向外"。
-    // 把字符画在 (cx + r*cos(a), cy + r*sin(a)),并旋转 (a + π/2) 让基线对准切线。
-    // 因 canvas Y 轴向下,角度向下计是顺时针,这里 a 是 0=右,π/2=下,所以
-    // 顶弧用 a ∈ [-π + 0.25π, -0.25π] 即 [-2.36, -0.79] (顶部)
+    // 每字符:平移到弧上对应点 → 旋转让基线对准切线 → 横向压缩 0.85 拉瘦
     ctx.save();
     ctx.translate(cx + radius * Math.cos(a), cy + radius * Math.sin(a));
     ctx.rotate(a + Math.PI / 2);
+    ctx.scale(0.85, 1);
     ctx.fillText(text[i], 0, 0);
     ctx.restore();
   }

@@ -5,7 +5,7 @@ import type {
   DesignerState,
   QRCodeElement,
 } from "../../lib/designerTypes";
-import { pickElementAt } from "../../lib/designerUtils";
+import { isAspectLocked, pickElementAt } from "../../lib/designerUtils";
 import {
   type ResizeHandle,
   cursorForHandle,
@@ -45,6 +45,8 @@ interface DragState {
   originals: Map<string, ElementSnapshot>;
   /** resize 专用 */
   handle?: ResizeHandle;
+  /** resize 锁定宽高比(印章 / 二维码 强制 1:1) */
+  aspectLocked?: boolean;
   /** rotate 专用 */
   centerX?: number;
   centerY?: number;
@@ -278,6 +280,7 @@ export function CanvasStage({
       startMouseY: mouseY,
       originals: new Map([[el.id, snapshot(el)]]),
       handle,
+      aspectLocked: isAspectLocked(el),
     };
     setIsDragging(true);
   }
@@ -406,18 +409,62 @@ export function CanvasStage({
           break;
       }
 
+      // 锁定宽高比(印章 / 二维码):按 handle 类型决定哪个维度跟随,
+      // 并重新计算 x/y 让锚点(对边/对角)在 LOCAL 空间不动
+      if (drag.aspectLocked) {
+        const ratio = orig.width / orig.height; // 1:1 时 ratio=1
+        let useWidth: boolean;
+        if (handle === "e" || handle === "w") useWidth = true;
+        else if (handle === "n" || handle === "s") useWidth = false;
+        else useWidth = Math.abs(nw - orig.width) >= Math.abs(nh - orig.height);
+
+        if (useWidth) nh = nw / ratio;
+        else nw = nh * ratio;
+
+        switch (handle) {
+          case "nw":
+            nx = orig.x + orig.width - nw;
+            ny = orig.y + orig.height - nh;
+            break;
+          case "n":
+            nx = orig.x + (orig.width - nw) / 2;
+            ny = orig.y + orig.height - nh;
+            break;
+          case "ne":
+            ny = orig.y + orig.height - nh;
+            break;
+          case "e":
+            ny = orig.y + (orig.height - nh) / 2;
+            break;
+          case "se":
+            break;
+          case "s":
+            nx = orig.x + (orig.width - nw) / 2;
+            break;
+          case "sw":
+            nx = orig.x + orig.width - nw;
+            break;
+          case "w":
+            nx = orig.x + orig.width - nw;
+            ny = orig.y + (orig.height - nh) / 2;
+            break;
+        }
+      }
+
       // 最小尺寸约束:抑制宽/高小于 MIN 的同时,锁住 anchor 那一侧
       if (nw < MIN_SIZE) {
         if (handle === "w" || handle === "nw" || handle === "sw") {
           nx = orig.x + orig.width - MIN_SIZE;
         }
         nw = MIN_SIZE;
+        if (drag.aspectLocked) nh = MIN_SIZE;
       }
       if (nh < MIN_SIZE) {
         if (handle === "n" || handle === "nw" || handle === "ne") {
           ny = orig.y + orig.height - MIN_SIZE;
         }
         nh = MIN_SIZE;
+        if (drag.aspectLocked) nw = MIN_SIZE;
       }
 
       // 旋转元素:保持"对角(锚点)"屏幕位置不变 — 否则 resize 会带"漂移"感
