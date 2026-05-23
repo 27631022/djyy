@@ -1,9 +1,19 @@
+import { useRef } from "react";
+import { UploadIcon, TrashIcon } from "lucide-react";
+import { toast } from "sonner";
 import type {
   CircleElement,
+  DecorBorderElement,
   DesignerElement,
+  ImageElement,
+  LineElement,
+  QRCodeElement,
   RectElement,
+  StampElement,
   TextElement,
 } from "../../lib/designerTypes";
+
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
 interface PropertiesPanelProps {
   selected: DesignerElement | null;
@@ -99,6 +109,21 @@ export function PropertiesPanel({ selected, onElementChange }: PropertiesPanelPr
       )}
       {selected.type === "circle" && (
         <CircleProps el={selected} onChange={onElementChange} />
+      )}
+      {selected.type === "line" && (
+        <LineProps el={selected} onChange={onElementChange} />
+      )}
+      {selected.type === "decor-border" && (
+        <DecorBorderProps el={selected} onChange={onElementChange} />
+      )}
+      {selected.type === "image" && (
+        <ImageProps el={selected} onChange={onElementChange} />
+      )}
+      {selected.type === "stamp" && (
+        <StampProps el={selected} onChange={onElementChange} />
+      )}
+      {selected.type === "qrcode" && (
+        <QRCodeProps el={selected} onChange={onElementChange} />
       )}
     </div>
   );
@@ -377,6 +402,266 @@ function CircleProps({
   );
 }
 
+/* ─── 线属性 ─── */
+
+function LineProps({
+  el,
+  onChange,
+}: {
+  el: LineElement;
+  onChange: (id: string, patch: Partial<DesignerElement>) => void;
+}) {
+  return (
+    <Section title="外观">
+      <Field label="颜色">
+        <ColorInput
+          value={el.color}
+          onChange={(v) => onChange(el.id, { color: v })}
+        />
+      </Field>
+      <Field label="粗细 px">
+        <NumberInput
+          min={1}
+          max={30}
+          value={el.strokeWidth}
+          onChange={(v) => onChange(el.id, { strokeWidth: v })}
+        />
+      </Field>
+      <button
+        type="button"
+        onClick={() => onChange(el.id, { dashed: !el.dashed })}
+        className={btnToggle(el.dashed)}
+      >
+        {el.dashed ? "虚线" : "实线"}
+      </button>
+      <p className="text-[10px] text-[#9CA3AF] mt-1">
+        默认水平,需要竖线/斜线 → 旋转 90° / 45°
+      </p>
+    </Section>
+  );
+}
+
+/* ─── 装饰边框属性 ─── */
+
+function DecorBorderProps({
+  el,
+  onChange,
+}: {
+  el: DecorBorderElement;
+  onChange: (id: string, patch: Partial<DesignerElement>) => void;
+}) {
+  return (
+    <Section title="外观">
+      <Field label="颜色">
+        <ColorInput
+          value={el.color}
+          onChange={(v) => onChange(el.id, { color: v })}
+        />
+      </Field>
+      <Field label="粗细 px">
+        <NumberInput
+          min={1}
+          max={20}
+          value={el.strokeWidth}
+          onChange={(v) => onChange(el.id, { strokeWidth: v })}
+        />
+      </Field>
+      <Field label="样式">
+        <div className="grid grid-cols-3 gap-1">
+          {(["simple", "double", "ornate"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => onChange(el.id, { variant: v })}
+              className={btnToggle(el.variant === v)}
+            >
+              {v === "simple" ? "单线" : v === "double" ? "双线" : "花角"}
+            </button>
+          ))}
+        </div>
+      </Field>
+    </Section>
+  );
+}
+
+/* ─── 图片属性(含上传) ─── */
+
+function ImageProps({
+  el,
+  onChange,
+}: {
+  el: ImageElement;
+  onChange: (id: string, patch: Partial<DesignerElement>) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("请选择图片文件");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.error(
+        `图片超过 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB,请压缩后再上传`,
+      );
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        onChange(el.id, { dataUrl: reader.result });
+      }
+    };
+    reader.onerror = () => toast.error("读取图片失败");
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }
+
+  return (
+    <Section title="图片">
+      {el.dataUrl ? (
+        <div className="relative rounded border border-[#E9E9E9] overflow-hidden bg-[#F7F8FA]">
+          <img
+            src={el.dataUrl}
+            alt="预览"
+            className="w-full h-24 object-contain"
+          />
+          <button
+            onClick={() => onChange(el.id, { dataUrl: "" })}
+            className="absolute top-1 right-1 p-1.5 rounded bg-white/90 border border-[#E9E9E9] hover:bg-[#FEE2E2] hover:border-[#EF4444] text-[#6B7280] hover:text-[#EF4444]"
+            title="移除图片"
+          >
+            <TrashIcon className="w-3 h-3" />
+          </button>
+        </div>
+      ) : null}
+      <button
+        onClick={() => fileRef.current?.click()}
+        className="w-full flex items-center justify-center gap-1.5 py-2 rounded border border-dashed border-[#E9E9E9] hover:border-[var(--party-primary)] hover:bg-[#FFF7F8] text-xs text-[#6B7280] hover:text-[var(--party-primary)]"
+      >
+        <UploadIcon className="w-3.5 h-3.5" />
+        {el.dataUrl ? "更换图片" : "上传图片"}
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        onChange={handleUpload}
+        className="hidden"
+      />
+      <Field label="填充方式">
+        <select
+          value={el.fillMode}
+          onChange={(e) =>
+            onChange(el.id, {
+              fillMode: e.target.value as ImageElement["fillMode"],
+            })
+          }
+          className={inputCls}
+        >
+          <option value="contain">contain 完整显示</option>
+          <option value="cover">cover 铺满裁切</option>
+          <option value="stretch">stretch 拉伸</option>
+        </select>
+      </Field>
+    </Section>
+  );
+}
+
+/* ─── 印章属性 ─── */
+
+function StampProps({
+  el,
+  onChange,
+}: {
+  el: StampElement;
+  onChange: (id: string, patch: Partial<DesignerElement>) => void;
+}) {
+  return (
+    <Section title="印章">
+      <Field label="顶部弧形文字">
+        <input
+          type="text"
+          value={el.text}
+          onChange={(e) => onChange(el.id, { text: e.target.value })}
+          placeholder="如:中共党建益友委员会"
+          className={inputCls}
+        />
+      </Field>
+      <Field label="底部小字(可空)">
+        <input
+          type="text"
+          value={el.centerText}
+          onChange={(e) => onChange(el.id, { centerText: e.target.value })}
+          placeholder="如:专用章"
+          className={inputCls}
+        />
+      </Field>
+      <Field label="颜色">
+        <ColorInput
+          value={el.color}
+          onChange={(v) => onChange(el.id, { color: v })}
+        />
+      </Field>
+      <Field label="边框粗细">
+        <NumberInput
+          min={1}
+          max={20}
+          value={el.strokeWidth}
+          onChange={(v) => onChange(el.id, { strokeWidth: v })}
+        />
+      </Field>
+      <button
+        type="button"
+        onClick={() => onChange(el.id, { showStar: !el.showStar })}
+        className={btnToggle(el.showStar)}
+      >
+        {el.showStar ? "✓ 显示五角星" : "显示五角星"}
+      </button>
+    </Section>
+  );
+}
+
+/* ─── 二维码属性 ─── */
+
+function QRCodeProps({
+  el,
+  onChange,
+}: {
+  el: QRCodeElement;
+  onChange: (id: string, patch: Partial<DesignerElement>) => void;
+}) {
+  return (
+    <Section title="二维码">
+      <Field label="内容(URL / 文本)">
+        <textarea
+          rows={2}
+          value={el.content}
+          onChange={(e) => onChange(el.id, { content: e.target.value })}
+          placeholder="https://djyy.example.com/verify/SAMPLE"
+          className={`${inputCls} resize-none font-mono`}
+        />
+      </Field>
+      <Field label="前景色">
+        <ColorInput
+          value={el.color}
+          onChange={(v) => onChange(el.id, { color: v })}
+        />
+      </Field>
+      <Field label="背景色">
+        <ColorInput
+          value={el.background}
+          onChange={(v) => onChange(el.id, { background: v })}
+        />
+      </Field>
+      <p className="text-[10px] text-[#9CA3AF]">
+        V2 发证时此处会自动替换为验证 URL
+      </p>
+    </Section>
+  );
+}
+
 /* ─── helpers ─── */
 
 function typeLabel(t: DesignerElement["type"]): string {
@@ -387,6 +672,16 @@ function typeLabel(t: DesignerElement["type"]): string {
       return "矩形";
     case "circle":
       return "圆形";
+    case "line":
+      return "线";
+    case "decor-border":
+      return "装饰边框";
+    case "image":
+      return "图片";
+    case "stamp":
+      return "印章";
+    case "qrcode":
+      return "二维码";
   }
 }
 

@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import type { DesignerElement, DesignerState } from "../../lib/designerTypes";
+import QRCode from "qrcode";
+import type {
+  DesignerElement,
+  DesignerState,
+  QRCodeElement,
+} from "../../lib/designerTypes";
 import { pickElementAt } from "../../lib/designerUtils";
 import {
   type ResizeHandle,
   cursorForHandle,
+  getQRCacheKey,
   pickHandleAt,
   renderAll,
   renderHandles,
@@ -16,6 +22,8 @@ interface CanvasStageProps {
   onSelectionChange: (ids: string[]) => void;
   onElementsChange: (next: DesignerElement[]) => void;
   onRecordHistory: () => void;
+  /** 预览模式:文本变量替换为 sampleValue,隐藏选中框/handle */
+  isPreview?: boolean;
 }
 
 interface ElementSnapshot {
@@ -51,14 +59,19 @@ export function CanvasStage({
   onSelectionChange,
   onElementsChange,
   onRecordHistory,
+  isPreview = false,
 }: CanvasStageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const bgImageRef = useRef<HTMLImageElement | null>(null);
+  /** image/qrcode 元素的图像缓存(key:dataUrl 或 `qr:content:color:bg`) */
+  const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const [isDragging, setIsDragging] = useState(false);
   const [hoverCursor, setHoverCursor] = useState<string>("default");
   const [bgImageTick, setBgImageTick] = useState(0);
+  /** image/qr 加载完成时 ++ 触发重绘 */
+  const [imageCacheTick, setImageCacheTick] = useState(0);
 
   /* ── 背景图异步预加载 ── */
   useEffect(() => {
@@ -81,31 +94,85 @@ export function CanvasStage({
     img.src = bg.imageUrl;
   }, [state.background]);
 
-  /* ── 主画布:state 或背景图加载完成时重绘 ── */
+  /* ── image / qrcode 元素的异步加载 + 缓存 ── */
+  useEffect(() => {
+    const wantKeys = new Map<string, "image" | "qr">();
+    const qrSources = new Map<string, QRCodeElement>();
+    for (const el of state.elements) {
+      if (el.type === "image" && el.dataUrl) wantKeys.set(el.dataUrl, "image");
+      if (el.type === "qrcode" && el.content) {
+        const k = getQRCacheKey(el);
+        wantKeys.set(k, "qr");
+        qrSources.set(k, el);
+      }
+    }
+    const cache = imageCacheRef.current;
+    let cancelled = false;
+    wantKeys.forEach((kind, key) => {
+      if (cache.has(key)) return;
+      if (kind === "image") {
+        const img = new Image();
+        img.onload = () => {
+          if (cancelled) return;
+          cache.set(key, img);
+          setImageCacheTick((t) => t + 1);
+        };
+        img.onerror = () => {};
+        img.src = key; // dataUrl
+      } else {
+        const el = qrSources.get(key);
+        if (!el) return;
+        QRCode.toDataURL(el.content || " ", {
+          color: { dark: el.color || "#000000", light: el.background || "#FFFFFF" },
+          width: 256,
+          margin: 1,
+          errorCorrectionLevel: "M",
+        })
+          .then((dataUrl) => {
+            if (cancelled) return;
+            const img = new Image();
+            img.onload = () => {
+              if (cancelled) return;
+              cache.set(key, img);
+              setImageCacheTick((t) => t + 1);
+            };
+            img.src = dataUrl;
+          })
+          .catch(() => {});
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [state]);
+
+  /* ── 主画布:state / 背景图 / 元素图加载完成时重绘 ── */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    renderAll(ctx, state, { bgImage: bgImageRef.current });
-  }, [state, bgImageTick]);
+    renderAll(ctx, state, {
+      bgImage: bgImageRef.current,
+      imageCache: imageCacheRef.current,
+      isPreview,
+    });
+  }, [state, bgImageTick, imageCacheTick, isPreview]);
 
-  /* ── overlay:选中框 + handle ── */
+  /* ── overlay:选中框 + handle(预览模式下隐藏) ── */
   useEffect(() => {
     const overlay = overlayRef.current;
     if (!overlay) return;
     const ctx = overlay.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, overlay.width, overlay.height);
-    if (selectedIds.length === 0) return;
+    if (isPreview || selectedIds.length === 0) return;
     const selectedElements = selectedIds
       .map((id) => state.elements.find((e) => e.id === id))
       .filter((e): e is DesignerElement => Boolean(e));
-    // 多选:只画框
     for (const el of selectedElements) renderSelectionOverlay(ctx, el);
-    // 单选:加 handle
     if (selectedElements.length === 1) renderHandles(ctx, selectedElements[0]);
-  }, [state, selectedIds]);
+  }, [state, selectedIds, isPreview]);
 
   /* ── 坐标转换 ── */
   function toCanvasCoords(clientX: number, clientY: number) {
@@ -131,6 +198,7 @@ export function CanvasStage({
 
   /* ── 鼠标 down ── */
   function handleMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (isPreview) return; // 预览模式下不可编辑
     const { x, y } = toCanvasCoords(e.clientX, e.clientY);
     const shift = e.shiftKey;
 

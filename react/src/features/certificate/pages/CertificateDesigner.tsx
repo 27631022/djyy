@@ -8,6 +8,8 @@ import {
   TrashIcon,
   UndoIcon,
   RedoIcon,
+  EyeIcon,
+  EditIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -62,6 +64,7 @@ export default function CertificateDesignerPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isPreview, setIsPreview] = useState(false);
 
   useEffect(() => {
     if (!existingQuery.data) return;
@@ -356,10 +359,29 @@ export default function CertificateDesignerPage() {
         />
         <div className="flex-1" />
 
+        {/* 预览模式 */}
+        <button
+          onClick={() => setIsPreview((p) => !p)}
+          title={isPreview ? "回到编辑模式" : "预览(变量替换为示例值)"}
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium transition-colors ${
+            isPreview
+              ? "bg-[var(--party-primary)] text-white"
+              : "text-[#6B7280] hover:bg-[#F7F8FA]"
+          }`}
+        >
+          {isPreview ? (
+            <EditIcon className="w-3.5 h-3.5" />
+          ) : (
+            <EyeIcon className="w-3.5 h-3.5" />
+          )}
+          {isPreview ? "编辑" : "预览"}
+        </button>
+        <div className="w-px h-6 bg-[#E9E9E9] mx-1" />
+
         {/* 撤销 / 重做 */}
         <button
           onClick={undo}
-          disabled={!canUndo}
+          disabled={!canUndo || isPreview}
           title="撤销 (Ctrl+Z)"
           className="p-1.5 rounded hover:bg-[#F7F8FA] text-[#6B7280] disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -367,7 +389,7 @@ export default function CertificateDesignerPage() {
         </button>
         <button
           onClick={redo}
-          disabled={!canRedo}
+          disabled={!canRedo || isPreview}
           title="重做 (Ctrl+Y / Ctrl+Shift+Z)"
           className="p-1.5 rounded hover:bg-[#F7F8FA] text-[#6B7280] disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -477,6 +499,7 @@ export default function CertificateDesignerPage() {
             onSelectionChange={setSelectedIds}
             onElementsChange={setElementsArrayDuringDrag}
             onRecordHistory={record}
+            isPreview={isPreview}
           />
         </main>
 

@@ -1,8 +1,13 @@
 import type {
   CircleElement,
+  DecorBorderElement,
   DesignerElement,
   DesignerState,
+  ImageElement,
+  LineElement,
+  QRCodeElement,
   RectElement,
+  StampElement,
   TextElement,
   VariableField,
 } from "./designerTypes";
@@ -124,6 +129,111 @@ export function createCircleElement(opts?: Partial<CircleElement>): CircleElemen
   };
 }
 
+export function createLineElement(opts?: Partial<LineElement>): LineElement {
+  return {
+    id: genId("line"),
+    type: "line",
+    x: 100,
+    y: 200,
+    width: 240,
+    height: 4,
+    rotation: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    name: "线",
+    color: "#C8001E",
+    strokeWidth: 2,
+    dashed: false,
+    ...opts,
+  };
+}
+
+export function createDecorBorderElement(
+  opts?: Partial<DecorBorderElement>,
+): DecorBorderElement {
+  return {
+    id: genId("brd"),
+    type: "decor-border",
+    x: 40,
+    y: 40,
+    width: 720,
+    height: 486,
+    rotation: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    name: "装饰边框",
+    color: "#C8001E",
+    variant: "double",
+    strokeWidth: 3,
+    ...opts,
+  };
+}
+
+export function createImageElement(opts?: Partial<ImageElement>): ImageElement {
+  return {
+    id: genId("img"),
+    type: "image",
+    x: 100,
+    y: 100,
+    width: 200,
+    height: 200,
+    rotation: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    name: "图片",
+    dataUrl: "",
+    fillMode: "contain",
+    ...opts,
+  };
+}
+
+export function createStampElement(opts?: Partial<StampElement>): StampElement {
+  return {
+    id: genId("stmp"),
+    type: "stamp",
+    x: 560,
+    y: 360,
+    width: 160,
+    height: 160,
+    rotation: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    name: "印章",
+    text: "中共党建益友委员会",
+    centerText: "",
+    color: "#C8001E",
+    strokeWidth: 4,
+    showStar: true,
+    ...opts,
+  };
+}
+
+export function createQRCodeElement(
+  opts?: Partial<QRCodeElement>,
+): QRCodeElement {
+  return {
+    id: genId("qr"),
+    type: "qrcode",
+    x: 600,
+    y: 380,
+    width: 140,
+    height: 140,
+    rotation: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    name: "二维码",
+    content: "https://djyy.example.com/verify/SAMPLE",
+    color: "#1A1A1A",
+    background: "#FFFFFF",
+    ...opts,
+  };
+}
+
 /* ─── 通用工具 ─── */
 
 export function cloneElement(el: DesignerElement): DesignerElement {
@@ -170,5 +280,12 @@ export function getElementColor(el: DesignerElement): string {
     case "rect":
     case "circle":
       return el.fill || el.stroke || "#9CA3AF";
+    case "line":
+    case "decor-border":
+    case "stamp":
+    case "qrcode":
+      return el.color || "#9CA3AF";
+    case "image":
+      return "#6B7280";
   }
 }

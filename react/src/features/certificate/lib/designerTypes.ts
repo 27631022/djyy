@@ -77,8 +77,61 @@ export interface CircleElement extends BaseElement {
   strokeWidth: number;
 }
 
-/** Phase B 已支持的元素 union。Phase D 会扩到全部 8 种 */
-export type DesignerElement = TextElement | RectElement | CircleElement;
+export interface LineElement extends BaseElement {
+  type: "line";
+  /** 笔画颜色 */
+  color: string;
+  strokeWidth: number;
+  /** true = 虚线 */
+  dashed: boolean;
+}
+
+export interface DecorBorderElement extends BaseElement {
+  type: "decor-border";
+  color: string;
+  variant: "simple" | "double" | "ornate";
+  strokeWidth: number;
+}
+
+export interface ImageElement extends BaseElement {
+  type: "image";
+  /** base64 data URL */
+  dataUrl: string;
+  fillMode: "cover" | "contain" | "stretch";
+}
+
+export interface StampElement extends BaseElement {
+  type: "stamp";
+  /** 章面顶部弧形文字(机构名等) */
+  text: string;
+  /** 章面中心 5 角星下方的小字(可空) */
+  centerText: string;
+  /** 整体色,通常是红 */
+  color: string;
+  strokeWidth: number;
+  /** 是否画中心五角星 */
+  showStar: boolean;
+}
+
+export interface QRCodeElement extends BaseElement {
+  type: "qrcode";
+  /** 二维码内容(URL / 文本) */
+  content: string;
+  /** 前景色 */
+  color: string;
+  /** 背景色,空白 = 不画背景 */
+  background: string;
+}
+
+export type DesignerElement =
+  | TextElement
+  | RectElement
+  | CircleElement
+  | LineElement
+  | DecorBorderElement
+  | ImageElement
+  | StampElement
+  | QRCodeElement;
 
 /* ─── 背景 ─── */
 
