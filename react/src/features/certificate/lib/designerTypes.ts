@@ -117,12 +117,14 @@ export interface StampElement extends BaseElement {
   centerPattern: "none" | "star" | "emblem";
   /** 顶弧字号(px) — 0/undefined = 用自动算 */
   topTextFontSize?: number;
-  /** 顶弧距外圈内沿的额外内缩(px) — 0/undefined = 默认 2px */
+  /** 顶弧距外圈内沿的额外内缩(px) — 负数 = 更靠近外圈,undefined = 默认 2 */
   topTextPadding?: number;
   /** 底弧字号(px) — 0/undefined = 用自动算 */
   bottomTextFontSize?: number;
-  /** 底弧距外圈内沿的额外内缩(px) — 0/undefined = 默认 2px */
+  /** 底弧距外圈内沿的额外内缩(px) — 负数 = 更靠近外圈,undefined = 默认 2 */
   bottomTextPadding?: number;
+  /** 中段水平小字字号(px) — 0/undefined = 用自动算 */
+  centerTextFontSize?: number;
 }
 
 export interface QRCodeElement extends BaseElement {

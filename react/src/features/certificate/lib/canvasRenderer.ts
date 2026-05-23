@@ -415,11 +415,12 @@ function renderStamp(
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.stroke();
 
-  // 中心图案 — 党徽尺寸与五角星一致(r*0.32)
+  // 中心图案 — 党徽尺寸与五角星一致(r*0.32),党徽上移 3px 让视觉重心
+  // 跟五角星看起来一致(五角星几何重心略偏下)
   if (el.centerPattern === "star") {
     drawFiveStar(ctx, cx, cy, r * 0.32, el.color);
   } else if (el.centerPattern === "emblem") {
-    drawPartyEmblem(ctx, cx, cy, r * 0.32, el.color, imageCache);
+    drawPartyEmblem(ctx, cx, cy - 3, r * 0.32, el.color, imageCache);
   }
 
   // 顶部弧形文字 — 240° 顶弧,字号 / 距边内缩可被覆盖
@@ -446,9 +447,11 @@ function renderStamp(
     }
   }
 
-  // 中段一行小字(如"证书专用章")— 比之前大一档,仿宋细瘦
+  // 中段一行小字(如"证书专用章")— 仿宋细瘦,字号可被覆盖
   if (el.centerText) {
-    const cFont = Math.max(12, Math.min(18, r / 5));
+    const cFont = el.centerTextFontSize && el.centerTextFontSize > 0
+      ? el.centerTextFontSize
+      : Math.max(12, Math.min(18, r / 5));
     ctx.save();
     ctx.fillStyle = el.color;
     ctx.font = `normal ${cFont}px FangSong, "FangSong_GB2312", STFangsong, serif`;

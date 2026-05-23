@@ -233,11 +233,15 @@ export function createStampElement(opts?: Partial<StampElement>): StampElement {
     locked: false,
     name: "印章",
     text: "中共党建益友委员会",
-    centerText: "证书专用章",
-    bottomText: "",
+    centerText: "",
+    bottomText: "荣誉专用章",
     color: "#eb250f",
     strokeWidth: 4,
     centerPattern: "star",
+    topTextFontSize: 20,
+    topTextPadding: -5,
+    bottomTextFontSize: 11,
+    bottomTextPadding: -5,
     ...opts,
   };
 }

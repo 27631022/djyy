@@ -653,13 +653,24 @@ function StampProps({
             onChange={(v) => onChange(el.id, { topTextFontSize: v })}
           />
         </Field>
-        <Field label="顶弧距边 px">
+        <Field label="顶弧距边 px (负=外移)">
           <NumberInput
-            min={0}
+            min={-30}
             max={40}
             value={el.topTextPadding ?? 2}
             onChange={(v) => onChange(el.id, { topTextPadding: v })}
           />
+        </Field>
+        <Field label="中段字号 (0=自动)">
+          <NumberInput
+            min={0}
+            max={40}
+            value={el.centerTextFontSize ?? 0}
+            onChange={(v) => onChange(el.id, { centerTextFontSize: v })}
+          />
+        </Field>
+        <Field label="(占位)">
+          <div className="h-[30px]" />
         </Field>
         <Field label="底弧字号 (0=自动)">
           <NumberInput
@@ -669,9 +680,9 @@ function StampProps({
             onChange={(v) => onChange(el.id, { bottomTextFontSize: v })}
           />
         </Field>
-        <Field label="底弧距边 px">
+        <Field label="底弧距边 px (负=外移)">
           <NumberInput
-            min={0}
+            min={-30}
             max={40}
             value={el.bottomTextPadding ?? 2}
             onChange={(v) => onChange(el.id, { bottomTextPadding: v })}
