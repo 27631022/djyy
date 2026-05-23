@@ -7,9 +7,28 @@ import type {
   VariableField,
 } from "./designerTypes";
 
-/** crypto.randomUUID 在所有现代浏览器都有 */
+/**
+ * 生成元素 ID。
+ *
+ * 浏览器坑:`crypto.randomUUID()` 只在 secure context(HTTPS / localhost)有,
+ * 局域网 IP(http://10.x.x.x)是 insecure context,API 不存在 → 设计器一加元素就崩。
+ * 这里只用来在单次会话内做唯一标识,不要求全局唯一,所以走 时间戳 + Math.random 兜底。
+ */
 export function genId(prefix = "el"): string {
-  return `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
+  // 优先:crypto.randomUUID(localhost / HTTPS 下可用)
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
+  }
+  // 次选:crypto.getRandomValues(insecure context 下也可用)
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const buf = new Uint8Array(4);
+    crypto.getRandomValues(buf);
+    return `${prefix}_${Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+  }
+  // 兜底:Date.now + Math.random
+  const t = Date.now().toString(36);
+  const r = Math.random().toString(36).slice(2, 8);
+  return `${prefix}_${t.slice(-4)}${r}`;
 }
 
 /* ─── 空状态 + 默认变量 ─── */
