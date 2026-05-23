@@ -104,13 +104,13 @@ export interface StampElement extends BaseElement {
   type: "stamp";
   /** 章面顶部弧形文字(机构名等) */
   text: string;
-  /** 章面中心 5 角星下方的小字(可空) */
+  /** 章面底部小字(可空) */
   centerText: string;
   /** 整体色,通常是红 */
   color: string;
   strokeWidth: number;
-  /** 是否画中心五角星 */
-  showStar: boolean;
+  /** 中心图案 — none/五角星/党徽 */
+  centerPattern: "none" | "star" | "emblem";
 }
 
 export interface QRCodeElement extends BaseElement {

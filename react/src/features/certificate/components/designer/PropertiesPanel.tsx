@@ -612,13 +612,25 @@ function StampProps({
           onChange={(v) => onChange(el.id, { strokeWidth: v })}
         />
       </Field>
-      <button
-        type="button"
-        onClick={() => onChange(el.id, { showStar: !el.showStar })}
-        className={btnToggle(el.showStar)}
-      >
-        {el.showStar ? "✓ 显示五角星" : "显示五角星"}
-      </button>
+      <Field label="中心图案">
+        <div className="grid grid-cols-3 gap-1">
+          {(
+            [
+              { v: "none", label: "无" },
+              { v: "star", label: "五角星" },
+              { v: "emblem", label: "党徽" },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.v}
+              onClick={() => onChange(el.id, { centerPattern: opt.v })}
+              className={btnToggle(el.centerPattern === opt.v)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </Field>
     </Section>
   );
 }

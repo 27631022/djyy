@@ -398,21 +398,25 @@ function renderStamp(ctx: CanvasRenderingContext2D, el: StampElement): void {
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.stroke();
 
-  // 中心五角星
-  if (el.showStar) {
+  // 中心图案
+  if (el.centerPattern === "star") {
     drawFiveStar(ctx, cx, cy, r * 0.32, el.color);
+  } else if (el.centerPattern === "emblem") {
+    drawPartyEmblem(ctx, cx, cy, r * 0.55, el.color);
   }
 
-  // 顶部弧形文字
+  // 顶部弧形文字 — 240° 顶弧(从 7 点位走顶到 5 点位)
   if (el.text) {
+    const TOP = -Math.PI / 2; // canvas:12 点 = -π/2
+    const HALF = Math.PI * 2 / 3; // 半弧 120°,合计 240°
     drawArcText(
       ctx,
       el.text,
       cx,
       cy,
-      r - Math.max(8, el.strokeWidth * 2.5),
-      Math.PI * 0.75, // 弧形起点(8 点钟方向)
-      Math.PI * 0.25 + Math.PI * 2, // 终点(4 点钟方向),走外面绕
+      r - Math.max(10, el.strokeWidth * 2.5),
+      TOP - HALF,
+      TOP + HALF,
       Math.max(10, Math.min(20, r / 5)),
       el.color,
     );
@@ -424,7 +428,7 @@ function renderStamp(ctx: CanvasRenderingContext2D, el: StampElement): void {
     ctx.font = `${Math.max(10, Math.min(16, r / 6))}px system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(el.centerText, cx, cy + r * 0.55);
+    ctx.fillText(el.centerText, cx, cy + r * 0.62);
   }
 }
 
@@ -451,6 +455,57 @@ function drawFiveStar(
   }
   ctx.closePath();
   ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * 中国共产党党徽 — 锤头(左侧)+ 镰刀(右侧弧形)。
+ * 按附件官方制法图示近似绘制(32×32 网格的几何关系简化版)。
+ * r 是图案半径(对应停章圆心到外缘的距离 × 0.55 左右)。
+ */
+function drawPartyEmblem(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  color: string,
+): void {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+
+  // ─── 镰刀(右侧弧形刀刃 + 下方把手) ───
+  // 刀刃 = 外大弧 与 内小弧 之间的新月形,开口朝左下
+  ctx.beginPath();
+  ctx.arc(cx, cy + r * 0.05, r * 0.95, -Math.PI * 0.94, Math.PI * 0.06, false);
+  ctx.arc(cx + r * 0.05, cy - r * 0.04, r * 0.72, Math.PI * 0.06, -Math.PI * 0.94, true);
+  ctx.closePath();
+  ctx.fill();
+
+  // 镰刀把:刀尖右下端 → 圆下方
+  ctx.lineWidth = r * 0.22;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(cx + r * 0.85, cy + r * 0.15);
+  ctx.lineTo(cx + r * 0.42, cy + r * 0.88);
+  ctx.stroke();
+
+  // ─── 锤(左侧锤头 + 右下把手) ───
+  // 锤头:旋转矩形,模拟左上 → 右下的握姿
+  ctx.save();
+  ctx.translate(cx - r * 0.42, cy + r * 0.02);
+  ctx.rotate(-Math.PI / 4); // 锤头长边沿左下到右上方向
+  ctx.fillRect(-r * 0.32, -r * 0.17, r * 0.64, r * 0.34);
+  ctx.restore();
+
+  // 锤把:粗线,从锤头延伸到右下角
+  ctx.lineWidth = r * 0.22;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.18, cy + r * 0.26);
+  ctx.lineTo(cx - r * 0.55, cy + r * 0.78);
+  ctx.stroke();
+
   ctx.restore();
 }
 

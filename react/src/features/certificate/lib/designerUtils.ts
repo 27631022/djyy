@@ -194,8 +194,9 @@ export function createStampElement(opts?: Partial<StampElement>): StampElement {
   return {
     id: genId("stmp"),
     type: "stamp",
-    x: 560,
-    y: 360,
+    // 放画布中心偏上,确保默认视口能看见(不要往右下放)
+    x: 320,
+    y: 200,
     width: 160,
     height: 160,
     rotation: 0,
@@ -207,7 +208,7 @@ export function createStampElement(opts?: Partial<StampElement>): StampElement {
     centerText: "",
     color: "#C8001E",
     strokeWidth: 4,
-    showStar: true,
+    centerPattern: "star",
     ...opts,
   };
 }
@@ -218,8 +219,8 @@ export function createQRCodeElement(
   return {
     id: genId("qr"),
     type: "qrcode",
-    x: 600,
-    y: 380,
+    x: 330,
+    y: 210,
     width: 140,
     height: 140,
     rotation: 0,
