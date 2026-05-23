@@ -234,7 +234,8 @@ export function createStampElement(opts?: Partial<StampElement>): StampElement {
     name: "印章",
     text: "中共党建益友委员会",
     centerText: "",
-    bottomText: "荣誉专用章",
+    // 两端各 3 个空格,让底弧文字在弧上不顶到弧两端,看着透气
+    bottomText: "   荣誉专用章   ",
     color: "#eb250f",
     strokeWidth: 4,
     centerPattern: "star",

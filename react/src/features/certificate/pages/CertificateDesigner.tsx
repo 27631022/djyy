@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -10,6 +10,8 @@ import {
   RedoIcon,
   EyeIcon,
   EditIcon,
+  DownloadIcon,
+  ChevronDownIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -32,8 +34,16 @@ import {
   cloneElement,
   emptyDesignerState,
 } from "../lib/designerUtils";
+import {
+  exportCanvasAsPDF,
+  exportCanvasAsPNG,
+  generateThumbnail,
+} from "../lib/exportUtils";
 import { useHistory } from "../hooks/useHistory";
-import { CanvasStage } from "../components/designer/CanvasStage";
+import {
+  CanvasStage,
+  type CanvasStageHandle,
+} from "../components/designer/CanvasStage";
 import { ElementPanel } from "../components/designer/ElementPanel";
 import { VariablePanel } from "../components/designer/VariablePanel";
 import { BackgroundPanel } from "../components/designer/BackgroundPanel";
@@ -65,6 +75,8 @@ export default function CertificateDesignerPage() {
   const [description, setDescription] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isPreview, setIsPreview] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const canvasStageRef = useRef<CanvasStageHandle>(null);
 
   useEffect(() => {
     if (!existingQuery.data) return;
@@ -274,7 +286,13 @@ export default function CertificateDesignerPage() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [undo, redo, deleteSelected, duplicateSelected, nudgeSelected, selectedIds.length]);
 
-  /* ─── 保存 ─── */
+  /* ─── 保存 — 顺手生成缩略图(列表页用) ─── */
+
+  function getThumbnailDataUrl(): string | undefined {
+    const c = canvasStageRef.current?.getMainCanvas();
+    if (!c) return undefined;
+    return generateThumbnail(c, 300, 0.7);
+  }
 
   const createMut = useMutation({
     mutationFn: (input: CreateTemplateInput) =>
@@ -298,6 +316,7 @@ export default function CertificateDesignerPage() {
         designJson: JSON.stringify(state),
         width: state.canvasWidth,
         height: state.canvasHeight,
+        thumbnail: getThumbnailDataUrl(),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["certificate-templates"] });
@@ -320,10 +339,28 @@ export default function CertificateDesignerPage() {
         designJson: JSON.stringify(state),
         width: state.canvasWidth,
         height: state.canvasHeight,
+        thumbnail: getThumbnailDataUrl(),
       });
     } else {
       updateMut.mutate();
     }
+  }
+
+  function handleExport(format: "png" | "pdf") {
+    const c = canvasStageRef.current?.getMainCanvas();
+    if (!c) {
+      toast.error("画布尚未就绪");
+      return;
+    }
+    const baseName = (name.trim() || "证书模板").replace(/[/\\:*?"<>|]/g, "_");
+    if (format === "png") {
+      exportCanvasAsPNG(c, baseName);
+      toast.success("PNG 已下载");
+    } else {
+      exportCanvasAsPDF(c, baseName);
+      toast.success("PDF 已下载");
+    }
+    setExportMenuOpen(false);
   }
 
   const saving = createMut.isPending || updateMut.isPending;
@@ -407,6 +444,43 @@ export default function CertificateDesignerPage() {
             删除 ({selectedIds.length})
           </button>
         )}
+
+        {/* 导出 PNG / PDF — 简易下拉 */}
+        <div className="relative">
+          <button
+            onClick={() => setExportMenuOpen((v) => !v)}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border border-[#E9E9E9] hover:bg-[#F7F8FA]"
+            title="导出"
+          >
+            <DownloadIcon className="w-3.5 h-3.5" />
+            导出
+            <ChevronDownIcon className="w-3 h-3" />
+          </button>
+          {exportMenuOpen && (
+            <>
+              {/* 透明遮罩,点外部关菜单 */}
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setExportMenuOpen(false)}
+              />
+              <div className="absolute right-0 top-full mt-1 w-32 bg-white border border-[#E9E9E9] rounded shadow-lg z-50 overflow-hidden">
+                <button
+                  onClick={() => handleExport("png")}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-[#F7F8FA]"
+                >
+                  导出 PNG
+                </button>
+                <button
+                  onClick={() => handleExport("pdf")}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-[#F7F8FA] border-t border-[#F0F0F0]"
+                >
+                  导出 PDF
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
         <button
           onClick={handleSave}
           disabled={saving}
@@ -494,6 +568,7 @@ export default function CertificateDesignerPage() {
         {/* 中:画布 */}
         <main className="flex-1 min-w-0 flex items-center justify-center overflow-auto p-8">
           <CanvasStage
+            ref={canvasStageRef}
             state={state}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}

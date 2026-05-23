@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import QRCode from "qrcode";
 import type {
   DesignerElement,
@@ -25,6 +31,11 @@ interface CanvasStageProps {
   onRecordHistory: () => void;
   /** 预览模式:文本变量替换为 sampleValue,隐藏选中框/handle */
   isPreview?: boolean;
+}
+
+/** 父组件通过 ref 拿到主画布 element 用于导出 PNG/PDF/缩略图 */
+export interface CanvasStageHandle {
+  getMainCanvas: () => HTMLCanvasElement | null;
 }
 
 interface ElementSnapshot {
@@ -56,14 +67,17 @@ interface DragState {
 
 const MIN_SIZE = 10;
 
-export function CanvasStage({
-  state,
-  selectedIds,
-  onSelectionChange,
-  onElementsChange,
-  onRecordHistory,
-  isPreview = false,
-}: CanvasStageProps) {
+export const CanvasStage = forwardRef<CanvasStageHandle, CanvasStageProps>(function CanvasStage(
+  {
+    state,
+    selectedIds,
+    onSelectionChange,
+    onElementsChange,
+    onRecordHistory,
+    isPreview = false,
+  },
+  ref,
+) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -75,6 +89,10 @@ export function CanvasStage({
   const [bgImageTick, setBgImageTick] = useState(0);
   /** image/qr 加载完成时 ++ 触发重绘 */
   const [imageCacheTick, setImageCacheTick] = useState(0);
+
+  useImperativeHandle(ref, () => ({
+    getMainCanvas: () => canvasRef.current,
+  }), []);
 
   /* ── 背景图异步预加载 ── */
   useEffect(() => {
@@ -541,7 +559,7 @@ export function CanvasStage({
       />
     </div>
   );
-}
+});
 
 /* ─── 辅助:resize 时的"锚点"local 坐标(被拖 handle 的对角/对边中点) ─── */
 function oppositeCornerLocal(
