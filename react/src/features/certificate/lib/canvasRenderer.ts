@@ -150,7 +150,7 @@ function renderElement(
       renderImageEl(ctx, el, imageCache);
       break;
     case "stamp":
-      renderStamp(ctx, el);
+      renderStamp(ctx, el, imageCache);
       break;
     case "qrcode":
       renderQRCode(ctx, el, imageCache);
@@ -395,7 +395,14 @@ function renderImageEl(
 
 /* ─── Stamp ─── */
 
-function renderStamp(ctx: CanvasRenderingContext2D, el: StampElement): void {
+const PARTY_EMBLEM_URL = "/party-emblem.png";
+export const PARTY_EMBLEM_CACHE_KEY = PARTY_EMBLEM_URL;
+
+function renderStamp(
+  ctx: CanvasRenderingContext2D,
+  el: StampElement,
+  imageCache: Map<string, HTMLImageElement>,
+): void {
   const cx = el.x + el.width / 2;
   const cy = el.y + el.height / 2;
   const r = Math.min(el.width, el.height) / 2 - el.strokeWidth;
@@ -412,17 +419,15 @@ function renderStamp(ctx: CanvasRenderingContext2D, el: StampElement): void {
   if (el.centerPattern === "star") {
     drawFiveStar(ctx, cx, cy, r * 0.32, el.color);
   } else if (el.centerPattern === "emblem") {
-    drawPartyEmblem(ctx, cx, cy, r * 0.55, el.color);
+    drawPartyEmblem(ctx, cx, cy, r * 0.55, el.color, imageCache);
   }
 
-  // 顶部弧形文字 — 240° 顶弧(从 7 点位走顶到 5 点位)
+  // 顶部弧形文字 — 240° 顶弧,字号 +1,textRadius 再往里收 2px
   if (el.text) {
-    const TOP = -Math.PI / 2; // canvas:12 点 = -π/2
-    const HALF = (Math.PI * 2) / 3; // 半弧 120°,合计 240°
-    const fontSize = Math.max(11, Math.min(22, r / 4.5));
-    // 字号 × 0.95 留余 + strokeWidth 是给外圈线本身的厚度
-    // 这样字的外缘距外圈有约 fontSize × 0.45 的空隙
-    const textRadius = r - el.strokeWidth - fontSize * 0.95;
+    const TOP = -Math.PI / 2;
+    const HALF = (Math.PI * 2) / 3;
+    const fontSize = Math.max(12, Math.min(23, r / 4.2));
+    const textRadius = r - el.strokeWidth - fontSize * 0.95 - 2;
     if (textRadius > 0) {
       drawArcText(
         ctx,
@@ -438,19 +443,41 @@ function renderStamp(ctx: CanvasRenderingContext2D, el: StampElement): void {
     }
   }
 
-  // 底部一行小字(如"证书专用章") — 细瘦的仿宋,横向压缩
+  // 中段一行小字(如"证书专用章")— 比之前大一档,仿宋细瘦
   if (el.centerText) {
-    const cFont = Math.max(9, Math.min(14, r / 7.5));
+    const cFont = Math.max(12, Math.min(18, r / 5));
     ctx.save();
     ctx.fillStyle = el.color;
     ctx.font = `normal ${cFont}px FangSong, "FangSong_GB2312", STFangsong, serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    // 横向压缩 0.85,字看起来更瘦更直立
-    ctx.translate(cx, cy + r * 0.66);
+    ctx.translate(cx, cy + r * 0.58);
     ctx.scale(0.85, 1);
     ctx.fillText(el.centerText, 0, 0);
     ctx.restore();
+  }
+
+  // 底部弧形文字 — 最细最小,140° 底弧,字头朝内
+  if (el.bottomText) {
+    const BOT = Math.PI / 2; // canvas:6 点 = π/2
+    const BHALF = (Math.PI * 70) / 180; // 半弧 70°,合计 140°
+    const bFont = Math.max(8, Math.min(13, r / 7));
+    const bRadius = r - el.strokeWidth - bFont * 0.95 - 2;
+    if (bRadius > 0) {
+      // 反向 sweep 让字从左到右排
+      drawArcText(
+        ctx,
+        el.bottomText,
+        cx,
+        cy,
+        bRadius,
+        BOT + BHALF, // 起点:左侧 7-8 点位
+        BOT - BHALF, // 终点:右侧 4-5 点位
+        bFont,
+        el.color,
+        true, // flipInward:字头朝中心
+      );
+    }
   }
 }
 
@@ -481,15 +508,57 @@ function drawFiveStar(
 }
 
 /**
- * 中国共产党党徽 — 按附件官方制法图示的几何点位绘制简化版。
- * 32×32 网格,r 对应"半径 = 16 个单位"。
- * 几何参考点(grid col, row):
- *   G(8.5, 18.5'), H(19.5, 7.5'), I(4, 14'), J(17, 5'), K(13.5, 1')
- *   E(29, 33'), F(33, 29')
- *   M(17, 17') = 中心
- * 节点坐标:(col, row) → (cx + (col-17)*u, cy + (row-17)*u),u = r/16
+ * 中国共产党党徽 — 优先用 /public/party-emblem.png 图,按颜色 tint 后绘制。
+ * 图加载好后:画为印章颜色(锤镰刀剪影)。
+ * 图未就绪 / 失败:回退到几何近似绘制(锤头镰刀)。
  */
 function drawPartyEmblem(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  color: string,
+  imageCache: Map<string, HTMLImageElement>,
+): void {
+  const img = imageCache.get(PARTY_EMBLEM_CACHE_KEY);
+  if (img && img.complete && img.naturalWidth > 0) {
+    // 把图剪影染成 color(用 offscreen canvas 做 source-in 合成)
+    const tinted = getTintedEmblemCanvas(img, color);
+    if (tinted) {
+      const size = r * 1.9; // 接近圆内切但留一点边距
+      ctx.drawImage(tinted, cx - size / 2, cy - size / 2, size, size);
+      return;
+    }
+  }
+  // 回退:几何近似
+  drawPartyEmblemGeometric(ctx, cx, cy, r, color);
+}
+
+/** 缓存按颜色 tint 过的党徽 canvas,避免每帧重做 */
+const tintedEmblemCache = new Map<string, HTMLCanvasElement>();
+
+function getTintedEmblemCanvas(
+  img: HTMLImageElement,
+  color: string,
+): HTMLCanvasElement | null {
+  const cached = tintedEmblemCache.get(color);
+  if (cached) return cached;
+  if (typeof document === "undefined") return null;
+  const off = document.createElement("canvas");
+  off.width = img.naturalWidth;
+  off.height = img.naturalHeight;
+  const octx = off.getContext("2d");
+  if (!octx) return null;
+  octx.drawImage(img, 0, 0);
+  octx.globalCompositeOperation = "source-in";
+  octx.fillStyle = color;
+  octx.fillRect(0, 0, off.width, off.height);
+  tintedEmblemCache.set(color, off);
+  return off;
+}
+
+/** 图片不可用时的回退绘制 — 几何近似(锤头+镰刀) */
+function drawPartyEmblemGeometric(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
@@ -499,72 +568,26 @@ function drawPartyEmblem(
   ctx.save();
   ctx.fillStyle = color;
   ctx.strokeStyle = color;
-
   const u = r / 16;
-  const pt = (col: number, row: number) => ({
-    x: cx + (col - 17) * u,
-    y: cy + (row - 17) * u,
-  });
-
-  // ═════ 镰刀 ═════
-  // 刀刃:以 M(中心)为圆心、半径 ≈ 14u 的厚弧,从顶 N 走到右下
-  // 内弧半径 11u(中心略偏右下),形成新月
   ctx.beginPath();
   ctx.arc(cx, cy, 14 * u, -Math.PI * 0.55, Math.PI * 0.18, false);
   ctx.arc(cx + 1.2 * u, cy - 0.4 * u, 10.5 * u, Math.PI * 0.18, -Math.PI * 0.55, true);
   ctx.closePath();
   ctx.fill();
-
-  // 镰刀把:从刀刃右下端 → 左下方向(沿 BD 方向)
   ctx.lineWidth = 2.6 * u;
   ctx.lineCap = "round";
   ctx.beginPath();
   ctx.moveTo(cx + 13 * u, cy + 4 * u);
   ctx.lineTo(cx - 11 * u, cy + 14 * u);
   ctx.stroke();
-
-  // ═════ 锤 ═════
-  // 锤头:G-H-J-I 四点近似的平行四边形 + K 为圆心的顶弧
-  const G = pt(8.5, 18.5);
-  const H = pt(19.5, 7.5);
-  const I = pt(4, 14);
-  const J = pt(17, 5);
-  const K = pt(13.5, 1);
-  const kjR = Math.hypot(J.x - K.x, J.y - K.y);
-  ctx.beginPath();
-  ctx.moveTo(I.x, I.y);
-  ctx.lineTo(G.x, G.y);
-  ctx.lineTo(H.x, H.y);
-  ctx.lineTo(J.x, J.y);
-  // 弧 K-J 到 与 I 之上延长线相交的 L 点(用一段定长弧近似)
-  const startAng = Math.atan2(J.y - K.y, J.x - K.x);
-  ctx.arc(K.x, K.y, kjR, startAng, startAng - Math.PI * 0.45, true);
-  ctx.closePath();
-  ctx.fill();
-
-  // 锤把:从 E、F 出发沿 CA 方向(左上),与锤头底边 GH 大致衔接
-  const E = pt(29, 33);
-  const F = pt(33, 29);
-  // CA 单位向量
-  const caX = -1 / Math.SQRT2;
-  const caY = -1 / Math.SQRT2;
-  // 把长延伸到锤头(估算到 GH 线附近的长度)
-  const handleLen = Math.hypot(E.x - G.x, E.y - G.y) * 0.78;
-  const E2 = { x: E.x + caX * handleLen, y: E.y + caY * handleLen };
-  const F2 = { x: F.x + caX * handleLen, y: F.y + caY * handleLen };
-  ctx.beginPath();
-  ctx.moveTo(E.x, E.y);
-  ctx.lineTo(F.x, F.y);
-  ctx.lineTo(F2.x, F2.y);
-  ctx.lineTo(E2.x, E2.y);
-  ctx.closePath();
-  ctx.fill();
-
   ctx.restore();
 }
 
 /**
  * 沿圆弧排列文字。印章字风格:细瘦体(仿宋),横向压缩 0.85 让字看起来高挑。
+ *
+ * flipInward = true 时,字头朝圆心(底弧用,这样字从左到右读起来正);
+ * flipInward = false 时,字头朝外(顶弧用)。
  */
 function drawArcText(
   ctx: CanvasRenderingContext2D,
@@ -576,11 +599,11 @@ function drawArcText(
   endAngle: number,
   fontSize: number,
   color: string,
+  flipInward = false,
 ): void {
   if (text.length === 0) return;
   ctx.save();
   ctx.fillStyle = color;
-  // 不要 bold,仿宋是天然偏细的字体;实在没仿宋则退到 serif
   ctx.font = `normal ${fontSize}px FangSong, "FangSong_GB2312", STFangsong, serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -589,10 +612,10 @@ function drawArcText(
   const charAngle = sweep / text.length;
   for (let i = 0; i < text.length; i++) {
     const a = startAngle + (i + 0.5) * charAngle;
-    // 每字符:平移到弧上对应点 → 旋转让基线对准切线 → 横向压缩 0.85 拉瘦
+    const rotation = flipInward ? a - Math.PI / 2 : a + Math.PI / 2;
     ctx.save();
     ctx.translate(cx + radius * Math.cos(a), cy + radius * Math.sin(a));
-    ctx.rotate(a + Math.PI / 2);
+    ctx.rotate(rotation);
     ctx.scale(0.85, 1);
     ctx.fillText(text[i], 0, 0);
     ctx.restore();

@@ -612,12 +612,21 @@ function StampProps({
           className={inputCls}
         />
       </Field>
-      <Field label="底部小字(可空)">
+      <Field label="中段小字 (如证书专用章)">
         <input
           type="text"
           value={el.centerText}
           onChange={(e) => onChange(el.id, { centerText: e.target.value })}
-          placeholder="如:专用章"
+          placeholder="如:证书专用章"
+          className={inputCls}
+        />
+      </Field>
+      <Field label="底部弧形文字 (最细最小)">
+        <input
+          type="text"
+          value={el.bottomText ?? ""}
+          onChange={(e) => onChange(el.id, { bottomText: e.target.value })}
+          placeholder="如:编号 / 日期 / 落款"
           className={inputCls}
         />
       </Field>

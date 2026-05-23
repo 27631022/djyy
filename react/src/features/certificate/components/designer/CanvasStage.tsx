@@ -7,6 +7,7 @@ import type {
 } from "../../lib/designerTypes";
 import { isAspectLocked, pickElementAt } from "../../lib/designerUtils";
 import {
+  PARTY_EMBLEM_CACHE_KEY,
   type ResizeHandle,
   cursorForHandle,
   getQRCacheKey,
@@ -96,9 +97,9 @@ export function CanvasStage({
     img.src = bg.imageUrl;
   }, [state.background]);
 
-  /* ── image / qrcode 元素的异步加载 + 缓存 ── */
+  /* ── image / qrcode / 党徽 元素的异步加载 + 缓存 ── */
   useEffect(() => {
-    const wantKeys = new Map<string, "image" | "qr">();
+    const wantKeys = new Map<string, "image" | "qr" | "emblem">();
     const qrSources = new Map<string, QRCodeElement>();
     for (const el of state.elements) {
       if (el.type === "image" && el.dataUrl) wantKeys.set(el.dataUrl, "image");
@@ -107,12 +108,15 @@ export function CanvasStage({
         wantKeys.set(k, "qr");
         qrSources.set(k, el);
       }
+      if (el.type === "stamp" && el.centerPattern === "emblem") {
+        wantKeys.set(PARTY_EMBLEM_CACHE_KEY, "emblem");
+      }
     }
     const cache = imageCacheRef.current;
     let cancelled = false;
     wantKeys.forEach((kind, key) => {
       if (cache.has(key)) return;
-      if (kind === "image") {
+      if (kind === "image" || kind === "emblem") {
         const img = new Image();
         img.onload = () => {
           if (cancelled) return;
@@ -120,7 +124,7 @@ export function CanvasStage({
           setImageCacheTick((t) => t + 1);
         };
         img.onerror = () => {};
-        img.src = key; // dataUrl
+        img.src = key; // dataUrl 或 /party-emblem.png
       } else {
         const el = qrSources.get(key);
         if (!el) return;

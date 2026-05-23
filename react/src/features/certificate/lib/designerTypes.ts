@@ -106,8 +106,10 @@ export interface StampElement extends BaseElement {
   type: "stamp";
   /** 章面顶部弧形文字(机构名等) */
   text: string;
-  /** 章面底部小字(可空) */
+  /** 章面中段水平小字(如 "证书专用章") */
   centerText: string;
+  /** 章面底部弧形文字 — 最细最小,常用于编号/日期/落款 */
+  bottomText: string;
   /** 整体色,通常是红 */
   color: string;
   strokeWidth: number;

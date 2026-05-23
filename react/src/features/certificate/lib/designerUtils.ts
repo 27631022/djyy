@@ -223,7 +223,6 @@ export function createStampElement(opts?: Partial<StampElement>): StampElement {
   return {
     id: genId("stmp"),
     type: "stamp",
-    // 放画布中心偏上,确保默认视口能看见(不要往右下放)
     x: 320,
     y: 200,
     width: 160,
@@ -235,7 +234,8 @@ export function createStampElement(opts?: Partial<StampElement>): StampElement {
     name: "印章",
     text: "中共党建益友委员会",
     centerText: "证书专用章",
-    color: "#C8001E",
+    bottomText: "",
+    color: "#eb250f",
     strokeWidth: 4,
     centerPattern: "star",
     ...opts,
