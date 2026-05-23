@@ -10,6 +10,10 @@ import { DictionariesPage } from "@/features/dictionary";
 import { UserCustomFieldsPage } from "@/features/user-custom-field";
 import { SiteSettingsPage, siteSettingApi } from "@/features/site-setting";
 import { NavigationPage } from "@/features/nav-category";
+import {
+  CertificateTemplatesPage,
+  CertificateDesignerPage,
+} from "@/features/certificate";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
 import { Toaster } from "@/shared/components/ui/sonner";
@@ -81,6 +85,9 @@ const App = () => (
             <Route path="custom-fields" element={<UserCustomFieldsPage />} />
             <Route path="site-settings" element={<SiteSettingsPage />} />
             <Route path="navigation" element={<NavigationPage />} />
+            <Route path="certificate-templates" element={<CertificateTemplatesPage />} />
+            <Route path="certificate-templates/new" element={<CertificateDesignerPage />} />
+            <Route path="certificate-templates/:id/edit" element={<CertificateDesignerPage />} />
           </Route>
         </Routes>
         <Toaster position="top-center" richColors closeButton />

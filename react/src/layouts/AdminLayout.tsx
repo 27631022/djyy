@@ -6,6 +6,7 @@ import {
   BuildingIcon, ShieldIcon, UserIcon, BookTextIcon,
   EyeIcon, ThumbsUpIcon, MessageSquareIcon,
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
+  AwardIcon, BriefcaseIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 
@@ -33,6 +34,14 @@ const CATEGORIES: Category[] = [
       { path: "/admin/custom-fields",  label: "用户自定义字段",   icon: SlidersHorizontalIcon },
       { path: "/admin/site-settings",  label: "站点设置",         icon: PaletteIcon  },
       { path: "/admin/navigation",     label: "首页导航",         icon: LayoutGridIcon },
+    ],
+  },
+  {
+    id: "biz",
+    label: "业务功能",
+    icon: BriefcaseIcon,
+    items: [
+      { path: "/admin/certificate-templates", label: "证书模板", icon: AwardIcon },
     ],
   },
   {

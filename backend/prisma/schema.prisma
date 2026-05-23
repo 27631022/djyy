@@ -371,3 +371,30 @@ model AuditLog {
   @@index([action])
   @@index([pluginName])
 }
+
+// ─────────────────────────────────────────────────────────
+// 证书管理(V1:仅模板)
+// ─────────────────────────────────────────────────────────
+// 一个 CertificateTemplate 就是「证书的可视化设计 + 变量字段定义」,
+// designJson 序列化整个 DesignerState(elements 数组 + background +
+// canvas 尺寸 + 变量字段),由前端 Canvas 设计器读写。
+//
+// V2 会加 Certificate 表(已发证书记录,@relation 回这里 onDelete: Restrict)。
+// @module: certificate
+model CertificateTemplate {
+  id          String   @id @default(cuid())
+  name        String // 模板名,如"年度优秀党员证书"
+  description String?
+  category    String? // 分类:奖励/荣誉/培训... 留 null 即可
+  designJson  String // DesignerState 序列化(JSON 字符串)
+  thumbnail   String? // 缩略图(data URL / base64),列表显示用
+  width       Int      @default(800) // 画布宽 px
+  height      Int      @default(566) // 画布高 px
+  active      Boolean  @default(true) // 禁用不删
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String? // user id,可空
+
+  @@index([active])
+  @@index([category])
+}

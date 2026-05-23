@@ -12,6 +12,7 @@ import { DictionaryModule } from './dictionary';
 import { UserCustomFieldModule } from './user-custom-field';
 import { SiteSettingModule } from './site-setting';
 import { NavCategoryModule } from './nav-category';
+import { CertificateModule } from './certificate';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { NavCategoryModule } from './nav-category';
     UserCustomFieldModule,
     SiteSettingModule,
     NavCategoryModule,
+    CertificateModule,
   ],
 })
 export class AppModule {}
