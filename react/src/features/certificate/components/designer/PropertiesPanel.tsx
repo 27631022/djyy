@@ -1,5 +1,4 @@
 import type {
-  CanvasBackground,
   CircleElement,
   DesignerElement,
   RectElement,
@@ -8,32 +7,21 @@ import type {
 
 interface PropertiesPanelProps {
   selected: DesignerElement | null;
-  background: CanvasBackground;
-  canvasWidth: number;
-  canvasHeight: number;
   onElementChange: (id: string, patch: Partial<DesignerElement>) => void;
-  onBackgroundChange: (bg: CanvasBackground) => void;
-  onCanvasSizeChange: (w: number, h: number) => void;
 }
 
-export function PropertiesPanel({
-  selected,
-  background,
-  canvasWidth,
-  canvasHeight,
-  onElementChange,
-  onBackgroundChange,
-  onCanvasSizeChange,
-}: PropertiesPanelProps) {
+export function PropertiesPanel({ selected, onElementChange }: PropertiesPanelProps) {
   if (!selected) {
     return (
-      <BackgroundEditor
-        background={background}
-        canvasWidth={canvasWidth}
-        canvasHeight={canvasHeight}
-        onBackgroundChange={onBackgroundChange}
-        onCanvasSizeChange={onCanvasSizeChange}
-      />
+      <div className="flex flex-col items-center justify-center py-12 text-center text-xs text-[#9CA3AF]">
+        <p>选中画布中的元素后</p>
+        <p>这里显示属性设置</p>
+        <p className="mt-3 text-[10px]">
+          画布尺寸 / 底色 / 底图
+          <br />
+          在左侧「背景」tab 设置
+        </p>
+      </div>
     );
   }
 
@@ -386,58 +374,6 @@ function CircleProps({
         />
       </Field>
     </Section>
-  );
-}
-
-/* ─── 无选中时:背景 + 画布尺寸 ─── */
-
-function BackgroundEditor({
-  background,
-  canvasWidth,
-  canvasHeight,
-  onBackgroundChange,
-  onCanvasSizeChange,
-}: {
-  background: CanvasBackground;
-  canvasWidth: number;
-  canvasHeight: number;
-  onBackgroundChange: (bg: CanvasBackground) => void;
-  onCanvasSizeChange: (w: number, h: number) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-3">
-      <Section title="画布尺寸">
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="宽 px">
-            <NumberInput
-              min={100}
-              max={4000}
-              value={canvasWidth}
-              onChange={(v) => onCanvasSizeChange(v, canvasHeight)}
-            />
-          </Field>
-          <Field label="高 px">
-            <NumberInput
-              min={100}
-              max={4000}
-              value={canvasHeight}
-              onChange={(v) => onCanvasSizeChange(canvasWidth, v)}
-            />
-          </Field>
-        </div>
-      </Section>
-      <Section title="背景色">
-        <ColorInput
-          value={background.color ?? "#FFFFFF"}
-          onChange={(c) =>
-            onBackgroundChange({ ...background, type: "color", color: c })
-          }
-        />
-        <p className="text-[10px] text-[#9CA3AF] mt-1">
-          Phase D 会加图片背景和纹理(红锦缎/金线/云纹/...)
-        </p>
-      </Section>
-    </div>
   );
 }
 

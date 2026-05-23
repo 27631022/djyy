@@ -30,17 +30,42 @@ export function CanvasStage({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<DragState | null>(null);
+  const bgImageRef = useRef<HTMLImageElement | null>(null);
   /** cursor 反馈用,不影响渲染主流程 */
   const [isDragging, setIsDragging] = useState(false);
+  /** 背景图加载完成时 +1 触发重绘 */
+  const [bgImageTick, setBgImageTick] = useState(0);
 
-  /* ── 主画布:state 变化时重绘 ── */
+  /* ── 背景图异步预加载 ── */
+  useEffect(() => {
+    const bg = state.background;
+    if (bg.type !== "image" || !bg.imageUrl) {
+      bgImageRef.current = null;
+      setBgImageTick((t) => t + 1);
+      return;
+    }
+    // 同一张图已加载好则不重复
+    if (bgImageRef.current && bgImageRef.current.src === bg.imageUrl) return;
+    const img = new Image();
+    img.onload = () => {
+      bgImageRef.current = img;
+      setBgImageTick((t) => t + 1);
+    };
+    img.onerror = () => {
+      bgImageRef.current = null;
+      setBgImageTick((t) => t + 1);
+    };
+    img.src = bg.imageUrl;
+  }, [state.background]);
+
+  /* ── 主画布:state 或背景图加载完成时重绘 ── */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    renderAll(ctx, state);
-  }, [state]);
+    renderAll(ctx, state, { bgImage: bgImageRef.current });
+  }, [state, bgImageTick]);
 
   /* ── overlay:选中框 ── */
   useEffect(() => {

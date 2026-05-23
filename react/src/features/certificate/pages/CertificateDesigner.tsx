@@ -4,6 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon, SaveIcon, AwardIcon, TrashIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/shared/components/ui/tabs";
+import {
   certificateTemplateApi,
   type CreateTemplateInput,
 } from "@/features/certificate";
@@ -12,10 +18,13 @@ import type {
   DesignerElement,
   DesignerState,
 } from "../lib/designerTypes";
-import { emptyDesignerState } from "../lib/designerUtils";
+import { DEFAULT_VARIABLES, emptyDesignerState } from "../lib/designerUtils";
 import { CanvasStage } from "../components/designer/CanvasStage";
 import { ElementPanel } from "../components/designer/ElementPanel";
+import { VariablePanel } from "../components/designer/VariablePanel";
+import { BackgroundPanel } from "../components/designer/BackgroundPanel";
 import { PropertiesPanel } from "../components/designer/PropertiesPanel";
+import { LayerPanel } from "../components/designer/LayerPanel";
 
 const PARTY = "var(--party-primary)";
 
@@ -44,9 +53,19 @@ export default function CertificateDesignerPage() {
     setName(t.name);
     setDescription(t.description ?? "");
     try {
-      const parsed = JSON.parse(t.designJson) as DesignerState;
-      // 兼容老数据(无 variables / 字段缺失):合并 emptyDesignerState 兜底
-      setState({ ...emptyDesignerState(t.width, t.height), ...parsed });
+      const parsed = JSON.parse(t.designJson) as Partial<DesignerState>;
+      const empty = emptyDesignerState(t.width, t.height);
+      setState({
+        ...empty,
+        ...parsed,
+        // 兜底:旧模板可能没存 variables/background;空数组也补默认值
+        variables:
+          parsed.variables && parsed.variables.length > 0
+            ? parsed.variables
+            : DEFAULT_VARIABLES,
+        background: parsed.background ?? empty.background,
+        elements: parsed.elements ?? [],
+      });
     } catch {
       setState(emptyDesignerState(t.width, t.height));
     }
@@ -87,6 +106,26 @@ export default function CertificateDesignerPage() {
 
   const setCanvasSize = useCallback((w: number, h: number) => {
     setState((s) => ({ ...s, canvasWidth: w, canvasHeight: h }));
+  }, []);
+
+  const deleteElement = useCallback((id: string) => {
+    setState((s) => ({
+      ...s,
+      elements: s.elements.filter((e) => e.id !== id),
+    }));
+    setSelectedIds((ids) => ids.filter((x) => x !== id));
+  }, []);
+
+  const reorderElement = useCallback((id: string, direction: "up" | "down") => {
+    setState((s) => {
+      const idx = s.elements.findIndex((e) => e.id === id);
+      if (idx < 0) return s;
+      const swap = direction === "up" ? idx + 1 : idx - 1;
+      if (swap < 0 || swap >= s.elements.length) return s;
+      const next = [...s.elements];
+      [next[idx], next[swap]] = [next[swap], next[idx]];
+      return { ...s, elements: next };
+    });
   }, []);
 
   const deleteSelected = useCallback(() => {
@@ -203,11 +242,67 @@ export default function CertificateDesignerPage() {
         </button>
       </header>
 
-      {/* ── 三栏:左面板 | 画布 | 右面板 ── */}
+      {/* ── 三栏:左面板(tabs + 图层) | 画布 | 右面板(属性) ── */}
       <div className="flex-1 flex min-h-0">
-        {/* 左:元素工具 */}
-        <aside className="w-56 flex-shrink-0 bg-white border-r border-[#E9E9E9] p-3 overflow-auto">
-          <ElementPanel onAdd={addElement} />
+        {/* 左:tabs 上 + 图层 下 */}
+        <aside className="w-72 flex-shrink-0 flex flex-col bg-white border-r border-[#E9E9E9] overflow-hidden">
+          {/* 上半:tabs 容器 ~60% */}
+          <div className="flex-[3] min-h-0 flex flex-col">
+            <Tabs defaultValue="elements" className="flex-1 min-h-0 flex flex-col gap-0">
+              <TabsList className="w-full h-9 rounded-none border-b border-[#E9E9E9] bg-[#FAFAFA] p-0 flex-shrink-0">
+                <TabsTrigger
+                  value="elements"
+                  className="flex-1 rounded-none data-[state=active]:bg-white data-[state=active]:text-[var(--party-primary)] data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[var(--party-primary)] text-xs"
+                >
+                  元素
+                </TabsTrigger>
+                <TabsTrigger
+                  value="variables"
+                  className="flex-1 rounded-none data-[state=active]:bg-white data-[state=active]:text-[var(--party-primary)] data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[var(--party-primary)] text-xs"
+                >
+                  变量
+                </TabsTrigger>
+                <TabsTrigger
+                  value="background"
+                  className="flex-1 rounded-none data-[state=active]:bg-white data-[state=active]:text-[var(--party-primary)] data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[var(--party-primary)] text-xs"
+                >
+                  背景
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="elements" className="flex-1 overflow-auto p-3 m-0">
+                <ElementPanel onAdd={addElement} />
+              </TabsContent>
+              <TabsContent value="variables" className="flex-1 overflow-auto p-3 m-0">
+                <VariablePanel
+                  variables={state.variables}
+                  canvasWidth={state.canvasWidth}
+                  canvasHeight={state.canvasHeight}
+                  onAdd={addElement}
+                />
+              </TabsContent>
+              <TabsContent value="background" className="flex-1 overflow-auto p-3 m-0">
+                <BackgroundPanel
+                  background={state.background}
+                  canvasWidth={state.canvasWidth}
+                  canvasHeight={state.canvasHeight}
+                  onBackgroundChange={setBackground}
+                  onCanvasSizeChange={setCanvasSize}
+                />
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          {/* 下半:常驻图层栏 ~40% */}
+          <div className="flex-[2] min-h-0 border-t border-[#E9E9E9] flex flex-col">
+            <LayerPanel
+              elements={state.elements}
+              selectedIds={selectedIds}
+              onSelectionChange={setSelectedIds}
+              onUpdate={updateElement}
+              onDelete={deleteElement}
+              onReorder={reorderElement}
+            />
+          </div>
         </aside>
 
         {/* 中:画布 */}
@@ -220,16 +315,11 @@ export default function CertificateDesignerPage() {
           />
         </main>
 
-        {/* 右:属性 + 模板信息 */}
+        {/* 右:属性 */}
         <aside className="w-72 flex-shrink-0 bg-white border-l border-[#E9E9E9] p-3 overflow-auto">
           <PropertiesPanel
             selected={selected}
-            background={state.background}
-            canvasWidth={state.canvasWidth}
-            canvasHeight={state.canvasHeight}
             onElementChange={updateElement}
-            onBackgroundChange={setBackground}
-            onCanvasSizeChange={setCanvasSize}
           />
           <div className="mt-6 pt-4 border-t border-[#F0F0F0]">
             <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">

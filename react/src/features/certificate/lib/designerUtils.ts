@@ -139,3 +139,17 @@ export function replaceVariables(text: string, variables: VariableField[]): stri
   }
   return out;
 }
+
+/**
+ * 取元素的"代表色"用于图层栏的色条 —— 让用户能一眼对应画布上的元素。
+ * 优先级:可见的填充色 → 描边色 → fallback 灰
+ */
+export function getElementColor(el: DesignerElement): string {
+  switch (el.type) {
+    case "text":
+      return el.color || "#9CA3AF";
+    case "rect":
+    case "circle":
+      return el.fill || el.stroke || "#9CA3AF";
+  }
+}

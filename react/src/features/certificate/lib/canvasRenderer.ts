@@ -7,6 +7,11 @@ import type {
   CircleElement,
 } from "./designerTypes";
 
+export interface RenderExtras {
+  /** 已加载完成的背景图,由 CanvasStage 预加载后传入。null = 还没好/没图 */
+  bgImage?: HTMLImageElement | null;
+}
+
 /**
  * 把整个 DesignerState 渲染到 canvas。
  * 不画选中框/handle —— 那些是 CanvasStage 自己叠加(避免重复保存到 PNG 导出里)
@@ -14,10 +19,17 @@ import type {
 export function renderAll(
   ctx: CanvasRenderingContext2D,
   state: DesignerState,
+  extras: RenderExtras = {},
 ): void {
   ctx.save();
   ctx.clearRect(0, 0, state.canvasWidth, state.canvasHeight);
-  renderBackground(ctx, state.background, state.canvasWidth, state.canvasHeight);
+  renderBackground(
+    ctx,
+    state.background,
+    state.canvasWidth,
+    state.canvasHeight,
+    extras.bgImage ?? null,
+  );
   for (const el of state.elements) {
     if (!el.visible) continue;
     renderElement(ctx, el);
@@ -30,15 +42,62 @@ export function renderBackground(
   bg: CanvasBackground,
   w: number,
   h: number,
+  bgImage: HTMLImageElement | null = null,
 ): void {
-  if (bg.type === "color") {
-    ctx.fillStyle = bg.color ?? "#FFFFFF";
-    ctx.fillRect(0, 0, w, h);
-  } else {
-    // image/texture Phase D 实装
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, w, h);
+  // 先画底色 — 即使有图,透明区也会透出底色
+  ctx.fillStyle = bg.color ?? "#FFFFFF";
+  ctx.fillRect(0, 0, w, h);
+
+  if (bg.type === "image" && bgImage && bgImage.complete && bgImage.naturalWidth > 0) {
+    drawImageWithFillMode(ctx, bgImage, w, h, bg.fillMode ?? "cover");
   }
+  // texture 留给 Phase 3 后续
+}
+
+function drawImageWithFillMode(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  cw: number,
+  ch: number,
+  mode: "cover" | "contain" | "center",
+): void {
+  const iw = img.naturalWidth;
+  const ih = img.naturalHeight;
+  if (iw === 0 || ih === 0) return;
+
+  if (mode === "center") {
+    const x = (cw - iw) / 2;
+    const y = (ch - ih) / 2;
+    ctx.drawImage(img, x, y);
+    return;
+  }
+
+  const canvasRatio = cw / ch;
+  const imgRatio = iw / ih;
+  let dw: number;
+  let dh: number;
+  if (mode === "cover") {
+    if (imgRatio > canvasRatio) {
+      // 图更宽:按高铺满,横向裁切
+      dh = ch;
+      dw = dh * imgRatio;
+    } else {
+      dw = cw;
+      dh = dw / imgRatio;
+    }
+  } else {
+    // contain
+    if (imgRatio > canvasRatio) {
+      dw = cw;
+      dh = dw / imgRatio;
+    } else {
+      dh = ch;
+      dw = dh * imgRatio;
+    }
+  }
+  const dx = (cw - dw) / 2;
+  const dy = (ch - dh) / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
 }
 
 function renderElement(ctx: CanvasRenderingContext2D, el: DesignerElement): void {
