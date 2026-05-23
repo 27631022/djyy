@@ -216,7 +216,113 @@ function renderCircle(ctx: CanvasRenderingContext2D, el: CircleElement): void {
   }
 }
 
-/* ─── 选中框(CanvasStage 单独画在 overlay 上,不进 designJson) ─── */
+/* ─── 选中框 + handle(单独画在 overlay 上,不进 designJson) ─── */
+
+export type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+export type HandleKind = ResizeHandle | "rotate";
+
+export interface HandlePoint {
+  kind: HandleKind;
+  /** 已经应用过旋转的屏幕坐标 */
+  x: number;
+  y: number;
+}
+
+const ROTATE_HANDLE_OFFSET = 24;
+const HANDLE_HIT_RADIUS = 7;
+
+/**
+ * 计算元素的 8 个 resize handle + 1 个 rotate handle 在画布坐标系的位置
+ * (已应用元素自身的旋转,所以可以直接用于 hit test 和 overlay 绘制)
+ */
+export function getHandlePoints(el: DesignerElement): HandlePoint[] {
+  // 本地(未旋转)坐标系下的 8 个角/边中点 + rotate handle
+  const local: HandlePoint[] = [
+    { kind: "nw", x: el.x, y: el.y },
+    { kind: "n", x: el.x + el.width / 2, y: el.y },
+    { kind: "ne", x: el.x + el.width, y: el.y },
+    { kind: "e", x: el.x + el.width, y: el.y + el.height / 2 },
+    { kind: "se", x: el.x + el.width, y: el.y + el.height },
+    { kind: "s", x: el.x + el.width / 2, y: el.y + el.height },
+    { kind: "sw", x: el.x, y: el.y + el.height },
+    { kind: "w", x: el.x, y: el.y + el.height / 2 },
+    { kind: "rotate", x: el.x + el.width / 2, y: el.y - ROTATE_HANDLE_OFFSET },
+  ];
+  if (el.rotation === 0) return local;
+  const cx = el.x + el.width / 2;
+  const cy = el.y + el.height / 2;
+  const rad = (el.rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return local.map((p) => ({
+    kind: p.kind,
+    x: cx + (p.x - cx) * cos - (p.y - cy) * sin,
+    y: cy + (p.x - cx) * sin + (p.y - cy) * cos,
+  }));
+}
+
+/** Hit test:鼠标(画布坐标)是否落在某个 handle 上,返回该 handle 类型 */
+export function pickHandleAt(
+  el: DesignerElement,
+  px: number,
+  py: number,
+): HandleKind | null {
+  const points = getHandlePoints(el);
+  for (const p of points) {
+    if (
+      Math.abs(p.x - px) <= HANDLE_HIT_RADIUS &&
+      Math.abs(p.y - py) <= HANDLE_HIT_RADIUS
+    ) {
+      return p.kind;
+    }
+  }
+  return null;
+}
+
+/** 同一 handle 的"对边/对角"屏幕坐标 — resize 时用作不动锚点 */
+export function getAnchorPoint(
+  el: DesignerElement,
+  handle: ResizeHandle,
+): { x: number; y: number } {
+  const opp = oppositeLocal(handle, el.x, el.y, el.width, el.height);
+  if (el.rotation === 0) return opp;
+  const cx = el.x + el.width / 2;
+  const cy = el.y + el.height / 2;
+  const rad = (el.rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return {
+    x: cx + (opp.x - cx) * cos - (opp.y - cy) * sin,
+    y: cy + (opp.x - cx) * sin + (opp.y - cy) * cos,
+  };
+}
+
+function oppositeLocal(
+  handle: ResizeHandle,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): { x: number; y: number } {
+  switch (handle) {
+    case "nw":
+      return { x: x + w, y: y + h };
+    case "n":
+      return { x: x + w / 2, y: y + h };
+    case "ne":
+      return { x: x, y: y + h };
+    case "e":
+      return { x: x, y: y + h / 2 };
+    case "se":
+      return { x: x, y: y };
+    case "s":
+      return { x: x + w / 2, y: y };
+    case "sw":
+      return { x: x + w, y: y };
+    case "w":
+      return { x: x + w, y: y + h / 2 };
+  }
+}
 
 export function renderSelectionOverlay(
   ctx: CanvasRenderingContext2D,
@@ -230,10 +336,72 @@ export function renderSelectionOverlay(
     ctx.rotate((el.rotation * Math.PI) / 180);
     ctx.translate(-cx, -cy);
   }
-  // 主选中框
   ctx.strokeStyle = "#3B82F6";
   ctx.lineWidth = 1.5;
   ctx.setLineDash([]);
   ctx.strokeRect(el.x - 1, el.y - 1, el.width + 2, el.height + 2);
   ctx.restore();
+}
+
+/**
+ * 单选时画 8 个缩放 handle + 旋转 handle + 连接线。
+ * 所有 handle 已经是屏幕坐标(旋转已应用),直接绘制不需要再 ctx.rotate。
+ */
+export function renderHandles(
+  ctx: CanvasRenderingContext2D,
+  el: DesignerElement,
+): void {
+  const points = getHandlePoints(el);
+  const rotateP = points.find((p) => p.kind === "rotate")!;
+  const topCenter = points.find((p) => p.kind === "n")!;
+
+  ctx.save();
+  ctx.strokeStyle = "#3B82F6";
+  ctx.lineWidth = 1;
+  // 旋转 handle 连接线
+  ctx.beginPath();
+  ctx.moveTo(topCenter.x, topCenter.y);
+  ctx.lineTo(rotateP.x, rotateP.y);
+  ctx.stroke();
+
+  // 8 个 resize handle(白底蓝边小方块)
+  for (const p of points) {
+    if (p.kind === "rotate") continue;
+    ctx.fillStyle = "#FFFFFF";
+    ctx.strokeStyle = "#3B82F6";
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(p.x - 4, p.y - 4, 8, 8);
+    ctx.strokeRect(p.x - 4, p.y - 4, 8, 8);
+  }
+
+  // 旋转 handle(白底蓝边小圆)
+  ctx.fillStyle = "#FFFFFF";
+  ctx.strokeStyle = "#3B82F6";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(rotateP.x, rotateP.y, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+/** handle 类型 → CSS cursor */
+export function cursorForHandle(kind: HandleKind): string {
+  switch (kind) {
+    case "rotate":
+      return "grab";
+    case "nw":
+    case "se":
+      return "nwse-resize";
+    case "ne":
+    case "sw":
+      return "nesw-resize";
+    case "n":
+    case "s":
+      return "ns-resize";
+    case "e":
+    case "w":
+      return "ew-resize";
+  }
 }
