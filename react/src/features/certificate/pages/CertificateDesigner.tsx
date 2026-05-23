@@ -116,18 +116,6 @@ export default function CertificateDesignerPage() {
     setSelectedIds((ids) => ids.filter((x) => x !== id));
   }, []);
 
-  const reorderElement = useCallback((id: string, direction: "up" | "down") => {
-    setState((s) => {
-      const idx = s.elements.findIndex((e) => e.id === id);
-      if (idx < 0) return s;
-      const swap = direction === "up" ? idx + 1 : idx - 1;
-      if (swap < 0 || swap >= s.elements.length) return s;
-      const next = [...s.elements];
-      [next[idx], next[swap]] = [next[swap], next[idx]];
-      return { ...s, elements: next };
-    });
-  }, []);
-
   const deleteSelected = useCallback(() => {
     if (selectedIds.length === 0) return;
     setState((s) => ({
@@ -300,7 +288,7 @@ export default function CertificateDesignerPage() {
               onSelectionChange={setSelectedIds}
               onUpdate={updateElement}
               onDelete={deleteElement}
-              onReorder={reorderElement}
+              onElementsChange={setElementsArray}
             />
           </div>
         </aside>
