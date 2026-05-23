@@ -1,12 +1,18 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: ['log', 'error', 'warn', 'debug'],
   });
+
+  // Express 默认 JSON body 上限 100KB,但证书模板的 designJson 里可能含
+  // base64 编码的底图 + 图片元素(V2),容易突破。放宽到 10MB(前端上传时已限单图 2MB)。
+  app.use(json({ limit: '10mb' }));
+  app.use(urlencoded({ extended: true, limit: '10mb' }));
 
   const config = app.get(ConfigService);
   const port = config.get<number>('PORT', 3001);
