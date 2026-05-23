@@ -8,9 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { SiteSettingService } from './site-setting.service';
-import { AuthGuard } from '../auth/auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { AuthPayload } from '../auth/auth.service';
+import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { UpdateSiteSettingDto } from './dto/update-site-setting.dto';
 
 @Controller('site-settings')

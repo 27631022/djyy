@@ -24,7 +24,7 @@
 | 状态 | zustand + @tanstack/react-query | |
 | 后端 | NestJS 10 + Prisma 5 + SQLite(dev)→ PostgreSQL(prod) | 不用 Java/Spring —— 用户明确拒绝 |
 | 认证 | Casdoor(规划中,未接入) | 不自建 IdP —— 6-12 人月的安全工程,不值得 |
-| 微前端 | wujie(规划中,未接入) | 不用 qiankun —— wujie 更轻;不用纯 iframe —— SSO 透传难 |
+| 应用拓展 | **模块化单体**(NestJS module 边界 + features/shared 前端分层)| ~~wujie 微前端 / .djyy 插件包~~ 两个方案都试过,solo dev 都过重,2026-05 改回 monolith |
 | 部署 | Docker Compose(MVP) → K8s(规模化) | |
 | 信创/达梦/麒麟 | **延后,等真实客户需求出现** | 不要预先适配 |
 
@@ -34,46 +34,72 @@
 
 ```
 djyy/                              ← git 根 + monorepo
-├── claude.md                      ← 本文件(项目宪法)
+├── CLAUDE.md                      ← 本文件(项目宪法,给 Claude 读)
 ├── README.md                      ← 给人看的自述
 ├── docs/
-│   ├── conventions.md             ← 命名约定 + 添加新模块清单
+│   ├── conventions.md             ← 5 条模块化约束 + 命名约定 + 加新模块清单
 │   └── roadmap.md                 ← 路线图 + 决策记录
-├── package.json                   ← root,装 husky 用
-├── .husky/pre-commit              ← commit 前自动跑 npm run check
-├── react/                         ← 前端工程
+├── package.json                   ← root,装 husky + 聚合 npm run check
+├── .husky/pre-commit              ← react check + backend check + check:circular
+├── react/                         ← 前端工程(features + shared 分层)
 │   ├── src/
-│   │   ├── api/                   ← axios client + 各业务模块的 API 封装
-│   │   ├── components/            ← 复用组件(含 ui/ = shadcn vendor)
+│   │   ├── features/              ← 业务模块,每个对齐 backend 模块
+│   │   │   ├── auth/              ← api.ts + index.ts (无页面)
+│   │   │   ├── dictionary/        ← api.ts + pages/Dictionaries.tsx + index.ts
+│   │   │   ├── nav-category/
+│   │   │   ├── organization/
+│   │   │   ├── permission/        ← api.ts + index.ts (无独立页面,合并在 role)
+│   │   │   ├── role/
+│   │   │   ├── site-setting/
+│   │   │   ├── user/
+│   │   │   └── user-custom-field/
+│   │   ├── shared/                ← 跨模块复用基础设施
+│   │   │   ├── api/client.ts      ← axios 实例 + 401 拦截器
+│   │   │   ├── components/        ← IconPicker + ui/(shadcn vendor)
+│   │   │   ├── hooks/             ← use-mobile
+│   │   │   └── lib/               ← pinyinSearch、utils(cn)
 │   │   ├── layouts/AdminLayout.tsx
-│   │   ├── pages/
+│   │   ├── pages/                 ← 全局/跨模块页面
 │   │   │   ├── NavPage.tsx        ← 前台门户首页
 │   │   │   ├── Login.tsx          ← Mock 登录(待换 Casdoor)
-│   │   │   └── admin/             ← 后台各页面
+│   │   │   └── NotFound.tsx
 │   │   ├── stores/auth.tsx        ← AuthProvider + me 状态
 │   │   ├── App.tsx                ← 路由 + QueryClient + ThemeBootstrap
 │   │   └── index.css              ← 主题 utility class
-│   ├── vite.config.ts             ← 已移除 unplugin-auto-import(吞错元凶)
-│   ├── tsconfig.app.json          ← 开了 noUnusedLocals / noImplicitAny
-│   ├── eslint.config.js           ← no-unused-vars: error
+│   ├── vite.config.ts             ← `@/` alias → src/
+│   ├── tsconfig.app.json          ← noUnusedLocals / noImplicitAny / paths
+│   ├── eslint.config.js           ← + eslint-plugin-boundaries(features/shared 边界)
 │   └── package.json
-└── backend/                       ← NestJS 工程
+└── backend/                       ← NestJS 模块化单体
     ├── prisma/
-    │   ├── schema.prisma          ← 全表定义
+    │   ├── schema.prisma          ← 全表定义,每 model 上方有 `// @module: <name>` 归属注释
     │   ├── seed.ts                ← 演示账号 + 字典 + 导航默认数据
     │   └── migrations/
+    ├── eslint.config.js           ← + eslint-plugin-boundaries(模块只能走 index.ts 入口)
     └── src/
-        ├── auth/                  ← JWT HS256(Mock,待换 Casdoor OIDC)
-        ├── organization/          ← 双树(党 + 行政)
-        ├── user/                  ← 用户 + memberships
-        ├── role/ + permission/    ← RBAC(权限点表存在但 Guard 未启用)
-        ├── dictionary/            ← 2 级字典
-        ├── user-custom-field/     ← 元数据驱动的用户扩展字段
-        ├── site-setting/          ← 站点设置(单行 JSON)
-        ├── nav-category/          ← 首页导航(分类 + 项目两表)
-        ├── audit/                 ← 审计日志
+        ├── auth/                  ← JWT HS256(Mock,待换 Casdoor OIDC) + index.ts
+        ├── audit/                 ← 审计日志 + index.ts
+        ├── prisma/                ← PrismaService + index.ts
+        ├── organization/          ← 双树(党 + 行政)+ index.ts
+        ├── user/                  ← 用户 + memberships + index.ts
+        ├── role/                  ← + RolePermission junction + index.ts
+        ├── permission/            ← Permission 表(Guard 未启用) + index.ts
+        ├── dictionary/            ← 2 级字典 + index.ts
+        ├── user-custom-field/     ← 元数据驱动的用户扩展字段 + index.ts
+        ├── site-setting/          ← 站点设置(单行 JSON) + index.ts
+        ├── nav-category/          ← 首页导航(分类 + 项目两表) + index.ts
+        ├── health/                ← /api/health + index.ts
         └── main.ts                ← listen 0.0.0.0,CORS dev 放开 *:5173
 ```
+
+**模块约束**(详见 [docs/conventions.md](docs/conventions.md) `后端模块化约束(5 条)`):
+1. 每张表归属一个模块(`schema.prisma` 用 `// @module:` 标注)
+2. 跨模块调用走 NestJS DI,不直 prisma 别人的表
+3. 模块对外只通过 `index.ts` barrel,**禁止** `import from '../user/user.service'` 这种深 import
+4. 依赖图必须是 DAG,`madge --circular` 在 pre-commit 拦截
+5. 新模块用固定骨架(module/service/controller/dto/index.ts/README.md)
+
+前端类似:`features/<x>/` 只能通过 `features/<x>/index.ts` 被引用,`shared/<x>/` 同理。ESLint `boundaries/entry-point` 规则强制。
 
 ---
 
@@ -152,10 +178,11 @@ npm run db:seed
 - 写操作要 audit:`this.audit.log({ action: '<domain>.<verb>', ... })`
 
 ### 前端 API
-- `src/api/<module>.ts` 导出 `xxxApi.list / create / update / delete`
+- `src/features/<x>/api.ts` 导出 `xxxApi.list / create / update / delete`
+- `src/features/<x>/index.ts` re-export `'./api'` —— 其他 feature 只 `import { xxxApi } from "@/features/<x>"`(走 barrel,不深 import `/api`)
 - 用 `@tanstack/react-query` 管缓存,`queryKey: ["<module>", ...]`
 - 表单变更后 mutation 成功 → `qc.invalidateQueries({ queryKey: [...] })`
-- 401 由 `src/api/client.ts` 拦截器统一处理(清 token + 跳 login)
+- 401 由 `src/shared/api/client.ts` 拦截器统一处理(清 token + 跳 login)
 
 ### 字典 vs 自定义字段
 - **字典**(`Dictionary` + `DictItem`):2 级,管"下拉选项的可选值"。如"职务"、"学历"
@@ -163,19 +190,28 @@ npm run db:seed
 
 ---
 
-## 加新 admin 模块的 7 步清单
+## 加新业务模块的清单
 
-参考已有模块(`site-setting/`、`nav-category/`、`dictionary/`)的代码结构。
+详细规则见 [docs/conventions.md](docs/conventions.md) `加一个新 admin 模块的 7 步清单`。简要骨架:
 
-1. **Prisma schema** 加表 + `npx prisma migrate dev --name add_xxx`
+1. **Prisma schema** 加 model + `// @module: <name>` 注释 + `npx prisma migrate dev --name add_xxx`
 2. **seed.ts** 加默认数据(可选)
-3. **后端模块**:`backend/src/<module>/` 创建 `xxx.module.ts` + `xxx.service.ts` + `xxx.controller.ts` + `dto/*.ts`,在 `app.module.ts` 注册
-4. **前端 API**:`react/src/api/<module>.ts` 类型 + axios 调用
-5. **后台页面**:`react/src/pages/admin/Xxx.tsx`,follow 现有页面的 header bar + 表格 + dialog 模式
-6. **App.tsx** 加路由 `<Route path="xxx" element={<XxxPage />} />`
-7. **AdminLayout.tsx** 在合适分类下加菜单项
+3. **后端模块** `backend/src/<module>/`:
+   - `index.ts`(barrel,**Module 放最后**)
+   - `xxx.module.ts` / `xxx.service.ts` / `xxx.controller.ts` / `dto/*.ts`
+   - 跨模块用 Service 走 NestJS DI,且 `import from "../<other>"`(barrel),禁止深 import
+   - 在 `app.module.ts` 用 `import { XxxModule } from './xxx'` 注册
+4. **前端 feature** `react/src/features/<x>/`:
+   - `api.ts`(类型 + axios)
+   - `pages/<Xxx>.tsx`(follow `Dictionaries.tsx` / `Navigation.tsx` 范本)
+   - `index.ts`(re-export api + page 默认导出)
+5. **App.tsx** 加路由,从 barrel `@/features/<x>` 引入 `XxxPage`
+6. **AdminLayout.tsx** 在合适分类下加菜单项
 
-每次修改后:`npm run check`(react/)确保 0 error,然后 `git commit`(husky 会再跑一次)。
+每次修改后:
+- backend: `npm run check` + `npm run check:circular`(0 error / 0 cycle)
+- react: `npm run check`(0 error)
+- 都过了再 `git commit`(husky 会再聚合跑一次)
 
 ---
 
@@ -191,19 +227,20 @@ npm run db:seed
 - 行政 4 级单位(level1~4)+ 党委/总支/支部/临时支部/党小组 + 虚拟组织
 - 2 级字典 popup picker
 - 用户多组织归属 + 多角色 + custom scope
+- **(2026-05-23)放弃微前端/插件包,转模块化单体** + 5 条后端约束 + 前端 features/shared 分层 + eslint-plugin-boundaries + madge 在 pre-commit 强制
 
 ### 🟡 待启动(按优先级)
-1. **wujie 微前端 PoC**:激活 AdminLayout 里"应用管理→插件管理"灰显项,做一个 demo 子应用通过 wujie 嵌入,验证 SSO 透传 / 菜单注入 / 事件总线
-2. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
-3. **访问量/点赞统计**:NavItem.likes/views 接真实计数 + Redis 缓存
-4. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面
+1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
+2. **访问量/点赞统计**:NavItem.likes/views 接真实计数 + Redis 缓存
+3. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面
+4. **业务模块**:党费、活动报名、积分等 —— 按 conventions.md 的"加新模块"清单逐个加(每个都是 features/<x> + backend/src/<x>)
 
-### ❌ 明确延后(有真实需求再做)
+### ❌ 明确延后/放弃(有真实需求再做)
 - **细粒度权限校验**(PermissionGuard + 前端 UI 隐藏)—— 用户明确"延后",单人 MVP 用不上
 - 信创适配(达梦 / 麒麟 / 国密)
 - K8s 部署
 - SAML / CAS / LDAP 协议适配
-- 插件签名 / .dyyp 包格式
+- ~~插件包/微前端~~ — 已放弃(2026-05-23,见决策记录)
 
 ---
 
@@ -213,7 +250,8 @@ npm run db:seed
 |---|---|---|
 | 不自建 IdP,用 Casdoor | 初版 | 自建 OIDC+SAML+LDAP 是 6-12 人月,Casdoor 一个 Go 单二进制就齐了 |
 | 不用 Java,用 NestJS | 初版 | 用户明确拒绝;TS 前后端统一,模块化适配插件型平台 |
-| 微前端选 wujie 不选 qiankun | 初版 | wujie 更轻,iframe 协议沙箱平衡体验和隔离 |
+| ~~微前端选 wujie 不选 qiankun~~ | 初版 | 已放弃,见下一行 |
+| **放弃微前端/插件包,改模块化单体** | 2026-05-23 | wujie 调试成本高、.djyy 插件包对 solo dev 过重(每模块自己 prisma/部署/端口);改成 NestJS 模块化单体 + ESLint boundaries 强制边界,加新模块零运维负担。详见 docs/conventions.md 5 条约定 |
 | 站点设置存单行 JSON 不存多列 | 站点设置阶段 | 后续加字段不用 migrate,前后端契约由 TS 类型管 |
 | icon 存 lucide 字符串名 | 首页导航阶段 | 编译期无需打包整个 lucide,运行时按需取 |
 | 主题色用 CSS var 而非每处 inline | 主题色阶段 | 改主题色一处变全站,不刷新 |
@@ -226,9 +264,11 @@ npm run db:seed
 ## 给 Claude 自己的提醒
 
 - **写代码前一定先看现有同类模块**(`site-setting/`、`nav-category/` 是最新最完整的范本)
-- **每次修改后跑 `npm run check`**(在 react/ 目录),0 error 才行
+- **跨模块只走 barrel**:`import from "@/features/x"` 或 `import from "../user"`,绝不 `from "../user/user.service"` —— ESLint 会报错,也违反约定 3
+- **每次修改后跑 check**:react `npm run check`,backend `npm run check` + `npm run check:circular`,0 error / 0 cycle 才能 commit
+- **新表加 `// @module: <name>`** 注释,声明归属
 - **commit message 详细一些**,要写"为什么这么做",这是跨会话记忆的主要载体
 - **不要主动删除孤儿文件**,先确认无人引用且用户同意
-- **主题色 / 字典 / 自定义字段** 这三块容易混淆,先翻 conventions.md
+- **主题色 / 字典 / 自定义字段** 这三块容易混淆,先翻 docs/conventions.md
 - **用户口语化目标 ≠ 写出来的规划文档**,以用户当下口语意图为准(他要"够用"不要"完美")
 - **TODO/警告类风险登记**:看 docs/roadmap.md

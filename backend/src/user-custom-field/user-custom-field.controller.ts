@@ -3,9 +3,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { UserCustomFieldService } from './user-custom-field.service';
-import { AuthGuard } from '../auth/auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { AuthPayload } from '../auth/auth.service';
+import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { CreateCustomFieldDto } from './dto/create-custom-field.dto';
 import { UpdateCustomFieldDto } from './dto/update-custom-field.dto';
 

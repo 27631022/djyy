@@ -2,25 +2,29 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   Post,
   Req,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { AuthService, AuthPayload } from './auth.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../prisma';
 import { AuthGuard } from './auth.guard';
 import { CurrentUser } from './current-user.decorator';
 import { DevLoginDto } from './dto/dev-login.dto';
-import { AuditService } from '../audit/audit.service';
 import type { Request } from 'express';
 
+// 不导入 AuditService:auth 写 dev_login 日志 vs audit 用 AuthGuard 保护读接口,
+// 二者构成 import 环。auth.controller 直接走 prisma 写 auditLog 表打破环 ——
+// 这是「表归属一个模块」约定的少数例外,理由记在 docs/conventions.md。
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly auth: AuthService,
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -38,12 +42,18 @@ export class AuthController {
       username: user.username,
       name: user.name,
     });
-    await this.audit.log({
-      actorId: user.id,
-      actorName: user.name,
-      action: 'auth.dev_login',
-      ip: req.ip,
-    });
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorName: user.name,
+          action: 'auth.dev_login',
+          ip: req.ip,
+        },
+      });
+    } catch (err) {
+      this.logger.error(`审计日志写入失败 action=auth.dev_login: ${(err as Error).message}`);
+    }
     return {
       token,
       user: {

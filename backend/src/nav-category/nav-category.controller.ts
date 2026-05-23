@@ -11,9 +11,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { NavCategoryService } from './nav-category.service';
-import { AuthGuard } from '../auth/auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { AuthPayload } from '../auth/auth.service';
+import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import {
   CreateNavCategoryDto,
   UpdateNavCategoryDto,

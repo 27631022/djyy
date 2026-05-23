@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { AuditService } from '../audit/audit.service';
+import { PrismaService } from '../prisma';
+import { AuditService } from '../audit';
 import {
   DEFAULT_SITE_SETTINGS,
   SITE_SETTING_ID,

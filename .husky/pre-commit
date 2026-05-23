@@ -1,10 +1,13 @@
 # 党建益友 pre-commit hook
 #
-# 在每次 git commit 前自动跑前端的 typecheck + eslint
-# 任何 ts 错误 / eslint error 都会阻止 commit
+# 每次 git commit 前自动跑:
+#   1. react: tsc --noEmit + eslint
+#   2. backend: tsc --noEmit + eslint(含 boundaries 规则,禁止跨模块深 import)
+#   3. backend: madge 检测循环依赖
+# 任何 error / 循环依赖都会阻止 commit。
 #
 # 紧急情况想绕过:`git commit --no-verify`
 # 但建议先看一下报错是什么 —— 大概率是真的漏了 import 或漏了类型
 
-echo "🔍 [pre-commit] 跑前端 typecheck + lint..."
+echo "🔍 [pre-commit] react + backend typecheck + lint + 循环依赖检查..."
 npm run --silent check

@@ -1,17 +1,17 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { PrismaModule } from './prisma/prisma.module';
-import { HealthController } from './health/health.controller';
-import { OrganizationModule } from './organization/organization.module';
-import { AuthModule } from './auth/auth.module';
-import { AuditModule } from './audit/audit.module';
-import { UserModule } from './user/user.module';
-import { RoleModule } from './role/role.module';
-import { PermissionModule } from './permission/permission.module';
-import { DictionaryModule } from './dictionary/dictionary.module';
-import { UserCustomFieldModule } from './user-custom-field/user-custom-field.module';
-import { SiteSettingModule } from './site-setting/site-setting.module';
-import { NavCategoryModule } from './nav-category/nav-category.module';
+import { PrismaModule } from './prisma';
+import { HealthModule } from './health';
+import { OrganizationModule } from './organization';
+import { AuthModule } from './auth';
+import { AuditModule } from './audit';
+import { UserModule } from './user';
+import { RoleModule } from './role';
+import { PermissionModule } from './permission';
+import { DictionaryModule } from './dictionary';
+import { UserCustomFieldModule } from './user-custom-field';
+import { SiteSettingModule } from './site-setting';
+import { NavCategoryModule } from './nav-category';
 
 @Module({
   imports: [
@@ -20,6 +20,7 @@ import { NavCategoryModule } from './nav-category/nav-category.module';
     // AuthModule 在业务模块之前注册,确保它们使用 AuthGuard 时已可用
     AuthModule,
     AuditModule,
+    HealthModule,
     OrganizationModule,
     UserModule,
     RoleModule,
@@ -29,6 +30,5 @@ import { NavCategoryModule } from './nav-category/nav-category.module';
     SiteSettingModule,
     NavCategoryModule,
   ],
-  controllers: [HealthController],
 })
 export class AppModule {}

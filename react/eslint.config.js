@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
+import boundaries from "eslint-plugin-boundaries";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -16,6 +17,19 @@ export default tseslint.config(
     plugins: {
       "react-hooks": reactHooks,
       "react-refresh": reactRefresh,
+      boundaries,
+    },
+    settings: {
+      // 把 src 下几类目录登记成 boundaries 的 "element"
+      // 跨 element 引用只允许走 index.ts(barrel)入口,深 import 报错
+      "boundaries/elements": [
+        { type: "feature",  pattern: "src/features/*",  mode: "folder" },
+        { type: "shared",   pattern: "src/shared/*",    mode: "folder" },
+        { type: "layout",   pattern: "src/layouts/*",   mode: "file"   },
+        { type: "page",     pattern: "src/pages/*",     mode: "file"   },
+        { type: "store",    pattern: "src/stores/*",    mode: "file"   },
+      ],
+      "boundaries/include": ["src/**/*.{ts,tsx}"],
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
@@ -42,6 +56,18 @@ export default tseslint.config(
 
       // 表达式语句(如 `x && doSomething()`)虽然不推荐,但有时是清晰写法
       "@typescript-eslint/no-unused-expressions": "warn",
+
+      // 跨 feature/shared 等 element 只能走 barrel(index.ts),禁止深 import
+      //   ❌ import { X } from "@/features/user/api"           — 深 import
+      //   ❌ import { X } from "@/features/user/pages/Users"    — 深 import
+      //   ✓  import { X } from "@/features/user"              — 走 features/user/index.ts
+      // 详见 docs/conventions.md 「前端模块化约束」
+      "boundaries/entry-point": ["error", {
+        default: "disallow",
+        rules: [
+          { target: ["feature", "shared"], allow: "index.ts" },
+        ],
+      }],
     },
   },
   {
@@ -53,7 +79,7 @@ export default tseslint.config(
   },
   {
     // shadcn/ui 是 vendor 代码(从模板复制,非我们维护),按它本身的风格
-    files: ["src/components/ui/**/*.{ts,tsx}"],
+    files: ["src/shared/components/ui/**/*.{ts,tsx}"],
     rules: {
       "react-hooks/purity": "off",
       "react-hooks/set-state-in-effect": "off",

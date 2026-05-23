@@ -30,24 +30,25 @@ datasource db {
 //
 // 一个用户可以同时归属任意多个组织 (含虚拟和真实),由 UserOrganization 表的复合主键
 // [userId, orgId] 保证唯一性。isPrimary 标记其主归属。
+// @module: organization
 model Organization {
-  id        String   @id @default(cuid())
+  id        String         @id @default(cuid())
   name      String
-  code      String   @unique
-  kind      String                                    // party | admin
-  type      String                                    // 见上方注释
-  isVirtual Boolean  @default(false)                  // 虚拟组织标记
+  code      String         @unique
+  kind      String // party | admin
+  type      String // 见上方注释
+  isVirtual Boolean        @default(false) // 虚拟组织标记
   parentId  String?
   parent    Organization?  @relation("OrgTree", fields: [parentId], references: [id])
   children  Organization[] @relation("OrgTree")
-  sortOrder Int      @default(0)
-  active    Boolean  @default(true)
-  meta      String?                                   // 扩展字段 JSON 串 (SQLite 无原生 JSON)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  sortOrder Int            @default(0)
+  active    Boolean        @default(true)
+  meta      String? // 扩展字段 JSON 串 (SQLite 无原生 JSON)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
-  memberships  UserOrganization[]
-  scopedBy     UserRoleScope[]
+  memberships UserOrganization[]
+  scopedBy    UserRoleScope[]
 
   @@index([kind])
   @@index([isVirtual])
@@ -56,35 +57,37 @@ model Organization {
 // ─────────────────────────────────────────────────────────
 // 用户
 // ─────────────────────────────────────────────────────────
+// @module: user
 model User {
-  id          String   @id @default(cuid())
-  username    String   @unique                        // 员工编号 / 登录名
-  name        String                                  // 显示名
-  email       String?  @unique
-  phone       String?
-  avatarUrl   String?
-  active      Boolean  @default(true)
-  externalId  String?  @unique                        // Casdoor 等外部 IdP 的 sub
+  id           String   @id @default(cuid())
+  username     String   @unique // 员工编号 / 登录名
+  name         String // 显示名
+  email        String?  @unique
+  phone        String?
+  avatarUrl    String?
+  active       Boolean  @default(true)
+  externalId   String?  @unique // Casdoor 等外部 IdP 的 sub
   // 自定义字段值 (基于 UserCustomField 定义)
   // JSON 字符串,结构: { [fieldCode]: stringValue, ... }
   // 例: '{"hire_date":"2020-03-15","education":"bachelor","id_card_no":"110..."}'
   // 字段缺失=未填,空字符串=已清空
   customFields String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   memberships UserOrganization[]
   roles       UserRole[]
 }
 
 // 用户 ↔ 组织 多对多 (一人可挂多个组织,但只能有一个 primary)
+// @module: user
 model UserOrganization {
   userId    String
   orgId     String
   user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  org       Organization @relation(fields: [orgId],  references: [id], onDelete: Cascade)
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   isPrimary Boolean      @default(false)
-  position  String?                                   // 兼任职务,如 "支部书记"
+  position  String? // 兼任职务,如 "支部书记"
   joinedAt  DateTime     @default(now())
 
   @@id([userId, orgId])
@@ -94,12 +97,13 @@ model UserOrganization {
 // ─────────────────────────────────────────────────────────
 // 角色 / 权限 (RBAC + 数据范围)
 // ─────────────────────────────────────────────────────────
+// @module: role
 model Role {
   id          String   @id @default(cuid())
-  code        String   @unique                        // party_secretary | admin | member ...
-  name        String                                  // 显示名,如 "党委书记"
+  code        String   @unique // party_secretary | admin | member ...
+  name        String // 显示名,如 "党委书记"
   description String?
-  builtin     Boolean  @default(false)                // 内置角色不允许删除
+  builtin     Boolean  @default(false) // 内置角色不允许删除
   createdAt   DateTime @default(now())
 
   users       UserRole[]
@@ -117,15 +121,16 @@ model Role {
 // 字段调整说明:
 //   原 scopeOrgId 单值字段已删除,改为通过 UserRoleScope 关联表表达"一个用户在某角色下可见的多棵子树"。
 //   primary key 从 [userId, roleId] 复合主键改为自增 id,以便 UserRoleScope 通过外键引用。
+// @module: role
 model UserRole {
-  id         String          @id @default(cuid())
-  userId     String
-  roleId     String
-  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role       Role            @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  scope      String          @default("self")
-  scopeOrgs  UserRoleScope[]
-  grantedAt  DateTime        @default(now())
+  id        String          @id @default(cuid())
+  userId    String
+  roleId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role            @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  scope     String          @default("self")
+  scopeOrgs UserRoleScope[]
+  grantedAt DateTime        @default(now())
 
   @@unique([userId, roleId])
   @@index([roleId])
@@ -137,11 +142,12 @@ model UserRole {
 //      表示他能管理这两个部门的人员/数据。
 //
 // scope ∈ {self, own, subtree, all} 时 scopeOrgs 应为空。
+// @module: role
 model UserRoleScope {
   userRoleId String
   orgId      String
   userRole   UserRole     @relation(fields: [userRoleId], references: [id], onDelete: Cascade)
-  org        Organization @relation(fields: [orgId],      references: [id], onDelete: Cascade)
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   createdAt  DateTime     @default(now())
 
   @@id([userRoleId, orgId])
@@ -154,19 +160,21 @@ model UserRoleScope {
 //   operation  操作 (按钮/接口)
 //   field      字段访问
 //   data       数据权限 (作为标记,实际范围由 UserRole.scope 控制)
+// @module: permission
 model Permission {
   id          String   @id @default(cuid())
-  code        String   @unique                        // certificate:issue / user:read ...
+  code        String   @unique // certificate:issue / user:read ...
   name        String
   description String?
-  category    String                                  // menu | operation | field | data
-  pluginName  String?                                 // 来源插件 (null 表示平台自有)
+  category    String // menu | operation | field | data
+  pluginName  String? // 来源插件 (null 表示平台自有)
   builtin     Boolean  @default(false)
   createdAt   DateTime @default(now())
 
-  roles       RolePermission[]
+  roles RolePermission[]
 }
 
+// @module: role (junction; permission 模块只读)
 model RolePermission {
   roleId       String
   permissionId String
@@ -187,18 +195,19 @@ model RolePermission {
 //
 // 任何下拉框都可以引用 Dictionary.code 拉取 DictItem 列表填充。
 // 后续用户自定义字段 (UserCustomFieldDef) 在 type='select' 时也通过 dictCode 关联到这里。
+// @module: dictionary
 model Dictionary {
-  id          String     @id @default(cuid())
-  code        String     @unique                    // 字典代码,如 'admin_position'
-  name        String                                // 显示名,如 '行政职务'
+  id          String   @id @default(cuid())
+  code        String   @unique // 字典代码,如 'admin_position'
+  name        String // 显示名,如 '行政职务'
   description String?
-  builtin     Boolean    @default(false)            // 内置字典 (核心业务依赖,不允许删除)
-  sortOrder   Int        @default(0)
-  active      Boolean    @default(true)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  builtin     Boolean  @default(false) // 内置字典 (核心业务依赖,不允许删除)
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  items       DictItem[]
+  items DictItem[]
 
   @@index([active])
 }
@@ -208,6 +217,7 @@ model Dictionary {
 //   parentId≠null  二级项,可被业务字段实际选用 (如 经理 / 工程师 / 专员)
 // 强制 2 级:parent 必须自身是根级 (parentId=null)
 // 兼容:parentId 留空可作 1 级扁平字典使用 (如 学历 / 政治面貌)
+// @module: dictionary
 model DictItem {
   id          String     @id @default(cuid())
   dictId      String
@@ -215,8 +225,8 @@ model DictItem {
   parentId    String?
   parent      DictItem?  @relation("DictItemTree", fields: [parentId], references: [id], onDelete: Cascade)
   children    DictItem[] @relation("DictItemTree")
-  code        String                                // 项代码 (组内唯一)
-  label       String                                // 显示文字
+  code        String // 项代码 (组内唯一)
+  label       String // 显示文字
   description String?
   sortOrder   Int        @default(0)
   active      Boolean    @default(true)
@@ -242,18 +252,19 @@ model DictItem {
 //
 // 添加新字段对已有用户无破坏:user.customFields[新code] 暂为空即可,加载/保存均忽略缺失字段。
 // 字段被删除或禁用:对应用户值保留在 customFields 里但不再展示。
+// @module: user-custom-field
 model UserCustomField {
   id          String   @id @default(cuid())
-  code        String   @unique                        // hire_date / education / id_card_no
-  label       String                                  // 入职日期 / 学历 / 身份证号
-  type        String                                  // text | number | date | textarea | select
-  dictCode    String?                                 // type=select 时引用 Dictionary.code
+  code        String   @unique // hire_date / education / id_card_no
+  label       String // 入职日期 / 学历 / 身份证号
+  type        String // text | number | date | textarea | select
+  dictCode    String? // type=select 时引用 Dictionary.code
   placeholder String?
-  description String?                                 // 输入框下方帮助文字
+  description String? // 输入框下方帮助文字
   required    Boolean  @default(false)
   sortOrder   Int      @default(0)
   active      Boolean  @default(true)
-  builtin     Boolean  @default(false)                // 内置字段不允许删除
+  builtin     Boolean  @default(false) // 内置字段不允许删除
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -270,39 +281,41 @@ model UserCustomField {
 //
 // color 字段存 hex/rgb 字符串,作为该分类/项目的视觉主色。这是"分类色",
 // 与主题色解耦 —— 不同分类用不同颜色区分(党务红、学习橙、统计蓝...)。
+// @module: nav-category
 model NavCategory {
-  id        String     @id @default(cuid())
-  code      String     @unique                // 程序内标识,如 'party-affairs'
-  label     String                             // 显示名,如 '党务办理'
-  color     String                             // 分类主色 hex,如 '#C8001E'
-  bgLight   String                             // 配套淡色背景 hex,如 '#FFF5F5'
-  icon      String                             // lucide 图标名,如 'ClipboardListIcon'
-  sortOrder Int        @default(0)
-  active    Boolean    @default(true)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id        String   @id @default(cuid())
+  code      String   @unique // 程序内标识,如 'party-affairs'
+  label     String // 显示名,如 '党务办理'
+  color     String // 分类主色 hex,如 '#C8001E'
+  bgLight   String // 配套淡色背景 hex,如 '#FFF5F5'
+  icon      String // lucide 图标名,如 'ClipboardListIcon'
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  items     NavItem[]
+  items NavItem[]
 
   @@index([active, sortOrder])
 }
 
+// @module: nav-category
 model NavItem {
-  id          String      @id @default(cuid())
-  categoryId  String
-  category    NavCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  icon        String                            // lucide 图标名
-  label       String                            // 显示名,如 '党费缴纳'
-  color       String                            // 项目色 hex
-  url         String?                           // 点击跳转 URL(站内 /plugins/... 或外链)
-  common      Boolean   @default(false)         // 是否常用(打 "常用" 标 + 出现在快捷条)
-  desc        String?                           // 一行描述
-  likes       Int       @default(0)             // 点赞数(后续接真实统计)
-  views       Int       @default(0)             // 浏览数
-  sortOrder   Int       @default(0)
-  active      Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         String      @id @default(cuid())
+  categoryId String
+  category   NavCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  icon       String // lucide 图标名
+  label      String // 显示名,如 '党费缴纳'
+  color      String // 项目色 hex
+  url        String? // 点击跳转 URL(站内 /plugins/... 或外链)
+  common     Boolean     @default(false) // 是否常用(打 "常用" 标 + 出现在快捷条)
+  desc       String? // 一行描述
+  likes      Int         @default(0) // 点赞数(后续接真实统计)
+  views      Int         @default(0) // 浏览数
+  sortOrder  Int         @default(0)
+  active     Boolean     @default(true)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
 
   @@index([categoryId, sortOrder])
   @@index([active])
@@ -320,9 +333,10 @@ model NavItem {
 //   3. 单例表只有 GET / PUT,无需复杂查询和索引
 //
 // 前台 (NavPage) 通过公开接口 GET /site-settings 获取;后台 (管理员) 通过 PUT /site-settings 更新。
+// @module: site-setting
 model SiteSetting {
-  id        String   @id                              // 固定 "default"
-  data      String                                    // JSON 字符串
+  id        String   @id // 固定 "default"
+  data      String // JSON 字符串
   updatedAt DateTime @updatedAt
 }
 
@@ -340,15 +354,16 @@ model SiteSetting {
 //   auth.login / auth.logout
 //
 // detail 存 JSON 串,记录改动前后差异或额外上下文。
+// @module: audit
 model AuditLog {
   id         String   @id @default(cuid())
-  actorId    String?                       // 操作者 user id
-  actorName  String?                       // 冗余姓名,actor 被删后仍可读
-  action     String                        // 见上方命名约定
-  target     String?                       // 目标资源 ID
-  pluginName String?                       // 来源插件 (null = 平台自有)
-  detail     String?                       // JSON 串
-  ip         String?                       // 操作来源 IP
+  actorId    String? // 操作者 user id
+  actorName  String? // 冗余姓名,actor 被删后仍可读
+  action     String // 见上方命名约定
+  target     String? // 目标资源 ID
+  pluginName String? // 来源插件 (null = 平台自有)
+  detail     String? // JSON 串
+  ip         String? // 操作来源 IP
   createdAt  DateTime @default(now())
 
   @@index([createdAt])

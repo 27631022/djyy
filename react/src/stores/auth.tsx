@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { authApi, readStoredToken, storeToken, type AuthMe } from "../api/auth";
+import { authApi, readStoredToken, storeToken, type AuthMe } from "@/features/auth";
 
 interface AuthContextValue {
   /** undefined = 加载中,null = 未登录,对象 = 已登录 */

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { AuditService } from '../audit/audit.service';
+import { PrismaService } from '../prisma';
+import { AuditService } from '../audit';
 import {
   CreateNavCategoryDto,
   UpdateNavCategoryDto,

@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   HomeIcon, ChevronLeftIcon, XIcon,
-  NetworkIcon, PuzzleIcon, BarChart2Icon, SettingsIcon,
+  NetworkIcon, BarChart2Icon, SettingsIcon,
   BuildingIcon, ShieldIcon, UserIcon, BookTextIcon,
-  PackageIcon, EyeIcon, ThumbsUpIcon, MessageSquareIcon,
+  EyeIcon, ThumbsUpIcon, MessageSquareIcon,
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
@@ -33,14 +33,6 @@ const CATEGORIES: Category[] = [
       { path: "/admin/custom-fields",  label: "用户自定义字段",   icon: SlidersHorizontalIcon },
       { path: "/admin/site-settings",  label: "站点设置",         icon: PaletteIcon  },
       { path: "/admin/navigation",     label: "首页导航",         icon: LayoutGridIcon },
-    ],
-  },
-  {
-    id: "app",
-    label: "应用管理",
-    icon: PuzzleIcon,
-    items: [
-      { path: "/admin/plugins", label: "插件管理", icon: PackageIcon, disabled: true },
     ],
   },
   {

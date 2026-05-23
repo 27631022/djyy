@@ -1,19 +1,18 @@
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useEffect, type ReactNode } from "react";
-import NavPage from "./pages/NavPage";
-import AdminLayout from "./layouts/AdminLayout";
-import OrganizationsPage from "./pages/admin/Organizations";
-import UsersPage from "./pages/admin/Users";
-import RolesPage from "./pages/admin/Roles";
-import DictionariesPage from "./pages/admin/Dictionaries";
-import UserCustomFieldsPage from "./pages/admin/UserCustomFields";
-import SiteSettingsPage from "./pages/admin/SiteSettings";
-import NavigationPage from "./pages/admin/Navigation";
-import LoginPage from "./pages/Login";
-import { AuthProvider, useAuth } from "./stores/auth";
-import { Toaster } from "./components/ui/sonner";
-import { siteSettingApi } from "./api/site-setting";
+import NavPage from "@/pages/NavPage";
+import AdminLayout from "@/layouts/AdminLayout";
+import { OrganizationsPage } from "@/features/organization";
+import { UsersPage } from "@/features/user";
+import { RolesPage } from "@/features/role";
+import { DictionariesPage } from "@/features/dictionary";
+import { UserCustomFieldsPage } from "@/features/user-custom-field";
+import { SiteSettingsPage, siteSettingApi } from "@/features/site-setting";
+import { NavigationPage } from "@/features/nav-category";
+import LoginPage from "@/pages/Login";
+import { AuthProvider, useAuth } from "@/stores/auth";
+import { Toaster } from "@/shared/components/ui/sonner";
 
 const queryClient = new QueryClient({
   defaultOptions: {

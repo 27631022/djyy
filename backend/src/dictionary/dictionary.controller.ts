@@ -12,9 +12,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { DictionaryService } from './dictionary.service';
-import { AuthGuard } from '../auth/auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { AuthPayload } from '../auth/auth.service';
+import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { CreateDictionaryDto } from './dto/create-dictionary.dto';
 import { UpdateDictionaryDto } from './dto/update-dictionary.dto';
 import { CreateDictItemDto } from './dto/create-dict-item.dto';

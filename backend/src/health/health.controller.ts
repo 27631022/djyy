@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../prisma';
 
 @Controller('health')
 export class HealthController {
@@ -7,7 +7,7 @@ export class HealthController {
 
   @Get()
   async check() {
-    let dbOk = false;
+    let dbOk: boolean;
     try {
       await this.prisma.$queryRaw`SELECT 1`;
       dbOk = true;

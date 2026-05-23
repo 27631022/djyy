@@ -108,6 +108,89 @@ export class CreateXxxDto {
 
 ---
 
+## 后端模块化约束(5 条)
+
+> 单人 MVP 也要立规矩。这 5 条由 ESLint(`eslint-plugin-boundaries`)+ madge 在 pre-commit 强制,违反提交不上去。
+
+### 1. 每张表归属一个模块
+
+`backend/prisma/schema.prisma` 每个 `model X { ... }` 之上有一行 `// @module: <name>` 标注归属(已加完)。
+
+**约束**:其他模块**不能** `prisma.someTable.xxx()` 直查别人的表,必须通过对方的 Service。例如:
+```ts
+// ❌ 在 NavCategoryService 里写
+await this.prisma.user.findMany();   // 偷用 user 模块的表
+
+// ✓ 改成注入 UserService
+constructor(private readonly users: UserService) {}
+await this.users.list();
+```
+
+**少数例外**:`AuditLog` 是基础设施级表。当某模块依赖 audit 写日志、同时 audit 又依赖该模块的 service/guard 时会形成循环。**例外列表**(直接 prisma 写,不走 AuditService):
+- `auth.controller` 写 `auth.dev_login` 日志
+
+新增例外要在 conventions.md 这一节登记 + 加代码注释。
+
+### 2. 跨模块调用只走 NestJS DI
+
+A 模块要用 B 模块的 service:
+1. B 的 `B.module.ts` 在 `providers` + `exports` 里声明 BService(或 `@Global()` 模块自动导出)
+2. A 的 `A.module.ts` 的 `imports` 加 `BModule`(`@Global()` 可省)
+3. A 的 service/controller 构造函数注入 BService
+
+```ts
+@Injectable()
+export class AService {
+  constructor(private readonly b: BService) {}  // ✓ NestJS DI
+}
+```
+
+**禁止**直接 import 另一个模块的内部类作运行时使用(只允许引用 TS 类型,且必须走 barrel,见下条)。
+
+### 3. 每个模块有 `index.ts` barrel
+
+`backend/src/<module>/index.ts` 是该模块**唯一的对外入口**。显式 export 公开的 Service class、type、装饰器、Guard、常量。
+
+```ts
+// backend/src/auth/index.ts
+export { AuthGuard } from './auth.guard';
+export { CurrentUser } from './current-user.decorator';
+export { AuthService } from './auth.service';
+export type { AuthPayload } from './auth.service';
+export { AuthModule } from './auth.module';   // ← Module 放最后!详见 ⚠ 提示
+```
+
+**其他模块只能**:
+```ts
+import { AuthGuard } from '../auth';            // ✓ 走 barrel
+import { AuthGuard } from '../auth/auth.guard'; // ✗ 深 import, ESLint 报错
+```
+
+**⚠ barrel 内 Module 导出必须放最后**:因为 Module 触发 controller 加载,controller 可能间接 import 本 barrel。如果 Module 放前面,此时 Guard / Service 还没 export,会导致 `@UseGuards(AuthGuard)` 拿到 `undefined`(实测炸过一次,见 [auth/index.ts](../backend/src/auth/index.ts) 顶部注释)。
+
+### 4. 依赖图必须是 DAG(无环)
+
+`npm run check:circular`(在 backend)跑 `madge --circular --extensions ts src`。pre-commit hook 自动跑,**发现循环 commit 直接挂**。
+
+历史上遇到过 `auth ↔ audit` 循环,通过让 auth 直接走 prisma 写 dev_login 日志破环(见上方"少数例外")。
+
+### 5. 新模块固定骨架
+
+```
+backend/src/<module>/
+├── index.ts                      # 公开 API(barrel)— Module 放最后
+├── <module>.module.ts            # NestJS module + DI 配置
+├── <module>.service.ts           # 业务逻辑 + 数据访问
+├── <module>.controller.ts        # HTTP 路由
+├── dto/                          # 入参校验类
+│   └── create-xxx.dto.ts
+└── README.md (可选)              # 该模块说明:owns 哪些表 / 对外 API
+```
+
+`schema.prisma` 加 model 时,model 上方加 `// @module: <name>`。
+
+---
+
 ## 前端 API client 约定
 
 `src/api/<module>.ts` 一个文件,内部:
@@ -199,6 +282,7 @@ style={{ backgroundColor: "color-mix(in srgb, var(--party-primary) 80%, black)" 
 ### 1. Prisma schema
 
 `backend/prisma/schema.prisma` 加 model。注意:
+- model 上方加 `// @module: <name>` 注释,标明归属(见 [后端模块化约束 #1](#1-每张表归属一个模块))
 - `id` 默认用 `@default(cuid())`
 - 加 `createdAt` / `updatedAt`
 - 加合理的索引(`@@index`)
@@ -222,13 +306,16 @@ npm run db:seed
 ### 3. 后端模块
 
 `backend/src/<module>/`:
+- `index.ts` —— **barrel 必加**,显式 export 对外的 Service / type / 常量,Module 导出**放最后**(见 [模块化约束 #3](#3-每个模块有-indexts-barrel))
 - `xxx.module.ts`
-- `xxx.service.ts` —— 注入 `PrismaService` + `AuditService`
-- `xxx.controller.ts` —— `@UseGuards(AuthGuard)` 默认加在 class 上
+- `xxx.service.ts` —— 注入 `PrismaService` + `AuditService`(都从对方 barrel `'../prisma'` / `'../audit'` 引入,**不允许** `'../prisma/prisma.service'` 这种深 import)
+- `xxx.controller.ts` —— `@UseGuards(AuthGuard)` 默认加在 class 上,`AuthGuard` 从 `'../auth'` 引入
 - `dto/create-xxx.dto.ts` + `dto/update-xxx.dto.ts`
 - `xxx.constants.ts`(可选,放 enum / 默认值)
 
-在 `app.module.ts` 注册 `XxxModule`。
+在 `app.module.ts` 注册 `XxxModule`(从 `'./<module>'` barrel 引入)。
+
+写完跑 `npm run check`(backend)+ `npm run check:circular`,0 error / 0 cycle 才行。
 
 ### 4. 前端 API
 

@@ -11,13 +11,13 @@ import {
   SettingsIcon,
   LockIcon, LogOutIcon, ChevronDownIcon,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Input } from "@/shared/components/ui/input";
+import { Badge } from "@/shared/components/ui/badge";
+import { Separator } from "@/shared/components/ui/separator";
 import { useAuth } from "../stores/auth";
-import { siteSettingApi, FALLBACK_SITE_SETTINGS } from "../api/site-setting";
-import { navApi, type NavCategoryDto, type NavItemDto } from "../api/nav";
-import { LucideIcon } from "../components/IconPicker";
+import { siteSettingApi, FALLBACK_SITE_SETTINGS } from "@/features/site-setting";
+import { navApi, type NavCategoryDto, type NavItemDto } from "@/features/nav-category";
+import { LucideIcon } from "@/shared/components/IconPicker";
 
 /* ─── Login gate: 未登录直接跳登录页 ─── */
 function useLoginGate() {

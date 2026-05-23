@@ -13,7 +13,10 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:reset": "prisma migrate reset",
     "prisma:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "lint": "eslint src",
+    "check": "tsc --noEmit && eslint src",
+    "check:circular": "madge --circular --extensions ts src"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
@@ -27,14 +30,19 @@
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@nestjs/cli": "^10.4.9",
     "@nestjs/schematics": "^10.2.3",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
+    "eslint": "^10.4.0",
+    "eslint-plugin-boundaries": "^6.0.2",
+    "madge": "^8.0.0",
     "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.59.4"
   }
 }

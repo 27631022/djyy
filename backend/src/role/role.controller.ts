@@ -12,9 +12,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { RoleService } from './role.service';
-import { AuthGuard } from '../auth/auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { AuthPayload } from '../auth/auth.service';
+import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { ReplacePermissionsDto } from './dto/replace-permissions.dto';

@@ -5,7 +5,7 @@
   "description": "党建益友 平台底座 monorepo (react + backend)",
   "scripts": {
     "prepare": "husky",
-    "check": "npm --prefix react run check"
+    "check": "npm --prefix react run check && npm --prefix backend run check && npm --prefix backend run check:circular"
   },
   "devDependencies": {
     "husky": "^9.1.7"

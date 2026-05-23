@@ -13,9 +13,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { UserService } from './user.service';
-import { AuthGuard } from '../auth/auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { AuthPayload } from '../auth/auth.service';
+import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ReplaceMembershipsDto } from './dto/replace-memberships.dto';

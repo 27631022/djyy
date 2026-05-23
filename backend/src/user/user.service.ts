@@ -1,13 +1,13 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../prisma';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { ReplaceMembershipsDto, MembershipEntryDto } from './dto/replace-memberships.dto';
-import { ReplaceRolesDto, RoleAssignmentDto, SCOPE_VALUES } from './dto/replace-roles.dto';
+import { ReplaceMembershipsDto } from './dto/replace-memberships.dto';
+import { ReplaceRolesDto, SCOPE_VALUES } from './dto/replace-roles.dto';
 import { ListUsersQuery } from './dto/list-users.query';
-import { AuditService } from '../audit/audit.service';
-import { UserCustomFieldService } from '../user-custom-field/user-custom-field.service';
+import { AuditService } from '../audit';
+import { UserCustomFieldService } from '../user-custom-field';
 
 interface ActorContext {
   actorId?: string;

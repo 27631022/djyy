@@ -1,6 +1,6 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AuditService } from './audit.service';
-import { AuthGuard } from '../auth/auth.guard';
+import { AuthGuard } from '../auth';
 
 /**
  * 审计日志只读浏览接口。
