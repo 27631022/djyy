@@ -185,13 +185,23 @@ function renderText(
         ? el.x + el.width
         : el.x;
 
-  for (const line of lines) {
+  const indentPx = (el.textIndent ?? 0) * el.fontSize;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // 首行缩进:左对齐时正向偏移,右对齐反向偏移,居中对齐不应用
+    let lineX = x;
+    if (i === 0 && indentPx !== 0) {
+      if (el.textAlign === "left") lineX = x + indentPx;
+      else if (el.textAlign === "right") lineX = x - indentPx;
+      // center 对齐时缩进通常无意义,保持居中
+    }
     if (el.strokeColor && el.strokeWidth > 0) {
       ctx.strokeStyle = el.strokeColor;
       ctx.lineWidth = el.strokeWidth;
-      ctx.strokeText(line, x, y);
+      ctx.strokeText(line, lineX, y);
     }
-    ctx.fillText(line, x, y);
+    ctx.fillText(line, lineX, y);
     y += lineHeightPx;
   }
 }
@@ -408,18 +418,24 @@ function renderStamp(ctx: CanvasRenderingContext2D, el: StampElement): void {
   // 顶部弧形文字 — 240° 顶弧(从 7 点位走顶到 5 点位)
   if (el.text) {
     const TOP = -Math.PI / 2; // canvas:12 点 = -π/2
-    const HALF = Math.PI * 2 / 3; // 半弧 120°,合计 240°
-    drawArcText(
-      ctx,
-      el.text,
-      cx,
-      cy,
-      r - Math.max(10, el.strokeWidth * 2.5),
-      TOP - HALF,
-      TOP + HALF,
-      Math.max(10, Math.min(20, r / 5)),
-      el.color,
-    );
+    const HALF = (Math.PI * 2) / 3; // 半弧 120°,合计 240°
+    const fontSize = Math.max(11, Math.min(22, r / 4.5));
+    // 字号 × 0.95 留余 + strokeWidth 是给外圈线本身的厚度
+    // 这样字的外缘距外圈有约 fontSize × 0.45 的空隙
+    const textRadius = r - el.strokeWidth - fontSize * 0.95;
+    if (textRadius > 0) {
+      drawArcText(
+        ctx,
+        el.text,
+        cx,
+        cy,
+        textRadius,
+        TOP - HALF,
+        TOP + HALF,
+        fontSize,
+        el.color,
+      );
+    }
   }
 
   // 底部小字
@@ -459,9 +475,13 @@ function drawFiveStar(
 }
 
 /**
- * 中国共产党党徽 — 锤头(左侧)+ 镰刀(右侧弧形)。
- * 按附件官方制法图示近似绘制(32×32 网格的几何关系简化版)。
- * r 是图案半径(对应停章圆心到外缘的距离 × 0.55 左右)。
+ * 中国共产党党徽 — 按附件官方制法图示的几何点位绘制简化版。
+ * 32×32 网格,r 对应"半径 = 16 个单位"。
+ * 几何参考点(grid col, row):
+ *   G(8.5, 18.5'), H(19.5, 7.5'), I(4, 14'), J(17, 5'), K(13.5, 1')
+ *   E(29, 33'), F(33, 29')
+ *   M(17, 17') = 中心
+ * 节点坐标:(col, row) → (cx + (col-17)*u, cy + (row-17)*u),u = r/16
  */
 function drawPartyEmblem(
   ctx: CanvasRenderingContext2D,
@@ -474,37 +494,65 @@ function drawPartyEmblem(
   ctx.fillStyle = color;
   ctx.strokeStyle = color;
 
-  // ─── 镰刀(右侧弧形刀刃 + 下方把手) ───
-  // 刀刃 = 外大弧 与 内小弧 之间的新月形,开口朝左下
+  const u = r / 16;
+  const pt = (col: number, row: number) => ({
+    x: cx + (col - 17) * u,
+    y: cy + (row - 17) * u,
+  });
+
+  // ═════ 镰刀 ═════
+  // 刀刃:以 M(中心)为圆心、半径 ≈ 14u 的厚弧,从顶 N 走到右下
+  // 内弧半径 11u(中心略偏右下),形成新月
   ctx.beginPath();
-  ctx.arc(cx, cy + r * 0.05, r * 0.95, -Math.PI * 0.94, Math.PI * 0.06, false);
-  ctx.arc(cx + r * 0.05, cy - r * 0.04, r * 0.72, Math.PI * 0.06, -Math.PI * 0.94, true);
+  ctx.arc(cx, cy, 14 * u, -Math.PI * 0.55, Math.PI * 0.18, false);
+  ctx.arc(cx + 1.2 * u, cy - 0.4 * u, 10.5 * u, Math.PI * 0.18, -Math.PI * 0.55, true);
   ctx.closePath();
   ctx.fill();
 
-  // 镰刀把:刀尖右下端 → 圆下方
-  ctx.lineWidth = r * 0.22;
+  // 镰刀把:从刀刃右下端 → 左下方向(沿 BD 方向)
+  ctx.lineWidth = 2.6 * u;
   ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(cx + r * 0.85, cy + r * 0.15);
-  ctx.lineTo(cx + r * 0.42, cy + r * 0.88);
+  ctx.moveTo(cx + 13 * u, cy + 4 * u);
+  ctx.lineTo(cx - 11 * u, cy + 14 * u);
   ctx.stroke();
 
-  // ─── 锤(左侧锤头 + 右下把手) ───
-  // 锤头:旋转矩形,模拟左上 → 右下的握姿
-  ctx.save();
-  ctx.translate(cx - r * 0.42, cy + r * 0.02);
-  ctx.rotate(-Math.PI / 4); // 锤头长边沿左下到右上方向
-  ctx.fillRect(-r * 0.32, -r * 0.17, r * 0.64, r * 0.34);
-  ctx.restore();
-
-  // 锤把:粗线,从锤头延伸到右下角
-  ctx.lineWidth = r * 0.22;
-  ctx.lineCap = "round";
+  // ═════ 锤 ═════
+  // 锤头:G-H-J-I 四点近似的平行四边形 + K 为圆心的顶弧
+  const G = pt(8.5, 18.5);
+  const H = pt(19.5, 7.5);
+  const I = pt(4, 14);
+  const J = pt(17, 5);
+  const K = pt(13.5, 1);
+  const kjR = Math.hypot(J.x - K.x, J.y - K.y);
   ctx.beginPath();
-  ctx.moveTo(cx - r * 0.18, cy + r * 0.26);
-  ctx.lineTo(cx - r * 0.55, cy + r * 0.78);
-  ctx.stroke();
+  ctx.moveTo(I.x, I.y);
+  ctx.lineTo(G.x, G.y);
+  ctx.lineTo(H.x, H.y);
+  ctx.lineTo(J.x, J.y);
+  // 弧 K-J 到 与 I 之上延长线相交的 L 点(用一段定长弧近似)
+  const startAng = Math.atan2(J.y - K.y, J.x - K.x);
+  ctx.arc(K.x, K.y, kjR, startAng, startAng - Math.PI * 0.45, true);
+  ctx.closePath();
+  ctx.fill();
+
+  // 锤把:从 E、F 出发沿 CA 方向(左上),与锤头底边 GH 大致衔接
+  const E = pt(29, 33);
+  const F = pt(33, 29);
+  // CA 单位向量
+  const caX = -1 / Math.SQRT2;
+  const caY = -1 / Math.SQRT2;
+  // 把长延伸到锤头(估算到 GH 线附近的长度)
+  const handleLen = Math.hypot(E.x - G.x, E.y - G.y) * 0.78;
+  const E2 = { x: E.x + caX * handleLen, y: E.y + caY * handleLen };
+  const F2 = { x: F.x + caX * handleLen, y: F.y + caY * handleLen };
+  ctx.beginPath();
+  ctx.moveTo(E.x, E.y);
+  ctx.lineTo(F.x, F.y);
+  ctx.lineTo(F2.x, F2.y);
+  ctx.lineTo(E2.x, E2.y);
+  ctx.closePath();
+  ctx.fill();
 
   ctx.restore();
 }

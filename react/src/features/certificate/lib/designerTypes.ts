@@ -59,6 +59,8 @@ export interface TextElement extends BaseElement {
   /** 笔画(描边)颜色,空字符串表示不描边 */
   strokeColor: string;
   strokeWidth: number;
+  /** 首行缩进(字符数;实际像素 = textIndent × fontSize) */
+  textIndent: number;
 }
 
 export interface RectElement extends BaseElement {

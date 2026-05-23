@@ -61,6 +61,34 @@ export function emptyDesignerState(width = 800, height = 566): DesignerState {
 
 /* ─── 元素工厂(Phase B 范围:text/rect/circle)─── */
 
+/** 常用中文字体栈,提供给字体选择器和元素默认值用 */
+export const FONT_STACKS = [
+  {
+    value: 'system-ui, -apple-system, "Microsoft YaHei", sans-serif',
+    label: "系统默认",
+  },
+  {
+    value: '"Microsoft YaHei", "PingFang SC", "Heiti SC", sans-serif',
+    label: "微软雅黑",
+  },
+  {
+    value: 'SimHei, "Microsoft YaHei", "Heiti SC", sans-serif',
+    label: "黑体",
+  },
+  {
+    value: 'KaiTi, "KaiTi_GB2312", STKaiti, "BiauKai", serif',
+    label: "楷体",
+  },
+  {
+    value: 'FangSong, "FangSong_GB2312", STFangsong, serif',
+    label: "仿宋",
+  },
+  {
+    value: 'SimSun, "Songti SC", STSong, serif',
+    label: "宋体",
+  },
+] as const;
+
 export function createTextElement(opts?: Partial<TextElement>): TextElement {
   return {
     id: genId("txt"),
@@ -75,7 +103,7 @@ export function createTextElement(opts?: Partial<TextElement>): TextElement {
     locked: false,
     name: "文本",
     text: "双击编辑文本",
-    fontFamily: "system-ui, -apple-system, 'Microsoft YaHei', sans-serif",
+    fontFamily: FONT_STACKS[0].value,
     fontSize: 24,
     color: "#1A1A1A",
     fontWeight: "normal",
@@ -84,6 +112,7 @@ export function createTextElement(opts?: Partial<TextElement>): TextElement {
     lineHeight: 1.4,
     strokeColor: "",
     strokeWidth: 0,
+    textIndent: 0,
     ...opts,
   };
 }

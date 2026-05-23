@@ -1,6 +1,6 @@
 import { HashIcon } from "lucide-react";
 import type { DesignerElement, VariableField } from "../../lib/designerTypes";
-import { createTextElement } from "../../lib/designerUtils";
+import { FONT_STACKS, createTextElement } from "../../lib/designerUtils";
 
 interface VariablePanelProps {
   variables: VariableField[];
@@ -23,6 +23,8 @@ export function VariablePanel({
     // 放画布中心,默认尺寸 280×60(让长名字够展示)
     const width = 280;
     const height = 60;
+    // 变量文字默认用楷体,证书场景更正式
+    const kaiTi = FONT_STACKS.find((f) => f.label === "楷体")!.value;
     const el = createTextElement({
       name: `变量·${v.label}`,
       text: v.defaultValue,
@@ -31,7 +33,8 @@ export function VariablePanel({
       y: Math.round((canvasHeight - height) / 2),
       width,
       height,
-      fontSize: 28,
+      fontFamily: kaiTi,
+      fontSize: 32,
       fontWeight: "bold",
       color: "#C8001E",
       textAlign: "center",

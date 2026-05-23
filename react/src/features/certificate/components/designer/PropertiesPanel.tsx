@@ -12,6 +12,7 @@ import type {
   StampElement,
   TextElement,
 } from "../../lib/designerTypes";
+import { FONT_STACKS } from "../../lib/designerUtils";
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
@@ -251,6 +252,19 @@ function TextProps({
         </Field>
       </Section>
       <Section title="字体">
+        <Field label="字体">
+          <select
+            value={el.fontFamily}
+            onChange={(e) => onChange(el.id, { fontFamily: e.target.value })}
+            className={inputCls}
+          >
+            {FONT_STACKS.map((f) => (
+              <option key={f.label} value={f.value} style={{ fontFamily: f.value }}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </Field>
         <div className="grid grid-cols-2 gap-2">
           <Field label="字号 px">
             <NumberInput
@@ -312,6 +326,15 @@ function TextProps({
               </button>
             ))}
           </div>
+        </Field>
+        <Field label="首行缩进 (字符)">
+          <NumberInput
+            min={0}
+            max={10}
+            step={0.5}
+            value={el.textIndent ?? 0}
+            onChange={(v) => onChange(el.id, { textIndent: v })}
+          />
         </Field>
       </Section>
     </>
