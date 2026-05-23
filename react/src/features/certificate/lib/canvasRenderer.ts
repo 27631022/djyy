@@ -415,19 +415,22 @@ function renderStamp(
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.stroke();
 
-  // 中心图案
+  // 中心图案 — 党徽尺寸与五角星一致(r*0.32)
   if (el.centerPattern === "star") {
     drawFiveStar(ctx, cx, cy, r * 0.32, el.color);
   } else if (el.centerPattern === "emblem") {
-    drawPartyEmblem(ctx, cx, cy, r * 0.55, el.color, imageCache);
+    drawPartyEmblem(ctx, cx, cy, r * 0.32, el.color, imageCache);
   }
 
-  // 顶部弧形文字 — 240° 顶弧,字号 +1,textRadius 再往里收 2px
+  // 顶部弧形文字 — 240° 顶弧,字号 / 距边内缩可被覆盖
   if (el.text) {
     const TOP = -Math.PI / 2;
     const HALF = (Math.PI * 2) / 3;
-    const fontSize = Math.max(12, Math.min(23, r / 4.2));
-    const textRadius = r - el.strokeWidth - fontSize * 0.95 - 2;
+    const fontSize = el.topTextFontSize && el.topTextFontSize > 0
+      ? el.topTextFontSize
+      : Math.max(12, Math.min(23, r / 4.2));
+    const padding = el.topTextPadding ?? 2;
+    const textRadius = r - el.strokeWidth - fontSize * 0.95 - padding;
     if (textRadius > 0) {
       drawArcText(
         ctx,
@@ -457,25 +460,27 @@ function renderStamp(
     ctx.restore();
   }
 
-  // 底部弧形文字 — 最细最小,140° 底弧,字头朝内
+  // 底部弧形文字 — 最细最小,140° 底弧,字头朝内,字号/距边内缩可被覆盖
   if (el.bottomText) {
-    const BOT = Math.PI / 2; // canvas:6 点 = π/2
-    const BHALF = (Math.PI * 70) / 180; // 半弧 70°,合计 140°
-    const bFont = Math.max(8, Math.min(13, r / 7));
-    const bRadius = r - el.strokeWidth - bFont * 0.95 - 2;
+    const BOT = Math.PI / 2;
+    const BHALF = (Math.PI * 70) / 180;
+    const bFont = el.bottomTextFontSize && el.bottomTextFontSize > 0
+      ? el.bottomTextFontSize
+      : Math.max(8, Math.min(13, r / 7));
+    const bPadding = el.bottomTextPadding ?? 2;
+    const bRadius = r - el.strokeWidth - bFont * 0.95 - bPadding;
     if (bRadius > 0) {
-      // 反向 sweep 让字从左到右排
       drawArcText(
         ctx,
         el.bottomText,
         cx,
         cy,
         bRadius,
-        BOT + BHALF, // 起点:左侧 7-8 点位
-        BOT - BHALF, // 终点:右侧 4-5 点位
+        BOT + BHALF,
+        BOT - BHALF,
         bFont,
         el.color,
-        true, // flipInward:字头朝中心
+        true,
       );
     }
   }

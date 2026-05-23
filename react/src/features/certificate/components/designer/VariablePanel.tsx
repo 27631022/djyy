@@ -23,7 +23,7 @@ export function VariablePanel({
     // 放画布中心,默认尺寸 280×60(让长名字够展示)
     const width = 280;
     const height = 60;
-    // 变量文字默认用楷体,证书场景更正式
+    // 变量文字默认用楷体,黑色(避免跟印章/装饰边框红色撞)
     const kaiTi = FONT_STACKS.find((f) => f.label === "楷体")!.value;
     const el = createTextElement({
       name: `变量·${v.label}`,
@@ -36,7 +36,7 @@ export function VariablePanel({
       fontFamily: kaiTi,
       fontSize: 32,
       fontWeight: "bold",
-      color: "#C8001E",
+      color: "#1A1A1A",
       textAlign: "center",
     });
     onAdd(el);

@@ -644,6 +644,40 @@ function StampProps({
           onChange={(v) => onChange(el.id, { strokeWidth: v })}
         />
       </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="顶弧字号 (0=自动)">
+          <NumberInput
+            min={0}
+            max={60}
+            value={el.topTextFontSize ?? 0}
+            onChange={(v) => onChange(el.id, { topTextFontSize: v })}
+          />
+        </Field>
+        <Field label="顶弧距边 px">
+          <NumberInput
+            min={0}
+            max={40}
+            value={el.topTextPadding ?? 2}
+            onChange={(v) => onChange(el.id, { topTextPadding: v })}
+          />
+        </Field>
+        <Field label="底弧字号 (0=自动)">
+          <NumberInput
+            min={0}
+            max={40}
+            value={el.bottomTextFontSize ?? 0}
+            onChange={(v) => onChange(el.id, { bottomTextFontSize: v })}
+          />
+        </Field>
+        <Field label="底弧距边 px">
+          <NumberInput
+            min={0}
+            max={40}
+            value={el.bottomTextPadding ?? 2}
+            onChange={(v) => onChange(el.id, { bottomTextPadding: v })}
+          />
+        </Field>
+      </div>
       <Field label="中心图案">
         <div className="grid grid-cols-3 gap-1">
           {(

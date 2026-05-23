@@ -115,6 +115,14 @@ export interface StampElement extends BaseElement {
   strokeWidth: number;
   /** 中心图案 — none/五角星/党徽 */
   centerPattern: "none" | "star" | "emblem";
+  /** 顶弧字号(px) — 0/undefined = 用自动算 */
+  topTextFontSize?: number;
+  /** 顶弧距外圈内沿的额外内缩(px) — 0/undefined = 默认 2px */
+  topTextPadding?: number;
+  /** 底弧字号(px) — 0/undefined = 用自动算 */
+  bottomTextFontSize?: number;
+  /** 底弧距外圈内沿的额外内缩(px) — 0/undefined = 默认 2px */
+  bottomTextPadding?: number;
 }
 
 export interface QRCodeElement extends BaseElement {
