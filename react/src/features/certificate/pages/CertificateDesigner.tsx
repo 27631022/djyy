@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftIcon, SaveIcon, AwardIcon, TrashIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  SaveIcon,
+  AwardIcon,
+  TrashIcon,
+  UndoIcon,
+  RedoIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   Tabs,
@@ -18,7 +25,12 @@ import type {
   DesignerElement,
   DesignerState,
 } from "../lib/designerTypes";
-import { DEFAULT_VARIABLES, emptyDesignerState } from "../lib/designerUtils";
+import {
+  DEFAULT_VARIABLES,
+  cloneElement,
+  emptyDesignerState,
+} from "../lib/designerUtils";
+import { useHistory } from "../hooks/useHistory";
 import { CanvasStage } from "../components/designer/CanvasStage";
 import { ElementPanel } from "../components/designer/ElementPanel";
 import { VariablePanel } from "../components/designer/VariablePanel";
@@ -41,10 +53,14 @@ export default function CertificateDesignerPage() {
     enabled: !isNew,
   });
 
-  /* ─── 本地状态 ─── */
+  /* ─── 设计器状态(走 useHistory,支持 undo/redo) ─── */
+  const history = useHistory<DesignerState>(emptyDesignerState());
+  const { state, setState, record, undo, redo, reset, canUndo, canRedo } =
+    history;
+
+  /* ─── 模板元数据(不进历史) ─── */
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [state, setState] = useState<DesignerState>(() => emptyDesignerState());
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -55,10 +71,9 @@ export default function CertificateDesignerPage() {
     try {
       const parsed = JSON.parse(t.designJson) as Partial<DesignerState>;
       const empty = emptyDesignerState(t.width, t.height);
-      setState({
+      reset({
         ...empty,
         ...parsed,
-        // 兜底:旧模板可能没存 variables/background;空数组也补默认值
         variables:
           parsed.variables && parsed.variables.length > 0
             ? parsed.variables
@@ -67,25 +82,30 @@ export default function CertificateDesignerPage() {
         elements: parsed.elements ?? [],
       });
     } catch {
-      setState(emptyDesignerState(t.width, t.height));
+      reset(emptyDesignerState(t.width, t.height));
     }
     setSelectedIds([]);
-  }, [existingQuery.data]);
+  }, [existingQuery.data, reset]);
 
   const selected = useMemo<DesignerElement | null>(() => {
     if (selectedIds.length === 0) return null;
     return state.elements.find((e) => e.id === selectedIds[0]) ?? null;
   }, [state.elements, selectedIds]);
 
-  /* ─── 操作 ─── */
+  /* ─── 操作(都先 record 再 setState) ─── */
 
-  const addElement = useCallback((el: DesignerElement) => {
-    setState((s) => ({ ...s, elements: [...s.elements, el] }));
-    setSelectedIds([el.id]);
-  }, []);
+  const addElement = useCallback(
+    (el: DesignerElement) => {
+      record();
+      setState((s) => ({ ...s, elements: [...s.elements, el] }));
+      setSelectedIds([el.id]);
+    },
+    [record, setState],
+  );
 
   const updateElement = useCallback(
     (id: string, patch: Partial<DesignerElement>) => {
+      record();
       setState((s) => ({
         ...s,
         elements: s.elements.map((e) =>
@@ -93,37 +113,163 @@ export default function CertificateDesignerPage() {
         ),
       }));
     },
-    [],
+    [record, setState],
   );
 
-  const setElementsArray = useCallback((next: DesignerElement[]) => {
-    setState((s) => ({ ...s, elements: next }));
-  }, []);
+  /** CanvasStage 拖拽中实时位置 — 不进历史(record 在 onRecordHistory 里已经做过) */
+  const setElementsArrayDuringDrag = useCallback(
+    (next: DesignerElement[]) => {
+      setState((s) => ({ ...s, elements: next }));
+    },
+    [setState],
+  );
 
-  const setBackground = useCallback((bg: CanvasBackground) => {
-    setState((s) => ({ ...s, background: bg }));
-  }, []);
+  /** LayerPanel 拖拽排序 / chevron 上下移 — 一次性操作,要进历史 */
+  const commitElementsArray = useCallback(
+    (next: DesignerElement[]) => {
+      record();
+      setState((s) => ({ ...s, elements: next }));
+    },
+    [record, setState],
+  );
 
-  const setCanvasSize = useCallback((w: number, h: number) => {
-    setState((s) => ({ ...s, canvasWidth: w, canvasHeight: h }));
-  }, []);
+  const setBackground = useCallback(
+    (bg: CanvasBackground) => {
+      record();
+      setState((s) => ({ ...s, background: bg }));
+    },
+    [record, setState],
+  );
 
-  const deleteElement = useCallback((id: string) => {
-    setState((s) => ({
-      ...s,
-      elements: s.elements.filter((e) => e.id !== id),
-    }));
-    setSelectedIds((ids) => ids.filter((x) => x !== id));
-  }, []);
+  const setCanvasSize = useCallback(
+    (w: number, h: number) => {
+      record();
+      setState((s) => ({ ...s, canvasWidth: w, canvasHeight: h }));
+    },
+    [record, setState],
+  );
+
+  const deleteElement = useCallback(
+    (id: string) => {
+      record();
+      setState((s) => ({
+        ...s,
+        elements: s.elements.filter((e) => e.id !== id),
+      }));
+      setSelectedIds((ids) => ids.filter((x) => x !== id));
+    },
+    [record, setState],
+  );
 
   const deleteSelected = useCallback(() => {
     if (selectedIds.length === 0) return;
+    record();
     setState((s) => ({
       ...s,
       elements: s.elements.filter((e) => !selectedIds.includes(e.id)),
     }));
     setSelectedIds([]);
-  }, [selectedIds]);
+  }, [selectedIds, record, setState]);
+
+  const duplicateSelected = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    record();
+    const newEls: DesignerElement[] = [];
+    setState((s) => {
+      const next = [...s.elements];
+      for (const id of selectedIds) {
+        const orig = s.elements.find((e) => e.id === id);
+        if (orig) {
+          const clone = cloneElement(orig);
+          newEls.push(clone);
+          next.push(clone);
+        }
+      }
+      return { ...s, elements: next };
+    });
+    // 用 setTimeout 延后选择新元素,确保 setState 已 flush
+    queueMicrotask(() => setSelectedIds(newEls.map((e) => e.id)));
+  }, [selectedIds, record, setState]);
+
+  const nudgeSelected = useCallback(
+    (dx: number, dy: number) => {
+      if (selectedIds.length === 0) return;
+      record();
+      setState((s) => ({
+        ...s,
+        elements: s.elements.map((e) =>
+          selectedIds.includes(e.id) ? { ...e, x: e.x + dx, y: e.y + dy } : e,
+        ),
+      }));
+    },
+    [selectedIds, record, setState],
+  );
+
+  /* ─── 键盘快捷键 ─── */
+  useEffect(() => {
+    function isInTextInput(target: EventTarget | null): boolean {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName.toLowerCase();
+      return (
+        tag === "input" || tag === "textarea" || target.isContentEditable
+      );
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      // 在 input / textarea 里 — 让浏览器/控件原生处理,不抢
+      if (isInTextInput(e.target)) return;
+
+      const mod = e.ctrlKey || e.metaKey;
+
+      if (mod && (e.key === "z" || e.key === "Z") && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (
+        (mod && (e.key === "y" || e.key === "Y")) ||
+        (mod && (e.key === "z" || e.key === "Z") && e.shiftKey)
+      ) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if (mod && (e.key === "d" || e.key === "D")) {
+        e.preventDefault();
+        duplicateSelected();
+        return;
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedIds.length > 0) {
+          e.preventDefault();
+          deleteSelected();
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        setSelectedIds([]);
+        return;
+      }
+      if (
+        e.key === "ArrowLeft" ||
+        e.key === "ArrowRight" ||
+        e.key === "ArrowUp" ||
+        e.key === "ArrowDown"
+      ) {
+        if (selectedIds.length === 0) return;
+        const step = e.shiftKey ? 10 : 1;
+        const dx =
+          e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+        const dy =
+          e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+        e.preventDefault();
+        nudgeSelected(dx, dy);
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo, deleteSelected, duplicateSelected, nudgeSelected, selectedIds.length]);
 
   /* ─── 保存 ─── */
 
@@ -209,14 +355,34 @@ export default function CertificateDesignerPage() {
           className="flex-1 max-w-md px-2 py-1.5 text-sm rounded border border-transparent hover:border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
         />
         <div className="flex-1" />
+
+        {/* 撤销 / 重做 */}
+        <button
+          onClick={undo}
+          disabled={!canUndo}
+          title="撤销 (Ctrl+Z)"
+          className="p-1.5 rounded hover:bg-[#F7F8FA] text-[#6B7280] disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <UndoIcon className="w-4 h-4" />
+        </button>
+        <button
+          onClick={redo}
+          disabled={!canRedo}
+          title="重做 (Ctrl+Y / Ctrl+Shift+Z)"
+          className="p-1.5 rounded hover:bg-[#F7F8FA] text-[#6B7280] disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <RedoIcon className="w-4 h-4" />
+        </button>
+        <div className="w-px h-6 bg-[#E9E9E9] mx-1" />
+
         {selectedIds.length > 0 && (
           <button
             onClick={deleteSelected}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium text-[#EF4444] hover:bg-[#FEE2E2]"
-            title="删除选中元素"
+            title="删除选中元素 (Delete)"
           >
             <TrashIcon className="w-3.5 h-3.5" />
-            删除选中
+            删除 ({selectedIds.length})
           </button>
         )}
         <button
@@ -234,9 +400,11 @@ export default function CertificateDesignerPage() {
       <div className="flex-1 flex min-h-0">
         {/* 左:tabs 上 + 图层 下 */}
         <aside className="w-72 flex-shrink-0 flex flex-col bg-white border-r border-[#E9E9E9] overflow-hidden">
-          {/* 上半:tabs 容器 ~60% */}
           <div className="flex-[3] min-h-0 flex flex-col">
-            <Tabs defaultValue="elements" className="flex-1 min-h-0 flex flex-col gap-0">
+            <Tabs
+              defaultValue="elements"
+              className="flex-1 min-h-0 flex flex-col gap-0"
+            >
               <TabsList className="w-full h-9 rounded-none border-b border-[#E9E9E9] bg-[#FAFAFA] p-0 flex-shrink-0">
                 <TabsTrigger
                   value="elements"
@@ -257,10 +425,16 @@ export default function CertificateDesignerPage() {
                   背景
                 </TabsTrigger>
               </TabsList>
-              <TabsContent value="elements" className="flex-1 overflow-auto p-3 m-0">
+              <TabsContent
+                value="elements"
+                className="flex-1 overflow-auto p-3 m-0"
+              >
                 <ElementPanel onAdd={addElement} />
               </TabsContent>
-              <TabsContent value="variables" className="flex-1 overflow-auto p-3 m-0">
+              <TabsContent
+                value="variables"
+                className="flex-1 overflow-auto p-3 m-0"
+              >
                 <VariablePanel
                   variables={state.variables}
                   canvasWidth={state.canvasWidth}
@@ -268,7 +442,10 @@ export default function CertificateDesignerPage() {
                   onAdd={addElement}
                 />
               </TabsContent>
-              <TabsContent value="background" className="flex-1 overflow-auto p-3 m-0">
+              <TabsContent
+                value="background"
+                className="flex-1 overflow-auto p-3 m-0"
+              >
                 <BackgroundPanel
                   background={state.background}
                   canvasWidth={state.canvasWidth}
@@ -280,7 +457,6 @@ export default function CertificateDesignerPage() {
             </Tabs>
           </div>
 
-          {/* 下半:常驻图层栏 ~40% */}
           <div className="flex-[2] min-h-0 border-t border-[#E9E9E9] flex flex-col">
             <LayerPanel
               elements={state.elements}
@@ -288,7 +464,7 @@ export default function CertificateDesignerPage() {
               onSelectionChange={setSelectedIds}
               onUpdate={updateElement}
               onDelete={deleteElement}
-              onElementsChange={setElementsArray}
+              onElementsChange={commitElementsArray}
             />
           </div>
         </aside>
@@ -299,7 +475,8 @@ export default function CertificateDesignerPage() {
             state={state}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
-            onElementsChange={setElementsArray}
+            onElementsChange={setElementsArrayDuringDrag}
+            onRecordHistory={record}
           />
         </main>
 
@@ -320,6 +497,16 @@ export default function CertificateDesignerPage() {
               placeholder="可选,记录用途/颁发对象等"
               className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none resize-none"
             />
+          </div>
+          <div className="mt-4 pt-3 border-t border-[#F0F0F0] text-[10px] text-[#9CA3AF] leading-relaxed">
+            <div className="font-semibold mb-1">快捷键</div>
+            Ctrl+Z 撤销 · Ctrl+Y/Shift+Z 重做
+            <br />
+            Ctrl+D 复制 · Delete 删除
+            <br />
+            方向键 微移 (Shift 大步)
+            <br />
+            Esc 取消选择 · Shift+点击 多选
           </div>
         </aside>
       </div>

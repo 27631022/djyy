@@ -7,18 +7,19 @@ interface CanvasStageProps {
   state: DesignerState;
   selectedIds: string[];
   onSelectionChange: (ids: string[]) => void;
+  /** 拖拽过程的实时位置更新(不进历史) */
   onElementsChange: (next: DesignerElement[]) => void;
+  /** 拖拽开始时调用一次 —— 父组件 record 到历史栈 */
+  onRecordHistory: () => void;
 }
 
-/** 拖拽过程中追踪起点(放 ref 不放 state,避免每帧 re-render) */
+/** 拖拽过程中追踪起点 + 所有移动元素的原始位置 */
 interface DragState {
-  elementId: string;
-  /** 鼠标按下时的画布坐标 */
+  movingIds: string[];
   startMouseX: number;
   startMouseY: number;
-  /** 元素按下时的位置 */
-  startElX: number;
-  startElY: number;
+  /** id → original {x, y},mouseMove 时按 delta 计算新位置 */
+  originals: Map<string, { x: number; y: number }>;
 }
 
 export function CanvasStage({
@@ -26,14 +27,13 @@ export function CanvasStage({
   selectedIds,
   onSelectionChange,
   onElementsChange,
+  onRecordHistory,
 }: CanvasStageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const bgImageRef = useRef<HTMLImageElement | null>(null);
-  /** cursor 反馈用,不影响渲染主流程 */
   const [isDragging, setIsDragging] = useState(false);
-  /** 背景图加载完成时 +1 触发重绘 */
   const [bgImageTick, setBgImageTick] = useState(0);
 
   /* ── 背景图异步预加载 ── */
@@ -44,7 +44,6 @@ export function CanvasStage({
       setBgImageTick((t) => t + 1);
       return;
     }
-    // 同一张图已加载好则不重复
     if (bgImageRef.current && bgImageRef.current.src === bg.imageUrl) return;
     const img = new Image();
     img.onload = () => {
@@ -67,7 +66,7 @@ export function CanvasStage({
     renderAll(ctx, state, { bgImage: bgImageRef.current });
   }, [state, bgImageTick]);
 
-  /* ── overlay:选中框 ── */
+  /* ── overlay:全部选中元素的边框 ── */
   useEffect(() => {
     const overlay = overlayRef.current;
     if (!overlay) return;
@@ -81,7 +80,7 @@ export function CanvasStage({
     }
   }, [state, selectedIds]);
 
-  /* ── 鼠标坐标 → 画布内部坐标(考虑 CSS 缩放) ── */
+  /* ── 坐标转换 ── */
   function toCanvasCoords(clientX: number, clientY: number) {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
@@ -97,26 +96,51 @@ export function CanvasStage({
   function handleMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
     const { x, y } = toCanvasCoords(e.clientX, e.clientY);
     const hit = pickElementAt(state.elements, x, y);
+    const shift = e.shiftKey;
 
-    if (hit) {
-      // 单击未选中的元素 → 替换选区;已选中且 shift 键 → 取消(Phase C 完整多选)
-      if (!selectedIds.includes(hit.id)) {
-        onSelectionChange([hit.id]);
-      }
-      dragRef.current = {
-        elementId: hit.id,
-        startMouseX: x,
-        startMouseY: y,
-        startElX: hit.x,
-        startElY: hit.y,
-      };
-      setIsDragging(true);
-    } else {
-      // 空白:清选区
-      onSelectionChange([]);
+    if (!hit) {
+      // 空白:清选区(shift 时不清,保留多选)
+      if (!shift) onSelectionChange([]);
       dragRef.current = null;
-      setIsDragging(false);
+      return;
     }
+
+    if (shift) {
+      // Shift+click:切换该元素在选区里的状态,不开始拖拽
+      if (selectedIds.includes(hit.id)) {
+        onSelectionChange(selectedIds.filter((id) => id !== hit.id));
+      } else {
+        onSelectionChange([...selectedIds, hit.id]);
+      }
+      dragRef.current = null;
+      return;
+    }
+
+    // 普通 click:
+    // - 如果点中的元素已在选区:保持选区,拖动全部选中
+    // - 否则:替换为只选中这个,拖动它
+    let movingIds: string[];
+    if (selectedIds.includes(hit.id)) {
+      movingIds = selectedIds;
+    } else {
+      movingIds = [hit.id];
+      onSelectionChange(movingIds);
+    }
+
+    // 准备拖拽:记录历史 + 缓存所有要移动元素的原始位置
+    onRecordHistory();
+    const originals = new Map<string, { x: number; y: number }>();
+    for (const id of movingIds) {
+      const el = state.elements.find((e) => e.id === id);
+      if (el) originals.set(id, { x: el.x, y: el.y });
+    }
+    dragRef.current = {
+      movingIds,
+      startMouseX: x,
+      startMouseY: y,
+      originals,
+    };
+    setIsDragging(true);
   }
 
   function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
@@ -125,11 +149,11 @@ export function CanvasStage({
     const { x, y } = toCanvasCoords(e.clientX, e.clientY);
     const dx = x - drag.startMouseX;
     const dy = y - drag.startMouseY;
-    const next = state.elements.map((el) =>
-      el.id === drag.elementId
-        ? { ...el, x: drag.startElX + dx, y: drag.startElY + dy }
-        : el,
-    );
+    const next = state.elements.map((el) => {
+      const orig = drag.originals.get(el.id);
+      if (!orig) return el;
+      return { ...el, x: orig.x + dx, y: orig.y + dy };
+    });
     onElementsChange(next);
   }
 
@@ -138,7 +162,6 @@ export function CanvasStage({
     setIsDragging(false);
   }
 
-  /* 鼠标离开画布时也终止拖拽,避免外部移动看不到反馈 */
   function handleMouseLeave() {
     dragRef.current = null;
     setIsDragging(false);
