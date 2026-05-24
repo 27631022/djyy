@@ -8,9 +8,24 @@ import {
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError } from 'axios';
 import mammoth from 'mammoth';
-// pdf-parse 是 CommonJS 包,默认导出形态对 TS 5 不友好,这里强制类型签名
+// pdf-parse v2.x 改成 class API(老 v1 是 fn 形态),且包用 type:module
+// + exports map,无法走 `pdf-parse/lib/...` 子路径。
+// 通过 require('pdf-parse').PDFParse 拿 class。
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse: (buf: Buffer) => Promise<{ text: string; numpages: number }> = require('pdf-parse');
+const pdfParseMod = require('pdf-parse') as { PDFParse?: PdfParseCtor };
+type PdfParseCtor = new (opts: { data: Buffer | Uint8Array }) => {
+  getText(): Promise<{ text: string; total: number }>;
+  destroy(): Promise<void>;
+};
+const PDFParse: PdfParseCtor = (() => {
+  const C = pdfParseMod?.PDFParse;
+  if (typeof C !== 'function') {
+    throw new Error(
+      'pdf-parse 加载失败:模块未导出 PDFParse class(需要 pdf-parse v2.x)',
+    );
+  }
+  return C;
+})();
 import { AuditService } from '../audit';
 import { ExternalApiService } from '../external-api';
 import type {
@@ -387,14 +402,18 @@ export class CertificateExtractionService {
       }
     }
 
-    // PDF
+    // PDF — pdf-parse v2 class API
     if (mime === 'application/pdf' || lower.endsWith('.pdf')) {
+      const parser = new PDFParse({ data: file.buffer });
       try {
-        const r = await pdfParse(file.buffer);
+        const r = await parser.getText();
         return r.text;
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'pdf 解析失败';
         throw new BadRequestException(`PDF 解析失败:${msg}`);
+      } finally {
+        // 释放 worker / 临时资源
+        await parser.destroy().catch(() => {});
       }
     }
 
