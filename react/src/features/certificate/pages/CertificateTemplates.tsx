@@ -384,7 +384,7 @@ function TemplateCard({
           {template.name}
         </div>
 
-        {/* V3 徽章行:类型 + 等级 + 落款单位 + 分类 */}
+        {/* V3 徽章行:类型 + 等级 + 分类(短标签放一起) */}
         <div className="flex items-center gap-1 flex-wrap min-h-[18px]">
           {template.honorType && (
             <span
@@ -400,21 +400,23 @@ function TemplateCard({
           {template.honorLevel && (
             <HonorLevelBadge level={template.honorLevel} />
           )}
-          {template.issuingOrgName && (
-            <span
-              className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-0.5 max-w-[120px]"
-              title={`落款单位:${template.issuingOrgName}`}
-            >
-              <Building2Icon className="w-2.5 h-2.5 flex-shrink-0" />
-              <span className="truncate">{template.issuingOrgName}</span>
-            </span>
-          )}
           {template.category && (
             <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#F7F8FA] text-[#6B7280] border border-[#E9E9E9]">
               {template.category}
             </span>
           )}
         </div>
+
+        {/* 落款单位 — 单独一行,完整显示(长名称会自动换行而不被截断) */}
+        {template.issuingOrgName && (
+          <div
+            className="flex items-start gap-1 text-[11px] text-emerald-700 leading-snug"
+            title={`落款单位:${template.issuingOrgName}`}
+          >
+            <Building2Icon className="w-3 h-3 mt-0.5 flex-shrink-0" />
+            <span className="break-words">{template.issuingOrgName}</span>
+          </div>
+        )}
 
         {/* 尺寸小行 */}
         <div className="text-[10px] text-[#9CA3AF] font-mono">

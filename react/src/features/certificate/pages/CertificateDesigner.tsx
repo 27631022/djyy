@@ -126,9 +126,11 @@ export default function CertificateDesignerPage() {
   const addElement = useCallback(
     (el: DesignerElement) => {
       record();
-      // V3+:新加的印章顶部弧形文字默认引用「落款单位」(若未填则保持默认)
+      // V3+:新加的印章顶部弧形文字总是用「落款单位」覆盖工厂默认值
+      //     (createStampElement 内置默认是「中共党建益友委员会」,这里强制覆盖)
+      //     落款单位为空时保留工厂默认,提醒用户先填模板表单
       const enhanced: DesignerElement =
-        el.type === "stamp" && !el.text.trim() && issuingOrgName.trim()
+        el.type === "stamp" && issuingOrgName.trim()
           ? { ...el, text: issuingOrgName.trim() }
           : el;
       setState((s) => ({ ...s, elements: [...s.elements, enhanced] }));
