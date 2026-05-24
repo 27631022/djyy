@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma';
 import { HealthModule } from './health';
 import { OrganizationModule } from './organization';
@@ -7,7 +8,7 @@ import { AuthModule } from './auth';
 import { AuditModule } from './audit';
 import { UserModule } from './user';
 import { RoleModule } from './role';
-import { PermissionModule } from './permission';
+import { PermissionModule, PermissionGuard } from './permission';
 import { DictionaryModule } from './dictionary';
 import { UserCustomFieldModule } from './user-custom-field';
 import { SiteSettingModule } from './site-setting';
@@ -31,6 +32,10 @@ import { CertificateModule } from './certificate';
     SiteSettingModule,
     NavCategoryModule,
     CertificateModule,
+  ],
+  providers: [
+    // 全局权限守卫:仅 @Permission() 装饰的接口实际校验,其他不影响
+    { provide: APP_GUARD, useClass: PermissionGuard },
   ],
 })
 export class AppModule {}

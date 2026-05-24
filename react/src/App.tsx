@@ -15,6 +15,7 @@ import {
   CertificateDesignerPage,
   CertificateIssuePage,
   CertificateListPage,
+  CertificateVerifyPage,
 } from "@/features/certificate";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
@@ -71,6 +72,9 @@ const App = () => (
           <Route path="/login" element={<LoginPage />} />
           {/* 门户首页:公开访问。需登录的功能在 NavPage 内部按 common 标记灰显 */}
           <Route path="/" element={<NavPage />} />
+          {/* 证书公开验证:完全公开,不走 AdminLayout/ProtectedRoute */}
+          <Route path="/verify" element={<CertificateVerifyPage />} />
+          <Route path="/verify/:token" element={<CertificateVerifyPage />} />
           <Route
             path="/admin"
             element={

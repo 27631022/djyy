@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
+import { Permission } from '../permission';
 import { CertificateIssueService } from './issue.service';
 import { IssueCertificateDto } from './dto/issue-certificate.dto';
 
@@ -32,6 +33,7 @@ export class CertificateIssueController {
   constructor(private readonly svc: CertificateIssueService) {}
 
   @Post()
+  @Permission('certificate:issue')
   issue(
     @Body() dto: IssueCertificateDto,
     @CurrentUser() me: AuthPayload,

@@ -169,6 +169,10 @@ async function seedRolesAndPermissions() {
     { code: 'admin:role:write',    name: '管理角色与权限',  category: 'operation' },
     { code: 'admin:plugin:manage', name: '管理插件',        category: 'operation' },
     { code: 'portal:view',         name: '访问门户首页',    category: 'menu' },
+    // 证书管理(V2)
+    { code: 'certificate:issue',         name: '发证',             category: 'operation' },
+    { code: 'certificate:revoke',        name: '撤销证书',         category: 'operation' },
+    { code: 'certificate:bulk-download', name: '批量下载证书',     category: 'operation' },
   ];
   for (const p of permissions) {
     await prisma.permission.upsert({

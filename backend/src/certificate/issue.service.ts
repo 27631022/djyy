@@ -214,4 +214,75 @@ export class CertificateIssueService {
     if (!cert) throw new NotFoundException('证书不存在');
     return cert;
   }
+
+  /* ─── 公开接口(供 PublicVerifyController 用,不挂 AuthGuard) ─── */
+
+  /** 公开验证:通过 publicToken 拉一张证书,过滤敏感字段 */
+  async verifyByToken(token: string) {
+    const cert = await this.prisma.certificate.findUnique({
+      where: { publicToken: token },
+      include: { template: { select: { id: true, name: true, honorCode: true } } },
+    });
+    if (!cert) throw new NotFoundException('证书不存在或链接无效');
+    return sanitizeForPublic(cert);
+  }
+
+  /**
+   * 公开查询:按证书编号搜。
+   * 精确匹配优先,找不到则做 contains 模糊。
+   * 限 20 条 + 不返 pdfData(列表只显示元数据,需要详情走 verifyByToken)。
+   */
+  async publicSearch(q: string) {
+    const trimmed = (q ?? '').trim();
+    if (!trimmed) return [];
+
+    // 1. 先精确匹配
+    const exact = await this.prisma.certificate.findFirst({
+      where: { certNo: trimmed },
+      include: { template: { select: { id: true, name: true, honorCode: true } } },
+    });
+    if (exact) return [sanitizeForPublicList(exact)];
+
+    // 2. 模糊
+    const fuzzy = await this.prisma.certificate.findMany({
+      where: { certNo: { contains: trimmed } },
+      orderBy: { issueDate: 'desc' },
+      take: 20,
+      include: { template: { select: { id: true, name: true, honorCode: true } } },
+    });
+    return fuzzy.map(sanitizeForPublicList);
+  }
+}
+
+/* ─── 公开接口字段脱敏 ─── */
+
+/** 不外露:身份证号/电话/外部文件原文件,但保留 pdfData 给公开页渲染 */
+function sanitizeForPublic<
+  T extends {
+    recipientIdCard?: string | null;
+    recipientPhone?: string | null;
+    externalFileData?: string | null;
+  },
+>(cert: T): T {
+  return {
+    ...cert,
+    recipientIdCard: null,
+    recipientPhone: null,
+    externalFileData: null,
+  };
+}
+
+/** 列表/搜索结果用:再剥掉 pdfData(节省带宽 + 防爬全证书),详情走 verifyByToken */
+function sanitizeForPublicList<
+  T extends {
+    recipientIdCard?: string | null;
+    recipientPhone?: string | null;
+    externalFileData?: string | null;
+    pdfData?: string | null;
+  },
+>(cert: T): T {
+  return {
+    ...sanitizeForPublic(cert),
+    pdfData: null,
+  };
 }

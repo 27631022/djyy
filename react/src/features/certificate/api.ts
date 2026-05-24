@@ -147,3 +147,25 @@ export const certificateIssueApi = {
   get: (id: string) =>
     api.get<CertificateDetailDto>(`/certificates/${id}`).then((r) => r.data),
 };
+
+/* ─── 公开验证(无需登录;同样形态留给未来"首页综合查询"复用) ─── */
+
+/** 公开搜索结果:沿用列表 DTO 但 pdfData/敏感字段已脱敏成 null */
+export type CertificatePublicListItem = CertificateListItemDto;
+
+/** 公开验证详情:含 pdfData(给公开页渲染),idCard/phone/externalFileData 脱敏 */
+export type CertificatePublicDetail = CertificateDetailDto;
+
+export const certificatePublicApi = {
+  search: (q: string) =>
+    api
+      .get<CertificatePublicListItem[]>("/public/certificates/search", {
+        params: { q },
+      })
+      .then((r) => r.data),
+
+  verifyByToken: (token: string) =>
+    api
+      .get<CertificatePublicDetail>(`/public/certificates/verify/${token}`)
+      .then((r) => r.data),
+};
