@@ -97,13 +97,12 @@ export class IssueCertificateDto {
   /**
    * 荣誉类型(V3):
    *   individual(个人)— 老接口/老前端不传时默认走个人路径
-   *   collective(集体)
-   *   unit(单位)
-   * 取值校验:仅允许这 3 种
+   *   collective(集体)— 凡非个人皆归此类(团队/单位/党组织/家庭/小组 等)
+   * 取值校验:仅允许这 2 种;老 "unit" 值兼容由 controller 层兜底转换
    */
   @IsOptional()
-  @IsIn(['individual', 'collective', 'unit'])
-  honorType?: 'individual' | 'collective' | 'unit';
+  @IsIn(['individual', 'collective'])
+  honorType?: 'individual' | 'collective';
 
   /**
    * 颁发日期(V3):前端表彰记录上的"表彰日期"。

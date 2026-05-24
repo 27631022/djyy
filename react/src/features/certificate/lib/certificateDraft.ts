@@ -19,7 +19,8 @@ import type { ExtractHonorResponse } from "../api";
 
 /* ─── 数据类型 ─── */
 
-export type HonorType = "individual" | "collective" | "unit";
+/** 荣誉类型(V3):仅 2 类 — 个人 / 集体(团队/单位/党组织 等都归集体)。 */
+export type HonorType = "individual" | "collective";
 
 /** wizard 主步骤数。3a/3b 在 UI 层根据 records 内 honorType 分布决定是否激活 */
 export type WizardStep = 1 | 2 | 3 | 4;
@@ -44,21 +45,22 @@ export interface PersonRow {
 }
 
 /**
- * 集体/单位荣誉的被表彰对象(Step 3a 填)。
+ * 集体荣誉的被表彰对象(Step 3a 填)。
  * 自由文本,不关联 Organization 表(产品决策)。
+ * 适用范围:团队 / 单位 / 党组织 / 家庭 等所有非个人载体。
  */
-export interface UnitRow {
+export interface CollectiveRow {
   rid: string;
-  /** 集体或单位名,如「青年突击队」/「机关党支部」 */
+  /** 集体名,如「青年突击队」/「机关党支部」/「先进基层党组织(机关综合处)」 */
   name: string;
 }
 
 /**
  * Step 2 一条表彰记录 — 一份表彰文件可能包含多条(如「两优一先」3 条)。
  *
- * persons / units 互斥:
- *  - honorType=individual → persons 有效,units 一直空
- *  - honorType=collective/unit → units 有效,persons 一直空
+ * persons / collectives 互斥:
+ *  - honorType=individual → persons 有效,collectives 一直空
+ *  - honorType=collective → collectives 有效,persons 一直空
  *  切换 honorType 时调用方应清空另一边(避免老数据残留)。
  */
 export interface HonorRecord {
@@ -73,7 +75,7 @@ export interface HonorRecord {
   issueDate: string;
   honorType: HonorType;
   persons: PersonRow[];
-  units: UnitRow[];
+  collectives: CollectiveRow[];
 }
 
 /**
@@ -180,7 +182,7 @@ export function newPersonRow(partial?: Partial<PersonRow>): PersonRow {
   };
 }
 
-export function newUnitRow(partial?: Partial<UnitRow>): UnitRow {
+export function newCollectiveRow(partial?: Partial<CollectiveRow>): CollectiveRow {
   return {
     rid: makeRid(),
     name: partial?.name ?? "",
@@ -196,7 +198,7 @@ export function newHonorRecord(partial?: Partial<HonorRecord>): HonorRecord {
     issueDate: partial?.issueDate ?? todayIso(),
     honorType: partial?.honorType ?? "individual",
     persons: partial?.persons ?? [],
-    units: partial?.units ?? [],
+    collectives: partial?.collectives ?? [],
   };
 }
 

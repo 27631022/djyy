@@ -242,13 +242,17 @@ function InfoLine({
   );
 }
 
-/** 荣誉类型徽章(V3 新增) — 颜色按语义:个人=蓝、集体=紫、单位=琥珀 */
-function HonorTypeBadge({ type }: { type: "individual" | "collective" | "unit" }) {
+/**
+ * 荣誉类型徽章(V3,2 类) — 颜色按语义:个人=蓝、集体=紫
+ * 兼容老数据:任何非 'individual' 的值(含老 'unit')都按 collective 显示
+ */
+function HonorTypeBadge({ type }: { type: string }) {
+  const normalized: "individual" | "collective" =
+    type === "individual" ? "individual" : "collective";
   const map = {
     individual: { label: "个人", cls: "bg-blue-50 text-blue-700 border-blue-200" },
     collective: { label: "集体", cls: "bg-purple-50 text-purple-700 border-purple-200" },
-    unit: { label: "单位", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-  }[type];
+  }[normalized];
   return (
     <span
       className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${map.cls}`}

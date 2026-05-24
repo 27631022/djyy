@@ -89,8 +89,8 @@ export class IssueExternalCertificateDto {
   @IsString()
   issuingOrgName?: string;
 
-  /** 荣誉类型(V3):同 IssueCertificateDto。外部证书一般也是 individual,但也可能 unit/collective */
+  /** 荣誉类型(V3):同 IssueCertificateDto。仅 2 类 — individual / collective */
   @IsOptional()
-  @IsIn(['individual', 'collective', 'unit'])
-  honorType?: 'individual' | 'collective' | 'unit';
+  @IsIn(['individual', 'collective'])
+  honorType?: 'individual' | 'collective';
 }

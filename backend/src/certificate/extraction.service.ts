@@ -48,14 +48,14 @@ const SYSTEM_PROMPT = `你是一个证书管理系统的「荣誉表彰文件解
 提取要点:
 1. honors:荣誉项数组,每项含:
    - honorName:荣誉名称(如"优秀共产党员",不要带年份前缀)
-   - honorType:荣誉类型,严格三选一:
+   - honorType:荣誉类型,严格二选一:
      · "individual" — 个人荣誉(优秀共产党员、优秀党务工作者、先进个人 等)
-     · "collective" — 集体荣誉(青年突击队、巾帼建功示范岗、某某小组 等)
-     · "unit"       — 单位荣誉(先进基层党组织、文明单位、五好家庭 等)
+     · "collective" — 集体荣誉(凡非个人皆归此类:先进基层党组织、文明单位、青年突击队、
+        巾帼建功示范岗、五好家庭、某某小组、某某团队、某某班组 等)
      如无法明确判断,默认 "individual"
    - issuingOrg:该荣誉的颁发机构,如"中共 XX 委员会"(找不到留空字符串)
    - recipients:对应受表彰对象/单位的数组,每项含 name(必填)/ empNo(可选)/ dept(可选)
-     · honorType=unit 或 collective 时,把 name 填成单位/集体名,empNo/dept 留空
+     · honorType=collective 时,把 name 填成单位/集体/团队名,empNo/dept 留空
 2. yearLabel:整个文件级别的年份,"2024" 或 "2024-2025"。抽不到留空
 3. issueDate:整个文件的颁发/落款日期,ISO 格式 YYYY-MM-DD,抽不到留空
 
@@ -504,17 +504,20 @@ function normalizeHonors(input: unknown[]): ExtractedHonor[] {
 }
 
 /**
- * honorType 规整:
- *   1. LLM 直接返回合法值 → 直接用
- *   2. 否则按 honorName 关键词推断(党组织/单位/集体/团队 → unit/collective)
- *   3. 兜底 individual
+ * honorType 规整(仅 2 类 individual / collective):
+ *   1. LLM 直接返回合法值 → 用之
+ *   2. LLM 老返 "unit" → 折叠成 collective(向后兼容老 prompt)
+ *   3. 否则按 honorName 关键词推断(党组织/单位/团队/集体/小组 → collective)
+ *   4. 兜底 individual
  */
 function normalizeHonorType(
   raw: unknown,
   honorName: string,
-): 'individual' | 'collective' | 'unit' {
+): 'individual' | 'collective' {
   const v = String(raw ?? '').trim().toLowerCase();
-  if (v === 'individual' || v === 'collective' || v === 'unit') return v;
+  if (v === 'individual') return 'individual';
+  if (v === 'collective') return 'collective';
+  if (v === 'unit') return 'collective'; // 老值折叠
   // 关键词推断
   const name = honorName.toLowerCase();
   if (
@@ -526,12 +529,7 @@ function normalizeHonorType(
     name.includes('单位') ||
     name.includes('集体') ||
     name.includes('文明') ||
-    name.includes('五好家庭') ||
-    name.includes('家庭')
-  ) {
-    return 'unit';
-  }
-  if (
+    name.includes('家庭') ||
     name.includes('团队') ||
     name.includes('班组') ||
     name.includes('突击队') ||
