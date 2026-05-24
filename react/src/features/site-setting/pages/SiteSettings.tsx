@@ -17,10 +17,10 @@ const PARTY = "var(--party-primary)";
 type TabId = "brand" | "hero" | "footer" | "theme";
 
 const TABS: { id: TabId; label: string; icon: React.ElementType; desc: string }[] = [
-  { id: "brand", label: "基础品牌", icon: TagIcon, desc: "站点标题、副标题、LOGO" },
-  { id: "hero", label: "首页文案", icon: MegaphoneIcon, desc: "首页 Hero 区主副标语" },
-  { id: "footer", label: "页脚信息", icon: LinkIcon, desc: "ICP 备案、版权、友情链接" },
-  { id: "theme", label: "主题配色", icon: PaletteIcon, desc: "主色调与强调色" },
+  { id: "brand", label: "基础品牌", icon: TagIcon, desc: "决定前台头部的站点身份呈现" },
+  { id: "hero", label: "首页文案", icon: MegaphoneIcon, desc: "首页 Hero 区(红色横幅)的主副标语" },
+  { id: "footer", label: "页脚信息", icon: LinkIcon, desc: "底部备案、版权与友情链接" },
+  { id: "theme", label: "主题配色", icon: PaletteIcon, desc: "影响前台头部、按钮、Hero 等关键视觉" },
 ];
 
 export default function SiteSettingsPage() {
@@ -288,7 +288,6 @@ function TextField({
 function BrandForm({ value, onChange }: { value: SiteSettingsData["brand"]; onChange: (p: Partial<SiteSettingsData["brand"]>) => void }) {
   return (
     <div>
-      <SectionHeader icon={TagIcon} title="基础品牌" desc="决定前台头部的站点身份呈现" />
       <TextField
         label="站点标题"
         value={value.title}
@@ -333,7 +332,6 @@ function BrandForm({ value, onChange }: { value: SiteSettingsData["brand"]; onCh
 function HeroForm({ value, onChange }: { value: SiteSettingsData["hero"]; onChange: (p: Partial<SiteSettingsData["hero"]>) => void }) {
   return (
     <div>
-      <SectionHeader icon={MegaphoneIcon} title="首页文案" desc="首页 Hero 区(红色横幅)的主副标语" />
       <TextField
         label="主标语"
         value={value.mainSlogan}
@@ -375,7 +373,6 @@ function FooterForm({ value, onChange }: { value: SiteSettingsData["footer"]; on
 
   return (
     <div>
-      <SectionHeader icon={LinkIcon} title="页脚信息" desc="底部备案、版权与友情链接" />
       <TextField
         label="ICP 备案号"
         value={value.icp}
@@ -443,7 +440,6 @@ function FooterForm({ value, onChange }: { value: SiteSettingsData["footer"]; on
 function ThemeForm({ value, onChange }: { value: SiteSettingsData["theme"]; onChange: (p: Partial<SiteSettingsData["theme"]>) => void }) {
   return (
     <div>
-      <SectionHeader icon={PaletteIcon} title="主题配色" desc="影响前台头部、按钮、Hero 等关键视觉" />
       <ColorField
         label="主色调(党建红)"
         value={value.primary}
@@ -509,17 +505,6 @@ function ColorField({
   );
 }
 
-function SectionHeader({ icon: Icon, title, desc }: { icon: React.ElementType; title: string; desc: string }) {
-  return (
-    <div className="mb-5 pb-3 border-b border-[#F0F0F0]">
-      <h2 className="text-base font-bold text-[#1A1A1A] flex items-center gap-2 mb-1">
-        <Icon className="w-4 h-4 text-[var(--party-primary)]" />
-        {title}
-      </h2>
-      <p className="text-xs text-[#9CA3AF]">{desc}</p>
-    </div>
-  );
-}
 
 function SkeletonForm() {
   return (
