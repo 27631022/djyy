@@ -12,12 +12,35 @@ export interface ExternalApiDto {
   hasKey: boolean;
   apiUrl: string | null;
   model: string | null;
+  /** 平台充值/计费控制台 URL */
+  rechargeUrl: string | null;
   active: boolean;
   meta: string | null;
   createdAt: string;
   updatedAt: string;
   /** DB 未配但 .env 有 fallback */
   envFallback: boolean;
+}
+
+export interface ExternalApiTestResult {
+  ok: boolean;
+  latencyMs: number;
+  message: string;
+  model?: string;
+}
+
+export interface ExternalApiBalance {
+  status: 'supported' | 'not_supported' | 'error';
+  balance?: number;
+  unit?: string;
+  granted?: number;
+  detail?: string;
+}
+
+export interface TestExternalApiInput {
+  apiKey?: string;
+  apiUrl?: string;
+  model?: string;
 }
 
 export interface UpdateExternalApiInput {
@@ -27,6 +50,7 @@ export interface UpdateExternalApiInput {
   apiKey?: string;
   apiUrl?: string;
   model?: string;
+  rechargeUrl?: string;
   active?: boolean;
   meta?: string;
 }
@@ -53,4 +77,16 @@ export const externalApiApi = {
 
   delete: (provider: string) =>
     api.delete<{ ok: true }>(`/external-apis/${provider}`).then((r) => r.data),
+
+  /** 测试连接 — body 可传 apiKey/apiUrl/model 覆盖,便于「测试当前编辑值」 */
+  test: (provider: string, input: TestExternalApiInput = {}) =>
+    api
+      .post<ExternalApiTestResult>(`/external-apis/${provider}/test`, input)
+      .then((r) => r.data),
+
+  /** 查询余额(部分 provider 支持) */
+  balance: (provider: string) =>
+    api
+      .get<ExternalApiBalance>(`/external-apis/${provider}/balance`)
+      .then((r) => r.data),
 };

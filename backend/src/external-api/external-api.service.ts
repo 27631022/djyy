@@ -5,11 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import axios, { type AxiosError } from 'axios';
 import type { ExternalApi } from '@prisma/client';
 import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
 import {
   CreateExternalApiDto,
+  TestExternalApiDto,
   UpdateExternalApiDto,
 } from './dto/update-external-api.dto';
 
@@ -31,12 +33,38 @@ export interface ExternalApiPublic {
   hasKey: boolean;
   apiUrl: string | null;
   model: string | null;
+  rechargeUrl: string | null;
   active: boolean;
   meta: string | null;
   createdAt: string;
   updatedAt: string;
   /** key 是否由 .env 提供(DB 没配但 .env 有时显示这个) */
   envFallback: boolean;
+}
+
+/** 测试连接响应 */
+export interface ExternalApiTestResult {
+  ok: boolean;
+  latencyMs: number;
+  /** 平台返回的样例文本(成功时为 chat 回复,失败时为错误描述) */
+  message: string;
+  /** 测试时用的模型 */
+  model?: string;
+}
+
+/** 余额查询响应 — 不同 provider 字段可能差异,统一接口 */
+export interface ExternalApiBalance {
+  /** 'supported' 含有效余额信息;'not_supported' 表示该 provider 当前未实现余额查询 */
+  status: 'supported' | 'not_supported' | 'error';
+  /** 主余额数字(单位见 unit) */
+  balance?: number;
+  unit?: string;
+  /** 充值过的总额(可选) */
+  granted?: number;
+  /** 详细文本展示(失败时是错误信息) */
+  detail?: string;
+  /** 原始响应(用于排错,前端不显示) */
+  raw?: unknown;
 }
 
 /** 把数据库行脱敏 + 添加 envFallback 标记 */
@@ -64,6 +92,7 @@ function toPublic(
     hasKey,
     apiUrl: row.apiUrl,
     model: row.model,
+    rechargeUrl: row.rechargeUrl,
     active: row.active,
     meta: row.meta,
     createdAt: row.createdAt.toISOString(),
@@ -160,6 +189,7 @@ export class ExternalApiService {
         apiKey: dto.apiKey || null,
         apiUrl: dto.apiUrl,
         model: dto.model,
+        rechargeUrl: dto.rechargeUrl,
         active: dto.active ?? true,
         meta: dto.meta,
       },
@@ -206,6 +236,7 @@ export class ExternalApiService {
         apiKey: apiKeyUpdate,
         apiUrl: dto.apiUrl ?? undefined,
         model: dto.model ?? undefined,
+        rechargeUrl: dto.rechargeUrl ?? undefined,
         active: dto.active ?? undefined,
         meta: dto.meta ?? undefined,
       },
@@ -226,6 +257,146 @@ export class ExternalApiService {
       }),
     });
     return toPublic(updated, this.envHas(provider));
+  }
+
+  /**
+   * 测试连接 — 发一条最小 chat completion 请求验证 key + endpoint + model。
+   * 大多数国产 LLM (DeepSeek/Qwen/Doubao/Ernie) 都 OpenAI-compatible,统一接口可跑通。
+   * dto 里传的 apiKey/apiUrl/model 会覆盖数据库值,便于编辑对话框「测试当前编辑值」。
+   */
+  async test(
+    provider: string,
+    dto: TestExternalApiDto,
+    ctx: AuditCtx,
+  ): Promise<ExternalApiTestResult> {
+    const row = await this.prisma.externalApi.findUnique({ where: { provider } });
+    if (!row) throw new NotFoundException(`未找到 provider=${provider}`);
+
+    const apiKey = dto.apiKey || row.apiKey || this.envFallback(provider);
+    if (!apiKey) {
+      return {
+        ok: false,
+        latencyMs: 0,
+        message: '未设置 API Key — 请先填入或保存后再测',
+      };
+    }
+    const apiUrl = (dto.apiUrl || row.apiUrl || '').replace(/\/+$/, '');
+    if (!apiUrl) {
+      return { ok: false, latencyMs: 0, message: '未设置 endpoint(apiUrl)' };
+    }
+    const model = dto.model || row.model || 'gpt-3.5-turbo';
+
+    const started = Date.now();
+    try {
+      const resp = await axios.post(
+        `${apiUrl}/chat/completions`,
+        {
+          model,
+          messages: [
+            { role: 'user', content: '请回复:OK' },
+          ],
+          max_tokens: 10,
+          temperature: 0,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 15000,
+        },
+      );
+      const latencyMs = Date.now() - started;
+      const reply = String(resp.data?.choices?.[0]?.message?.content ?? '').slice(0, 200);
+      await this.audit.log({
+        action: 'api.test',
+        target: row.id,
+        ...ctx,
+        detail: JSON.stringify({ provider, ok: true, latencyMs, model }),
+      });
+      return {
+        ok: true,
+        latencyMs,
+        message: reply || '响应为空但通了',
+        model,
+      };
+    } catch (e) {
+      const latencyMs = Date.now() - started;
+      const err = e as AxiosError<{ error?: { message?: string } }>;
+      const message =
+        err.response?.data?.error?.message ??
+        err.message ??
+        '未知错误';
+      await this.audit.log({
+        action: 'api.test',
+        target: row.id,
+        ...ctx,
+        detail: JSON.stringify({ provider, ok: false, latencyMs, message }),
+      });
+      return { ok: false, latencyMs, message, model };
+    }
+  }
+
+  /**
+   * 余额查询 — 仅个别 provider 实现:
+   *   - deepseek: GET /user/balance(官方支持)
+   *   - 其他:返回 status='not_supported'
+   * 后续按需添加更多 provider 适配。
+   */
+  async queryBalance(provider: string): Promise<ExternalApiBalance> {
+    const cfg = await this.getKeyForProvider(provider);
+    if (!cfg.apiKey) {
+      return {
+        status: 'error',
+        detail: '未配置 API Key,无法查询余额',
+      };
+    }
+    const apiUrl = (cfg.apiUrl || '').replace(/\/+$/, '');
+
+    try {
+      if (provider === 'deepseek') {
+        // 官方:GET https://api.deepseek.com/user/balance
+        // 注意路径不带 v1。从 cfg.apiUrl(可能是 /v1)推根域名
+        const base = apiUrl.replace(/\/v\d+$/, '') || 'https://api.deepseek.com';
+        const resp = await axios.get(`${base}/user/balance`, {
+          headers: { Authorization: `Bearer ${cfg.apiKey}` },
+          timeout: 10000,
+        });
+        const data = resp.data as {
+          is_available?: boolean;
+          balance_infos?: Array<{
+            currency: string;
+            total_balance: string;
+            granted_balance: string;
+            topped_up_balance: string;
+          }>;
+        };
+        const info = data.balance_infos?.[0];
+        if (!info) {
+          return { status: 'error', detail: '响应缺少 balance_infos', raw: data };
+        }
+        return {
+          status: 'supported',
+          balance: Number(info.total_balance),
+          granted: Number(info.granted_balance),
+          unit: info.currency,
+          detail: data.is_available
+            ? `可用 · 共充 ${info.topped_up_balance} ${info.currency}`
+            : '账户暂不可用',
+          raw: data,
+        };
+      }
+
+      return {
+        status: 'not_supported',
+        detail: `${provider} 暂未实现余额查询适配。可点「去充值/管理」到平台控制台查看。`,
+      };
+    } catch (e) {
+      const err = e as AxiosError<{ error?: { message?: string } }>;
+      const message =
+        err.response?.data?.error?.message ?? err.message ?? '未知错误';
+      return { status: 'error', detail: message };
+    }
   }
 
   async remove(provider: string, ctx: AuditCtx): Promise<{ ok: true }> {

@@ -38,6 +38,11 @@ export class UpdateExternalApiDto {
   model?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  rechargeUrl?: string;
+
+  @IsOptional()
   @IsBoolean()
   active?: boolean;
 
@@ -45,6 +50,26 @@ export class UpdateExternalApiDto {
   @IsOptional()
   @IsString()
   meta?: string;
+}
+
+/**
+ * 测试连接 DTO — 允许覆盖临时 key(便于编辑对话框里「测试当前编辑值」)
+ */
+export class TestExternalApiDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  apiKey?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  apiUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  model?: string;
 }
 
 /**
@@ -78,6 +103,11 @@ export class CreateExternalApiDto {
   @IsString()
   @MaxLength(64)
   model?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  rechargeUrl?: string;
 
   @IsOptional()
   @IsBoolean()

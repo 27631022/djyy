@@ -15,6 +15,7 @@ import { AuditService } from '../audit';
 import { ExternalApiService } from '../external-api';
 import type {
   ExtractHonorResponse,
+  ExtractedHonor,
   ExtractedRecipient,
 } from './dto/extract-honor.dto';
 
@@ -25,15 +26,21 @@ interface ExtractCtx {
 }
 
 /** 提示 DeepSeek 返回结构化 JSON 的 system prompt */
-const SYSTEM_PROMPT = `你是一个证书管理系统的「荣誉表彰文件解析助手」。用户会上传一段表彰文件原文(可能来自 Word/PDF 转出的纯文本),你的任务是从中提取:
-1. 表彰荣誉名称(如"2024 年度优秀党员"、"先进基层党委")
-2. 表彰年份段(如"2024"、"2024-2025"。年度跨年的写完整段;若只见单年用单年)
-3. 表彰对象列表:每人包含 姓名(必填)、员工编号(可选)、部门(可选)
+const SYSTEM_PROMPT = `你是一个证书管理系统的「荣誉表彰文件解析助手」。用户上传表彰文件原文(Word/PDF 转出的纯文本),你的任务是从中提取结构化信息。
 
-输出严格 JSON,不要任何 markdown / 解释 / 围栏标记。形如:
-{"honorName":"...","yearLabel":"...","recipients":[{"name":"...","empNo":"...","dept":"..."}]}
+关键能力:**一份文件可能包含多种荣誉**(如"两优一先"通常包含"优秀共产党员"、"优秀党务工作者"、"先进基层党组织"三类)。务必识别为多个 honor 项,不要合并成一项。
 
-如果某字段无法从原文判断,留空字符串。年份无法判断时 yearLabel="".`;
+提取要点:
+1. honors:荣誉项数组,每项含:
+   - honorName:荣誉名称(如"优秀共产党员",不要带年份前缀)
+   - issuingOrg:该荣誉的颁发机构,如"中共 XX 委员会"(找不到留空字符串)
+   - recipients:对应受表彰对象/单位的数组,每项含 name(必填)/ empNo(可选)/ dept(可选)
+     · 当荣誉表彰的是单位(如"先进基层党组织"),把 name 填成单位名,empNo/dept 留空
+2. yearLabel:整个文件级别的年份,"2024" 或 "2024-2025"。抽不到留空
+3. issueDate:整个文件的颁发/落款日期,ISO 格式 YYYY-MM-DD,抽不到留空
+
+输出严格 JSON,不要 markdown / 围栏 / 解释:
+{"honors":[{"honorName":"...","issuingOrg":"...","recipients":[{"name":"..."}]}],"yearLabel":"...","issueDate":"..."}`;
 
 @Injectable()
 export class CertificateExtractionService {
@@ -133,7 +140,14 @@ export class CertificateExtractionService {
     }
 
     // 3. 解析 JSON
-    let parsed: { honorName?: string; yearLabel?: string; recipients?: unknown };
+    let parsed: {
+      honors?: unknown;
+      // 兼容旧形态:单 honor 字段(若 model 没听清新 prompt 仍能 fallback)
+      honorName?: string;
+      recipients?: unknown;
+      yearLabel?: string;
+      issueDate?: string;
+    };
     try {
       parsed = JSON.parse(raw);
     } catch {
@@ -143,12 +157,25 @@ export class CertificateExtractionService {
       );
     }
 
-    const recipients = normalizeRecipients(parsed.recipients);
+    // 兼容旧形态(早期单 honor)+ 新形态(多 honor)
+    let honors: ExtractedHonor[];
+    if (Array.isArray(parsed.honors)) {
+      honors = normalizeHonors(parsed.honors);
+    } else if (parsed.honorName !== undefined || parsed.recipients !== undefined) {
+      honors = [
+        {
+          honorName: String(parsed.honorName ?? '').trim(),
+          recipients: normalizeRecipients(parsed.recipients),
+        },
+      ];
+    } else {
+      honors = [];
+    }
 
     const result: ExtractHonorResponse = {
-      honorName: String(parsed.honorName ?? '').trim(),
+      honors,
       yearLabel: normalizeYearLabel(String(parsed.yearLabel ?? '')),
-      recipients,
+      issueDate: normalizeIssueDate(String(parsed.issueDate ?? '')),
       source: {
         fileName: file.originalname,
         bytes: file.size,
@@ -166,9 +193,10 @@ export class CertificateExtractionService {
       detail: JSON.stringify({
         fileName: file.originalname,
         bytes: file.size,
-        honorName: result.honorName,
+        honorCount: result.honors.length,
+        honorNames: result.honors.map((h) => h.honorName),
+        recipientTotal: result.honors.reduce((s, h) => s + h.recipients.length, 0),
         yearLabel: result.yearLabel,
-        recipientCount: result.recipients.length,
         promptTokens,
         completionTokens,
       }),
@@ -251,6 +279,22 @@ function normalizeRecipients(input: unknown): ExtractedRecipient[] {
   return out;
 }
 
+function normalizeHonors(input: unknown[]): ExtractedHonor[] {
+  const out: ExtractedHonor[] = [];
+  for (const h of input) {
+    if (!h || typeof h !== 'object') continue;
+    const obj = h as Record<string, unknown>;
+    const honorName = String(obj.honorName ?? '').trim();
+    if (!honorName) continue;
+    out.push({
+      honorName,
+      issuingOrg: String(obj.issuingOrg ?? '').trim() || undefined,
+      recipients: normalizeRecipients(obj.recipients),
+    });
+  }
+  return out;
+}
+
 function normalizeYearLabel(s: string): string {
   const trimmed = s.trim();
   if (!trimmed) return '';
@@ -258,4 +302,16 @@ function normalizeYearLabel(s: string): string {
   const m = trimmed.match(/(\d{4})(?:[-—~](\d{4}))?/);
   if (!m) return '';
   return m[2] ? `${m[1]}-${m[2]}` : m[1];
+}
+
+function normalizeIssueDate(s: string): string {
+  const trimmed = s.trim();
+  if (!trimmed) return '';
+  // 接受 "2024-12-15" / "2024年12月15日" / "2024.12.15"
+  const m = trimmed.match(/(\d{4})[-年.](\d{1,2})[-月.](\d{1,2})/);
+  if (!m) return '';
+  const yyyy = m[1];
+  const mm = m[2].padStart(2, '0');
+  const dd = m[3].padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }

@@ -14,13 +14,26 @@ export interface ExtractedRecipient {
   dept?: string;
 }
 
-export interface ExtractHonorResponse {
-  /** 表彰名称(从文件抽取的原始字符串,如 "2024 年度优秀党员") */
+/**
+ * 一个荣誉项 — 一份表彰文件可能包含多个(如"两优一先":
+ * 优秀共产党员 / 优秀党务工作者 / 先进基层党组织)。
+ */
+export interface ExtractedHonor {
+  /** 荣誉名称,如 "优秀共产党员" */
   honorName: string;
-  /** 年份段,如 "2024" / "2024-2025"(没抽到时给空字符串,前端默认当前年) */
-  yearLabel: string;
+  /** 该荣誉的颁发机构(若文中能抽到,如 "中共 XX 委员会") */
+  issuingOrg?: string;
   /** 表彰对象列表 */
   recipients: ExtractedRecipient[];
+}
+
+export interface ExtractHonorResponse {
+  /** 多荣誉:一份文件抽到的所有荣誉项。单荣誉时 length=1。 */
+  honors: ExtractedHonor[];
+  /** 年份段(整份文件级别),如 "2024" / "2024-2025"(抽不到时空字符串) */
+  yearLabel: string;
+  /** 颁发日期(整份文件级别),ISO 字符串 yyyy-mm-dd 或空 */
+  issueDate?: string;
   /** 出处元信息 — 用户用来人工核对 */
   source: {
     fileName: string;

@@ -16,11 +16,16 @@ import {
   CheckCircle2Icon,
   Loader2Icon,
   XIcon,
+  ZapIcon,
+  WalletIcon,
+  ExternalLinkIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   externalApiApi,
   type ExternalApiDto,
+  type ExternalApiTestResult,
+  type ExternalApiBalance,
   type CreateExternalApiInput,
 } from "../api";
 
@@ -172,6 +177,8 @@ function ApiCard({
 }) {
   const [keyVisible, setKeyVisible] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [testResult, setTestResult] = useState<ExternalApiTestResult | null>(null);
+  const [balance, setBalance] = useState<ExternalApiBalance | null>(null);
 
   function handleCopy() {
     if (!api.apiKeyMasked) return;
@@ -180,6 +187,29 @@ function ApiCard({
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
+
+  const testMut = useMutation({
+    mutationFn: () => externalApiApi.test(api.provider, {}),
+    onSuccess: (r) => {
+      setTestResult(r);
+      if (r.ok) toast.success(`测试通过 · ${r.latencyMs}ms`);
+      else toast.error(`测试失败:${r.message}`);
+    },
+    onError: (e: unknown) =>
+      toast.error(e instanceof Error ? e.message : "测试失败"),
+  });
+
+  const balanceMut = useMutation({
+    mutationFn: () => externalApiApi.balance(api.provider),
+    onSuccess: (b) => {
+      setBalance(b);
+      if (b.status === 'supported') toast.success("余额已更新");
+      else if (b.status === 'not_supported') toast.info(b.detail ?? "暂不支持");
+      else toast.error(b.detail ?? "查询失败");
+    },
+    onError: (e: unknown) =>
+      toast.error(e instanceof Error ? e.message : "查询失败"),
+  });
 
   return (
     <div
@@ -280,8 +310,79 @@ function ApiCard({
         )}
       </div>
 
-      {/* 操作行 */}
-      <div className="mt-3 pt-3 border-t border-[#F0F0F0] flex items-center gap-1.5">
+      {/* 测试 / 余额 结果 */}
+      {(testResult || balance) && (
+        <div className="mt-3 space-y-1.5">
+          {testResult && (
+            <div
+              className={`rounded px-2 py-1.5 text-[11px] flex items-start gap-1.5 ${
+                testResult.ok
+                  ? "bg-green-50 text-green-800 border border-green-100"
+                  : "bg-red-50 text-red-800 border border-red-100"
+              }`}
+            >
+              {testResult.ok ? (
+                <CheckCircle2Icon className="w-3.5 h-3.5 flex-shrink-0 mt-px text-green-600" />
+              ) : (
+                <AlertCircleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-px text-red-600" />
+              )}
+              <span className="flex-1 min-w-0">
+                {testResult.ok ? "测试通过" : "测试失败"} · {testResult.latencyMs}ms
+                <br />
+                <span className="opacity-75 break-all">{testResult.message}</span>
+              </span>
+            </div>
+          )}
+          {balance && (
+            <BalanceLine balance={balance} />
+          )}
+        </div>
+      )}
+
+      {/* 操作行 1:测试 / 余额 / 充值 */}
+      <div className="mt-3 pt-3 border-t border-[#F0F0F0] flex items-center gap-1.5 flex-wrap">
+        <button
+          onClick={() => testMut.mutate()}
+          disabled={testMut.isPending}
+          className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border border-[#E9E9E9] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] disabled:opacity-50"
+          title="发一条最小 chat 请求验证连通性"
+        >
+          {testMut.isPending ? (
+            <Loader2Icon className="w-3 h-3 animate-spin" />
+          ) : (
+            <ZapIcon className="w-3 h-3" />
+          )}
+          测试
+        </button>
+        <button
+          onClick={() => balanceMut.mutate()}
+          disabled={balanceMut.isPending}
+          className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border border-[#E9E9E9] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] disabled:opacity-50"
+          title="查询账户余额(部分平台支持)"
+        >
+          {balanceMut.isPending ? (
+            <Loader2Icon className="w-3 h-3 animate-spin" />
+          ) : (
+            <WalletIcon className="w-3 h-3" />
+          )}
+          余额
+        </button>
+        {api.rechargeUrl && (
+          <a
+            href={api.rechargeUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border border-[#E9E9E9] text-[#6B7280] hover:text-[var(--party-primary)] hover:border-[var(--party-primary)]"
+            title="到平台控制台查看用量 / 充值"
+          >
+            <ExternalLinkIcon className="w-3 h-3" />
+            充值/管理
+          </a>
+        )}
+      </div>
+
+      {/* 操作行 2:编辑 / 启停 / 删除 */}
+      <div className="mt-1.5 flex items-center gap-1.5">
         <button
           onClick={onEdit}
           className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded text-xs font-medium border border-[#E9E9E9] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] hover:bg-[#FFF7F8] transition-colors"
@@ -308,6 +409,29 @@ function ApiCard({
           <TrashIcon className="w-3.5 h-3.5" />
         </button>
       </div>
+    </div>
+  );
+}
+
+function BalanceLine({ balance }: { balance: ExternalApiBalance }) {
+  if (balance.status === 'supported' && balance.balance !== undefined) {
+    return (
+      <div className="rounded px-2 py-1.5 text-[11px] bg-blue-50 text-blue-800 border border-blue-100 flex items-center gap-1.5">
+        <WalletIcon className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+        <span className="flex-1">
+          余额 <span className="font-bold text-base align-middle">{balance.balance}</span>{" "}
+          {balance.unit}
+          {balance.detail && (
+            <span className="ml-2 opacity-75">· {balance.detail}</span>
+          )}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded px-2 py-1.5 text-[11px] bg-amber-50 text-amber-800 border border-amber-100 flex items-start gap-1.5">
+      <AlertCircleIcon className="w-3.5 h-3.5 flex-shrink-0 text-amber-600 mt-px" />
+      <span className="flex-1">{balance.detail ?? "无法查询"}</span>
     </div>
   );
 }
@@ -339,7 +463,26 @@ function EditDialog({
   const [clearKey, setClearKey] = useState(false);
   const [apiUrl, setApiUrl] = useState(api.apiUrl ?? "");
   const [model, setModel] = useState(api.model ?? "");
+  const [rechargeUrl, setRechargeUrl] = useState(api.rechargeUrl ?? "");
   const [active, setActive] = useState(api.active);
+  const [testResult, setTestResult] = useState<ExternalApiTestResult | null>(null);
+
+  const testMut = useMutation({
+    // 编辑时的「测试」用当前 draft 值,允许在保存前先验
+    mutationFn: () =>
+      externalApiApi.test(api.provider, {
+        apiKey: apiKeyDraft || undefined,
+        apiUrl: apiUrl || undefined,
+        model: model || undefined,
+      }),
+    onSuccess: (r) => {
+      setTestResult(r);
+      if (r.ok) toast.success(`测试通过 · ${r.latencyMs}ms`);
+      else toast.error(`测试失败:${r.message}`);
+    },
+    onError: (e: unknown) =>
+      toast.error(e instanceof Error ? e.message : "测试失败"),
+  });
 
   const mut = useMutation({
     mutationFn: () =>
@@ -349,6 +492,7 @@ function EditDialog({
         apiKey: clearKey ? "" : apiKeyDraft || undefined,
         apiUrl: apiUrl || undefined,
         model: model || undefined,
+        rechargeUrl: rechargeUrl || undefined,
         active,
       }),
     onSuccess: () => {
@@ -405,6 +549,12 @@ function EditDialog({
           mono
         />
         <LabeledInput label="默认模型" value={model} onChange={setModel} mono />
+        <LabeledInput
+          label="充值/管理页 URL(可选)"
+          value={rechargeUrl}
+          onChange={setRechargeUrl}
+          placeholder="如 https://platform.deepseek.com/top_up"
+        />
         <label className="flex items-center gap-2 text-xs cursor-pointer">
           <input
             type="checkbox"
@@ -413,6 +563,42 @@ function EditDialog({
           />
           启用(禁用后业务回退到 .env 兜底)
         </label>
+
+        {/* 测试连接 — 在保存前验证当前编辑值 */}
+        <div className="pt-2 border-t border-[#F0F0F0]">
+          <button
+            type="button"
+            onClick={() => testMut.mutate()}
+            disabled={testMut.isPending}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border border-[#E9E9E9] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] disabled:opacity-50"
+          >
+            {testMut.isPending ? (
+              <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <ZapIcon className="w-3.5 h-3.5" />
+            )}
+            测试当前值(可未保存)
+          </button>
+          {testResult && (
+            <div
+              className={`mt-2 rounded px-2 py-1.5 text-[11px] flex items-start gap-1.5 ${
+                testResult.ok
+                  ? "bg-green-50 text-green-800 border border-green-100"
+                  : "bg-red-50 text-red-800 border border-red-100"
+              }`}
+            >
+              {testResult.ok ? (
+                <CheckCircle2Icon className="w-3.5 h-3.5 flex-shrink-0 mt-px text-green-600" />
+              ) : (
+                <AlertCircleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-px text-red-600" />
+              )}
+              <span className="flex-1 break-all">
+                {testResult.ok ? "通过" : "失败"} · {testResult.latencyMs}ms ·{" "}
+                {testResult.message}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
       <DialogFooter
         onCancel={onCancel}
@@ -441,6 +627,7 @@ function CreateDialog({
     apiKey: "",
     apiUrl: "",
     model: "",
+    rechargeUrl: "",
     active: true,
   });
 
@@ -517,6 +704,12 @@ function CreateDialog({
           value={draft.model ?? ""}
           onChange={(v) => patch("model", v)}
           mono
+        />
+        <LabeledInput
+          label="充值/管理页 URL"
+          value={draft.rechargeUrl ?? ""}
+          onChange={(v) => patch("rechargeUrl", v)}
+          placeholder="平台官方控制台地址"
         />
       </div>
       <DialogFooter

@@ -150,10 +150,17 @@ export interface ExtractedRecipient {
   dept?: string;
 }
 
-export interface ExtractHonorResponse {
+export interface ExtractedHonor {
   honorName: string;
-  yearLabel: string;
+  issuingOrg?: string;
   recipients: ExtractedRecipient[];
+}
+
+export interface ExtractHonorResponse {
+  /** 多荣誉:一份文件可能抽到多个(例如"两优一先") */
+  honors: ExtractedHonor[];
+  yearLabel: string;
+  issueDate?: string;
   source: {
     fileName: string;
     bytes: number;

@@ -165,6 +165,7 @@ async function seedExternalApis() {
     description: string;
     apiUrl: string;
     model: string;
+    rechargeUrl: string;
   }> = [
     {
       provider: 'deepseek',
@@ -172,6 +173,7 @@ async function seedExternalApis() {
       description: '深度求索,性价比首选,中文能力强。用于证书 AI 提取等场景。',
       apiUrl: 'https://api.deepseek.com/v1',
       model: 'deepseek-chat',
+      rechargeUrl: 'https://platform.deepseek.com/top_up',
     },
     {
       provider: 'openai',
@@ -179,6 +181,7 @@ async function seedExternalApis() {
       description: 'GPT-4 / GPT-4o,通用能力最强,英文+逻辑突出。',
       apiUrl: 'https://api.openai.com/v1',
       model: 'gpt-4o-mini',
+      rechargeUrl: 'https://platform.openai.com/account/billing/overview',
     },
     {
       provider: 'qwen',
@@ -186,6 +189,7 @@ async function seedExternalApis() {
       description: 'Qwen 系列,阿里云出品,国内访问稳定。',
       apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
       model: 'qwen-plus',
+      rechargeUrl: 'https://dashscope.console.aliyun.com/billing',
     },
     {
       provider: 'doubao',
@@ -193,6 +197,7 @@ async function seedExternalApis() {
       description: 'Doubao 系列(火山引擎),长上下文 + 多模态。',
       apiUrl: 'https://ark.cn-beijing.volces.com/api/v3',
       model: 'doubao-pro-32k',
+      rechargeUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement',
     },
     {
       provider: 'ernie',
@@ -200,6 +205,7 @@ async function seedExternalApis() {
       description: 'ERNIE 系列(千帆平台),党政场景适配好。',
       apiUrl: 'https://qianfan.baidubce.com/v2',
       model: 'ernie-4.0-8k',
+      rechargeUrl: 'https://console.bce.baidu.com/qianfan/overview',
     },
   ];
   for (const i of items) {
@@ -211,13 +217,15 @@ async function seedExternalApis() {
         description: i.description,
         apiUrl: i.apiUrl,
         model: i.model,
+        rechargeUrl: i.rechargeUrl,
         active: true,
         // apiKey 故意留空 — 管理员到「外部 API」页面手动录入
       },
-      // 不覆盖管理员已配的 apiKey/active,仅刷新元数据
+      // 不覆盖管理员已配的 apiKey/active,仅刷新元数据 + rechargeUrl
       update: {
         name: i.name,
         description: i.description,
+        rechargeUrl: i.rechargeUrl,
       },
     });
   }

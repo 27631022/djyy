@@ -14,6 +14,7 @@ import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { ExternalApiService } from './external-api.service';
 import {
   CreateExternalApiDto,
+  TestExternalApiDto,
   UpdateExternalApiDto,
 } from './dto/update-external-api.dto';
 
@@ -78,5 +79,26 @@ export class ExternalApiController {
       actorName: me.name,
       ip: req.ip,
     });
+  }
+
+  /** 测试连接 — body 可传 apiKey/apiUrl/model 覆盖,便于编辑对话框「测试当前编辑值」 */
+  @Post(':provider/test')
+  test(
+    @Param('provider') provider: string,
+    @Body() dto: TestExternalApiDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.test(provider, dto, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
+  }
+
+  /** 余额查询(仅个别 provider 支持) */
+  @Get(':provider/balance')
+  balance(@Param('provider') provider: string) {
+    return this.svc.queryBalance(provider);
   }
 }

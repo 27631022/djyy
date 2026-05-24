@@ -395,6 +395,7 @@ model ExternalApi {
   apiKey      String? // 明文密钥
   apiUrl      String? // 自定义 endpoint
   model       String? // 默认模型
+  rechargeUrl String? // 平台充值/计费 控制台 URL,前端「去充值」按钮
   active      Boolean  @default(true)
   meta        String? // JSON 扩展(超时/温度等)
   createdAt   DateTime @default(now())
