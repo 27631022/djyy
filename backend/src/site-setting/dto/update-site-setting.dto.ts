@@ -49,6 +49,21 @@ class FooterDto {
   friendLinks!: FriendLinkDto[];
 }
 
+class TopNavLinkDto {
+  @IsString()
+  label!: string;
+
+  @IsString()
+  url!: string;
+}
+
+class TopNavDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TopNavLinkDto)
+  items!: TopNavLinkDto[];
+}
+
 class ThemeDto {
   @IsString()
   primary!: string;
@@ -78,6 +93,11 @@ export class UpdateSiteSettingDto {
   @ValidateNested()
   @Type(() => FooterDto)
   footer!: FooterDto;
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => TopNavDto)
+  topNav!: TopNavDto;
 
   @IsObject()
   @ValidateNested()

@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   SettingsIcon, RefreshCwIcon, SaveIcon, RotateCcwIcon,
   TagIcon, ImageIcon, MegaphoneIcon, LinkIcon, PaletteIcon,
-  PlusIcon, TrashIcon, GlobeIcon,
+  PlusIcon, TrashIcon, GlobeIcon, MenuIcon,
 } from "lucide-react";
 import {
   siteSettingApi,
@@ -14,11 +14,12 @@ import {
 
 const PARTY = "var(--party-primary)";
 
-type TabId = "brand" | "hero" | "footer" | "theme";
+type TabId = "brand" | "hero" | "topNav" | "footer" | "theme";
 
 const TABS: { id: TabId; label: string; icon: React.ElementType; desc: string }[] = [
   { id: "brand", label: "基础品牌", icon: TagIcon, desc: "决定前台头部的站点身份呈现" },
   { id: "hero", label: "首页文案", icon: MegaphoneIcon, desc: "首页 Hero 区(红色横幅)的主副标语" },
+  { id: "topNav", label: "首页顶端", icon: MenuIcon, desc: "头部 logo 右侧的 N 个文字链接(党务公开 / 学习园地 等)" },
   { id: "footer", label: "页脚信息", icon: LinkIcon, desc: "底部备案、版权与友情链接" },
   { id: "theme", label: "主题配色", icon: PaletteIcon, desc: "影响前台头部、按钮、Hero 等关键视觉" },
 ];
@@ -94,6 +95,10 @@ export default function SiteSettingsPage() {
   }
   function updateFooter(patch: Partial<SiteSettingsData["footer"]>) {
     setForm((f) => ({ ...f, footer: { ...f.footer, ...patch } }));
+    setDirty(true);
+  }
+  function updateTopNav(patch: Partial<SiteSettingsData["topNav"]>) {
+    setForm((f) => ({ ...f, topNav: { ...f.topNav, ...patch } }));
     setDirty(true);
   }
   function updateTheme(patch: Partial<SiteSettingsData["theme"]>) {
@@ -220,6 +225,8 @@ export default function SiteSettingsPage() {
               <BrandForm value={form.brand} onChange={updateBrand} />
             ) : tab === "hero" ? (
               <HeroForm value={form.hero} onChange={updateHero} />
+            ) : tab === "topNav" ? (
+              <TopNavForm value={form.topNav} onChange={updateTopNav} />
             ) : tab === "footer" ? (
               <FooterForm value={form.footer} onChange={updateFooter} />
             ) : (
@@ -354,6 +361,122 @@ function HeroForm({ value, onChange }: { value: SiteSettingsData["hero"]; onChan
         placeholder="Party Building Digital Portal"
         hint="Hero 区最顶部装饰性英文"
       />
+    </div>
+  );
+}
+
+/* ─── TopNav(首页顶端导航条) ─── */
+function TopNavForm({
+  value,
+  onChange,
+}: {
+  value: SiteSettingsData["topNav"];
+  onChange: (p: Partial<SiteSettingsData["topNav"]>) => void;
+}) {
+  function updateItem(idx: number, patch: Partial<{ label: string; url: string }>) {
+    const next = value.items.map((it, i) => (i === idx ? { ...it, ...patch } : it));
+    onChange({ items: next });
+  }
+  function addItem() {
+    onChange({ items: [...value.items, { label: "", url: "#" }] });
+  }
+  function removeItem(idx: number) {
+    onChange({ items: value.items.filter((_, i) => i !== idx) });
+  }
+  function moveItem(idx: number, dir: -1 | 1) {
+    const next = [...value.items];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    onChange({ items: next });
+  }
+
+  return (
+    <div>
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-2">
+          <FieldLabel
+            label="顶端导航链接"
+            hint="显示在前台头部 LOGO 右侧,顺序即展示顺序。URL 填 # 表示暂未启用"
+          />
+          <button
+            onClick={addItem}
+            type="button"
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-[var(--party-primary)] hover:bg-party-soft transition-colors"
+          >
+            <PlusIcon className="w-3 h-3" />
+            添加链接
+          </button>
+        </div>
+        <div className="flex flex-col gap-2">
+          {value.items.length === 0 && (
+            <div className="text-center text-xs text-[#9CA3AF] py-6 border border-dashed border-[#E9E9E9] rounded-md">
+              暂无顶端链接,点击右上角「添加链接」
+            </div>
+          )}
+          {value.items.map((it, idx) => {
+            const isFirst = idx === 0;
+            const isLast = idx === value.items.length - 1;
+            return (
+              <div
+                key={idx}
+                className="flex items-center gap-2 p-2 border border-[#E9E9E9] rounded-md hover:border-[var(--party-primary)]/40 transition-colors"
+              >
+                <span className="text-[10px] font-mono text-[#9CA3AF] w-5 text-center flex-shrink-0">
+                  {idx + 1}
+                </span>
+                <input
+                  value={it.label}
+                  onChange={(e) => updateItem(idx, { label: e.target.value })}
+                  placeholder="链接文字(如:党务公开)"
+                  className="w-36 border border-[#E9E9E9] rounded px-2 py-1 text-xs focus:outline-none focus:border-[var(--party-primary)]"
+                />
+                <input
+                  value={it.url}
+                  onChange={(e) => updateItem(idx, { url: e.target.value })}
+                  placeholder="/ 或 https://... 或 #"
+                  className="flex-1 border border-[#E9E9E9] rounded px-2 py-1 text-xs focus:outline-none focus:border-[var(--party-primary)] font-mono"
+                />
+                <div className="flex flex-col gap-0.5 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => moveItem(idx, -1)}
+                    disabled={isFirst}
+                    className="px-1.5 py-0.5 text-[10px] rounded border border-[#E9E9E9] text-[#6B7280] hover:bg-[#F7F8FA] disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="上移"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveItem(idx, 1)}
+                    disabled={isLast}
+                    className="px-1.5 py-0.5 text-[10px] rounded border border-[#E9E9E9] text-[#6B7280] hover:bg-[#F7F8FA] disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="下移"
+                  >
+                    ↓
+                  </button>
+                </div>
+                <button
+                  onClick={() => removeItem(idx)}
+                  type="button"
+                  className="p-1 rounded hover:bg-party-soft text-[#9CA3AF] hover:text-[var(--party-primary)] transition-colors flex-shrink-0"
+                  title="删除"
+                >
+                  <TrashIcon className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <p className="text-[11px] text-[#9CA3AF] leading-relaxed">
+        提示:URL 填「/」会跳到首页,「#」是占位(不跳转),也可以填「
+        <span className="font-mono">/admin/news</span>
+        」之类的站内路径,或外部链接「
+        <span className="font-mono">https://...</span>
+        」。前台头部会从左到右按顺序依次显示这些链接。
+      </p>
     </div>
   );
 }

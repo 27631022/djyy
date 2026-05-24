@@ -667,7 +667,7 @@ export default function NavPage() {
   });
   const settings = settingsQuery.data ?? FALLBACK_SITE_SETTINGS;
   // theme 已通过 App.tsx 的 ThemeBootstrap 注入到 :root,这里只解构需要文案的字段
-  const { brand, hero, footer } = settings;
+  const { brand, hero, footer, topNav } = settings;
 
   const suggestions = searchValue.trim()
     ? SUGGEST_POOL.filter(w => w.includes(searchValue.trim())).slice(0, 8)
@@ -745,14 +745,22 @@ export default function NavPage() {
             </div>
           </div>
 
-          {/* Nav links */}
+          {/* Nav links — 后台「站点设置 → 首页顶端」可改文字/URL/排序/增删 */}
           <nav className="hidden md:flex items-center gap-6 mr-4">
-            {[`首页`, `党务公开`, `学习园地`, `通知公告`, `联系我们`].map(item => (
-              <a key={item} href="#" onClick={e => e.preventDefault()}
-                className="text-base text-[#1A1A1A] hover:text-[var(--party-primary)] transition-colors font-medium">
-                {item}
-              </a>
-            ))}
+            {topNav.items.map((item, idx) => {
+              const isPlaceholder = !item.url || item.url === "#";
+              return (
+                <a
+                  key={`${item.label}-${idx}`}
+                  href={isPlaceholder ? "#" : item.url}
+                  onClick={isPlaceholder ? (e) => e.preventDefault() : undefined}
+                  className="text-base text-[#1A1A1A] hover:text-[var(--party-primary)] transition-colors font-medium"
+                  title={isPlaceholder ? "暂未启用,请到「站点设置 → 首页顶端」配置 URL" : undefined}
+                >
+                  {item.label}
+                </a>
+              );
+            })}
           </nav>
 
           <HeaderUserArea />

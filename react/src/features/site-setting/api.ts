@@ -9,6 +9,13 @@ export interface FriendLink {
   url: string;
 }
 
+/** 首页顶端导航条的单条链接 — 显示在头部 logo 右侧 */
+export interface TopNavLink {
+  label: string;
+  /** "#" 表示占位、暂未启用 */
+  url: string;
+}
+
 export interface SiteSettingsData {
   brand: {
     title: string;
@@ -24,6 +31,9 @@ export interface SiteSettingsData {
     icp: string;
     copyright: string;
     friendLinks: FriendLink[];
+  };
+  topNav: {
+    items: TopNavLink[];
   };
   theme: {
     primary: string;
@@ -53,6 +63,15 @@ export const FALLBACK_SITE_SETTINGS: SiteSettingsData = {
       { label: "中国共产党新闻网", url: "#" },
       { label: "共产党员网", url: "#" },
       { label: "学习强国", url: "#" },
+    ],
+  },
+  topNav: {
+    items: [
+      { label: "首页", url: "/" },
+      { label: "党务公开", url: "#" },
+      { label: "学习园地", url: "#" },
+      { label: "通知公告", url: "#" },
+      { label: "联系我们", url: "#" },
     ],
   },
   theme: {

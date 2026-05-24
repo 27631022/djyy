@@ -97,6 +97,10 @@ function mergeWithDefaults(part: Partial<SiteSettingsData>): SiteSettingsData {
       // friendLinks 是数组,直接覆盖而不是 spread
       friendLinks: part.footer?.friendLinks ?? DEFAULT_SITE_SETTINGS.footer.friendLinks,
     },
+    topNav: {
+      // items 数组直接覆盖,缺失时回默认 5 项
+      items: part.topNav?.items ?? DEFAULT_SITE_SETTINGS.topNav.items,
+    },
     theme: { ...DEFAULT_SITE_SETTINGS.theme, ...(part.theme ?? {}) },
   };
 }

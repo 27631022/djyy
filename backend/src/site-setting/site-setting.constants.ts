@@ -15,6 +15,13 @@ export interface FriendLink {
   url: string;
 }
 
+export interface TopNavLink {
+  /** 链接文字,如 "党务公开"。前端首页顶端 nav 用此字段 */
+  label: string;
+  /** 点击跳转的 URL,留 "#" 表示暂未启用(占位) */
+  url: string;
+}
+
 export interface SiteSettingsData {
   brand: {
     /** 站点中文标题,如 "党建益友" */
@@ -39,6 +46,10 @@ export interface SiteSettingsData {
     copyright: string;
     /** 友情链接(数组) */
     friendLinks: FriendLink[];
+  };
+  /** 首页顶端导航条 — 顶部 logo 右侧的 5-N 个文字链接(如 "首页 / 党务公开 / 学习园地 ...")*/
+  topNav: {
+    items: TopNavLink[];
   };
   theme: {
     /** 主色调(党建红),如 "#C8001E" */
@@ -70,6 +81,15 @@ export const DEFAULT_SITE_SETTINGS: SiteSettingsData = {
       { label: '中国共产党新闻网', url: '#' },
       { label: '共产党员网', url: '#' },
       { label: '学习强国', url: '#' },
+    ],
+  },
+  topNav: {
+    items: [
+      { label: '首页', url: '/' },
+      { label: '党务公开', url: '#' },
+      { label: '学习园地', url: '#' },
+      { label: '通知公告', url: '#' },
+      { label: '联系我们', url: '#' },
     ],
   },
   theme: {
