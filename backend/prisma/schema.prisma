@@ -33,7 +33,8 @@ datasource db {
 // @module: organization
 model Organization {
   id        String         @id @default(cuid())
-  name      String
+  name      String // 简称 — 列表 / 树视图日常显示
+  fullName  String? // 全称 — 证书 / 公文 / 印章等正式场合需要(可空兼容老数据)
   code      String         @unique
   kind      String // party | admin
   type      String // 见上方注释

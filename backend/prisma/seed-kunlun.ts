@@ -65,6 +65,7 @@ async function upsertOrg(
     (node as KunlunAdminSeed).isVirtual === true ? true : false;
   const data = {
     name: node.shortName,
+    fullName: node.fullName,
     code: node.code,
     kind,
     type: node.type,

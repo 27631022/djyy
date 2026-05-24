@@ -96,6 +96,7 @@ async function seedKunlunOrgs() {
     const isVirtual = (node as KunlunAdminSeed).isVirtual === true;
     const data = {
       name: node.shortName,
+      fullName: node.fullName,
       code: node.code,
       kind,
       type: node.type,

@@ -8,6 +8,12 @@ export class UpdateOrganizationDto {
   @MaxLength(100)
   name?: string;
 
+  /** 全称 — 证书 / 公文 / 印章等正式场合用,可空 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  fullName?: string | null;
+
   @IsOptional()
   @IsString()
   @MinLength(1)
