@@ -58,6 +58,9 @@ export interface CollectiveRow {
 /**
  * Step 2 一条表彰记录 — 一份表彰文件可能包含多条(如「两优一先」3 条)。
  *
+ * 年份(yearLabel)和表彰日期(issueDate)在 draft 顶层共享,
+ * 不再 per-record 存储(同一份表彰文件下所有荣誉共用同一个时间元数据)。
+ *
  * persons / collectives 互斥:
  *  - honorType=individual → persons 有效,collectives 一直空
  *  - honorType=collective → collectives 有效,persons 一直空
@@ -65,14 +68,10 @@ export interface CollectiveRow {
  */
 export interface HonorRecord {
   rid: string;
-  /** 年份段,「2024」或「2024-2025」 */
-  yearLabel: string;
   /** 必选,选定后 honorName 从 template 名冗余进来便于展示 */
   templateId: string | null;
   /** 从所选 template.name 冗余下来 — 渲染列表 / 预览用 */
   honorName: string;
-  /** 表彰日期,ISO 「YYYY-MM-DD」 */
-  issueDate: string;
   honorType: HonorType;
   persons: PersonRow[];
   collectives: CollectiveRow[];
@@ -87,6 +86,10 @@ export interface CertificateDraftV1 {
   step: WizardStep;
   /** Step 1 AI 抽取结果(可空,代表「未抽取或已手动跳过 AI」) */
   extracted: ExtractHonorResponse | null;
+  /** 表彰年度 — 同一份表彰文件下所有荣誉共用,「2024」或「2024-2025」 */
+  yearLabel: string;
+  /** 表彰日期 — 同一份表彰文件下所有荣誉共用,ISO「YYYY-MM-DD」 */
+  issueDate: string;
   /** Step 2 之后的核心数据 */
   records: HonorRecord[];
   /** 最近一次保存时间,UI 可显示「已保存于 xx 秒前」 */
@@ -104,18 +107,38 @@ function key(userId: string): string {
 /**
  * 拉取当前用户的草稿。
  * 返回 null:无 draft / 解析失败 / version 不匹配。
+ *
+ * 兼容老 draft:早期 yearLabel/issueDate 在 records[] 里 per-record,
+ * 现在迁到顶层共享。loadDraft 自动从第一条 record 取迁移值。
  */
 export function loadDraft(userId: string): CertificateDraftV1 | null {
   if (!userId) return null;
   try {
     const raw = localStorage.getItem(key(userId));
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<CertificateDraftV1>;
+    type LegacyRecord = HonorRecord & {
+      yearLabel?: string;
+      issueDate?: string;
+    };
+    const parsed = JSON.parse(raw) as Partial<CertificateDraftV1> & {
+      records?: LegacyRecord[];
+    };
     if (parsed?.version !== 1) return null;
-    // 简单 shape 校验 — 不严苛,只保证后续 access 不崩
     if (typeof parsed.step !== "number") return null;
     if (!Array.isArray(parsed.records)) return null;
-    return parsed as CertificateDraftV1;
+    return {
+      version: 1,
+      step: parsed.step,
+      extracted: parsed.extracted ?? null,
+      yearLabel:
+        parsed.yearLabel ??
+        parsed.records[0]?.yearLabel ??
+        String(new Date().getFullYear()),
+      issueDate:
+        parsed.issueDate ?? parsed.records[0]?.issueDate ?? todayIso(),
+      records: parsed.records,
+      updatedAt: parsed.updatedAt ?? new Date().toISOString(),
+    };
   } catch {
     return null;
   }
@@ -166,6 +189,8 @@ export function emptyDraft(): CertificateDraftV1 {
     version: 1,
     step: 1,
     extracted: null,
+    yearLabel: String(new Date().getFullYear()),
+    issueDate: todayIso(),
     records: [],
     updatedAt: new Date().toISOString(),
   };
@@ -192,10 +217,8 @@ export function newCollectiveRow(partial?: Partial<CollectiveRow>): CollectiveRo
 export function newHonorRecord(partial?: Partial<HonorRecord>): HonorRecord {
   return {
     rid: makeRid(),
-    yearLabel: partial?.yearLabel ?? String(new Date().getFullYear()),
     templateId: partial?.templateId ?? null,
     honorName: partial?.honorName ?? "",
-    issueDate: partial?.issueDate ?? todayIso(),
     honorType: partial?.honorType ?? "individual",
     persons: partial?.persons ?? [],
     collectives: partial?.collectives ?? [],

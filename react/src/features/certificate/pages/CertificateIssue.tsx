@@ -99,11 +99,20 @@ export default function CertificateIssuePage() {
   /** true 表示用户走「跳过 AI」手动模式,extractResult 保持 null */
   const [manualMode, setManualMode] = useState(false);
 
-  /* ─── 步骤 2 状态(V3 新):多荣誉表彰记录 ─── */
+  /* ─── 步骤 2 状态(V3 新):多荣誉表彰记录 + 顶层共享字段 ─── */
   const [records, setRecords] = useState<HonorRecord[]>([]);
+  /**
+   * 表彰年度 + 表彰日期 — V3 中提升为 draft 顶层共享字段,
+   * 同一份表彰文件下所有荣誉共用;Phase 5-7 完成前老 Step 3/4 也复用。
+   */
+  const [yearLabel, setYearLabel] = useState(String(new Date().getFullYear()));
+  const [issueDate, setIssueDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
 
   /* ─── 草稿 ↔ 内存状态双向同步 ─── */
-  // 1) 首次拿到 userId 时,从 localStorage 拉旧 draft 恢复 step + extracted + records
+  // 1) 首次拿到 userId 时,从 localStorage 拉旧 draft 恢复全部字段
   useEffect(() => {
     if (!userId || hydratedRef.current) return;
     const saved = loadDraft(userId);
@@ -116,23 +125,31 @@ export default function CertificateIssuePage() {
       // 多 honor 时让用户重新选(避免老的 selectedHonorIdx 与新 list 错位)
       setSelectedHonorIdx(saved.extracted.honors.length === 1 ? 0 : -1);
     }
+    if (saved.yearLabel) setYearLabel(saved.yearLabel);
+    if (saved.issueDate) setIssueDate(saved.issueDate);
     if (Array.isArray(saved.records)) {
       setRecords(saved.records);
     }
   }, [userId]);
 
-  // 2) step / extracted / records 变化 → 同步进 draft(由 useDebouncedDraft 200ms 后落盘)
+  // 2) 全部 V3 草稿字段变化 → 同步进 draft(由 useDebouncedDraft 200ms 后落盘)
   useEffect(() => {
     if (!hydratedRef.current) return;
-    setDraft((d) => ({ ...d, step, extracted: extractResult, records }));
-  }, [step, extractResult, records]);
+    setDraft((d) => ({
+      ...d,
+      step,
+      extracted: extractResult,
+      yearLabel,
+      issueDate,
+      records,
+    }));
+  }, [step, extractResult, yearLabel, issueDate, records]);
 
   // 3) 防抖写 localStorage(useDebouncedDraft 内部已处理 userId 为 null 的情况)
   useDebouncedDraft(userId, draft);
 
   /* ─── 步骤 2/3/4 老状态(Phase 4-7 过渡桥接用,Phase 7 完成后撤掉) ─── */
   const [template, setTemplate] = useState<CertificateTemplateDto | null>(null);
-  const [yearLabel, setYearLabel] = useState(String(new Date().getFullYear()));
   const [issuingOrgName, setIssuingOrgName] = useState("");
 
   /* ─── 步骤 3 状态 ─── */
@@ -148,11 +165,12 @@ export default function CertificateIssuePage() {
   /**
    * Step 2 → Step 3 桥接:把 records[0] 摊平到老 single-honor 状态。
    *
+   * 年份 + 日期已经是 draft 顶层共享字段,这里只需补 template + rows + issuingOrg。
+   *
    * 临时方案 — Phase 5/6 给 Step 3a/3b 提供集体+个人各自的录入页后,
    * Phase 7 让 Step 4 直接消费 records[],届时此函数可以拿掉。
    */
   function bridgeRecordToOldState(record: HonorRecord) {
-    setYearLabel(record.yearLabel);
     if (record.templateId) {
       const t = allTemplates.find((tt) => tt.id === record.templateId);
       if (t) setTemplate(t);
@@ -223,14 +241,15 @@ export default function CertificateIssuePage() {
 
   /* ─── 校验 ─── */
   const stepReady = useMemo(() => {
-    // Step 2 (V3):校验 records[]
+    // Step 2 (V3):顶层共享字段 + 每条 record
     const step2Err = (() => {
+      if (!isValidYearLabel(yearLabel))
+        return "表彰年度格式不正确(应为「2024」或「2024-2025」)";
+      if (!issueDate) return "请选择表彰日期";
       if (records.length === 0) return "至少添加 1 条表彰记录";
       for (let i = 0; i < records.length; i++) {
         const r = records[i];
         if (!r.templateId) return `第 ${i + 1} 条记录:请选择模板`;
-        if (!isValidYearLabel(r.yearLabel)) return `第 ${i + 1} 条记录:年份段格式不正确(应为「2024」或「2024-2025」)`;
-        if (!r.issueDate) return `第 ${i + 1} 条记录:请选择表彰日期`;
       }
       return null;
     })();
@@ -245,7 +264,7 @@ export default function CertificateIssuePage() {
       4: null,
     };
     return map[step];
-  }, [step, records, rows]);
+  }, [step, records, rows, yearLabel, issueDate]);
 
   /* ─── 发证 ─── */
   const validRows = useMemo(() => rows.filter((r) => r.name.trim()), [rows]);
@@ -367,6 +386,10 @@ export default function CertificateIssuePage() {
               <Step2HonorRecords
                 records={records}
                 onRecordsChange={setRecords}
+                yearLabel={yearLabel}
+                onYearLabelChange={setYearLabel}
+                issueDate={issueDate}
+                onIssueDateChange={setIssueDate}
                 extracted={extractResult}
               />
             )}

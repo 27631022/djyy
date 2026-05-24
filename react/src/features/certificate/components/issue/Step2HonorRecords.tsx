@@ -1,27 +1,29 @@
 /**
- * 发证向导 Step 2 — 表彰记录表格(V3 新核心)。
+ * 发证向导 Step 2 — 表彰记录(V3 新核心,重做版)。
  *
- * 一行 = 一项荣誉(多荣誉时多行)。来源:
- *   - Step 1 AI 抽取后,顶部「应用 AI 识别」按钮一键灌入 records,模板按 honorName 模糊匹配
- *   - 手动「新增表彰记录」逐行添加
+ * 顶部共享区:
+ *   - 表彰年度(yearLabel)
+ *   - 表彰日期(issueDate)
+ *   同一份表彰文件下所有荣誉共用,不再 per-row 维护
  *
- * 列:表彰年度 / 荣誉名称(模板下拉)/ 表彰日期 / 表彰类型(个人/集体) / 操作
+ * 表彰记录表格(一行 = 一项荣誉):
+ *   # / 荣誉名称(文字展示)/ 类型 toggle(个人/集体)/ 操作
  *
- * 类型切换:
- *   - 切到 individual → 清掉 collectives
- *   - 切到 collective → 清掉 persons
- *
- * 选模板时:
- *   - honorName 从 template.name 冗余进来,便于后续步骤渲染
- *   - 没有 honorCode 的模板不能选(发证编号生成需要)
+ * 荣誉名称由模板决定:
+ *   - 行内不再下拉,改为「选择模板」按钮 → 打开模态卡片网格(支持搜索)
+ *   - 选定后行内显示模板名称(纯文字,不可改)+「更换」按钮
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   AlertCircleIcon,
+  AwardIcon,
+  CheckIcon,
+  PencilIcon,
   PlusIcon,
+  SearchIcon,
   SparklesIcon,
   XIcon,
 } from "lucide-react";
@@ -46,24 +48,38 @@ const PARTY = "var(--party-primary)";
 export function Step2HonorRecords({
   records,
   onRecordsChange,
+  yearLabel,
+  onYearLabelChange,
+  issueDate,
+  onIssueDateChange,
   extracted,
 }: {
   records: HonorRecord[];
   onRecordsChange: (records: HonorRecord[]) => void;
+  yearLabel: string;
+  onYearLabelChange: (v: string) => void;
+  issueDate: string;
+  onIssueDateChange: (v: string) => void;
   extracted: ExtractHonorResponse | null;
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ["certificate-templates", { active: true }],
     queryFn: () => certificateTemplateApi.list(true),
   });
-  const templates: CertificateTemplateDto[] = data ?? [];
+  const templates: CertificateTemplateDto[] = useMemo(() => data ?? [], [data]);
 
-  /* ─── AI 识别:把抽取结果灌进 records ─── */
+  /* ─── 模板选择器弹窗 ─── */
+  const [picker, setPicker] = useState<{ rid: string } | null>(null);
+
+  /* ─── AI 识别:把抽取结果灌进 records + 顶部共享字段 ─── */
   const applyAi = useMemo(
     () => () => {
       if (!extracted || extracted.honors.length === 0) return;
+      // 顶部共享字段从 extracted 取
+      if (extracted.yearLabel) onYearLabelChange(extracted.yearLabel);
+      if (extracted.issueDate) onIssueDateChange(extracted.issueDate);
+
       const generated = extracted.honors.map((h) => {
-        // 按 honorName 模糊匹配模板:大小写无关,双向 includes,加 honorCode 兜底
         const matched = templates.find((t) => {
           if (!t.honorCode || !t.name) return false;
           const hn = h.honorName.toLowerCase();
@@ -71,16 +87,16 @@ export function Step2HonorRecords({
           const tc = t.honorCode.toLowerCase();
           return hn.includes(tn) || tn.includes(hn) || hn.includes(tc);
         });
-        // honorType 兼容老 'unit' → collective
         const honorType: HonorType =
-          h.honorType === "individual" ? "individual" : h.honorType ? "collective" : "individual";
+          h.honorType === "individual"
+            ? "individual"
+            : h.honorType
+              ? "collective"
+              : "individual";
         return newHonorRecord({
           templateId: matched?.id ?? null,
           honorName: matched?.name ?? h.honorName,
-          yearLabel: extracted.yearLabel || String(new Date().getFullYear()),
-          issueDate: extracted.issueDate || todayIso(),
           honorType,
-          // 抽取到的 recipients 提前预填(Step 3a/3b 可继续编辑)
           persons:
             honorType === "individual"
               ? h.recipients.map((r) =>
@@ -104,7 +120,7 @@ export function Step2HonorRecords({
         `AI 识别完成:已生成 ${generated.length} 条表彰记录,自动匹配模板 ${matchedCount}/${generated.length}`,
       );
     },
-    [extracted, templates, onRecordsChange],
+    [extracted, templates, onRecordsChange, onYearLabelChange, onIssueDateChange],
   );
 
   /* ─── 首次进入 Step 2:若 records 为空且有抽取结果 → 自动应用一次 ─── */
@@ -113,7 +129,7 @@ export function Step2HonorRecords({
     if (autoAppliedRef.current) return;
     if (!extracted || extracted.honors.length === 0) return;
     if (records.length > 0) return;
-    if (templates.length === 0) return; // 等模板列表加载完再 match
+    if (templates.length === 0) return;
     autoAppliedRef.current = true;
     applyAi();
   }, [extracted, records.length, templates.length, applyAi]);
@@ -124,12 +140,10 @@ export function Step2HonorRecords({
       records.map((r) => {
         if (r.rid !== rid) return r;
         const updated: HonorRecord = { ...r, ...p };
-        // 切类型时清掉另一边的子列表
         if (p.honorType && p.honorType !== r.honorType) {
           if (p.honorType === "individual") updated.collectives = [];
           else updated.persons = [];
         }
-        // 改模板时同步 honorName(冗余,便于 Step 4 预览)
         if (p.templateId !== undefined && p.templateId !== r.templateId) {
           const t = templates.find((tt) => tt.id === p.templateId);
           updated.honorName = t?.name ?? r.honorName;
@@ -147,14 +161,15 @@ export function Step2HonorRecords({
 
   /* ─── 渲染 ─── */
   const hasExtract = Boolean(extracted && extracted.honors.length > 0);
+  const pickerRecord = picker ? records.find((r) => r.rid === picker.rid) ?? null : null;
 
   return (
     <div>
-      <div className="flex items-start justify-between mb-1 gap-3">
+      <div className="flex items-start justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-base font-bold text-[#1A1A1A]">第二步 · 建立表彰记录</h2>
-          <p className="text-xs text-[#9CA3AF] mt-0.5">
-            一行 = 一项荣誉。多荣誉(如「两优一先」)可建多行。荣誉名称只能从已有模板选择。
+          <h2 className="text-lg font-bold text-[#1A1A1A]">第二步 · 建立表彰记录</h2>
+          <p className="text-sm text-[#9CA3AF] mt-1">
+            一行 = 一项荣誉。多荣誉(如「两优一先」)可建多行。荣誉名称由所选模板决定。
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -162,7 +177,7 @@ export function Step2HonorRecords({
             type="button"
             onClick={applyAi}
             disabled={!hasExtract}
-            className="text-xs px-2.5 py-1.5 rounded border-2 border-purple-200 bg-purple-50 text-purple-700 hover:border-purple-400 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+            className="text-sm px-3 py-2 rounded border-2 border-purple-200 bg-purple-50 text-purple-700 hover:border-purple-400 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
             title={
               !hasExtract
                 ? "Step 1 没有抽取结果,该按钮不可用"
@@ -171,13 +186,15 @@ export function Step2HonorRecords({
                   : "应用 AI 识别结果生成表彰记录"
             }
           >
-            <SparklesIcon className="w-3.5 h-3.5" />
-            {records.length > 0 ? "重新应用 AI 识别" : `AI 识别(${extracted?.honors.length ?? 0} 项候选)`}
+            <SparklesIcon className="w-4 h-4" />
+            {records.length > 0
+              ? "重新应用 AI 识别"
+              : `AI 识别(${extracted?.honors.length ?? 0} 项候选)`}
           </button>
           <button
             type="button"
             disabled
-            className="text-xs px-2.5 py-1.5 rounded border border-[#E9E9E9] text-[#9CA3AF] cursor-not-allowed"
+            className="text-sm px-3 py-2 rounded border border-[#E9E9E9] text-[#9CA3AF] cursor-not-allowed"
             title="本期 MVP 暂不开放此入口。如需新模板,请联系管理员先在「证书模板」页创建并填写 honorCode。"
           >
             设计模板(暂不开放)
@@ -185,23 +202,65 @@ export function Step2HonorRecords({
         </div>
       </div>
 
-      {/* 表格 */}
-      <div className="rounded-lg border border-[#E9E9E9] overflow-hidden bg-white mt-4">
-        <table className="w-full text-xs">
-          <thead className="bg-[#F7F8FA]">
-            <tr className="text-[10px] text-[#6B7280] uppercase tracking-wide">
-              <th className="px-2 py-2 text-left w-10">#</th>
-              <th className="px-2 py-2 text-left w-28">表彰年度 *</th>
-              <th className="px-2 py-2 text-left">荣誉名称(模板) *</th>
-              <th className="px-2 py-2 text-left w-36">表彰日期 *</th>
-              <th className="px-2 py-2 text-left w-44">表彰类型 *</th>
-              <th className="px-2 py-2 w-10"></th>
+      {/* 顶部共享字段:表彰年度 + 表彰日期 */}
+      <div className="rounded-lg border border-[#E9E9E9] bg-white p-4 mb-4">
+        <div className="text-sm font-semibold text-[#1A1A1A] mb-3">
+          本次表彰共享信息
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+          <label className="block">
+            <span className="block text-sm font-medium text-[#374151] mb-1.5">
+              表彰年度 <span className="text-red-500">*</span>
+            </span>
+            <input
+              type="text"
+              value={yearLabel}
+              onChange={(e) => onYearLabelChange(e.target.value.trim())}
+              placeholder="2024 或 2024-2025"
+              className="w-full px-3 py-2 text-sm font-mono rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
+            />
+            <span className="block text-xs text-[#9CA3AF] mt-1">
+              同一份表彰文件下所有荣誉共用此年份
+            </span>
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium text-[#374151] mb-1.5">
+              表彰日期 <span className="text-red-500">*</span>
+            </span>
+            <input
+              type="date"
+              value={issueDate}
+              onChange={(e) => onIssueDateChange(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
+            />
+            <span className="block text-xs text-[#9CA3AF] mt-1">
+              所有荣誉证书共用此颁发日期
+            </span>
+          </label>
+        </div>
+      </div>
+
+      {/* 表彰记录表格 */}
+      <div className="rounded-lg border border-[#E9E9E9] overflow-hidden bg-white">
+        <div className="px-4 py-2.5 border-b border-[#F0F0F0] bg-[#F7F8FA] flex items-center justify-between">
+          <span className="text-sm font-semibold text-[#1A1A1A]">表彰记录</span>
+          <span className="text-xs text-[#9CA3AF]">
+            共 {records.length} 条
+          </span>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-[#FAFAFB]">
+            <tr className="text-xs text-[#6B7280] uppercase tracking-wide">
+              <th className="px-3 py-2.5 text-left w-12">#</th>
+              <th className="px-3 py-2.5 text-left">荣誉名称(模板) *</th>
+              <th className="px-3 py-2.5 text-left w-52">表彰类型 *</th>
+              <th className="px-3 py-2.5 w-16"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#F0F0F0]">
             {records.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-xs text-[#9CA3AF]">
+                <td colSpan={4} className="px-4 py-12 text-center text-sm text-[#9CA3AF]">
                   {hasExtract ? (
                     <>
                       还没有表彰记录 — 点右上「AI 识别」一键导入,
@@ -222,38 +281,48 @@ export function Step2HonorRecords({
                   idx={i + 1}
                   record={r}
                   templates={templates}
-                  templatesLoading={isLoading}
+                  onPickTemplate={() => setPicker({ rid: r.rid })}
                   onPatch={(p) => patchRow(r.rid, p)}
                   onRemove={() => removeRow(r.rid)}
-                  removable={records.length > 1 || records.length === 0}
                 />
               ))
             )}
           </tbody>
         </table>
-        <div className="px-2 py-2 border-t border-[#F0F0F0] bg-[#FAFAFB] flex items-center justify-between">
+        <div className="px-3 py-2.5 border-t border-[#F0F0F0] bg-[#FAFAFB]">
           <button
             type="button"
             onClick={addRow}
-            className="flex items-center gap-1 text-[11px] text-[var(--party-primary)] hover:underline"
+            className="flex items-center gap-1.5 text-sm text-[var(--party-primary)] hover:underline font-medium"
           >
-            <PlusIcon className="w-3 h-3" />
+            <PlusIcon className="w-4 h-4" />
             新增表彰记录
           </button>
-          <span className="text-[10px] text-[#9CA3AF]">
-            共 {records.length} 条
-          </span>
         </div>
       </div>
 
       {/* 模板库为空提示 */}
       {!isLoading && templates.length === 0 && (
-        <div className="mt-3 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2 flex items-start gap-2">
+        <div className="mt-3 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-sm px-3 py-2 flex items-start gap-2">
           <AlertCircleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <div>
             还没有可用的证书模板,请先去「证书模板」页创建至少一个模板并填写 honorCode。
           </div>
         </div>
+      )}
+
+      {/* 模板选择弹窗 */}
+      {pickerRecord && (
+        <TemplatePickerModal
+          templates={templates}
+          loading={isLoading}
+          currentTemplateId={pickerRecord.templateId}
+          onClose={() => setPicker(null)}
+          onPick={(t) => {
+            patchRow(pickerRecord.rid, { templateId: t.id });
+            setPicker(null);
+          }}
+        />
       )}
     </div>
   );
@@ -265,80 +334,59 @@ function RecordRow({
   idx,
   record,
   templates,
-  templatesLoading,
+  onPickTemplate,
   onPatch,
   onRemove,
-  removable,
 }: {
   idx: number;
   record: HonorRecord;
   templates: CertificateTemplateDto[];
-  templatesLoading: boolean;
+  onPickTemplate: () => void;
   onPatch: (p: Partial<HonorRecord>) => void;
   onRemove: () => void;
-  removable: boolean;
 }) {
   const selectedTemplate = templates.find((t) => t.id === record.templateId) ?? null;
-  // 缺 honorCode 的模板不能选(发证编号生成需要)
-  const usableTemplates = templates.filter((t) => t.honorCode && t.honorCode.trim());
   const missingTemplate = !record.templateId;
 
   return (
     <tr className={missingTemplate ? "bg-red-50/40" : ""}>
-      <td className="px-2 py-1.5 text-[#9CA3AF] font-mono align-top pt-2.5">{idx}</td>
-      {/* 年份 */}
-      <td className="px-2 py-1.5">
-        <input
-          type="text"
-          value={record.yearLabel}
-          onChange={(e) => onPatch({ yearLabel: e.target.value.trim() })}
-          placeholder="2024"
-          className="w-full px-1.5 py-1 text-xs font-mono rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
-        />
-      </td>
-      {/* 模板下拉 */}
-      <td className="px-2 py-1.5">
-        <select
-          value={record.templateId ?? ""}
-          onChange={(e) => onPatch({ templateId: e.target.value || null })}
-          disabled={templatesLoading}
-          className={`w-full px-1.5 py-1 text-xs rounded border focus:outline-none ${
-            missingTemplate
-              ? "border-red-300 bg-red-50 focus:border-red-500"
-              : "border-[#E9E9E9] focus:border-[var(--party-primary)]"
-          }`}
-        >
-          <option value="">
-            {templatesLoading
-              ? "加载模板中…"
-              : usableTemplates.length === 0
-                ? "(暂无可用模板)"
-                : "— 请选择 —"}
-          </option>
-          {usableTemplates.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}({t.honorCode})
-            </option>
-          ))}
-        </select>
-        {selectedTemplate && (
-          <div className="text-[10px] text-[#9CA3AF] mt-0.5 font-mono">
-            honorCode = {selectedTemplate.honorCode}
+      <td className="px-3 py-3 text-[#9CA3AF] font-mono align-top pt-4 text-sm">{idx}</td>
+      {/* 荣誉名称(模板)— 纯文字 + 「选择/更换模板」按钮 */}
+      <td className="px-3 py-3">
+        {selectedTemplate ? (
+          <div className="flex items-center gap-2.5">
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-[#1A1A1A] truncate" title={selectedTemplate.name}>
+                {selectedTemplate.name}
+              </div>
+              <div className="text-xs text-[#9CA3AF] mt-0.5 font-mono">
+                honorCode = {selectedTemplate.honorCode}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onPickTemplate}
+              className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded border border-[#E9E9E9] text-xs text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+              title="更换模板"
+            >
+              <PencilIcon className="w-3 h-3" />
+              更换
+            </button>
           </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onPickTemplate}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border-2 border-dashed border-red-300 bg-red-50 text-sm text-red-700 hover:border-red-500"
+          >
+            <AwardIcon className="w-4 h-4" />
+            请选择模板
+          </button>
         )}
       </td>
-      {/* 表彰日期 */}
-      <td className="px-2 py-1.5">
-        <input
-          type="date"
-          value={record.issueDate}
-          onChange={(e) => onPatch({ issueDate: e.target.value })}
-          className="w-full px-1.5 py-1 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
-        />
-      </td>
       {/* 表彰类型 toggle */}
-      <td className="px-2 py-1.5">
-        <div className="inline-flex rounded border border-[#E9E9E9] overflow-hidden">
+      <td className="px-3 py-3">
+        <div className="inline-flex rounded-md border border-[#E9E9E9] overflow-hidden">
           {(
             [
               { v: "individual" as const, label: "个人" },
@@ -351,9 +399,9 @@ function RecordRow({
                 key={opt.v}
                 type="button"
                 onClick={() => onPatch({ honorType: opt.v })}
-                className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                className={`px-4 py-1.5 text-sm font-medium transition-colors ${
                   active
-                    ? "bg-[var(--party-primary)] text-white"
+                    ? "text-white"
                     : "bg-white text-[#6B7280] hover:bg-[#F7F8FA]"
                 }`}
                 style={active ? { backgroundColor: PARTY } : undefined}
@@ -365,35 +413,195 @@ function RecordRow({
         </div>
         {/* 抽取阶段已带 recipients,显示一下数量,让用户对齐预期 */}
         {record.honorType === "individual" && record.persons.length > 0 && (
-          <div className="text-[10px] text-[#9CA3AF] mt-0.5">
+          <div className="text-xs text-[#9CA3AF] mt-1">
             预填 {record.persons.length} 位个人
           </div>
         )}
         {record.honorType === "collective" && record.collectives.length > 0 && (
-          <div className="text-[10px] text-[#9CA3AF] mt-0.5">
+          <div className="text-xs text-[#9CA3AF] mt-1">
             预填 {record.collectives.length} 个集体
           </div>
         )}
       </td>
       {/* 删除 */}
-      <td className="px-2 py-1.5 text-center">
+      <td className="px-3 py-3 text-center">
         <button
           type="button"
           onClick={onRemove}
-          disabled={!removable}
-          className="p-1 rounded text-[#9CA3AF] hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-1.5 rounded text-[#9CA3AF] hover:text-red-600 hover:bg-red-50"
           title="删除该行"
         >
-          <XIcon className="w-3 h-3" />
+          <XIcon className="w-4 h-4" />
         </button>
       </td>
     </tr>
   );
 }
 
-/* ─── 工具 ─── */
+/* ─── 模板选择弹窗 ─── */
 
-function todayIso(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function TemplatePickerModal({
+  templates,
+  loading,
+  currentTemplateId,
+  onClose,
+  onPick,
+}: {
+  templates: CertificateTemplateDto[];
+  loading: boolean;
+  currentTemplateId: string | null;
+  onClose: () => void;
+  onPick: (t: CertificateTemplateDto) => void;
+}) {
+  const [search, setSearch] = useState("");
+  // 关闭时按 ESC
+  useEffect(() => {
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onEsc);
+    return () => document.removeEventListener("keydown", onEsc);
+  }, [onClose]);
+
+  const usable = templates.filter((t) => t.honorCode && t.honorCode.trim());
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? usable.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          (t.honorCode ?? "").toLowerCase().includes(q) ||
+          (t.description ?? "").toLowerCase().includes(q),
+      )
+    : usable;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 头 */}
+        <div className="px-5 py-4 border-b border-[#E9E9E9] flex items-center gap-3">
+          <AwardIcon className="w-5 h-5" style={{ color: PARTY }} />
+          <div className="flex-1">
+            <h3 className="text-base font-bold text-[#1A1A1A]">选择证书模板</h3>
+            <p className="text-xs text-[#9CA3AF] mt-0.5">
+              点击模板卡片选定;模板需带 honorCode 才能用于发证
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded hover:bg-[#F7F8FA] text-[#6B7280]"
+            title="关闭(Esc)"
+          >
+            <XIcon className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* 搜索框 */}
+        <div className="px-5 py-3 border-b border-[#F0F0F0]">
+          <div className="relative">
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF]" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="搜索模板名 / honorCode / 描述"
+              className="w-full pl-9 pr-3 py-2 text-sm rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
+              autoFocus
+            />
+          </div>
+        </div>
+
+        {/* 卡片网格 */}
+        <div className="flex-1 overflow-auto p-5">
+          {loading ? (
+            <div className="text-center text-sm text-[#9CA3AF] py-12">加载模板中…</div>
+          ) : usable.length === 0 ? (
+            <div className="text-center text-sm text-[#9CA3AF] py-12">
+              暂无可用模板。请先去「证书模板」页创建并填写 honorCode。
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center text-sm text-[#9CA3AF] py-12">
+              没有匹配「{search}」的模板
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {filtered.map((t) => {
+                const active = t.id === currentTemplateId;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => onPick(t)}
+                    className={`relative text-left rounded-lg overflow-hidden border-2 transition-all hover:shadow ${
+                      active
+                        ? "border-[var(--party-primary)] shadow-md"
+                        : "border-[#E9E9E9] hover:border-[var(--party-primary)]"
+                    }`}
+                  >
+                    <div
+                      className="relative bg-gradient-to-br from-[#F4F5F8] to-[#E9EBF0] overflow-hidden"
+                      style={{ aspectRatio: "4 / 3" }}
+                    >
+                      {t.thumbnail ? (
+                        <div className="absolute inset-0 flex items-center justify-center p-3">
+                          <img
+                            src={t.thumbnail}
+                            alt={t.name}
+                            className="max-w-full max-h-full object-contain bg-white shadow-sm"
+                            style={{ aspectRatio: `${t.width} / ${t.height}` }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-[#B5B9C0] text-xs">
+                          暂无预览
+                        </div>
+                      )}
+                      <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[var(--party-primary)] text-white">
+                        {t.honorCode}
+                      </span>
+                      {active && (
+                        <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-[var(--party-primary)] text-white flex items-center justify-center">
+                          <CheckIcon className="w-3 h-3" />
+                        </span>
+                      )}
+                    </div>
+                    <div className="px-2.5 py-2">
+                      <div className="text-sm font-medium text-[#1A1A1A] truncate" title={t.name}>
+                        {t.name}
+                      </div>
+                      {t.description && (
+                        <div className="text-xs text-[#9CA3AF] truncate mt-0.5" title={t.description}>
+                          {t.description}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 底 */}
+        <div className="px-5 py-3 border-t border-[#E9E9E9] flex items-center justify-between bg-[#FAFAFB]">
+          <span className="text-xs text-[#9CA3AF]">
+            匹配 {filtered.length} / 可用 {usable.length} 个模板
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm px-3 py-1.5 rounded border border-[#E9E9E9] hover:bg-[#F7F8FA] text-[#6B7280]"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
