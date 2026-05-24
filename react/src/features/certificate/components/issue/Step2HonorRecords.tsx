@@ -273,15 +273,16 @@ export function Step2HonorRecords({
           <thead className="bg-[#FAFAFB]">
             <tr className="text-xs text-[#6B7280] uppercase tracking-wide">
               <th className="px-3 py-2.5 text-left w-16">序号</th>
-              <th className="px-3 py-2.5 text-left w-72">荣誉名称(AI 识别)</th>
-              <th className="px-3 py-2.5 text-left">证书模板 *</th>
+              <th className="px-3 py-2.5 text-left">荣誉名称(AI 识别)</th>
+              <th className="px-3 py-2.5 text-left w-64">证书模板 *</th>
+              <th className="px-3 py-2.5 text-left w-64">等级 · 类型 · 落款单位</th>
               <th className="px-3 py-2.5 w-16"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#F0F0F0]">
             {records.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-12 text-center text-sm text-[#9CA3AF]">
+                <td colSpan={5} className="px-4 py-12 text-center text-sm text-[#9CA3AF]">
                   {hasExtract ? (
                     <>
                       还没有表彰记录 — 点右上「AI 识别」一键导入,
@@ -389,53 +390,28 @@ function RecordRow({
         )}
       </td>
 
-      {/* 第 3 列:证书模板(picker)+ 类型/等级徽章 */}
+      {/* 第 3 列:证书模板(模板名 + 荣誉代码 + 更换按钮) */}
       <td className="px-3 py-3 align-top">
         {selectedTemplate ? (
-          <div className="flex items-center gap-2.5">
-            <div className="flex-1 min-w-0">
-              <div
-                className="text-sm font-semibold text-[#1A1A1A] truncate"
-                title={selectedTemplate.name}
-              >
-                {selectedTemplate.name}
-              </div>
-              <div className="text-xs text-[#9CA3AF] mt-0.5 font-mono">
-                荣誉代码 = {selectedTemplate.honorCode}
-              </div>
-              {/* 落款单位 — 与模板名同列下方,Building2 图标 + 完整文本 */}
-              {selectedTemplate.issuingOrgName && (
-                <div
-                  className="flex items-start gap-1 mt-1 text-xs text-emerald-700"
-                  title={`落款单位:${selectedTemplate.issuingOrgName}`}
-                >
-                  <Building2Icon className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                  <span className="break-words">
-                    {selectedTemplate.issuingOrgName}
-                  </span>
-                </div>
-              )}
-              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                {selectedTemplate.honorLevel && (
-                  <HonorLevelBadge level={selectedTemplate.honorLevel} />
-                )}
-                <HonorTypeBadge
-                  type={
-                    selectedTemplate.honorType === "collective"
-                      ? "collective"
-                      : "individual"
-                  }
-                />
-              </div>
+          <div className="flex flex-col gap-1.5">
+            <div
+              className="text-sm font-semibold text-[#1A1A1A] truncate"
+              title={selectedTemplate.name}
+            >
+              {selectedTemplate.name}
             </div>
+            <div className="text-xs text-[#9CA3AF] font-mono">
+              荣誉代码 = {selectedTemplate.honorCode}
+            </div>
+            {/* 「更换模板」按钮 — 醒目主题色描边 + 浅底,放在模板名下面 */}
             <button
               type="button"
               onClick={onPickTemplate}
-              className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded border border-[#E9E9E9] text-xs text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
-              title="更换模板"
+              className="self-start inline-flex items-center gap-1 px-2.5 py-1 rounded border-2 border-[var(--party-primary)] text-xs font-semibold text-[var(--party-primary)] bg-party-soft hover:bg-[var(--party-primary)] hover:text-white transition-colors"
+              title="选择其他模板"
             >
               <PencilIcon className="w-3 h-3" />
-              更换
+              更换模板
             </button>
           </div>
         ) : (
@@ -450,7 +426,46 @@ function RecordRow({
         )}
       </td>
 
-      {/* 第 4 列:删除 */}
+      {/* 第 4 列:等级 · 类型 · 落款单位(模板属性独立展示) */}
+      <td className="px-3 py-3 align-top">
+        {selectedTemplate ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {selectedTemplate.honorLevel && (
+                <HonorLevelBadge level={selectedTemplate.honorLevel} />
+              )}
+              <HonorTypeBadge
+                type={
+                  selectedTemplate.honorType === "collective"
+                    ? "collective"
+                    : "individual"
+                }
+              />
+            </div>
+            {selectedTemplate.issuingOrgName ? (
+              <div
+                className="flex items-start gap-1 text-xs text-emerald-700"
+                title={`落款单位:${selectedTemplate.issuingOrgName}`}
+              >
+                <Building2Icon className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                <span className="break-words">
+                  {selectedTemplate.issuingOrgName}
+                </span>
+              </div>
+            ) : (
+              <div className="text-[11px] text-[#9CA3AF]">
+                (模板未填落款单位)
+              </div>
+            )}
+          </div>
+        ) : (
+          <span className="text-[11px] text-[#9CA3AF]">
+            选定模板后显示
+          </span>
+        )}
+      </td>
+
+      {/* 第 5 列:删除 */}
       <td className="px-3 py-3 text-center align-top pt-3">
         <button
           type="button"
