@@ -44,7 +44,7 @@ const CATEGORIES: Category[] = [
     icon: BriefcaseIcon,
     items: [
       { path: "/admin/certificate-templates", label: "证书模板",   icon: AwardIcon },
-      { path: "/admin/certificates/issue",    label: "发证",       icon: SendIcon  },
+      { path: "/admin/certificates/issue",    label: "颁发证书",   icon: SendIcon  },
       { path: "/admin/certificates/bulk",     label: "CSV 批量发证", icon: FileTextIcon },
       { path: "/admin/certificates/external", label: "外部证书录入", icon: UploadIcon },
       { path: "/admin/certificates",          label: "已发证书",   icon: ListChecksIcon },
