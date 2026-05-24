@@ -102,92 +102,132 @@ export default function SiteSettingsPage() {
   }
 
   const loading = settingsQuery.isLoading;
+  const activeTabMeta = TABS.find((t) => t.id === tab) ?? TABS[0];
 
   return (
-    <div className="h-full flex flex-col bg-white">
-      {/* Header bar */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-[#E9E9E9] flex items-center gap-3 flex-wrap">
-        <h1 className="text-base font-bold text-[#1A1A1A] flex items-center gap-2">
+    <div className="h-full flex bg-white">
+      {/* ════ 左侧:tab 列表(对齐数据字典左侧 list 风格) ════ */}
+      <aside className="w-64 flex-shrink-0 border-r border-[#E9E9E9] flex flex-col">
+        <div className="px-3 py-2.5 border-b border-[#F0F0F0] flex items-center gap-2">
           <SettingsIcon className="w-4 h-4 text-[var(--party-primary)]" />
-          站点设置
-        </h1>
-        <span className="text-xs text-[#9CA3AF]">前台首页的标题、LOGO、文案、配色等</span>
-        <div className="flex-1" />
-        {dirty && (
-          <span className="text-xs text-[var(--party-accent)] font-medium">● 未保存的修改</span>
-        )}
-        <button
-          onClick={refresh}
-          className="p-1.5 rounded hover:bg-[#F7F8FA] text-[#6B7280]"
-          title="重新加载"
-          disabled={loading || saveMutation.isPending}
-        >
-          <RefreshCwIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-        </button>
-        <button
-          onClick={reset}
-          disabled={!dirty || saveMutation.isPending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-[#E9E9E9] text-[#4B5563] hover:bg-[#F7F8FA] disabled:bg-[#FAFAFA] disabled:text-[#C0C6D0] disabled:cursor-not-allowed disabled:hover:bg-[#FAFAFA] transition-colors"
-        >
-          <RotateCcwIcon className="w-3.5 h-3.5" />
-          撤销
-        </button>
-        {/* 保存按钮:disabled 时用明确的灰色,而非 opacity-40 ——
-            否则在主题色为浅色时,红底+40%透明度会和白色背景融为一体,
-            用户会以为"保存按钮消失了" */}
-        <button
-          onClick={save}
-          disabled={!dirty || saveMutation.isPending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-white disabled:cursor-not-allowed transition-colors"
-          style={{
-            backgroundColor: !dirty || saveMutation.isPending ? "#C0C6D0" : PARTY,
-          }}
-        >
-          <SaveIcon className="w-3.5 h-3.5" />
-          {saveMutation.isPending ? "保存中..." : "保存"}
-        </button>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-[#E9E9E9] flex-shrink-0 overflow-x-auto">
-        {TABS.map((t) => {
-          const TI = t.icon;
-          const active = t.id === tab;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className="flex-shrink-0 flex items-center gap-1.5 px-5 py-3 text-sm font-medium transition-all border-b-2"
-              style={{
-                borderBottomColor: active ? PARTY : "transparent",
-                color: active ? PARTY : "#6B7280",
-                backgroundColor: active ? "rgb(255, 248, 248)" : "transparent",
-              }}
+          <span className="text-sm font-bold text-[#1A1A1A] flex-1">站点设置</span>
+          {dirty && (
+            <span
+              className="text-[10px] text-[var(--party-accent)]"
+              title="有未保存的修改"
             >
-              <TI className="w-3.5 h-3.5" />
-              {t.label}
-              <span className="text-[10px] text-[#9CA3AF] font-normal hidden md:inline">· {t.desc}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-2xl mx-auto">
-          {loading ? (
-            <SkeletonForm />
-          ) : tab === "brand" ? (
-            <BrandForm value={form.brand} onChange={updateBrand} />
-          ) : tab === "hero" ? (
-            <HeroForm value={form.hero} onChange={updateHero} />
-          ) : tab === "footer" ? (
-            <FooterForm value={form.footer} onChange={updateFooter} />
-          ) : (
-            <ThemeForm value={form.theme} onChange={updateTheme} />
+              ●
+            </span>
           )}
         </div>
-      </div>
+        <div className="px-3 py-2 border-b border-[#F0F0F0] text-[11px] text-[#9CA3AF]">
+          前台首页的标题、LOGO、文案、配色等
+        </div>
+        <div className="flex-1 overflow-auto">
+          {TABS.map((t) => {
+            const TI = t.icon;
+            const active = t.id === tab;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className="w-full px-3 py-2.5 text-left border-b border-[#F0F0F0] hover:bg-party-soft transition-colors flex items-center gap-2"
+                style={{
+                  backgroundColor: active ? "rgb(255, 240, 242)" : undefined,
+                }}
+              >
+                <div
+                  className="w-1 h-8 rounded-full flex-shrink-0 transition-colors"
+                  style={{ backgroundColor: active ? PARTY : "transparent" }}
+                />
+                <TI
+                  className="w-4 h-4 flex-shrink-0"
+                  style={{ color: active ? PARTY : "#6B7280" }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div
+                    className="text-[13px] font-medium"
+                    style={{ color: active ? PARTY : "#1A1A1A" }}
+                  >
+                    {t.label}
+                  </div>
+                  <div className="text-[10px] text-[#9CA3AF] mt-0.5 truncate">
+                    {t.desc}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+
+      {/* ════ 右侧:当前 tab 详情 ════ */}
+      <main className="flex-1 min-w-0 flex flex-col">
+        {/* tab 标题栏 + 操作按钮(对齐数据字典右侧 detail 风格) */}
+        <div className="flex-shrink-0 px-5 py-3 border-b border-[#E9E9E9] flex items-center gap-3 flex-wrap">
+          <h2 className="text-base font-bold text-[#1A1A1A] flex items-center gap-2">
+            <activeTabMeta.icon className="w-4 h-4 text-[var(--party-primary)]" />
+            {activeTabMeta.label}
+          </h2>
+          <span className="text-xs text-[#9CA3AF]">{activeTabMeta.desc}</span>
+          <div className="flex-1" />
+          {dirty && (
+            <span className="text-xs text-[var(--party-accent)] font-medium">
+              ● 未保存的修改
+            </span>
+          )}
+          <button
+            onClick={refresh}
+            className="p-1.5 rounded hover:bg-[#F7F8FA] text-[#6B7280]"
+            title="重新加载"
+            disabled={loading || saveMutation.isPending}
+          >
+            <RefreshCwIcon
+              className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
+            />
+          </button>
+          <button
+            onClick={reset}
+            disabled={!dirty || saveMutation.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-[#E9E9E9] text-[#4B5563] hover:bg-[#F7F8FA] disabled:bg-[#FAFAFA] disabled:text-[#C0C6D0] disabled:cursor-not-allowed disabled:hover:bg-[#FAFAFA] transition-colors"
+          >
+            <RotateCcwIcon className="w-3.5 h-3.5" />
+            撤销
+          </button>
+          {/* 保存按钮:disabled 时用明确的灰色,而非 opacity-40 ——
+              否则在主题色为浅色时,红底+40%透明度会和白色背景融为一体,
+              用户会以为"保存按钮消失了" */}
+          <button
+            onClick={save}
+            disabled={!dirty || saveMutation.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-white disabled:cursor-not-allowed transition-colors"
+            style={{
+              backgroundColor:
+                !dirty || saveMutation.isPending ? "#C0C6D0" : PARTY,
+            }}
+          >
+            <SaveIcon className="w-3.5 h-3.5" />
+            {saveMutation.isPending ? "保存中..." : "保存"}
+          </button>
+        </div>
+
+        {/* 表单内容 */}
+        <div className="flex-1 overflow-auto p-6">
+          <div className="max-w-2xl">
+            {loading ? (
+              <SkeletonForm />
+            ) : tab === "brand" ? (
+              <BrandForm value={form.brand} onChange={updateBrand} />
+            ) : tab === "hero" ? (
+              <HeroForm value={form.hero} onChange={updateHero} />
+            ) : tab === "footer" ? (
+              <FooterForm value={form.footer} onChange={updateFooter} />
+            ) : (
+              <ThemeForm value={form.theme} onChange={updateTheme} />
+            )}
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
