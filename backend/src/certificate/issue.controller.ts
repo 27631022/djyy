@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -9,17 +10,30 @@ import {
   Query,
   Req,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { Permission } from '../permission';
 import { CertificateIssueService } from './issue.service';
+import { CertificateExtractionService } from './extraction.service';
 import { IssueCertificateDto } from './dto/issue-certificate.dto';
 import {
   BulkDownloadDto,
   RevokeCertificateDto,
 } from './dto/revoke-certificate.dto';
+
+interface UploadedFileShape {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
+
+const EXTRACT_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
 /**
  * 已发证书相关 admin API。
@@ -37,7 +51,10 @@ import {
 @Controller('certificates')
 @UseGuards(AuthGuard)
 export class CertificateIssueController {
-  constructor(private readonly svc: CertificateIssueService) {}
+  constructor(
+    private readonly svc: CertificateIssueService,
+    private readonly extraction: CertificateExtractionService,
+  ) {}
 
   @Post()
   @Permission('certificate:issue')
@@ -88,6 +105,32 @@ export class CertificateIssueController {
     @Req() req: Request,
   ) {
     return this.svc.revoke(id, dto, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
+  }
+
+  /**
+   * AI 提取(Phase D)— 用户上传 Word/PDF 表彰文件 → DeepSeek 提取荣誉信息。
+   * 返回结构化 JSON,前端拿来预填发证表单。
+   * 返回后不持久化(只写审计 log),用户人工确认编辑后才真正发证。
+   */
+  @Post('extract')
+  @Permission('certificate:issue')
+  @UseInterceptors(FileInterceptor('file'))
+  async extract(
+    @UploadedFile() file: UploadedFileShape | undefined,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    if (!file) throw new BadRequestException('未收到文件');
+    if (file.size > EXTRACT_MAX_BYTES) {
+      throw new BadRequestException(
+        `文件过大(${(file.size / 1024 / 1024).toFixed(1)}MB),最大支持 ${EXTRACT_MAX_BYTES / 1024 / 1024}MB`,
+      );
+    }
+    return this.extraction.extract(file, {
       actorId: me.sub,
       actorName: me.name,
       ip: req.ip,

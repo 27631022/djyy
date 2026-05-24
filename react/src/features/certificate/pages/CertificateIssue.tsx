@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeftIcon,
   SendIcon,
   AwardIcon,
   Loader2Icon,
+  SparklesIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   certificateIssueApi,
+  certificateTemplateApi,
   type CertificateTemplateDto,
   type IssueCertificateInput,
+  type ExtractHonorResponse,
 } from "@/features/certificate";
 import { TemplatePicker } from "../components/issue/TemplatePicker";
 import {
@@ -21,6 +24,7 @@ import {
 import { BatchInfoForm } from "../components/issue/BatchInfoForm";
 import { VariableForm } from "../components/issue/VariableForm";
 import { PreviewCanvas } from "../components/issue/PreviewCanvas";
+import { AIExtractDropzone } from "../components/issue/AIExtractDropzone";
 import type { DesignerState } from "../lib/designerTypes";
 import {
   buildCertNo,
@@ -58,6 +62,17 @@ export default function CertificateIssuePage() {
     recipientName: "",
   });
 
+  /* ─── AI 提取的额外收件人(用户应用后,首位塞进 recipient,其余排队提示用户后续处理) ─── */
+  const [pendingRecipients, setPendingRecipients] = useState<
+    Array<{ name: string; empNo?: string; dept?: string }>
+  >([]);
+
+  // 拉所有模板,用于 AI 提取后按 honorName 自动匹配 honorCode
+  const templatesQuery = useQuery({
+    queryKey: ["certificate-templates", { active: true }],
+    queryFn: () => certificateTemplateApi.list(true),
+  });
+
   /* ─── 批次信息 ─── */
   const [yearLabel, setYearLabel] = useState<string>(
     String(new Date().getFullYear()),
@@ -89,6 +104,51 @@ export default function CertificateIssuePage() {
 
   function setVar(key: string, value: string) {
     setVariableValues((prev) => ({ ...prev, [key]: value }));
+  }
+
+  /** AI 提取结果应用到表单:挑模板 + 填年份 + 填 batchTotal + 首位收件人 + 其余排队 */
+  function applyExtracted(r: ExtractHonorResponse) {
+    // 1. 模板匹配:honorName 包含 template.name 或 honorCode 命中
+    const templates = templatesQuery.data ?? [];
+    const matched = templates.find((t) => {
+      if (!t.honorCode) return false;
+      const hn = r.honorName.toLowerCase();
+      return (
+        hn.includes(t.name.toLowerCase()) ||
+        hn.includes(t.honorCode.toLowerCase()) ||
+        t.name.toLowerCase().includes(hn)
+      );
+    });
+    if (matched) setTemplate(matched);
+
+    // 2. 年份
+    if (r.yearLabel) setYearLabel(r.yearLabel);
+
+    // 3. 收件人:首位塞进 recipient,其余 push 到 pending
+    if (r.recipients.length > 0) {
+      const first = r.recipients[0];
+      setRecipient({
+        recipientName: first.name,
+        recipientEmpNo: first.empNo,
+        recipientDept: first.dept,
+      });
+      setPendingRecipients(r.recipients.slice(1));
+    }
+
+    // 4. batchTotal
+    setBatchTotal(Math.max(1, r.recipients.length));
+  }
+
+  /** 切到 pending 队列的下一位 */
+  function nextPending() {
+    if (pendingRecipients.length === 0) return;
+    const [next, ...rest] = pendingRecipients;
+    setRecipient({
+      recipientName: next.name,
+      recipientEmpNo: next.empNo,
+      recipientDept: next.dept,
+    });
+    setPendingRecipients(rest);
   }
 
   /* ─── 校验 ─── */
@@ -130,7 +190,12 @@ export default function CertificateIssuePage() {
     onSuccess: (cert) => {
       qc.invalidateQueries({ queryKey: ["certificates"] });
       toast.success(`已发证 ${cert.certNo}`);
-      navigate(`/admin/certificates?highlight=${cert.id}`);
+      // 还有 pending 收件人时 → 留在本页,切到下一位继续发
+      if (pendingRecipients.length > 0) {
+        nextPending();
+      } else {
+        navigate(`/admin/certificates?highlight=${cert.id}`);
+      }
     },
     onError: (e: unknown) =>
       toast.error(e instanceof Error ? e.message : "发证失败"),
@@ -183,6 +248,34 @@ export default function CertificateIssuePage() {
       <div className="flex-1 min-h-0 overflow-auto p-6 grid grid-cols-1 xl:grid-cols-[1fr_580px] gap-6">
         {/* ── 左:表单 ── */}
         <div className="space-y-6">
+          {/* AI 提取(Phase D)— 可选,加快批量发证场景 */}
+          <AIExtractDropzone onExtracted={applyExtracted} />
+
+          {/* 待发收件人队列(AI 提取多人时出现) */}
+          {pendingRecipients.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center gap-3">
+              <SparklesIcon className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <div className="flex-1 text-xs text-amber-900">
+                AI 提取了多位收件人。本次先发当前 1 位,队列里还有{" "}
+                <span className="font-bold">{pendingRecipients.length}</span> 位待发:
+                <span className="ml-1 font-mono">
+                  {pendingRecipients
+                    .slice(0, 5)
+                    .map((r) => r.name)
+                    .join("、")}
+                  {pendingRecipients.length > 5 ? ` 等` : ""}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={nextPending}
+                className="text-[11px] px-2 py-1 rounded bg-amber-200 hover:bg-amber-300 text-amber-900 font-medium"
+              >
+                切换下一位 →
+              </button>
+            </div>
+          )}
+
           <Section title="① 选择模板" icon={<AwardIcon className="w-4 h-4" />}>
             <TemplatePicker selectedId={template?.id ?? null} onChange={setTemplate} />
           </Section>

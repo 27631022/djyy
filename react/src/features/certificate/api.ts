@@ -127,9 +127,39 @@ export interface CertificateListFilter {
   recipientUserId?: string;
 }
 
+export interface ExtractedRecipient {
+  name: string;
+  empNo?: string;
+  dept?: string;
+}
+
+export interface ExtractHonorResponse {
+  honorName: string;
+  yearLabel: string;
+  recipients: ExtractedRecipient[];
+  source: {
+    fileName: string;
+    bytes: number;
+    textLength: number;
+    promptTokens?: number;
+    completionTokens?: number;
+  };
+}
+
 export const certificateIssueApi = {
   issue: (input: IssueCertificateInput) =>
     api.post<CertificateDetailDto>("/certificates", input).then((r) => r.data),
+
+  extract: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api
+      .post<ExtractHonorResponse>("/certificates/extract", form, {
+        // axios 自己设置 boundary
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      .then((r) => r.data);
+  },
 
   list: (filter: CertificateListFilter = {}) =>
     api
