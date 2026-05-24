@@ -12,8 +12,14 @@ export interface ExternalApiDto {
   hasKey: boolean;
   apiUrl: string | null;
   model: string | null;
+  /** 多模态/视觉模型(OCR 用)。空时图像调用走 model 兜底 */
+  visionModel: string | null;
   /** 平台充值/计费控制台 URL */
   rechargeUrl: string | null;
+  /** 业务优先级 0-100,数字大的优先,默认 50 */
+  priority: number;
+  /** 能力标签,逗号分隔。已知值:chat / vision / reasoning */
+  capabilities: string;
   active: boolean;
   meta: string | null;
   createdAt: string;
@@ -50,7 +56,10 @@ export interface UpdateExternalApiInput {
   apiKey?: string;
   apiUrl?: string;
   model?: string;
+  visionModel?: string;
   rechargeUrl?: string;
+  priority?: number;
+  capabilities?: string;
   active?: boolean;
   meta?: string;
 }

@@ -1,8 +1,11 @@
 import {
   IsBoolean,
+  IsInt,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 
 /**
@@ -39,8 +42,24 @@ export class UpdateExternalApiDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(64)
+  visionModel?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(512)
   rechargeUrl?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  priority?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  capabilities?: string;
 
   @IsOptional()
   @IsBoolean()
@@ -106,8 +125,24 @@ export class CreateExternalApiDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(64)
+  visionModel?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(512)
   rechargeUrl?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  priority?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  capabilities?: string;
 
   @IsOptional()
   @IsBoolean()

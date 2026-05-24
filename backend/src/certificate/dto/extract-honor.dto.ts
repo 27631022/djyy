@@ -38,10 +38,16 @@ export interface ExtractHonorResponse {
   source: {
     fileName: string;
     bytes: number;
-    /** 解析出的文本字数(给用户看 AI 看到了多少原文) */
+    /** 解析出的文本字数(给用户看 AI 看到了多少原文)。图片识别时为 0 */
     textLength: number;
-    /** AI 模型回执 token 用量(可选,DeepSeek 会返) */
+    /** AI 模型回执 token 用量(可选) */
     promptTokens?: number;
     completionTokens?: number;
+    /** 本次实际用的 provider(如 deepseek / doubao) */
+    usedProvider?: string;
+    /** 本次实际用的 model(如 deepseek-v4-flash / doubao-1.5-vision-pro-32k) */
+    usedModel?: string;
+    /** 'text'(Word/PDF 走 LLM)或 'vision'(图片走视觉模型) */
+    pipeline?: 'text' | 'vision';
   };
 }

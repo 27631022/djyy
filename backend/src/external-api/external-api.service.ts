@@ -33,13 +33,25 @@ export interface ExternalApiPublic {
   hasKey: boolean;
   apiUrl: string | null;
   model: string | null;
+  visionModel: string | null;
   rechargeUrl: string | null;
+  priority: number;
+  capabilities: string;
   active: boolean;
   meta: string | null;
   createdAt: string;
   updatedAt: string;
   /** key 是否由 .env 提供(DB 没配但 .env 有时显示这个) */
   envFallback: boolean;
+}
+
+/** 选中的「活跃 LLM/Vision」配置 — 业务模块拿这个直接调外部 API */
+export interface ActiveProviderConfig {
+  provider: string;
+  apiKey: string;
+  apiUrl: string;
+  model: string;
+  source: 'db';
 }
 
 /** 测试连接响应 */
@@ -92,7 +104,10 @@ function toPublic(
     hasKey,
     apiUrl: row.apiUrl,
     model: row.model,
+    visionModel: row.visionModel,
     rechargeUrl: row.rechargeUrl,
+    priority: row.priority,
+    capabilities: row.capabilities,
     active: row.active,
     meta: row.meta,
     createdAt: row.createdAt.toISOString(),
@@ -136,7 +151,61 @@ export class ExternalApiService {
   }
 
   /**
-   * 业务层用 — 拿真实 key 调外部 API。
+   * 业务层入口 1:按 capability tag 选「活跃的 LLM/Vision provider」。
+   *
+   * 选法:
+   *   1. active=true 且 apiKey 非空 且 capabilities 包含 tag
+   *   2. 按 priority 降序取第一条
+   *   3. 都没的话返回 null —— 业务层抛友好错(「请到系统设置配 LLM」)
+   *
+   * 注:.env 兜底只在 getKeyForProvider() 走,这里只看 DB(因为多模型场景
+   * 用户期望显式在 UI 管理)。如要支持 .env 兜底,加 fallback 参数即可。
+   */
+  async getActiveByCapability(
+    tag: 'chat' | 'vision' | 'reasoning',
+  ): Promise<ActiveProviderConfig | null> {
+    // SQLite 没有 array contains,改用 LIKE %tag% 过滤
+    const candidates = await this.prisma.externalApi.findMany({
+      where: {
+        active: true,
+        apiKey: { not: null },
+        capabilities: { contains: tag },
+      },
+      orderBy: [{ priority: 'desc' }, { updatedAt: 'desc' }],
+    });
+    // capabilities 是逗号分隔,需要二次过滤防误中(比如 'reasoning' 不能命中 'chat')
+    const row = candidates.find((r) => {
+      const caps = (r.capabilities ?? '')
+        .split(',')
+        .map((s) => s.trim().toLowerCase());
+      return caps.includes(tag);
+    });
+    if (!row || !row.apiKey) return null;
+    const model =
+      (tag === 'vision' ? row.visionModel : row.model) ||
+      row.model ||
+      '';
+    return {
+      provider: row.provider,
+      apiKey: row.apiKey,
+      apiUrl: row.apiUrl ?? '',
+      model,
+      source: 'db',
+    };
+  }
+
+  /** 业务层快捷:取主 LLM(chat tag,最高 priority) */
+  async getActiveLLM(): Promise<ActiveProviderConfig | null> {
+    return this.getActiveByCapability('chat');
+  }
+
+  /** 业务层快捷:取主 Vision(vision tag,最高 priority) */
+  async getActiveVision(): Promise<ActiveProviderConfig | null> {
+    return this.getActiveByCapability('vision');
+  }
+
+  /**
+   * 业务层入口 2:按 provider 精确取(老接口,仍保留)。
    * 顺序:DB.apiKey(且 active=true) → process.env → null
    */
   async getKeyForProvider(provider: string): Promise<{
@@ -189,7 +258,10 @@ export class ExternalApiService {
         apiKey: dto.apiKey || null,
         apiUrl: dto.apiUrl,
         model: dto.model,
+        visionModel: dto.visionModel,
         rechargeUrl: dto.rechargeUrl,
+        priority: dto.priority ?? 50,
+        capabilities: dto.capabilities ?? 'chat',
         active: dto.active ?? true,
         meta: dto.meta,
       },
@@ -236,7 +308,10 @@ export class ExternalApiService {
         apiKey: apiKeyUpdate,
         apiUrl: dto.apiUrl ?? undefined,
         model: dto.model ?? undefined,
+        visionModel: dto.visionModel ?? undefined,
         rechargeUrl: dto.rechargeUrl ?? undefined,
+        priority: dto.priority ?? undefined,
+        capabilities: dto.capabilities ?? undefined,
         active: dto.active ?? undefined,
         meta: dto.meta ?? undefined,
       },

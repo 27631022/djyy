@@ -465,7 +465,8 @@ function Step1Upload({
   onContinueWithHonor: () => void;
   onGoExternal: () => void;
 }) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const docInputRef = useRef<HTMLInputElement | null>(null);
+  const imgInputRef = useRef<HTMLInputElement | null>(null);
 
   const extractMut = useMutation({
     mutationFn: (f: File) => certificateIssueApi.extract(f),
@@ -473,12 +474,12 @@ function Step1Upload({
       if (r.honors.length === 0) {
         toast.warning("AI 未识别到任何荣誉项,请检查文件内容或人工填写");
       } else {
-        toast.success(
-          `提取完成:${r.honors.length} 项荣誉,共 ${r.honors.reduce(
-            (s, h) => s + h.recipients.length,
-            0,
-          )} 位对象`,
-        );
+        const total = r.honors.reduce((s, h) => s + h.recipients.length, 0);
+        const via =
+          r.source.usedProvider && r.source.pipeline
+            ? ` · 走 ${r.source.usedProvider}(${r.source.pipeline})`
+            : "";
+        toast.success(`提取完成:${r.honors.length} 项荣誉,${total} 位对象${via}`);
       }
       onExtractDone(r);
     },
@@ -497,8 +498,8 @@ function Step1Upload({
         selectedHonorIdx={selectedHonorIdx}
         onSelectHonor={onSelectHonor}
         onReset={() => {
-          if (fileInputRef.current) fileInputRef.current.value = "";
-          // 让父组件用空 result 触发重置
+          if (docInputRef.current) docInputRef.current.value = "";
+          if (imgInputRef.current) imgInputRef.current.value = "";
           onExtractDone({
             honors: [],
             yearLabel: "",
@@ -514,21 +515,22 @@ function Step1Upload({
     <div>
       <h2 className="text-base font-bold text-[#1A1A1A] mb-1">第一步 · 选择数据来源</h2>
       <p className="text-xs text-[#9CA3AF] mb-4">
-        选择最贴合你场景的方式开始。AI 提取支持「两优一先」这种一个文件多个荣誉的情况。
+        选择最贴合你场景的方式开始。AI 自动按「系统设置 → 外部 API」配置的优先级挑模型 ——
+        文档走 LLM,图片走 Vision。支持「两优一先」一份文件多荣誉的情况。
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {/* 选项 A:上传文件 */}
+        {/* 选项 A:上传文档 */}
         <UploadTile
           color="purple"
           icon={<FileTextIcon className="w-6 h-6" />}
           label="上传表彰文件"
-          desc="Word / PDF · AI 抽取荣誉、年份、受表彰人员名单"
+          desc="Word / PDF · AI 提取荣誉、年份、受表彰人员"
           loading={extractMut.isPending}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => docInputRef.current?.click()}
         />
         <input
-          ref={fileInputRef}
+          ref={docInputRef}
           type="file"
           accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           className="hidden"
@@ -538,13 +540,25 @@ function Step1Upload({
           }}
         />
 
-        {/* 选项 B:拍照 */}
+        {/* 选项 B:拍照 / 图片(OCR via vision) */}
         <UploadTile
           color="blue"
           icon={<CameraIcon className="w-6 h-6" />}
           label="拍照录入证书"
-          desc="OCR 暂未上线,敬请期待"
-          disabled
+          desc="拍照或选图 · AI 视觉模型识别证书内容(豆包/千问/GPT-4o)"
+          loading={extractMut.isPending}
+          onClick={() => imgInputRef.current?.click()}
+        />
+        <input
+          ref={imgInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFile(f);
+          }}
         />
 
         {/* 选项 C:外部证书 */}
@@ -552,7 +566,7 @@ function Step1Upload({
           color="amber"
           icon={<UploadIcon className="w-6 h-6" />}
           label="外部证书直接录入"
-          desc="上传外部单位颁发的 PDF · 提取信息后入库审核"
+          desc="上传外部单位颁发的 PDF · 录入审核"
           onClick={onGoExternal}
         />
       </div>
@@ -644,9 +658,15 @@ function ExtractedResults({
         </button>
       </h2>
       <p className="text-xs text-[#9CA3AF] mb-3">
-        源:{result.source.fileName} · {result.source.textLength} 字
+        源:{result.source.fileName}
+        {result.source.pipeline === "vision"
+          ? " · 图像识别"
+          : ` · ${result.source.textLength} 字`}
+        {result.source.usedProvider
+          ? ` · 由 ${result.source.usedProvider}(${result.source.usedModel ?? ""})${result.source.pipeline === "vision" ? " vision" : ""} 提取`
+          : ""}
         {result.source.completionTokens
-          ? ` · 用量 ${result.source.promptTokens ?? "?"}+${result.source.completionTokens} tokens`
+          ? ` · ${result.source.promptTokens ?? "?"}+${result.source.completionTokens} tokens`
           : ""}
       </p>
 

@@ -260,6 +260,28 @@ function ApiCard({
         </p>
       )}
 
+      {/* priority + capabilities chip 行 */}
+      <div className="mt-2 flex items-center gap-1 flex-wrap">
+        <span
+          className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#F0F4FF] text-[#4F46E5]"
+          title="业务优先级 — 数字大的优先被选用"
+        >
+          prio {api.priority}
+        </span>
+        {api.capabilities
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((cap) => (
+            <span
+              key={cap}
+              className={`px-1.5 py-0.5 rounded text-[10px] ${capColor(cap)}`}
+            >
+              {cap}
+            </span>
+          ))}
+      </div>
+
       <div className="mt-3 space-y-1.5 text-[11px]">
         <Field label="API Key">
           {api.hasKey ? (
@@ -304,8 +326,15 @@ function ApiCard({
           </Field>
         )}
         {api.model && (
-          <Field label="默认模型">
+          <Field label="文本模型">
             <code className="text-[#6B7280] truncate block">{api.model}</code>
+          </Field>
+        )}
+        {api.visionModel && (
+          <Field label="视觉模型">
+            <code className="text-[#6B7280] truncate block" title={api.visionModel}>
+              {api.visionModel}
+            </code>
           </Field>
         )}
       </div>
@@ -463,7 +492,10 @@ function EditDialog({
   const [clearKey, setClearKey] = useState(false);
   const [apiUrl, setApiUrl] = useState(api.apiUrl ?? "");
   const [model, setModel] = useState(api.model ?? "");
+  const [visionModel, setVisionModel] = useState(api.visionModel ?? "");
   const [rechargeUrl, setRechargeUrl] = useState(api.rechargeUrl ?? "");
+  const [priority, setPriority] = useState(api.priority);
+  const [capabilities, setCapabilities] = useState(api.capabilities);
   const [active, setActive] = useState(api.active);
   const [testResult, setTestResult] = useState<ExternalApiTestResult | null>(null);
 
@@ -492,7 +524,10 @@ function EditDialog({
         apiKey: clearKey ? "" : apiKeyDraft || undefined,
         apiUrl: apiUrl || undefined,
         model: model || undefined,
+        visionModel: visionModel || undefined,
         rechargeUrl: rechargeUrl || undefined,
+        priority,
+        capabilities,
         active,
       }),
     onSuccess: () => {
@@ -548,20 +583,57 @@ function EditDialog({
           onChange={setApiUrl}
           mono
         />
-        <LabeledInput label="默认模型" value={model} onChange={setModel} mono />
+        <LabeledInput label="文本模型" value={model} onChange={setModel} mono />
+        <LabeledInput
+          label="视觉模型(图像/OCR 用,留空则用文本模型兜底)"
+          value={visionModel}
+          onChange={setVisionModel}
+          placeholder="如 doubao-1.5-vision-pro-32k / qwen-vl-max / gpt-4o"
+          mono
+        />
         <LabeledInput
           label="充值/管理页 URL(可选)"
           value={rechargeUrl}
           onChange={setRechargeUrl}
           placeholder="如 https://platform.deepseek.com/top_up"
         />
+
+        {/* 优先级 + 能力标签 */}
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="block text-[10px] font-medium text-[#6B7280] mb-1">
+              业务优先级 0-100(数字大的优先被选用)
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={priority}
+              onChange={(e) => setPriority(Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)))}
+              className="w-full px-2 py-1.5 text-xs font-mono rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
+            />
+          </label>
+          <label className="block">
+            <span className="block text-[10px] font-medium text-[#6B7280] mb-1">
+              能力标签 (逗号分隔:chat,vision,reasoning)
+            </span>
+            <input
+              type="text"
+              value={capabilities}
+              onChange={(e) => setCapabilities(e.target.value.toLowerCase())}
+              placeholder="chat,vision"
+              className="w-full px-2 py-1.5 text-xs font-mono rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
+            />
+          </label>
+        </div>
+
         <label className="flex items-center gap-2 text-xs cursor-pointer">
           <input
             type="checkbox"
             checked={active}
             onChange={(e) => setActive(e.target.checked)}
           />
-          启用(禁用后业务回退到 .env 兜底)
+          启用(禁用后业务回退到下一个优先级的 provider)
         </label>
 
         {/* 测试连接 — 在保存前验证当前编辑值 */}
@@ -838,6 +910,20 @@ function LabeledInput({
       )}
     </label>
   );
+}
+
+/** 能力标签颜色 */
+function capColor(cap: string): string {
+  switch (cap.toLowerCase()) {
+    case "chat":
+      return "bg-blue-100 text-blue-700";
+    case "vision":
+      return "bg-purple-100 text-purple-700";
+    case "reasoning":
+      return "bg-emerald-100 text-emerald-700";
+    default:
+      return "bg-gray-100 text-gray-600";
+  }
 }
 
 /** 简单按字符串 hash 给 provider 分配一个稳定主题色 — 仅装饰 */

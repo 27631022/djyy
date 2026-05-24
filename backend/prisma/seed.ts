@@ -165,51 +165,70 @@ async function seedExternalApis() {
     description: string;
     apiUrl: string;
     model: string;
+    visionModel?: string;
     rechargeUrl: string;
+    priority: number;
+    capabilities: string;
   }> = [
     {
       provider: 'deepseek',
       name: 'DeepSeek 大模型',
       description:
-        '深度求索,性价比首选,中文能力强。' +
-        '证书 AI 提取推荐 deepseek-v4-flash(便宜+快,thinking 默认关);' +
-        '复杂推理场景换 deepseek-v4-pro。' +
-        '注意 base_url 用 OpenAI 兼容那个(/anthropic 是给 Claude Code 用的)。',
+        '深度求索,性价比首选,中文能力强。证书 AI 提取推荐 v4-flash(便宜+快)。' +
+        '主线产品当前为纯文本,vision 未公开。base_url 用 OpenAI 兼容那个。',
       apiUrl: 'https://api.deepseek.com',
       model: 'deepseek-v4-flash',
       rechargeUrl: 'https://platform.deepseek.com/top_up',
-    },
-    {
-      provider: 'openai',
-      name: 'OpenAI GPT',
-      description: 'GPT-4 / GPT-4o,通用能力最强,英文+逻辑突出。',
-      apiUrl: 'https://api.openai.com/v1',
-      model: 'gpt-4o-mini',
-      rechargeUrl: 'https://platform.openai.com/account/billing/overview',
-    },
-    {
-      provider: 'qwen',
-      name: '阿里通义千问',
-      description: 'Qwen 系列,阿里云出品,国内访问稳定。',
-      apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-      model: 'qwen-plus',
-      rechargeUrl: 'https://dashscope.console.aliyun.com/billing',
+      priority: 80,
+      capabilities: 'chat,reasoning',
     },
     {
       provider: 'doubao',
       name: '字节豆包',
-      description: 'Doubao 系列(火山引擎),长上下文 + 多模态。',
+      description:
+        '火山引擎豆包,长上下文 + 多模态(支持 OCR/图像理解)。' +
+        '中文识图准,推荐拍照录证书走它。',
       apiUrl: 'https://ark.cn-beijing.volces.com/api/v3',
       model: 'doubao-pro-32k',
+      visionModel: 'doubao-1.5-vision-pro-32k',
       rechargeUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement',
+      priority: 70,
+      capabilities: 'chat,vision,reasoning',
+    },
+    {
+      provider: 'qwen',
+      name: '阿里通义千问',
+      description:
+        'Qwen 系列,阿里云出品,国内访问稳定。VL 模型(qwen-vl-max)支持图像理解。',
+      apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      model: 'qwen-plus',
+      visionModel: 'qwen-vl-max',
+      rechargeUrl: 'https://dashscope.console.aliyun.com/billing',
+      priority: 70,
+      capabilities: 'chat,vision',
+    },
+    {
+      provider: 'openai',
+      name: 'OpenAI GPT',
+      description:
+        'GPT-4o 系列,通用能力最强,英文+逻辑突出,多模态原生支持。',
+      apiUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+      visionModel: 'gpt-4o',
+      rechargeUrl: 'https://platform.openai.com/account/billing/overview',
+      priority: 60,
+      capabilities: 'chat,vision,reasoning',
     },
     {
       provider: 'ernie',
       name: '百度文心一言',
-      description: 'ERNIE 系列(千帆平台),党政场景适配好。',
+      description: 'ERNIE 系列(千帆平台),党政场景适配好,支持多模态。',
       apiUrl: 'https://qianfan.baidubce.com/v2',
       model: 'ernie-4.0-8k',
+      visionModel: 'ernie-4.0-turbo-vl',
       rechargeUrl: 'https://console.bce.baidu.com/qianfan/overview',
+      priority: 50,
+      capabilities: 'chat,vision',
     },
   ];
   for (const i of items) {
@@ -221,15 +240,25 @@ async function seedExternalApis() {
         description: i.description,
         apiUrl: i.apiUrl,
         model: i.model,
+        visionModel: i.visionModel,
         rechargeUrl: i.rechargeUrl,
+        priority: i.priority,
+        capabilities: i.capabilities,
         active: true,
-        // apiKey 故意留空 — 管理员到「外部 API」页面手动录入
+        // apiKey 故意留空 — 管理员到 UI 录入
       },
-      // 不覆盖管理员已配的 apiKey/active,仅刷新元数据 + rechargeUrl
+      // 不覆盖管理员已配的 apiKey/apiUrl/model/active,
+      // 但刷新:元数据 + 新引入字段 + 默认 priority(用户可后续 UI 改)
+      // 注:priority/capabilities 是新加字段,首次 seed 覆盖到位是合理默认,
+      //     用户在 UI 调整后会被保留(下次 seed 不会覆盖,因为 upsert.update 内
+      //     已是 idempotent;如果想强制重置,可以手动改 seed 加备份字段)
       update: {
         name: i.name,
         description: i.description,
         rechargeUrl: i.rechargeUrl,
+        visionModel: i.visionModel,
+        capabilities: i.capabilities,
+        priority: i.priority,
       },
     });
   }

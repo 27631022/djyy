@@ -62,35 +62,38 @@ export class CertificateExtractionService {
     file: { originalname: string; mimetype: string; size: number; buffer: Buffer },
     ctx: ExtractCtx,
   ): Promise<ExtractHonorResponse> {
-    // 配置来源:DB(系统设置 → 外部 API)优先 → .env 兜底
-    const cfg = await this.externalApi.getKeyForProvider('deepseek');
-    const apiKey = cfg.apiKey ?? '';
-    if (!apiKey) {
+    // 图片走 vision 路径,Word/PDF 走文本路径
+    if (file.mimetype.startsWith('image/')) {
+      return this.extractFromImage(file, ctx);
+    }
+
+    // —— 文本路径 ——
+    const cfg = await this.externalApi.getActiveLLM();
+    if (!cfg) {
       throw new ServiceUnavailableException(
-        'AI 服务未配置:请到「系统设置 → 外部 API」录入 DeepSeek API Key,或后端 .env 设置 DEEPSEEK_API_KEY',
+        'AI 服务未配置:请到「系统设置 → 外部 API 接入」录入至少一个 LLM 的 API Key(标 chat 能力)。',
       );
     }
+    const apiKey = cfg.apiKey;
 
     // 1. 解析文档 → 纯文本
     const text = await this.parseDocument(file);
     if (!text || text.trim().length < 10) {
       throw new BadRequestException(
-        '文件解析后内容过少,可能是扫描件 / 图片 PDF。请用可复制文本的 Word/PDF',
+        '文件解析后内容过少,可能是扫描件 / 图片 PDF。请用可复制文本的 Word/PDF,或换「拍照录入」走 OCR',
       );
     }
 
-    // 截断:DeepSeek 上下文限制,留前 20000 字符给提取足够用
     const truncated = text.slice(0, 20000);
 
-    // 2. 调 DeepSeek — apiUrl/model 同样 DB 优先,字段为空时回退到 .env / 默认
     const apiUrl =
       cfg.apiUrl ||
       this.config.get<string>('DEEPSEEK_API_URL') ||
-      'https://api.deepseek.com/v1';
+      'https://api.deepseek.com';
     const model =
       cfg.model ||
       this.config.get<string>('DEEPSEEK_MODEL') ||
-      'deepseek-chat';
+      'deepseek-v4-flash';
     const timeoutMs = Number(
       this.config.get<string>('DEEPSEEK_TIMEOUT_MS') ?? '30000',
     );
@@ -100,7 +103,7 @@ export class CertificateExtractionService {
     let completionTokens: number | undefined;
     try {
       const resp = await axios.post(
-        `${apiUrl}/chat/completions`,
+        `${apiUrl.replace(/\/+$/, '')}/chat/completions`,
         {
           model,
           response_format: { type: 'json_object' },
@@ -130,13 +133,13 @@ export class CertificateExtractionService {
         err.response?.data?.error?.message ??
         err.message ??
         '未知错误';
-      this.logger.error(`DeepSeek API failed: ${detail}`);
+      this.logger.error(`LLM (${cfg.provider}) 调用失败: ${detail}`);
       if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
         throw new ServiceUnavailableException(
-          `AI 服务超时(${timeoutMs}ms),请稍后重试或换更小的文件`,
+          `${cfg.provider} 超时(${timeoutMs}ms),请稍后重试或换更小的文件`,
         );
       }
-      throw new ServiceUnavailableException(`AI 服务调用失败:${detail}`);
+      throw new ServiceUnavailableException(`${cfg.provider} 调用失败:${detail}`);
     }
 
     // 3. 解析 JSON
@@ -182,6 +185,9 @@ export class CertificateExtractionService {
         textLength: text.length,
         promptTokens,
         completionTokens,
+        usedProvider: cfg.provider,
+        usedModel: model,
+        pipeline: 'text',
       },
     };
 
@@ -199,6 +205,158 @@ export class CertificateExtractionService {
         yearLabel: result.yearLabel,
         promptTokens,
         completionTokens,
+        usedProvider: cfg.provider,
+        usedModel: model,
+        pipeline: 'text',
+      }),
+    });
+
+    return result;
+  }
+
+  /**
+   * 图片提取 — 用 vision provider 走多模态 chat completions。
+   * OpenAI 兼容的 vision 接口:messages[*].content 是数组,每项 { type:'text'|'image_url', ... }。
+   * 豆包/千问/OpenAI/文心 都遵循这个格式。
+   */
+  private async extractFromImage(
+    file: { originalname: string; mimetype: string; size: number; buffer: Buffer },
+    ctx: ExtractCtx,
+  ): Promise<ExtractHonorResponse> {
+    const cfg = await this.externalApi.getActiveVision();
+    if (!cfg) {
+      throw new ServiceUnavailableException(
+        '未配置支持图像识别的 provider。请到「系统设置 → 外部 API」给豆包/千问/OpenAI/文心 中任一录入 Key,并确认 capabilities 含 vision。',
+      );
+    }
+
+    const apiKey = cfg.apiKey;
+    const apiUrl = (cfg.apiUrl || '').replace(/\/+$/, '');
+    const model = cfg.model;
+    const timeoutMs = 60000; // 视觉调用较慢,放宽到 60s
+
+    // 图片转 base64 data URL
+    const base64 = file.buffer.toString('base64');
+    const imageDataUrl = `data:${file.mimetype};base64,${base64}`;
+
+    let raw: string;
+    let promptTokens: number | undefined;
+    let completionTokens: number | undefined;
+    try {
+      const resp = await axios.post(
+        `${apiUrl}/chat/completions`,
+        {
+          model,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text:
+                    `这是一张表彰文件 / 证书图片(文件名:${file.originalname})。` +
+                    '请按 system 要求识别并返回 JSON。',
+                },
+                {
+                  type: 'image_url',
+                  image_url: { url: imageDataUrl },
+                },
+              ],
+            },
+          ],
+          temperature: 0.1,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: timeoutMs,
+        },
+      );
+      raw = String(resp.data?.choices?.[0]?.message?.content ?? '');
+      promptTokens = resp.data?.usage?.prompt_tokens;
+      completionTokens = resp.data?.usage?.completion_tokens;
+    } catch (e) {
+      const err = e as AxiosError<{ error?: { message?: string } }>;
+      const detail =
+        err.response?.data?.error?.message ?? err.message ?? '未知错误';
+      this.logger.error(`Vision (${cfg.provider}) 调用失败: ${detail}`);
+      if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+        throw new ServiceUnavailableException(
+          `${cfg.provider} vision 超时(${timeoutMs}ms)`,
+        );
+      }
+      throw new ServiceUnavailableException(
+        `${cfg.provider} vision 调用失败:${detail}`,
+      );
+    }
+
+    let parsed: {
+      honors?: unknown;
+      honorName?: string;
+      recipients?: unknown;
+      yearLabel?: string;
+      issueDate?: string;
+    };
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      this.logger.warn(`Vision 返回非 JSON: ${raw.slice(0, 200)}`);
+      throw new InternalServerErrorException(
+        'AI 返回格式异常,无法解析。请重试或换更清晰的图片',
+      );
+    }
+
+    let honors: ExtractedHonor[];
+    if (Array.isArray(parsed.honors)) {
+      honors = normalizeHonors(parsed.honors);
+    } else if (parsed.honorName !== undefined || parsed.recipients !== undefined) {
+      honors = [
+        {
+          honorName: String(parsed.honorName ?? '').trim(),
+          recipients: normalizeRecipients(parsed.recipients),
+        },
+      ];
+    } else {
+      honors = [];
+    }
+
+    const result: ExtractHonorResponse = {
+      honors,
+      yearLabel: normalizeYearLabel(String(parsed.yearLabel ?? '')),
+      issueDate: normalizeIssueDate(String(parsed.issueDate ?? '')),
+      source: {
+        fileName: file.originalname,
+        bytes: file.size,
+        textLength: 0,
+        promptTokens,
+        completionTokens,
+        usedProvider: cfg.provider,
+        usedModel: model,
+        pipeline: 'vision',
+      },
+    };
+
+    await this.audit.log({
+      action: 'cert.issue.extract',
+      actorId: ctx.actorId,
+      actorName: ctx.actorName,
+      ip: ctx.ip,
+      detail: JSON.stringify({
+        fileName: file.originalname,
+        bytes: file.size,
+        honorCount: result.honors.length,
+        honorNames: result.honors.map((h) => h.honorName),
+        recipientTotal: result.honors.reduce((s, h) => s + h.recipients.length, 0),
+        yearLabel: result.yearLabel,
+        promptTokens,
+        completionTokens,
+        usedProvider: cfg.provider,
+        usedModel: model,
+        pipeline: 'vision',
       }),
     });
 

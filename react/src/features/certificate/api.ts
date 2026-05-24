@@ -167,6 +167,12 @@ export interface ExtractHonorResponse {
     textLength: number;
     promptTokens?: number;
     completionTokens?: number;
+    /** 本次实际用的 provider(如 deepseek / doubao) */
+    usedProvider?: string;
+    /** 本次实际用的 model */
+    usedModel?: string;
+    /** 'text'(Word/PDF 走 LLM)或 'vision'(图片走视觉模型) */
+    pipeline?: "text" | "vision";
   };
 }
 
