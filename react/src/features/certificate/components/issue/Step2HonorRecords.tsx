@@ -269,14 +269,22 @@ export function Step2HonorRecords({
             共 {records.length} 条
           </span>
         </div>
-        <table className="w-full text-sm">
+        {/* table-fixed:让各列按 w-* 设置紧贴排列,不被「荣誉名称」自然撑开吞掉余空间 */}
+        <table className="w-full text-sm table-fixed">
+          <colgroup>
+            <col className="w-14" />
+            <col className="w-60" />
+            <col className="w-60" />
+            <col className="w-64" />
+            <col className="w-12" />
+          </colgroup>
           <thead className="bg-[#FAFAFB]">
             <tr className="text-xs text-[#6B7280] uppercase tracking-wide">
-              <th className="px-3 py-2.5 text-left w-16">序号</th>
+              <th className="px-3 py-2.5 text-left">序号</th>
               <th className="px-3 py-2.5 text-left">荣誉名称(AI 识别)</th>
-              <th className="px-3 py-2.5 text-left w-64">证书模板 *</th>
-              <th className="px-3 py-2.5 text-left w-64">等级 · 类型 · 落款单位</th>
-              <th className="px-3 py-2.5 w-16"></th>
+              <th className="px-3 py-2.5 text-left">证书模板 *</th>
+              <th className="px-3 py-2.5 text-left">等级 · 类型 · 落款单位</th>
+              <th className="px-3 py-2.5"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#F0F0F0]">
@@ -390,27 +398,32 @@ function RecordRow({
         )}
       </td>
 
-      {/* 第 3 列:证书模板(模板名 + 荣誉代码 + 更换按钮) */}
+      {/* 第 3 列:证书模板(模板名 + 荣誉代码 + 分类 + 更换按钮) */}
       <td className="px-3 py-3 align-top">
         {selectedTemplate ? (
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1">
             <div
               className="text-sm font-semibold text-[#1A1A1A] truncate"
               title={selectedTemplate.name}
             >
               {selectedTemplate.name}
             </div>
-            <div className="text-xs text-[#9CA3AF] font-mono">
+            <div className="text-[11px] text-[#9CA3AF] font-mono truncate">
               荣誉代码 = {selectedTemplate.honorCode}
             </div>
-            {/* 「更换模板」按钮 — 醒目主题色描边 + 浅底,放在模板名下面 */}
+            {selectedTemplate.category && (
+              <div className="text-[11px] text-[#6B7280] truncate" title={`分类:${selectedTemplate.category}`}>
+                分类:{selectedTemplate.category}
+              </div>
+            )}
+            {/* 「更换模板」按钮 — 细描边主题色,不抢戏 */}
             <button
               type="button"
               onClick={onPickTemplate}
-              className="self-start inline-flex items-center gap-1 px-2.5 py-1 rounded border-2 border-[var(--party-primary)] text-xs font-semibold text-[var(--party-primary)] bg-party-soft hover:bg-[var(--party-primary)] hover:text-white transition-colors"
+              className="self-start mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-[var(--party-primary)] text-[11px] text-[var(--party-primary)] hover:bg-party-soft transition-colors"
               title="选择其他模板"
             >
-              <PencilIcon className="w-3 h-3" />
+              <PencilIcon className="w-2.5 h-2.5" />
               更换模板
             </button>
           </div>
