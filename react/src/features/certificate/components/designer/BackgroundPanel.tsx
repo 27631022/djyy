@@ -12,6 +12,12 @@ interface BackgroundPanelProps {
 }
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB,base64 进 designJson 用 — 再大模板会很臃肿
+/**
+ * V3+:上传背景底图时画布尺寸自动适配。
+ * 若图片任一边 > MAX 像素,长边按 MAX 缩放,短边等比;
+ * 都 ≤ MAX 直接按原图尺寸。
+ */
+const CANVAS_AUTO_FIT_MAX = 1100;
 
 export function BackgroundPanel({
   background,
@@ -37,12 +43,43 @@ export function BackgroundPanel({
     reader.onload = () => {
       const dataUrl = reader.result;
       if (typeof dataUrl !== "string") return;
-      onBackgroundChange({
-        ...background,
-        type: "image",
-        imageUrl: dataUrl,
-        fillMode: background.fillMode ?? "cover",
-      });
+      // V3+:先读图片真实尺寸,按等比规则算目标画布大小,再一并提交
+      const img = new Image();
+      img.onload = () => {
+        const { width: w0, height: h0 } = img;
+        const longest = Math.max(w0, h0);
+        let targetW = w0;
+        let targetH = h0;
+        if (longest > CANVAS_AUTO_FIT_MAX) {
+          const scale = CANVAS_AUTO_FIT_MAX / longest;
+          targetW = Math.round(w0 * scale);
+          targetH = Math.round(h0 * scale);
+          toast.info(
+            `图片 ${w0}×${h0},自动按等比缩到 ${targetW}×${targetH} 适配画布(长边 ${CANVAS_AUTO_FIT_MAX}px 上限)`,
+          );
+        }
+        onBackgroundChange({
+          ...background,
+          type: "image",
+          imageUrl: dataUrl,
+          fillMode: background.fillMode ?? "cover",
+        });
+        // 画布尺寸跟图变化 → 只当尺寸真的不同才触发,避免无意义历史项
+        if (targetW !== canvasWidth || targetH !== canvasHeight) {
+          onCanvasSizeChange(targetW, targetH);
+        }
+      };
+      img.onerror = () => {
+        // 解码失败也至少把图先放上,画布尺寸保持原样
+        toast.warning("图片解码失败,画布尺寸未自动调整");
+        onBackgroundChange({
+          ...background,
+          type: "image",
+          imageUrl: dataUrl,
+          fillMode: background.fillMode ?? "cover",
+        });
+      };
+      img.src = dataUrl;
     };
     reader.onerror = () => toast.error("读取图片失败");
     reader.readAsDataURL(file);

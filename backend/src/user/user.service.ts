@@ -6,6 +6,10 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ReplaceMembershipsDto } from './dto/replace-memberships.dto';
 import { ReplaceRolesDto, SCOPE_VALUES } from './dto/replace-roles.dto';
 import { ListUsersQuery } from './dto/list-users.query';
+import {
+  LookupByEmpNoDto,
+  UserByEmpNoLite,
+} from './dto/lookup-by-empno.dto';
 import { AuditService } from '../audit';
 import { UserCustomFieldService } from '../user-custom-field';
 
@@ -311,6 +315,57 @@ export class UserService {
     });
 
     return this.findOne(id);
+  }
+
+  /* ─── 批量按员工编号查 User(V3 发证页 Step 3b 用) ─── */
+  /**
+   * empNos → { [empNo]: UserByEmpNoLite | null } 字典。
+   *
+   * 命中规则:User.username 精确等于 empNo。
+   * 一次 prisma findMany,内存里拼 dept(主行政机构 + 主党组织),
+   * 避免前端粘 N 行后逐条 lookup。
+   */
+  async lookupByEmpNo(
+    dto: LookupByEmpNoDto,
+  ): Promise<Record<string, UserByEmpNoLite | null>> {
+    const empNos = Array.from(new Set(dto.empNos.map((e) => e.trim()).filter(Boolean)));
+    if (empNos.length === 0) return {};
+
+    const users = await this.prisma.user.findMany({
+      where: { username: { in: empNos } },
+      include: {
+        memberships: {
+          include: { org: true },
+          orderBy: [{ isPrimary: 'desc' }],
+        },
+      },
+    });
+
+    const byUsername = new Map<string, (typeof users)[number]>();
+    for (const u of users) byUsername.set(u.username, u);
+
+    const result: Record<string, UserByEmpNoLite | null> = {};
+    for (const empNo of empNos) {
+      const u = byUsername.get(empNo);
+      if (!u) {
+        result[empNo] = null;
+        continue;
+      }
+      const adminMember =
+        u.memberships.find((m) => m.org.kind === 'admin' && m.isPrimary) ??
+        u.memberships.find((m) => m.org.kind === 'admin');
+      const partyMember =
+        u.memberships.find((m) => m.org.kind === 'party' && m.isPrimary) ??
+        u.memberships.find((m) => m.org.kind === 'party');
+      result[empNo] = {
+        id: u.id,
+        username: u.username,
+        name: u.name,
+        adminOrgName: adminMember?.org.name ?? null,
+        partyOrgName: partyMember?.org.name ?? null,
+      };
+    }
+    return result;
   }
 
   /* ─── 整体替换角色 ─── */

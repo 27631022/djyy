@@ -425,7 +425,12 @@ model CertificateTemplate {
   name        String // 模板名,如"年度优秀党员证书"
   description String?
   category    String? // 分类:奖励/荣誉/培训... 留 null 即可
-  honorCode   String? // V2:荣誉首字母代码,如 "QDJL"。发证时拷贝快照到 Certificate
+  honorCode   String? // V2:荣誉代码(字母数字,如 "QDJL")。发证时拷贝快照到 Certificate
+  // V3 新增:模板自带荣誉元数据,发证时一并落到 Certificate
+  honorType   String? // individual | collective(发证页类型不再让用户选,由模板带出)
+  honorLevel  String? // 字典 cert_honor_level 的 code(默认 company/department/subsidiary)
+  // V3+:落款单位(发证机构),证书印章顶部弧形文字默认引用此值
+  issuingOrgName String?
   designJson  String // DesignerState 序列化(JSON 字符串)
   thumbnail   String? // 缩略图(data URL / base64),列表显示用
   width       Int      @default(800) // 画布宽 px
@@ -469,6 +474,12 @@ model Certificate {
 
   // 持证人来源 + 关联 + 快照
   source          String  @default("internal") // internal | external
+  // 荣誉类型(V3):individual | collective | unit
+  //   individual:个人荣誉,recipientName=人名,可关联 User
+  //   collective:集体荣誉,recipientName=集体名,自由文本
+  //   unit:单位荣誉(如"先进基层党组织"),recipientName=单位名,自由文本
+  // 老数据 null 兼容,前端按 individual 渲染
+  honorType       String?
   recipientUserId String?
   recipientUser   User?   @relation(fields: [recipientUserId], references: [id], onDelete: SetNull)
   recipientName   String // 持证人姓名(必填,即使关联 User 也存快照)

@@ -77,6 +77,10 @@ export class CertificateIssueService {
       );
     }
     const honorCode = template.honorCode;
+    // V3:honorType 以模板为准(发证页类型不再让用户选,由模板带出);
+    //     DTO 若另传则忽略 — 保证「同一模板下所有证书类型一致」
+    const honorType: 'individual' | 'collective' =
+      template.honorType === 'collective' ? 'collective' : 'individual';
 
     // 关联 User 的话拉一下做快照
     let userSnapshot: { name: string; username: string } | null = null;
@@ -118,15 +122,28 @@ export class CertificateIssueService {
 
           templateId: template.id,
           source: 'internal',
+          // V3:荣誉类型快照,以模板为准(忽略 DTO)
+          honorType,
 
+          // V3:集体荣誉时 recipientName 就是集体名,不再用 User 快照覆盖
+          //     (防止 userSnapshot.name 误覆盖)。
+          //     仅 individual 时才允许 User 快照覆盖。
           recipientUserId: dto.recipientUserId,
-          recipientName: userSnapshot?.name ?? dto.recipientName,
-          recipientEmpNo: userSnapshot?.username ?? dto.recipientEmpNo,
+          recipientName:
+            honorType === 'collective'
+              ? dto.recipientName
+              : userSnapshot?.name ?? dto.recipientName,
+          recipientEmpNo:
+            honorType === 'collective'
+              ? dto.recipientEmpNo
+              : userSnapshot?.username ?? dto.recipientEmpNo,
           recipientDept: dto.recipientDept,
           recipientIdCard: dto.recipientIdCard,
           recipientPhone: dto.recipientPhone,
 
           variableData: dto.variableData,
+          // V3:允许前端覆盖颁发日期(表彰日期),否则用 prisma @default(now())
+          issueDate: dto.issueDate ? new Date(dto.issueDate) : undefined,
           validUntil: dto.validUntil ? new Date(dto.validUntil) : null,
 
           issuedBy: ctx.actorId ?? '',
@@ -264,10 +281,17 @@ export class CertificateIssueService {
 
           templateId: null,
           source: 'external',
+          honorType: dto.honorType,
 
           recipientUserId: dto.recipientUserId,
-          recipientName: userSnapshot?.name ?? dto.recipientName,
-          recipientEmpNo: userSnapshot?.username ?? dto.recipientEmpNo,
+          recipientName:
+            dto.honorType && dto.honorType !== 'individual'
+              ? dto.recipientName
+              : userSnapshot?.name ?? dto.recipientName,
+          recipientEmpNo:
+            dto.honorType && dto.honorType !== 'individual'
+              ? dto.recipientEmpNo
+              : userSnapshot?.username ?? dto.recipientEmpNo,
           recipientDept: dto.recipientDept,
           recipientIdCard: dto.recipientIdCard,
           recipientPhone: dto.recipientPhone,

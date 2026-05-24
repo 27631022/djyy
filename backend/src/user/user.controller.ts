@@ -19,6 +19,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ReplaceMembershipsDto } from './dto/replace-memberships.dto';
 import { ReplaceRolesDto } from './dto/replace-roles.dto';
 import { ListUsersQuery } from './dto/list-users.query';
+import { LookupByEmpNoDto } from './dto/lookup-by-empno.dto';
 
 @Controller('users')
 @UseGuards(AuthGuard)
@@ -28,6 +29,17 @@ export class UserController {
   @Get()
   list(@Query() query: ListUsersQuery) {
     return this.users.list(query);
+  }
+
+  /**
+   * 批量按员工编号查 User(V3 发证页 Step 3b 用)。
+   *
+   * 注意:必须放在 `:id` 之前,否则路由 'lookup-by-empno' 会被识别成 id。
+   * 高频读、不写审计。
+   */
+  @Post('lookup-by-empno')
+  lookupByEmpNo(@Body() dto: LookupByEmpNoDto) {
+    return this.users.lookupByEmpNo(dto);
   }
 
   @Get(':id')

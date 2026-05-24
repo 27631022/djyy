@@ -13,8 +13,8 @@ interface TemplatePickerProps {
  *
  * 规则:
  *   - 只列 active 模板
- *   - 没填 honorCode 的模板灰显并禁用,提示去模板编辑页补填
- *     (因为没有 honorCode 就拼不出证书编号)
+ *   - 没填荣誉代码的模板灰显并禁用,提示去模板编辑页补填
+ *     (因为没有荣誉代码就拼不出证书编号)
  */
 export function TemplatePicker({ selectedId, onChange }: TemplatePickerProps) {
   const { data, isLoading } = useQuery({
@@ -85,7 +85,7 @@ export function TemplatePicker({ selectedId, onChange }: TemplatePickerProps) {
               {usable && (
                 <span
                   className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[var(--party-primary)] text-white"
-                  title="荣誉首字母代码"
+                  title="荣誉代码"
                 >
                   {t.honorCode}
                 </span>
@@ -93,7 +93,7 @@ export function TemplatePicker({ selectedId, onChange }: TemplatePickerProps) {
               {!usable && (
                 <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 flex items-center gap-1">
                   <AlertTriangleIcon className="w-3 h-3" />
-                  缺 honorCode
+                  缺荣誉代码
                 </span>
               )}
             </div>

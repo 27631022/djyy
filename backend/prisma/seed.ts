@@ -659,6 +659,18 @@ const DICTIONARIES: SeedDictDef[] = [
       { code: 'widowed',   label: '丧偶' },
     ],
   },
+  {
+    code: 'cert_honor_level',
+    name: '荣誉等级',
+    description: '证书模板的荣誉等级。模板设计器下拉用,发证 Step 2 + 模板浏览页按此分组/过滤',
+    builtin: true,
+    sortOrder: 70,
+    items: [
+      { code: 'company',     label: '公司级' },
+      { code: 'department',  label: '部门级' },
+      { code: 'subsidiary',  label: '分公司级' },
+    ],
+  },
 ];
 
 /* ─── 用户自定义字段定义 ─── */

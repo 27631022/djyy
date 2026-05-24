@@ -1,5 +1,6 @@
 import {
   IsDateString,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -87,4 +88,9 @@ export class IssueExternalCertificateDto {
   @IsOptional()
   @IsString()
   issuingOrgName?: string;
+
+  /** 荣誉类型(V3):同 IssueCertificateDto。仅 2 类 — individual / collective */
+  @IsOptional()
+  @IsIn(['individual', 'collective'])
+  honorType?: 'individual' | 'collective';
 }
