@@ -26,21 +26,34 @@ export class CreateTemplateDto {
   @MaxLength(64)
   category?: string;
 
-  /** V2:荣誉代码,如 "QDJL"(用户提示叫「荣誉代码」),用于发证编号生成 */
-  @IsOptional()
+  /**
+   * V2:荣誉代码,如 "QDJL"(UI 文案叫「荣誉代码」),用于发证编号生成
+   * V3+:必填 — 没有荣誉代码无法生成证书编号
+   */
   @IsString()
+  @MinLength(1, { message: '荣誉代码必填' })
   @MaxLength(32)
-  honorCode?: string;
+  honorCode!: string;
 
-  /** V3:荣誉类型 — individual(个人)/ collective(集体) */
-  @IsOptional()
-  @IsIn(['individual', 'collective'])
-  honorType?: 'individual' | 'collective';
+  /** V3:荣誉类型 — individual(个人)/ collective(集体)。必填 */
+  @IsIn(['individual', 'collective'], { message: '荣誉类型必填' })
+  honorType!: 'individual' | 'collective';
 
-  /** V3:荣誉等级 — national / provincial / corporate / company */
-  @IsOptional()
-  @IsIn(['national', 'provincial', 'corporate', 'company'])
-  honorLevel?: 'national' | 'provincial' | 'corporate' | 'company';
+  /**
+   * V3+:荣誉等级 — 字典 cert_honor_level 的 code,默认有
+   * company/department/subsidiary 三个,管理员可在数据字典中扩展。
+   * 这里只做字符串校验,不再 @IsIn,字典 code 由前端下拉控制。
+   */
+  @IsString()
+  @MinLength(1, { message: '荣誉等级必填' })
+  @MaxLength(64)
+  honorLevel!: string;
+
+  /** V3+:落款单位(发证机构),证书印章顶弧文字默认引用。必填 */
+  @IsString()
+  @MinLength(1, { message: '落款单位必填' })
+  @MaxLength(128)
+  issuingOrgName!: string;
 
   /** DesignerState 序列化的 JSON 字符串。前端 Canvas 设计器负责生成 + 解析。 */
   @IsString()

@@ -22,8 +22,10 @@ import {
 } from "@/shared/components/ui/tabs";
 import {
   certificateTemplateApi,
+  HONOR_LEVEL_LABEL,
   type CreateTemplateInput,
 } from "@/features/certificate";
+import { dictionariesApi, DICT_CODES } from "@/features/dictionary";
 import type {
   CanvasBackground,
   DesignerElement,
@@ -73,14 +75,14 @@ export default function CertificateDesignerPage() {
   /* ─── 模板元数据(不进历史) ─── */
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  /** V2:荣誉代码,如 "QDJL"(庆典奖励)— 用于发证编号 */
+  /** V2 + V3+:荣誉代码,如 "QDJL"(庆典奖励)— 必填,用于发证编号 */
   const [honorCode, setHonorCode] = useState("");
   /** V3:荣誉类型 — individual(个人)/ collective(集体) */
   const [honorType, setHonorType] = useState<"individual" | "collective">("individual");
-  /** V3:荣誉等级 — 4 选 */
-  const [honorLevel, setHonorLevel] = useState<
-    "national" | "provincial" | "corporate" | "company"
-  >("company");
+  /** V3+:荣誉等级 — 字典 cert_honor_level 的 code(默认 company) */
+  const [honorLevel, setHonorLevel] = useState<string>("company");
+  /** V3+:落款单位 — 必填,用于印章顶弧默认文字 */
+  const [issuingOrgName, setIssuingOrgName] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isPreview, setIsPreview] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -93,14 +95,8 @@ export default function CertificateDesignerPage() {
     setDescription(t.description ?? "");
     setHonorCode(t.honorCode ?? "");
     setHonorType(t.honorType === "collective" ? "collective" : "individual");
-    if (
-      t.honorLevel === "national" ||
-      t.honorLevel === "provincial" ||
-      t.honorLevel === "corporate" ||
-      t.honorLevel === "company"
-    ) {
-      setHonorLevel(t.honorLevel);
-    }
+    setHonorLevel(t.honorLevel || "company");
+    setIssuingOrgName(t.issuingOrgName ?? "");
     try {
       const parsed = JSON.parse(t.designJson) as Partial<DesignerState>;
       const empty = emptyDesignerState(t.width, t.height);
@@ -130,10 +126,15 @@ export default function CertificateDesignerPage() {
   const addElement = useCallback(
     (el: DesignerElement) => {
       record();
-      setState((s) => ({ ...s, elements: [...s.elements, el] }));
-      setSelectedIds([el.id]);
+      // V3+:新加的印章顶部弧形文字默认引用「落款单位」(若未填则保持默认)
+      const enhanced: DesignerElement =
+        el.type === "stamp" && !el.text.trim() && issuingOrgName.trim()
+          ? { ...el, text: issuingOrgName.trim() }
+          : el;
+      setState((s) => ({ ...s, elements: [...s.elements, enhanced] }));
+      setSelectedIds([enhanced.id]);
     },
-    [record, setState],
+    [record, setState, issuingOrgName],
   );
 
   const updateElement = useCallback(
@@ -331,9 +332,10 @@ export default function CertificateDesignerPage() {
       certificateTemplateApi.update(id!, {
         name,
         description: description || undefined,
-        honorCode: honorCode.trim() || undefined,
+        honorCode: honorCode.trim(),
         honorType,
         honorLevel,
+        issuingOrgName: issuingOrgName.trim(),
         designJson: JSON.stringify(state),
         width: state.canvasWidth,
         height: state.canvasHeight,
@@ -353,13 +355,27 @@ export default function CertificateDesignerPage() {
       toast.error("请填写模板名");
       return;
     }
+    // V3+:荣誉代码 / 落款单位 / 荣誉等级 全部必填
+    if (!honorCode.trim()) {
+      toast.error("请填写荣誉代码(用于发证编号生成)");
+      return;
+    }
+    if (!issuingOrgName.trim()) {
+      toast.error("请填写落款单位(印章顶弧文字默认引用)");
+      return;
+    }
+    if (!honorLevel) {
+      toast.error("请选择荣誉等级");
+      return;
+    }
     if (isNew) {
       createMut.mutate({
         name: name.trim(),
         description: description || undefined,
-        honorCode: honorCode.trim() || undefined,
+        honorCode: honorCode.trim(),
         honorType,
         honorLevel,
+        issuingOrgName: issuingOrgName.trim(),
         designJson: JSON.stringify(state),
         width: state.canvasWidth,
         height: state.canvasHeight,
@@ -622,7 +638,8 @@ export default function CertificateDesignerPage() {
           </div>
           <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
             <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
-              荣誉代码 <span className="text-[10px] text-[#9CA3AF] normal-case">用于发证编号</span>
+              荣誉代码 <span className="text-red-500">*</span>
+              <span className="text-[10px] text-[#9CA3AF] normal-case ml-1">用于发证编号</span>
             </div>
             <input
               type="text"
@@ -633,12 +650,10 @@ export default function CertificateDesignerPage() {
             />
             <p className="mt-1 text-[10px] text-[#9CA3AF] leading-relaxed">
               发证编号格式:<span className="font-mono">2024-{honorCode || "XXXX"}-100-001</span>
-              <br />
-              未填将无法用该模板发证
             </p>
           </div>
 
-          {/* V3:荣誉类型 + 荣誉等级,必填 */}
+          {/* V3:荣誉类型(模板带出,发证时不让用户选) */}
           <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
             <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
               荣誉类型 <span className="text-red-500">*</span>
@@ -675,32 +690,26 @@ export default function CertificateDesignerPage() {
             </p>
           </div>
 
+          {/* V3+:落款单位 — 必填,印章顶弧文字默认引用 */}
           <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
             <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
-              荣誉等级 <span className="text-red-500">*</span>
+              落款单位(发证机构) <span className="text-red-500">*</span>
             </div>
-            <select
-              value={honorLevel}
-              onChange={(e) =>
-                setHonorLevel(
-                  e.target.value as
-                    | "national"
-                    | "provincial"
-                    | "corporate"
-                    | "company",
-                )
-              }
+            <input
+              type="text"
+              value={issuingOrgName}
+              onChange={(e) => setIssuingOrgName(e.target.value.slice(0, 64))}
+              placeholder="如:中共 XX 委员会"
               className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
-            >
-              <option value="national">国家级</option>
-              <option value="provincial">省部级</option>
-              <option value="corporate">集团公司级</option>
-              <option value="company">公司级</option>
-            </select>
+            />
             <p className="mt-1 text-[10px] text-[#9CA3AF]">
-              影响证书的展示徽章和数据归类
+              证书印章顶部弧形文字默认引用此值
             </p>
           </div>
+
+          {/* V3+:荣誉等级 — 字典 cert_honor_level */}
+          <HonorLevelSelect value={honorLevel} onChange={setHonorLevel} />
+
           <div className="mt-4 pt-3 border-t border-[#F0F0F0] text-[10px] text-[#9CA3AF] leading-relaxed">
             <div className="font-semibold mb-1">快捷键</div>
             Ctrl+Z 撤销 · Ctrl+Y/Shift+Z 重做
@@ -713,6 +722,53 @@ export default function CertificateDesignerPage() {
           </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+/* ─── 荣誉等级选择器 — 字典驱动(cert_honor_level) ─── */
+
+function HonorLevelSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const dictQuery = useQuery({
+    queryKey: ["dictionary", DICT_CODES.CERT_HONOR_LEVEL],
+    queryFn: () => dictionariesApi.get(DICT_CODES.CERT_HONOR_LEVEL),
+    staleTime: 5 * 60 * 1000,
+  });
+  const items = (dictQuery.data?.items ?? []).filter((i) => i.active);
+
+  return (
+    <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
+      <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
+        荣誉等级 <span className="text-red-500">*</span>
+        {dictQuery.isLoading && (
+          <span className="text-[10px] text-[#9CA3AF] ml-1 normal-case">加载中…</span>
+        )}
+      </div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
+      >
+        {items.length === 0 && (
+          <option value={value}>
+            {HONOR_LEVEL_LABEL[value] ?? value}
+          </option>
+        )}
+        {items.map((it) => (
+          <option key={it.id} value={it.code}>
+            {it.label}
+          </option>
+        ))}
+      </select>
+      <p className="mt-1 text-[10px] text-[#9CA3AF]">
+        管理员可在「系统设置 → 数据字典」编辑 cert_honor_level 字典增减等级
+      </p>
     </div>
   );
 }

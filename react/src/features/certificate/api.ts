@@ -2,20 +2,26 @@ import { api } from "@/shared/api/client";
 
 /* ─── 后端 CertificateTemplate 表镜像 ─── */
 
-/** 荣誉等级 — V3 新增,4 级 */
-export type HonorLevel = "national" | "provincial" | "corporate" | "company";
+/**
+ * 荣誉等级 — 字典 cert_honor_level 的 code(运行时字符串)。
+ * 默认 3 个内置值: company / department / subsidiary,
+ * 管理员可在 数据字典 中扩展,本类型保留为 string 表达开放性。
+ */
+export type HonorLevel = string;
 
 export interface CertificateTemplateDto {
   id: string;
   name: string;
   description: string | null;
   category: string | null;
-  /** V2 加:荣誉代码(字母数字,用户提示叫「荣誉代码」),用于发证编号生成 */
+  /** V2 加:荣誉代码,V3+ 必填(发证编号必备) */
   honorCode: string | null;
   /** V3 加:荣誉类型 — individual(个人)/ collective(集体) */
   honorType: "individual" | "collective" | null;
-  /** V3 加:荣誉等级 — 国家级/省部级/集团公司级/公司级 */
-  honorLevel: HonorLevel | null;
+  /** V3 加:荣誉等级 — 字典 cert_honor_level 的 code,默认 company/department/subsidiary */
+  honorLevel: string | null;
+  /** V3+:落款单位(发证机构),证书印章顶弧文字默认引用 */
+  issuingOrgName: string | null;
   /** DesignerState 序列化的 JSON 字符串。前端用前先 JSON.parse */
   designJson: string;
   thumbnail: string | null;
@@ -31,9 +37,14 @@ export interface CreateTemplateInput {
   name: string;
   description?: string;
   category?: string;
-  honorCode?: string;
-  honorType?: "individual" | "collective";
-  honorLevel?: HonorLevel;
+  /** V3+ 必填 */
+  honorCode: string;
+  /** V3+ 必填 */
+  honorType: "individual" | "collective";
+  /** V3+ 必填,字典 cert_honor_level 的 code */
+  honorLevel: string;
+  /** V3+ 必填,落款单位/发证机构 */
+  issuingOrgName: string;
   designJson: string;
   thumbnail?: string;
   width?: number;
@@ -41,20 +52,18 @@ export interface CreateTemplateInput {
   active?: boolean;
 }
 
-/** UI 中文标签映射 — 集中维护,各页统一引用 */
-export const HONOR_LEVEL_LABEL: Record<HonorLevel, string> = {
-  national: "国家级",
-  provincial: "省部级",
-  corporate: "集团公司级",
+/**
+ * 内置荣誉等级 label 兜底表 — 与 seed.ts cert_honor_level 默认 3 项对齐。
+ * 真正的 SoT 在数据字典里;此表用于:
+ *   (1) UI 在字典未加载时的即时显示
+ *   (2) 字典里有但 label 未自定义时的中文兜底
+ * 管理员若在数据字典加新 code,此表无对应 → fallback 显示 code 原文。
+ */
+export const HONOR_LEVEL_LABEL: Record<string, string> = {
   company: "公司级",
+  department: "部门级",
+  subsidiary: "分公司级",
 };
-
-export const HONOR_LEVEL_ORDER: HonorLevel[] = [
-  "national",
-  "provincial",
-  "corporate",
-  "company",
-];
 
 export const HONOR_TYPE_LABEL = {
   individual: "个人",

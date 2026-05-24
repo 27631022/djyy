@@ -454,24 +454,25 @@ function RecordRow({
 
 /* ─── 类型/等级徽章 ─── */
 
-function HonorLevelBadge({
-  level,
-}: {
-  level: "national" | "provincial" | "corporate" | "company";
-}) {
-  // 等级语义色:级别越高越显眼
-  const map = {
-    national: "bg-red-50 text-red-700 border-red-200",
-    provincial: "bg-orange-50 text-orange-700 border-orange-200",
-    corporate: "bg-blue-50 text-blue-700 border-blue-200",
-    company: "bg-slate-50 text-slate-700 border-slate-200",
-  }[level];
+function HonorLevelBadge({ level }: { level: string }) {
+  // 内置 3 级 + 字典扩展时兜底用 slate 中性色
+  const cls =
+    HONOR_LEVEL_CLS[level] ??
+    "bg-slate-50 text-slate-700 border-slate-200";
+  const label = HONOR_LEVEL_LABEL[level] ?? level;
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${map}`}>
-      {HONOR_LEVEL_LABEL[level]}
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${cls}`}>
+      {label}
     </span>
   );
 }
+
+/** 内置 3 级的色阶;管理员加新字典项时走兜底 slate */
+const HONOR_LEVEL_CLS: Record<string, string> = {
+  company: "bg-slate-50 text-slate-700 border-slate-200",
+  department: "bg-blue-50 text-blue-700 border-blue-200",
+  subsidiary: "bg-orange-50 text-orange-700 border-orange-200",
+};
 
 function HonorTypeBadge({ type }: { type: "individual" | "collective" }) {
   const map = {

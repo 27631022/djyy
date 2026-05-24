@@ -27,21 +27,31 @@ export class UpdateTemplateDto {
   @MaxLength(64)
   category?: string;
 
-  /** V2:荣誉代码(允许空字符串清空) */
+  /**
+   * V2:荣誉代码 — Update 时仍为可选(部分更新);若传则要求非空
+   */
   @IsOptional()
   @IsString()
+  @MinLength(1, { message: '荣誉代码不能为空' })
   @MaxLength(32)
   honorCode?: string;
 
-  /** V3:荣誉类型 — individual(个人)/ collective(集体) */
+  /** V3:荣誉类型 — individual / collective */
   @IsOptional()
   @IsIn(['individual', 'collective'])
   honorType?: 'individual' | 'collective';
 
-  /** V3:荣誉等级 — national / provincial / corporate / company */
+  /** V3+:荣誉等级 — 字典 cert_honor_level 的 code(默认 company/department/subsidiary) */
   @IsOptional()
-  @IsIn(['national', 'provincial', 'corporate', 'company'])
-  honorLevel?: 'national' | 'provincial' | 'corporate' | 'company';
+  @IsString()
+  @MaxLength(64)
+  honorLevel?: string;
+
+  /** V3+:落款单位(发证机构) */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  issuingOrgName?: string;
 
   @IsOptional()
   @IsString()
