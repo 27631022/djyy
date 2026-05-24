@@ -187,11 +187,12 @@ async function seedExternalApis() {
       name: '字节豆包',
       description:
         '火山引擎豆包,长上下文 + 多模态(支持 OCR/图像理解)。' +
-        '中文识图准,推荐拍照录证书走它。',
+        '注意:model 是带日期后缀的 ID(如 doubao-1-5-pro-32k-250115)。' +
+        '可到「模型推理 → 在线推理」复制账户实际开通的 model ID,或自建端点用 ep-xxx。',
       apiUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-      model: 'doubao-pro-32k',
-      visionModel: 'doubao-1.5-vision-pro-32k',
-      rechargeUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement',
+      model: 'doubao-1-5-pro-32k-250115',
+      visionModel: 'doubao-1-5-vision-pro-32k-250115',
+      rechargeUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/model',
       priority: 70,
       capabilities: 'chat,vision,reasoning',
     },

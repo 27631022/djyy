@@ -276,8 +276,9 @@ function ApiCard({
             <span
               key={cap}
               className={`px-1.5 py-0.5 rounded text-[10px] ${capColor(cap)}`}
+              title={`英文标识:${cap}`}
             >
-              {cap}
+              {capLabel(cap)}
             </span>
           ))}
       </div>
@@ -615,15 +616,18 @@ function EditDialog({
           </label>
           <label className="block">
             <span className="block text-[10px] font-medium text-[#6B7280] mb-1">
-              能力标签 (逗号分隔:chat,vision,reasoning)
+              能力标签(英文系统值,逗号分隔)
             </span>
             <input
               type="text"
               value={capabilities}
               onChange={(e) => setCapabilities(e.target.value.toLowerCase())}
-              placeholder="chat,vision"
+              placeholder="chat,vision,reasoning"
               className="w-full px-2 py-1.5 text-xs font-mono rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
             />
+            <span className="block mt-1 text-[10px] text-[#9CA3AF]">
+              chat=对话 · vision=视觉 · reasoning=推理
+            </span>
           </label>
         </div>
 
@@ -912,6 +916,21 @@ function LabeledInput({
   );
 }
 
+/** 能力标签 → 中文显示名(底层 DB 仍存英文,这里仅 UI 翻译) */
+const CAP_LABELS: Record<string, string> = {
+  chat: "对话",
+  vision: "视觉",
+  reasoning: "推理",
+  embedding: "向量",
+  tts: "语音合成",
+  asr: "语音识别",
+};
+
+function capLabel(cap: string): string {
+  const k = cap.toLowerCase();
+  return CAP_LABELS[k] ?? cap;
+}
+
 /** 能力标签颜色 */
 function capColor(cap: string): string {
   switch (cap.toLowerCase()) {
@@ -921,6 +940,11 @@ function capColor(cap: string): string {
       return "bg-purple-100 text-purple-700";
     case "reasoning":
       return "bg-emerald-100 text-emerald-700";
+    case "embedding":
+      return "bg-amber-100 text-amber-700";
+    case "tts":
+    case "asr":
+      return "bg-pink-100 text-pink-700";
     default:
       return "bg-gray-100 text-gray-600";
   }
