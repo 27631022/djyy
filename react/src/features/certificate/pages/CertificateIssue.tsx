@@ -17,6 +17,7 @@ import {
   XIcon,
   CheckCircle2Icon,
   AlertCircleIcon,
+  Building2Icon,
 } from "lucide-react";
 import {
   certificateIssueApi,
@@ -41,6 +42,7 @@ import {
 } from "../lib/certificateDraft";
 import { Step1Upload } from "../components/issue/Step1Upload";
 import { Step2HonorRecords } from "../components/issue/Step2HonorRecords";
+import { Step3aUnitsForm } from "../components/issue/Step3aUnitsForm";
 
 const PARTY = "var(--party-primary)";
 
@@ -111,6 +113,19 @@ export default function CertificateIssuePage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
 
+  /* ─── Step 3 子步骤(不持久化,每次从 records 派生)─── */
+  // 'a' = 集体录入(Step3aUnitsForm),'b' = 个人录入(老 Step3Recipients via bridge)
+  // Phase 5 接入 a;Phase 6 会改 b 为粘贴识别表单
+  const [subStep, setSubStep] = useState<"a" | "b">("a");
+  const hasCollective = useMemo(
+    () => records.some((r) => r.honorType === "collective"),
+    [records],
+  );
+  const hasIndividual = useMemo(
+    () => records.some((r) => r.honorType === "individual"),
+    [records],
+  );
+
   /* ─── 草稿 ↔ 内存状态双向同步 ─── */
   // 1) 首次拿到 userId 时,从 localStorage 拉旧 draft 恢复全部字段
   useEffect(() => {
@@ -120,6 +135,11 @@ export default function CertificateIssuePage() {
     if (!saved) return;
     setDraft(saved);
     setStep(saved.step);
+    // Step 3 时派生 subStep:有集体记录优先 a,否则 b
+    if (saved.step === 3) {
+      const hadColl = saved.records.some((r) => r.honorType === "collective");
+      setSubStep(hadColl ? "a" : "b");
+    }
     if (saved.extracted) {
       setExtractResult(saved.extracted);
       // 多 honor 时让用户重新选(避免老的 selectedHonorIdx 与新 list 错位)
@@ -254,17 +274,32 @@ export default function CertificateIssuePage() {
       return null;
     })();
 
+    // Step 3 校验:按 subStep 分流
+    const step3Err = (() => {
+      if (subStep === "a") {
+        // 每条集体 record 至少 1 个非空集体名
+        const coll = records.filter((r) => r.honorType === "collective");
+        for (let i = 0; i < coll.length; i++) {
+          if (!coll[i].collectives.some((c) => c.name.trim())) {
+            return `第 ${i + 1} 条集体记录${coll[i].honorName ? `(${coll[i].honorName})` : ""}:至少添加 1 个被表彰单位`;
+          }
+        }
+        return null;
+      }
+      // subStep === "b" → 老流程
+      return rows.length === 0 || rows.every((r) => !r.name.trim())
+        ? "至少添加 1 位受表彰对象"
+        : null;
+    })();
+
     const map: Record<WizardStep, string | null> = {
       1: null,
       2: step2Err,
-      3:
-        rows.length === 0 || rows.every((r) => !r.name.trim())
-          ? "至少添加 1 位受表彰对象"
-          : null,
+      3: step3Err,
       4: null,
     };
     return map[step];
-  }, [step, records, rows, yearLabel, issueDate]);
+  }, [step, subStep, records, rows, yearLabel, issueDate]);
 
   /* ─── 发证 ─── */
   const validRows = useMemo(() => rows.filter((r) => r.name.trim()), [rows]);
@@ -356,7 +391,13 @@ export default function CertificateIssuePage() {
       {/* 主体:左 stepper + 右 step 内容 */}
       <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-[240px_1fr]">
         {/* 左侧 stepper */}
-        <Stepper step={step} />
+        <Stepper
+          step={step}
+          subStep={subStep}
+          hasCollective={hasCollective}
+          hasIndividual={hasIndividual}
+          hasAnyRecord={records.length > 0}
+        />
 
         {/* 右侧步骤内容 */}
         <div className="overflow-auto p-6 flex flex-col">
@@ -394,7 +435,15 @@ export default function CertificateIssuePage() {
               />
             )}
 
-            {step === 3 && (
+            {step === 3 && subStep === "a" && (
+              <Step3aUnitsForm
+                records={records}
+                onRecordsChange={setRecords}
+                templates={allTemplates}
+              />
+            )}
+
+            {step === 3 && subStep === "b" && (
               <Step3Recipients
                 rows={rows}
                 onChange={setRows}
@@ -430,12 +479,48 @@ export default function CertificateIssuePage() {
             <div className="text-[11px] text-[#9CA3AF]">
               {step === 1
                 ? "选择数据来源开始"
-                : `共 ${validRows.length} 位待发证`}
+                : step === 2
+                  ? `${records.length} 条表彰记录`
+                  : step === 3 && subStep === "a"
+                    ? `${records
+                        .filter((r) => r.honorType === "collective")
+                        .reduce(
+                          (sum, r) =>
+                            sum +
+                            r.collectives.filter((c) => c.name.trim()).length,
+                          0,
+                        )} 个被表彰集体`
+                    : `共 ${validRows.length} 位待发证`}
             </div>
             <div className="flex items-center gap-2">
               {step > 1 && (
                 <button
-                  onClick={() => setStep((s) => (Math.max(1, s - 1) as WizardStep))}
+                  onClick={() => {
+                    if (step === 3) {
+                      // b → a(若有集体);a → step 2
+                      if (subStep === "b" && hasCollective) {
+                        setSubStep("a");
+                        return;
+                      }
+                      setStep(2);
+                      return;
+                    }
+                    if (step === 4) {
+                      // step 4 → step 3 末子步骤(优先 b)
+                      if (hasIndividual) {
+                        const firstIndiv = records.find(
+                          (r) => r.honorType === "individual",
+                        );
+                        if (firstIndiv) bridgeRecordToOldState(firstIndiv);
+                        setSubStep("b");
+                      } else {
+                        setSubStep("a");
+                      }
+                      setStep(3);
+                      return;
+                    }
+                    setStep((s) => (Math.max(1, s - 1) as WizardStep));
+                  }}
                   disabled={issuing}
                   className="flex items-center gap-1 px-3 py-1.5 rounded text-sm border border-[#E9E9E9] hover:bg-[#F7F8FA] disabled:opacity-50"
                 >
@@ -453,18 +538,51 @@ export default function CertificateIssuePage() {
                       return;
                     }
                     if (step === 2) {
-                      // Step 2 → Step 3 bridge:
-                      // Phase 4 内仍用老 Step 3/4 单 honor 流,用 records[0] 桥接到旧
-                      // template / yearLabel / rows / issuingOrgName。Phase 5-7 完成后撤掉此桥。
-                      if (records.length > 0) {
-                        bridgeRecordToOldState(records[0]);
+                      // Step 2 → Step 3:按 records 决定先进哪个子步骤
+                      if (hasCollective) {
+                        // 有集体 → 先进 3a;3a 不依赖老 single-honor state,无需 bridge
+                        setSubStep("a");
+                        setStep(3);
+                      } else if (hasIndividual) {
+                        // 只有个人 → 直接进 3b,桥接第 1 条 individual
+                        const firstIndiv = records.find(
+                          (r) => r.honorType === "individual",
+                        );
+                        if (firstIndiv) bridgeRecordToOldState(firstIndiv);
                         if (records.length > 1) {
                           toast.info(
-                            `本期只发第 1 项「${records[0].honorName || "未命名"}」 — 多荣誉一体发证将在 Phase 7 完成`,
+                            `本期只发第 1 项「${firstIndiv?.honorName || "未命名"}」 — 多荣誉一体发证将在 Phase 7 完成`,
                           );
                         }
+                        setSubStep("b");
+                        setStep(3);
+                      } else {
+                        // 理论 stepReady 会卡住,兜底
+                        setStep(3);
                       }
-                      setStep(3);
+                      return;
+                    }
+                    if (step === 3) {
+                      if (subStep === "a") {
+                        if (hasIndividual) {
+                          // a → b,桥接第 1 条 individual
+                          const firstIndiv = records.find(
+                            (r) => r.honorType === "individual",
+                          );
+                          if (firstIndiv) bridgeRecordToOldState(firstIndiv);
+                          setSubStep("b");
+                        } else {
+                          // 只有集体 → step 4,桥第 1 条 collective(Phase 7 撤桥)
+                          const firstColl = records.find(
+                            (r) => r.honorType === "collective",
+                          );
+                          if (firstColl) bridgeRecordToOldState(firstColl);
+                          setStep(4);
+                        }
+                      } else {
+                        // subStep === "b" → step 4
+                        setStep(4);
+                      }
                       return;
                     }
                     setStep((s) => (Math.min(4, s + 1) as WizardStep));
@@ -534,21 +652,124 @@ export default function CertificateIssuePage() {
 
 /* ─── 左侧 Stepper ─── */
 
-function Stepper({ step }: { step: WizardStep }) {
-  const items = [
-    { idx: 1 as WizardStep, label: "荣誉文件上传", desc: "Word / PDF · AI 自动识别", icon: UploadIcon },
-    { idx: 2 as WizardStep, label: "选证书模板", desc: "建立表彰记录,挑模板", icon: AwardIcon },
-    { idx: 3 as WizardStep, label: "确定人员", desc: "审核 AI 抽取或手填", icon: UsersIcon },
-    { idx: 4 as WizardStep, label: "清单 + 发证", desc: "最终确认并批量发证", icon: ListChecksIcon },
-  ];
+type StepperStatus = "done" | "active" | "pending";
+
+interface StepperItem {
+  key: string;
+  badge: string;
+  label: string;
+  desc: string;
+  icon: typeof UploadIcon;
+  status: StepperStatus;
+}
+
+function Stepper({
+  step,
+  subStep,
+  hasCollective,
+  hasIndividual,
+  hasAnyRecord,
+}: {
+  step: WizardStep;
+  subStep: "a" | "b";
+  hasCollective: boolean;
+  hasIndividual: boolean;
+  hasAnyRecord: boolean;
+}) {
+  const items: StepperItem[] = [];
+
+  items.push({
+    key: "1",
+    badge: "1",
+    label: "荣誉文件上传",
+    desc: "Word / PDF · AI 自动识别",
+    icon: UploadIcon,
+    status: step === 1 ? "active" : step > 1 ? "done" : "pending",
+  });
+  items.push({
+    key: "2",
+    badge: "2",
+    label: "选证书模板",
+    desc: "建立表彰记录,挑模板",
+    icon: AwardIcon,
+    status: step === 2 ? "active" : step > 2 ? "done" : "pending",
+  });
+
+  // Step 3:按 records 内 honorType 分布动态渲染 3a / 3b
+  if (hasAnyRecord && hasCollective && hasIndividual) {
+    items.push({
+      key: "3a",
+      badge: "3a",
+      label: "录入被表彰集体",
+      desc: "集体 / 单位名自由文本",
+      icon: Building2Icon,
+      status:
+        step === 3 && subStep === "a"
+          ? "active"
+          : step > 3 || (step === 3 && subStep === "b")
+            ? "done"
+            : "pending",
+    });
+    items.push({
+      key: "3b",
+      badge: "3b",
+      label: "确定受表彰人员",
+      desc: "员工编号识别 / 表格",
+      icon: UsersIcon,
+      status:
+        step === 3 && subStep === "b"
+          ? "active"
+          : step > 3
+            ? "done"
+            : "pending",
+    });
+  } else if (hasAnyRecord && hasCollective) {
+    items.push({
+      key: "3a-only",
+      badge: "3",
+      label: "录入被表彰集体",
+      desc: "集体 / 单位名自由文本",
+      icon: Building2Icon,
+      status: step === 3 ? "active" : step > 3 ? "done" : "pending",
+    });
+  } else if (hasAnyRecord && hasIndividual) {
+    items.push({
+      key: "3b-only",
+      badge: "3",
+      label: "确定受表彰人员",
+      desc: "员工编号识别 / 表格",
+      icon: UsersIcon,
+      status: step === 3 ? "active" : step > 3 ? "done" : "pending",
+    });
+  } else {
+    // records 为空(step 1/2 时常态):占位,让用户能看到大致流程
+    items.push({
+      key: "3",
+      badge: "3",
+      label: "录入对象",
+      desc: "待 Step 2 决定类型",
+      icon: UsersIcon,
+      status: step === 3 ? "active" : step > 3 ? "done" : "pending",
+    });
+  }
+
+  items.push({
+    key: "4",
+    badge: "4",
+    label: "清单 + 发证",
+    desc: "最终确认并批量发证",
+    icon: ListChecksIcon,
+    status: step === 4 ? "active" : "pending",
+  });
+
   return (
     <aside className="bg-white border-r border-[#E9E9E9] p-4 flex flex-col gap-1.5 overflow-auto">
       {items.map((it, i) => {
-        const done = step > it.idx;
-        const active = step === it.idx;
+        const done = it.status === "done";
+        const active = it.status === "active";
         const Icon = it.icon;
         return (
-          <div key={it.idx} className="relative">
+          <div key={it.key} className="relative">
             <div
               className={`flex items-start gap-3 rounded-lg p-3 transition-all ${
                 active
@@ -567,7 +788,7 @@ function Stepper({ step }: { step: WizardStep }) {
                       : "bg-[#E9E9E9] text-[#9CA3AF]"
                 }`}
               >
-                {done ? <CheckIcon className="w-3.5 h-3.5" /> : it.idx}
+                {done ? <CheckIcon className="w-3.5 h-3.5" /> : it.badge}
               </div>
               <div className="flex-1 min-w-0">
                 <div
