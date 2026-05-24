@@ -37,6 +37,10 @@ export class CertificateService {
         name: dto.name,
         description: dto.description,
         category: dto.category,
+        // V2 + V3 元数据
+        honorCode: dto.honorCode,
+        honorType: dto.honorType,
+        honorLevel: dto.honorLevel,
         designJson: dto.designJson,
         thumbnail: dto.thumbnail,
         width: dto.width ?? 800,
@@ -49,7 +53,13 @@ export class CertificateService {
       action: 'cert.template.create',
       target: created.id,
       ...ctx,
-      detail: JSON.stringify({ name: dto.name, category: dto.category }),
+      detail: JSON.stringify({
+        name: dto.name,
+        category: dto.category,
+        honorCode: dto.honorCode,
+        honorType: dto.honorType,
+        honorLevel: dto.honorLevel,
+      }),
     });
     return created;
   }

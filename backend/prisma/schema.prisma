@@ -425,7 +425,10 @@ model CertificateTemplate {
   name        String // 模板名,如"年度优秀党员证书"
   description String?
   category    String? // 分类:奖励/荣誉/培训... 留 null 即可
-  honorCode   String? // V2:荣誉首字母代码,如 "QDJL"。发证时拷贝快照到 Certificate
+  honorCode   String? // V2:荣誉代码(字母数字,如 "QDJL")。发证时拷贝快照到 Certificate
+  // V3 新增:模板自带荣誉元数据,发证时一并落到 Certificate
+  honorType   String? // individual | collective(发证页类型不再让用户选,由模板带出)
+  honorLevel  String? // national | provincial | corporate | company(国家级/省部级/集团公司级/公司级)
   designJson  String // DesignerState 序列化(JSON 字符串)
   thumbnail   String? // 缩略图(data URL / base64),列表显示用
   width       Int      @default(800) // 画布宽 px

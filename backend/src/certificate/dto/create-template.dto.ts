@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -25,11 +26,21 @@ export class CreateTemplateDto {
   @MaxLength(64)
   category?: string;
 
-  /** V2:荣誉首字母代码,如 "QDJL"(庆典奖励),用于发证编号生成 */
+  /** V2:荣誉代码,如 "QDJL"(用户提示叫「荣誉代码」),用于发证编号生成 */
   @IsOptional()
   @IsString()
   @MaxLength(32)
   honorCode?: string;
+
+  /** V3:荣誉类型 — individual(个人)/ collective(集体) */
+  @IsOptional()
+  @IsIn(['individual', 'collective'])
+  honorType?: 'individual' | 'collective';
+
+  /** V3:荣誉等级 — national / provincial / corporate / company */
+  @IsOptional()
+  @IsIn(['national', 'provincial', 'corporate', 'company'])
+  honorLevel?: 'national' | 'provincial' | 'corporate' | 'company';
 
   /** DesignerState 序列化的 JSON 字符串。前端 Canvas 设计器负责生成 + 解析。 */
   @IsString()

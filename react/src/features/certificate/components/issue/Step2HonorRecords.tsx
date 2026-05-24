@@ -7,11 +7,11 @@
  *   同一份表彰文件下所有荣誉共用,不再 per-row 维护
  *
  * 表彰记录表格(一行 = 一项荣誉):
- *   # / 荣誉名称(文字展示)/ 类型 toggle(个人/集体)/ 操作
+ *   序号 / 荣誉名称(AI 识别) / 证书模板(picker)/ 操作
  *
- * 荣誉名称由模板决定:
- *   - 行内不再下拉,改为「选择模板」按钮 → 打开模态卡片网格(支持搜索)
- *   - 选定后行内显示模板名称(纯文字,不可改)+「更换」按钮
+ * 模板带出荣誉类型 + 等级:
+ *   - 用户不再选个人/集体 toggle,由 template.honorType 决定
+ *   - 卡片网格 / 表格行均展示模板的「等级 + 类型」徽章
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -30,6 +30,8 @@ import {
 
 import {
   certificateTemplateApi,
+  HONOR_LEVEL_LABEL,
+  HONOR_TYPE_LABEL,
   type CertificateTemplateDto,
   type ExtractHonorResponse,
 } from "../../api";
@@ -87,15 +89,18 @@ export function Step2HonorRecords({
           const tc = t.honorCode.toLowerCase();
           return hn.includes(tn) || tn.includes(hn) || hn.includes(tc);
         });
-        const honorType: HonorType =
-          h.honorType === "individual"
+        // V3:honorType 以模板为准(若已匹配),否则用 AI 推断兜底
+        const honorType: HonorType = matched?.honorType
+          ? matched.honorType
+          : h.honorType === "individual"
             ? "individual"
             : h.honorType
               ? "collective"
               : "individual";
         return newHonorRecord({
           templateId: matched?.id ?? null,
-          honorName: matched?.name ?? h.honorName,
+          // 保留 AI 识别的原始荣誉名(显示在表格第 2 列,不被模板覆盖)
+          honorName: h.honorName,
           honorType,
           persons:
             honorType === "individual"
@@ -140,13 +145,28 @@ export function Step2HonorRecords({
       records.map((r) => {
         if (r.rid !== rid) return r;
         const updated: HonorRecord = { ...r, ...p };
+        // 切类型时清掉另一边的子列表
         if (p.honorType && p.honorType !== r.honorType) {
           if (p.honorType === "individual") updated.collectives = [];
           else updated.persons = [];
         }
+        // 改模板时:
+        //  1) honorName 仅在原本为空时回填模板名,保留 AI 已识别的原文
+        //  2) honorType 强制同步模板(模板是权威);若与上一次不同则清掉子列表
         if (p.templateId !== undefined && p.templateId !== r.templateId) {
           const t = templates.find((tt) => tt.id === p.templateId);
-          updated.honorName = t?.name ?? r.honorName;
+          if (!updated.honorName.trim()) {
+            updated.honorName = t?.name ?? "";
+          }
+          if (t?.honorType) {
+            const nextType: HonorType =
+              t.honorType === "collective" ? "collective" : "individual";
+            if (nextType !== updated.honorType) {
+              updated.honorType = nextType;
+              if (nextType === "individual") updated.collectives = [];
+              else updated.persons = [];
+            }
+          }
         }
         return updated;
       }),
@@ -195,7 +215,7 @@ export function Step2HonorRecords({
             type="button"
             disabled
             className="text-sm px-3 py-2 rounded border border-[#E9E9E9] text-[#9CA3AF] cursor-not-allowed"
-            title="本期 MVP 暂不开放此入口。如需新模板,请联系管理员先在「证书模板」页创建并填写 honorCode。"
+            title="本期 MVP 暂不开放此入口。如需新模板,请联系管理员先在「证书模板」页创建并填写荣誉代码。"
           >
             设计模板(暂不开放)
           </button>
@@ -251,9 +271,9 @@ export function Step2HonorRecords({
         <table className="w-full text-sm">
           <thead className="bg-[#FAFAFB]">
             <tr className="text-xs text-[#6B7280] uppercase tracking-wide">
-              <th className="px-3 py-2.5 text-left w-12">#</th>
-              <th className="px-3 py-2.5 text-left">荣誉名称(模板) *</th>
-              <th className="px-3 py-2.5 text-left w-52">表彰类型 *</th>
+              <th className="px-3 py-2.5 text-left w-16">序号</th>
+              <th className="px-3 py-2.5 text-left w-72">荣誉名称(AI 识别)</th>
+              <th className="px-3 py-2.5 text-left">证书模板 *</th>
               <th className="px-3 py-2.5 w-16"></th>
             </tr>
           </thead>
@@ -282,7 +302,6 @@ export function Step2HonorRecords({
                   record={r}
                   templates={templates}
                   onPickTemplate={() => setPicker({ rid: r.rid })}
-                  onPatch={(p) => patchRow(r.rid, p)}
                   onRemove={() => removeRow(r.rid)}
                 />
               ))
@@ -306,7 +325,7 @@ export function Step2HonorRecords({
         <div className="mt-3 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-sm px-3 py-2 flex items-start gap-2">
           <AlertCircleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <div>
-            还没有可用的证书模板,请先去「证书模板」页创建至少一个模板并填写 honorCode。
+            还没有可用的证书模板,请先去「证书模板」页创建至少一个模板并填写荣誉代码。
           </div>
         </div>
       )}
@@ -335,32 +354,65 @@ function RecordRow({
   record,
   templates,
   onPickTemplate,
-  onPatch,
   onRemove,
 }: {
   idx: number;
   record: HonorRecord;
   templates: CertificateTemplateDto[];
   onPickTemplate: () => void;
-  onPatch: (p: Partial<HonorRecord>) => void;
   onRemove: () => void;
 }) {
   const selectedTemplate = templates.find((t) => t.id === record.templateId) ?? null;
   const missingTemplate = !record.templateId;
+  const aiName = record.honorName.trim();
 
   return (
     <tr className={missingTemplate ? "bg-red-50/40" : ""}>
       <td className="px-3 py-3 text-[#9CA3AF] font-mono align-top pt-4 text-sm">{idx}</td>
-      {/* 荣誉名称(模板)— 纯文字 + 「选择/更换模板」按钮 */}
-      <td className="px-3 py-3">
+
+      {/* 第 2 列:AI 识别出的荣誉名称(纯文字,不可改) */}
+      <td className="px-3 py-3 align-top">
+        <div className="text-base font-semibold text-[#1A1A1A] break-words">
+          {aiName || <span className="text-[#9CA3AF] italic font-normal">(未识别,手动添加行)</span>}
+        </div>
+        {/* 预填数量提示,让用户对齐预期 */}
+        {record.honorType === "individual" && record.persons.length > 0 && (
+          <div className="text-xs text-[#9CA3AF] mt-1.5">
+            AI 预填 {record.persons.length} 位个人
+          </div>
+        )}
+        {record.honorType === "collective" && record.collectives.length > 0 && (
+          <div className="text-xs text-[#9CA3AF] mt-1.5">
+            AI 预填 {record.collectives.length} 个集体
+          </div>
+        )}
+      </td>
+
+      {/* 第 3 列:证书模板(picker)+ 类型/等级徽章 */}
+      <td className="px-3 py-3 align-top">
         {selectedTemplate ? (
           <div className="flex items-center gap-2.5">
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-[#1A1A1A] truncate" title={selectedTemplate.name}>
+              <div
+                className="text-sm font-semibold text-[#1A1A1A] truncate"
+                title={selectedTemplate.name}
+              >
                 {selectedTemplate.name}
               </div>
               <div className="text-xs text-[#9CA3AF] mt-0.5 font-mono">
-                honorCode = {selectedTemplate.honorCode}
+                荣誉代码 = {selectedTemplate.honorCode}
+              </div>
+              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                {selectedTemplate.honorLevel && (
+                  <HonorLevelBadge level={selectedTemplate.honorLevel} />
+                )}
+                <HonorTypeBadge
+                  type={
+                    selectedTemplate.honorType === "collective"
+                      ? "collective"
+                      : "individual"
+                  }
+                />
               </div>
             </div>
             <button
@@ -377,54 +429,16 @@ function RecordRow({
           <button
             type="button"
             onClick={onPickTemplate}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border-2 border-dashed border-red-300 bg-red-50 text-sm text-red-700 hover:border-red-500"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded border-2 border-dashed border-red-300 bg-red-50 text-sm text-red-700 hover:border-red-500"
           >
             <AwardIcon className="w-4 h-4" />
             请选择模板
           </button>
         )}
       </td>
-      {/* 表彰类型 toggle */}
-      <td className="px-3 py-3">
-        <div className="inline-flex rounded-md border border-[#E9E9E9] overflow-hidden">
-          {(
-            [
-              { v: "individual" as const, label: "个人" },
-              { v: "collective" as const, label: "集体" },
-            ]
-          ).map((opt) => {
-            const active = record.honorType === opt.v;
-            return (
-              <button
-                key={opt.v}
-                type="button"
-                onClick={() => onPatch({ honorType: opt.v })}
-                className={`px-4 py-1.5 text-sm font-medium transition-colors ${
-                  active
-                    ? "text-white"
-                    : "bg-white text-[#6B7280] hover:bg-[#F7F8FA]"
-                }`}
-                style={active ? { backgroundColor: PARTY } : undefined}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-        {/* 抽取阶段已带 recipients,显示一下数量,让用户对齐预期 */}
-        {record.honorType === "individual" && record.persons.length > 0 && (
-          <div className="text-xs text-[#9CA3AF] mt-1">
-            预填 {record.persons.length} 位个人
-          </div>
-        )}
-        {record.honorType === "collective" && record.collectives.length > 0 && (
-          <div className="text-xs text-[#9CA3AF] mt-1">
-            预填 {record.collectives.length} 个集体
-          </div>
-        )}
-      </td>
-      {/* 删除 */}
-      <td className="px-3 py-3 text-center">
+
+      {/* 第 4 列:删除 */}
+      <td className="px-3 py-3 text-center align-top pt-3">
         <button
           type="button"
           onClick={onRemove}
@@ -435,6 +449,39 @@ function RecordRow({
         </button>
       </td>
     </tr>
+  );
+}
+
+/* ─── 类型/等级徽章 ─── */
+
+function HonorLevelBadge({
+  level,
+}: {
+  level: "national" | "provincial" | "corporate" | "company";
+}) {
+  // 等级语义色:级别越高越显眼
+  const map = {
+    national: "bg-red-50 text-red-700 border-red-200",
+    provincial: "bg-orange-50 text-orange-700 border-orange-200",
+    corporate: "bg-blue-50 text-blue-700 border-blue-200",
+    company: "bg-slate-50 text-slate-700 border-slate-200",
+  }[level];
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${map}`}>
+      {HONOR_LEVEL_LABEL[level]}
+    </span>
+  );
+}
+
+function HonorTypeBadge({ type }: { type: "individual" | "collective" }) {
+  const map = {
+    individual: "bg-blue-50 text-blue-700 border-blue-200",
+    collective: "bg-purple-50 text-purple-700 border-purple-200",
+  }[type];
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${map}`}>
+      {HONOR_TYPE_LABEL[type]}
+    </span>
   );
 }
 
@@ -489,7 +536,7 @@ function TemplatePickerModal({
           <div className="flex-1">
             <h3 className="text-base font-bold text-[#1A1A1A]">选择证书模板</h3>
             <p className="text-xs text-[#9CA3AF] mt-0.5">
-              点击模板卡片选定;模板需带 honorCode 才能用于发证
+              点击模板卡片选定;模板需带荣誉代码才能用于发证
             </p>
           </div>
           <button
@@ -510,7 +557,7 @@ function TemplatePickerModal({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索模板名 / honorCode / 描述"
+              placeholder="搜索模板名 / 荣誉代码 / 描述"
               className="w-full pl-9 pr-3 py-2 text-sm rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
               autoFocus
             />
@@ -523,7 +570,7 @@ function TemplatePickerModal({
             <div className="text-center text-sm text-[#9CA3AF] py-12">加载模板中…</div>
           ) : usable.length === 0 ? (
             <div className="text-center text-sm text-[#9CA3AF] py-12">
-              暂无可用模板。请先去「证书模板」页创建并填写 honorCode。
+              暂无可用模板。请先去「证书模板」页创建并填写荣誉代码。
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-center text-sm text-[#9CA3AF] py-12">
@@ -575,8 +622,16 @@ function TemplatePickerModal({
                       <div className="text-sm font-medium text-[#1A1A1A] truncate" title={t.name}>
                         {t.name}
                       </div>
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        {t.honorLevel && <HonorLevelBadge level={t.honorLevel} />}
+                        {t.honorType && (
+                          <HonorTypeBadge
+                            type={t.honorType === "collective" ? "collective" : "individual"}
+                          />
+                        )}
+                      </div>
                       {t.description && (
-                        <div className="text-xs text-[#9CA3AF] truncate mt-0.5" title={t.description}>
+                        <div className="text-xs text-[#9CA3AF] truncate mt-1" title={t.description}>
                           {t.description}
                         </div>
                       )}

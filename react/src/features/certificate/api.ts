@@ -1,13 +1,21 @@
 import { api } from "@/shared/api/client";
 
 /* ─── 后端 CertificateTemplate 表镜像 ─── */
+
+/** 荣誉等级 — V3 新增,4 级 */
+export type HonorLevel = "national" | "provincial" | "corporate" | "company";
+
 export interface CertificateTemplateDto {
   id: string;
   name: string;
   description: string | null;
   category: string | null;
-  /** V2 加:荣誉首字母代码,用于发证编号生成 */
+  /** V2 加:荣誉代码(字母数字,用户提示叫「荣誉代码」),用于发证编号生成 */
   honorCode: string | null;
+  /** V3 加:荣誉类型 — individual(个人)/ collective(集体) */
+  honorType: "individual" | "collective" | null;
+  /** V3 加:荣誉等级 — 国家级/省部级/集团公司级/公司级 */
+  honorLevel: HonorLevel | null;
   /** DesignerState 序列化的 JSON 字符串。前端用前先 JSON.parse */
   designJson: string;
   thumbnail: string | null;
@@ -24,12 +32,34 @@ export interface CreateTemplateInput {
   description?: string;
   category?: string;
   honorCode?: string;
+  honorType?: "individual" | "collective";
+  honorLevel?: HonorLevel;
   designJson: string;
   thumbnail?: string;
   width?: number;
   height?: number;
   active?: boolean;
 }
+
+/** UI 中文标签映射 — 集中维护,各页统一引用 */
+export const HONOR_LEVEL_LABEL: Record<HonorLevel, string> = {
+  national: "国家级",
+  provincial: "省部级",
+  corporate: "集团公司级",
+  company: "公司级",
+};
+
+export const HONOR_LEVEL_ORDER: HonorLevel[] = [
+  "national",
+  "provincial",
+  "corporate",
+  "company",
+];
+
+export const HONOR_TYPE_LABEL = {
+  individual: "个人",
+  collective: "集体",
+} as const;
 
 export type UpdateTemplateInput = Partial<CreateTemplateInput>;
 

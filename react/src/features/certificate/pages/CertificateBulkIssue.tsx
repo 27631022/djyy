@@ -156,7 +156,7 @@ export default function CertificateBulkIssuePage() {
   const batchTotal = csv?.rows.length ?? 0;
   const errors: string[] = [];
   if (!template) errors.push("请选择模板");
-  if (template && !template.honorCode) errors.push("模板未设置荣誉首字母代码");
+  if (template && !template.honorCode) errors.push("模板未设置荣誉代码");
   if (!csv) errors.push("请上传 CSV 文件");
   if (csv && !recMap.name) errors.push("请映射「姓名」列");
   if (!isValidYearLabel(yearLabel)) errors.push("年份段格式不正确");

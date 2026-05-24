@@ -73,8 +73,14 @@ export default function CertificateDesignerPage() {
   /* ─── 模板元数据(不进历史) ─── */
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  /** V2:荣誉首字母代码,如 "QDJL"(庆典奖励)— 用于发证编号 */
+  /** V2:荣誉代码,如 "QDJL"(庆典奖励)— 用于发证编号 */
   const [honorCode, setHonorCode] = useState("");
+  /** V3:荣誉类型 — individual(个人)/ collective(集体) */
+  const [honorType, setHonorType] = useState<"individual" | "collective">("individual");
+  /** V3:荣誉等级 — 4 选 */
+  const [honorLevel, setHonorLevel] = useState<
+    "national" | "provincial" | "corporate" | "company"
+  >("company");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isPreview, setIsPreview] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -86,6 +92,15 @@ export default function CertificateDesignerPage() {
     setName(t.name);
     setDescription(t.description ?? "");
     setHonorCode(t.honorCode ?? "");
+    setHonorType(t.honorType === "collective" ? "collective" : "individual");
+    if (
+      t.honorLevel === "national" ||
+      t.honorLevel === "provincial" ||
+      t.honorLevel === "corporate" ||
+      t.honorLevel === "company"
+    ) {
+      setHonorLevel(t.honorLevel);
+    }
     try {
       const parsed = JSON.parse(t.designJson) as Partial<DesignerState>;
       const empty = emptyDesignerState(t.width, t.height);
@@ -317,6 +332,8 @@ export default function CertificateDesignerPage() {
         name,
         description: description || undefined,
         honorCode: honorCode.trim() || undefined,
+        honorType,
+        honorLevel,
         designJson: JSON.stringify(state),
         width: state.canvasWidth,
         height: state.canvasHeight,
@@ -341,6 +358,8 @@ export default function CertificateDesignerPage() {
         name: name.trim(),
         description: description || undefined,
         honorCode: honorCode.trim() || undefined,
+        honorType,
+        honorLevel,
         designJson: JSON.stringify(state),
         width: state.canvasWidth,
         height: state.canvasHeight,
@@ -603,7 +622,7 @@ export default function CertificateDesignerPage() {
           </div>
           <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
             <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
-              荣誉首字母代码 <span className="text-[10px] text-[#9CA3AF] normal-case">用于发证编号</span>
+              荣誉代码 <span className="text-[10px] text-[#9CA3AF] normal-case">用于发证编号</span>
             </div>
             <input
               type="text"
@@ -616,6 +635,70 @@ export default function CertificateDesignerPage() {
               发证编号格式:<span className="font-mono">2024-{honorCode || "XXXX"}-100-001</span>
               <br />
               未填将无法用该模板发证
+            </p>
+          </div>
+
+          {/* V3:荣誉类型 + 荣誉等级,必填 */}
+          <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
+            <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
+              荣誉类型 <span className="text-red-500">*</span>
+            </div>
+            <div className="inline-flex rounded-md border border-[#E9E9E9] overflow-hidden">
+              {(
+                [
+                  { v: "individual" as const, label: "个人" },
+                  { v: "collective" as const, label: "集体" },
+                ]
+              ).map((opt) => {
+                const active = honorType === opt.v;
+                return (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    onClick={() => setHonorType(opt.v)}
+                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                      active
+                        ? "text-white"
+                        : "bg-white text-[#6B7280] hover:bg-[#F7F8FA]"
+                    }`}
+                    style={
+                      active ? { backgroundColor: "var(--party-primary)" } : undefined
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[10px] text-[#9CA3AF]">
+              发证时此模板所有证书自动用此类型
+            </p>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
+            <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
+              荣誉等级 <span className="text-red-500">*</span>
+            </div>
+            <select
+              value={honorLevel}
+              onChange={(e) =>
+                setHonorLevel(
+                  e.target.value as
+                    | "national"
+                    | "provincial"
+                    | "corporate"
+                    | "company",
+                )
+              }
+              className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
+            >
+              <option value="national">国家级</option>
+              <option value="provincial">省部级</option>
+              <option value="corporate">集团公司级</option>
+              <option value="company">公司级</option>
+            </select>
+            <p className="mt-1 text-[10px] text-[#9CA3AF]">
+              影响证书的展示徽章和数据归类
             </p>
           </div>
           <div className="mt-4 pt-3 border-t border-[#F0F0F0] text-[10px] text-[#9CA3AF] leading-relaxed">
