@@ -374,6 +374,36 @@ model AuditLog {
 }
 
 // ─────────────────────────────────────────────────────────
+// 外部 API 接入(LLM / 短信 / 邮件 / 对象存储 / ...)
+// ─────────────────────────────────────────────────────────
+// 管理员在「系统设置 → 外部 API」录入 apiKey/apiUrl/model,
+// 应用层(如 extraction.service)通过 ExternalApiService.getKeyForProvider(code)
+// 读取:DB 优先 → .env 兜底 → null。
+//
+// provider 命名约定:小写英文/数字/横线,如:
+//   deepseek / openai / qwen / doubao / ernie / claude
+//   sms-aliyun / sms-tencent / email-smtp / oss-aliyun
+//
+// apiKey 在 DB 明文存(单机 dev 阶段 OK,生产建议加 AES-GCM 加密 + KMS)。
+// API 响应里始终脱敏 (前 4 + 后 4,中间 ***)。
+// @module: external-api
+model ExternalApi {
+  id          String   @id @default(cuid())
+  provider    String   @unique // 平台标识,如 'deepseek'
+  name        String // 显示名,如 'DeepSeek 大模型'
+  description String?
+  apiKey      String? // 明文密钥
+  apiUrl      String? // 自定义 endpoint
+  model       String? // 默认模型
+  active      Boolean  @default(true)
+  meta        String? // JSON 扩展(超时/温度等)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+}
+
+// ─────────────────────────────────────────────────────────
 // 证书管理(V1:模板;V2:模板 + 发证 + 公开验证 + AI 提取)
 // ─────────────────────────────────────────────────────────
 // 一个 CertificateTemplate 就是「证书的可视化设计 + 变量字段定义」,

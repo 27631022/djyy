@@ -12,6 +12,7 @@ import mammoth from 'mammoth';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse: (buf: Buffer) => Promise<{ text: string; numpages: number }> = require('pdf-parse');
 import { AuditService } from '../audit';
+import { ExternalApiService } from '../external-api';
 import type {
   ExtractHonorResponse,
   ExtractedRecipient,
@@ -41,6 +42,7 @@ export class CertificateExtractionService {
   constructor(
     private readonly config: ConfigService,
     private readonly audit: AuditService,
+    private readonly externalApi: ExternalApiService,
   ) {}
 
   /**
@@ -53,10 +55,12 @@ export class CertificateExtractionService {
     file: { originalname: string; mimetype: string; size: number; buffer: Buffer },
     ctx: ExtractCtx,
   ): Promise<ExtractHonorResponse> {
-    const apiKey = this.config.get<string>('DEEPSEEK_API_KEY') ?? '';
+    // 配置来源:DB(系统设置 → 外部 API)优先 → .env 兜底
+    const cfg = await this.externalApi.getKeyForProvider('deepseek');
+    const apiKey = cfg.apiKey ?? '';
     if (!apiKey) {
       throw new ServiceUnavailableException(
-        'AI 服务未配置:请在后端 .env 中填 DEEPSEEK_API_KEY 后重启',
+        'AI 服务未配置:请到「系统设置 → 外部 API」录入 DeepSeek API Key,或后端 .env 设置 DEEPSEEK_API_KEY',
       );
     }
 
@@ -71,11 +75,15 @@ export class CertificateExtractionService {
     // 截断:DeepSeek 上下文限制,留前 20000 字符给提取足够用
     const truncated = text.slice(0, 20000);
 
-    // 2. 调 DeepSeek
+    // 2. 调 DeepSeek — apiUrl/model 同样 DB 优先,字段为空时回退到 .env / 默认
     const apiUrl =
-      this.config.get<string>('DEEPSEEK_API_URL') ?? 'https://api.deepseek.com/v1';
+      cfg.apiUrl ||
+      this.config.get<string>('DEEPSEEK_API_URL') ||
+      'https://api.deepseek.com/v1';
     const model =
-      this.config.get<string>('DEEPSEEK_MODEL') ?? 'deepseek-chat';
+      cfg.model ||
+      this.config.get<string>('DEEPSEEK_MODEL') ||
+      'deepseek-chat';
     const timeoutMs = Number(
       this.config.get<string>('DEEPSEEK_TIMEOUT_MS') ?? '30000',
     );

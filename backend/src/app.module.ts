@@ -13,6 +13,7 @@ import { DictionaryModule } from './dictionary';
 import { UserCustomFieldModule } from './user-custom-field';
 import { SiteSettingModule } from './site-setting';
 import { NavCategoryModule } from './nav-category';
+import { ExternalApiModule } from './external-api';
 import { CertificateModule } from './certificate';
 
 @Module({
@@ -31,6 +32,7 @@ import { CertificateModule } from './certificate';
     UserCustomFieldModule,
     SiteSettingModule,
     NavCategoryModule,
+    ExternalApiModule,
     CertificateModule,
   ],
   providers: [

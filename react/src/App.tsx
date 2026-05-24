@@ -10,6 +10,7 @@ import { DictionariesPage } from "@/features/dictionary";
 import { UserCustomFieldsPage } from "@/features/user-custom-field";
 import { SiteSettingsPage, siteSettingApi } from "@/features/site-setting";
 import { NavigationPage } from "@/features/nav-category";
+import { ExternalApisPage } from "@/features/external-api";
 import {
   CertificateTemplatesPage,
   CertificateDesignerPage,
@@ -93,6 +94,7 @@ const App = () => (
             <Route path="custom-fields" element={<UserCustomFieldsPage />} />
             <Route path="site-settings" element={<SiteSettingsPage />} />
             <Route path="navigation" element={<NavigationPage />} />
+            <Route path="external-apis" element={<ExternalApisPage />} />
             <Route path="certificate-templates" element={<CertificateTemplatesPage />} />
             <Route path="certificate-templates/new" element={<CertificateDesignerPage />} />
             <Route path="certificate-templates/:id/edit" element={<CertificateDesignerPage />} />
