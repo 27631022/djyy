@@ -14,6 +14,7 @@
     "prisma:reset": "prisma migrate reset",
     "prisma:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:kunlun": "tsx prisma/seed-kunlun.ts",
     "lint": "eslint src",
     "check": "tsc --noEmit && eslint src",
     "check:circular": "madge --circular --extensions ts src"
@@ -50,6 +51,7 @@
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8.59.4"
+    "typescript-eslint": "^8.59.4",
+    "xlsx": "^0.18.5"
   }
 }
