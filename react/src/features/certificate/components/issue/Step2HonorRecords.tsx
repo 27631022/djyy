@@ -142,6 +142,44 @@ export function Step2HonorRecords({
 
   /* ─── 行操作 ─── */
   function patchRow(rid: string, p: Partial<HonorRecord>) {
+    // 先算 toast 提示(避免在 map 纯函数里产生副作用)
+    const target = records.find((r) => r.rid === rid);
+    if (target) {
+      // 直接切 honorType pill
+      if (p.honorType && p.honorType !== target.honorType) {
+        const lost =
+          p.honorType === "individual"
+            ? target.collectives.length
+            : target.persons.length;
+        if (lost > 0) {
+          const label = p.honorType === "individual" ? "个人" : "集体";
+          toast.info(`已切换为「${label}」,原 ${lost} 条数据已清空`);
+        }
+      }
+      // 改模板导致类型变(模板是权威)
+      if (p.templateId !== undefined && p.templateId !== target.templateId) {
+        const t = templates.find((tt) => tt.id === p.templateId);
+        if (t?.honorType) {
+          const nextType: HonorType =
+            t.honorType === "collective" ? "collective" : "individual";
+          // 已经在上面 honorType 分支提示过就别重了
+          const explicitlySwitched = p.honorType && p.honorType !== target.honorType;
+          if (!explicitlySwitched && nextType !== target.honorType) {
+            const lost =
+              nextType === "individual"
+                ? target.collectives.length
+                : target.persons.length;
+            if (lost > 0) {
+              const label = nextType === "individual" ? "个人" : "集体";
+              toast.info(
+                `按新模板切换为「${label}」,原 ${lost} 条数据已清空`,
+              );
+            }
+          }
+        }
+      }
+    }
+
     onRecordsChange(
       records.map((r) => {
         if (r.rid !== rid) return r;

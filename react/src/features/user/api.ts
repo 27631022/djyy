@@ -117,6 +117,23 @@ export interface RoleAssignmentInput {
   scopeOrgIds?: string[];
 }
 
+/**
+ * 批量按员工编号查 User 的返回 —— key 为 empNo,值为命中(摘要)或 null(未命中)。
+ *
+ * 发证页 Step 3 个人粘贴识别用 —— 一次 POST 把 N 个 empNo 都查回来。
+ */
+export interface UserByEmpNoLite {
+  id: string;
+  username: string;
+  name: string;
+  /** 主行政归属名(命中 isPrimary 优先,否则第一条 active) */
+  adminOrgName: string | null;
+  /** 主党组织归属名 */
+  partyOrgName: string | null;
+}
+
+export type LookupByEmpNoResponse = Record<string, UserByEmpNoLite | null>;
+
 export const usersApi = {
   list: (q: ListUsersQuery = {}) =>
     api
@@ -152,4 +169,13 @@ export const usersApi = {
     api.put<UserDetail>(`/users/${id}/custom-fields`, { values }).then((r) => r.data),
 
   remove: (id: string) => api.delete(`/users/${id}`).then((r) => r.data),
+
+  /**
+   * 批量按员工编号(= username)查 User。最多 200 个。
+   * 响应:`{ [empNo]: UserByEmpNoLite | null }` —— 未命中 key 也存在,值为 null。
+   */
+  lookupByEmpNo: (empNos: string[]) =>
+    api
+      .post<LookupByEmpNoResponse>("/users/lookup-by-empno", { empNos })
+      .then((r) => r.data),
 };

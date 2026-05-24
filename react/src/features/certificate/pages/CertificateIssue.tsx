@@ -1,7 +1,15 @@
+/**
+ * 证书发证向导(V3 Phase 6+):
+ *  - Step 1 上传 / AI 抽取  (Step1Upload)
+ *  - Step 2 建表彰记录       (Step2HonorRecords)
+ *  - Step 3 per-record 受表彰对象录入(每条 record 一个子步骤,统一 Step3RecipientsForm 按 record.honorType 分支)
+ *  - Step 4 预览 + 批量发证   (Phase 6 是简版:summary + 直接发;Phase 7 升级为 3 列含预览)
+ *
+ * 全程字段级 200ms 防抖写 localStorage,刷新不丢。
+ */
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 import {
   ArrowLeftIcon,
   SendIcon,
@@ -13,8 +21,6 @@ import {
   AwardIcon,
   UsersIcon,
   ListChecksIcon,
-  PlusIcon,
-  XIcon,
   CheckCircle2Icon,
   AlertCircleIcon,
   Building2Icon,
@@ -25,7 +31,6 @@ import {
   type CertificateTemplateDto,
   type IssueCertificateInput,
   type ExtractHonorResponse,
-  type ExtractedHonor,
 } from "@/features/certificate";
 import { useAuth } from "@/stores/auth";
 import { generateCertificatePdfDataUrl } from "../lib/certificatePdf";
@@ -37,37 +42,23 @@ import {
   clearDraft,
   useDebouncedDraft,
   type CertificateDraftV1,
+  type CollectiveRow,
   type HonorRecord,
+  type PersonRow,
   type WizardStep,
 } from "../lib/certificateDraft";
 import { Step1Upload } from "../components/issue/Step1Upload";
 import { Step2HonorRecords } from "../components/issue/Step2HonorRecords";
-import { Step3aUnitsForm } from "../components/issue/Step3aUnitsForm";
+import { Step3RecipientsForm } from "../components/issue/Step3RecipientsForm";
 
 const PARTY = "var(--party-primary)";
 
-/* ─── Wizard 状态 ─── */
-// WizardStep 类型已迁到 lib/certificateDraft.ts(Phase 2),这里 import 复用
-
-interface RecipientRow {
-  /** 行内 key,前端 useId 用 */
-  rid: string;
-  name: string;
-  empNo: string;
-  dept: string;
-}
-
-function newRow(partial?: Partial<RecipientRow>): RecipientRow {
-  return {
-    rid: Math.random().toString(36).slice(2, 10),
-    name: partial?.name ?? "",
-    empNo: partial?.empNo ?? "",
-    dept: partial?.dept ?? "",
-  };
-}
-
 interface IssueResult {
-  rid: string;
+  /** 唯一 key:`${recordRid}-${recipientRid}` */
+  key: string;
+  /** 所属 record(按显示顺序的序号,便于结果表分组) */
+  recordIndex: number;
+  /** 当前条目对应的 record + recipient name 拼接,展示用 */
   name: string;
   ok: boolean;
   certNo?: string;
@@ -79,6 +70,19 @@ function todayChinese(): string {
   return `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, "0")}月${String(d.getDate()).padStart(2, "0")}日`;
 }
 
+function formatChineseDate(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  return `${m[1]}年${m[2]}月${m[3]}日`;
+}
+
+/** record 的有效收件人数(按类型取对应数组里非空的那些) */
+function recipientCountOf(record: HonorRecord): number {
+  return record.honorType === "collective"
+    ? record.collectives.filter((c) => c.name.trim()).length
+    : record.persons.filter((p) => p.name.trim()).length;
+}
+
 /* ─── 主 Wizard ─── */
 
 export default function CertificateIssuePage() {
@@ -86,10 +90,8 @@ export default function CertificateIssuePage() {
   const qc = useQueryClient();
 
   /* ─── V3 草稿持久化 ─── */
-  // 仅用 me.id 作 key,未登录时跳过持久化(用户应该不可能看到此页,但兜底防崩)
   const { me } = useAuth();
   const userId = me?.id ?? null;
-  // 注意:首次渲染时 me 还在加载中,draft 暂用 empty;mount effect 里再 hydrate
   const [draft, setDraft] = useState<CertificateDraftV1>(() => emptyDraft());
   const hydratedRef = useRef(false);
 
@@ -97,37 +99,26 @@ export default function CertificateIssuePage() {
 
   /* ─── 步骤 1 状态 ─── */
   const [extractResult, setExtractResult] = useState<ExtractHonorResponse | null>(null);
-  const [selectedHonorIdx, setSelectedHonorIdx] = useState<number>(-1);
   /** true 表示用户走「跳过 AI」手动模式,extractResult 保持 null */
   const [manualMode, setManualMode] = useState(false);
 
-  /* ─── 步骤 2 状态(V3 新):多荣誉表彰记录 + 顶层共享字段 ─── */
+  /* ─── 步骤 2 状态:多荣誉表彰记录 + 顶层共享字段 ─── */
   const [records, setRecords] = useState<HonorRecord[]>([]);
-  /**
-   * 表彰年度 + 表彰日期 — V3 中提升为 draft 顶层共享字段,
-   * 同一份表彰文件下所有荣誉共用;Phase 5-7 完成前老 Step 3/4 也复用。
-   */
   const [yearLabel, setYearLabel] = useState(String(new Date().getFullYear()));
   const [issueDate, setIssueDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
 
-  /* ─── Step 3 子步骤(不持久化,每次从 records 派生)─── */
-  // 'a' = 集体录入(Step3aUnitsForm),'b' = 个人录入(老 Step3Recipients via bridge)
-  // Phase 5 接入 a;Phase 6 会改 b 为粘贴识别表单
-  const [subStep, setSubStep] = useState<"a" | "b">("a");
-  const hasCollective = useMemo(
-    () => records.some((r) => r.honorType === "collective"),
-    [records],
-  );
-  const hasIndividual = useMemo(
-    () => records.some((r) => r.honorType === "individual"),
-    [records],
+  /* ─── Step 3 子步骤索引(records 内 0-based) ─── */
+  // 不持久化:进 step 3 时永远从 0 开始;刷新若 step=3 则也从 0 起,用户可以再点 Next 移动
+  const [subStepIdx, setSubStepIdx] = useState(0);
+  const clampedSubStepIdx = useMemo(
+    () => Math.max(0, Math.min(subStepIdx, Math.max(0, records.length - 1))),
+    [subStepIdx, records.length],
   );
 
   /* ─── 草稿 ↔ 内存状态双向同步 ─── */
-  // 1) 首次拿到 userId 时,从 localStorage 拉旧 draft 恢复全部字段
   useEffect(() => {
     if (!userId || hydratedRef.current) return;
     const saved = loadDraft(userId);
@@ -135,24 +126,14 @@ export default function CertificateIssuePage() {
     if (!saved) return;
     setDraft(saved);
     setStep(saved.step);
-    // Step 3 时派生 subStep:有集体记录优先 a,否则 b
-    if (saved.step === 3) {
-      const hadColl = saved.records.some((r) => r.honorType === "collective");
-      setSubStep(hadColl ? "a" : "b");
-    }
-    if (saved.extracted) {
-      setExtractResult(saved.extracted);
-      // 多 honor 时让用户重新选(避免老的 selectedHonorIdx 与新 list 错位)
-      setSelectedHonorIdx(saved.extracted.honors.length === 1 ? 0 : -1);
-    }
+    if (saved.extracted) setExtractResult(saved.extracted);
     if (saved.yearLabel) setYearLabel(saved.yearLabel);
     if (saved.issueDate) setIssueDate(saved.issueDate);
-    if (Array.isArray(saved.records)) {
-      setRecords(saved.records);
-    }
+    if (Array.isArray(saved.records)) setRecords(saved.records);
+    // step=3 刷新时复位到第 1 条 record(避免引用越界)
+    if (saved.step === 3) setSubStepIdx(0);
   }, [userId]);
 
-  // 2) 全部 V3 草稿字段变化 → 同步进 draft(由 useDebouncedDraft 200ms 后落盘)
   useEffect(() => {
     if (!hydratedRef.current) return;
     setDraft((d) => ({
@@ -165,207 +146,226 @@ export default function CertificateIssuePage() {
     }));
   }, [step, extractResult, yearLabel, issueDate, records]);
 
-  // 3) 防抖写 localStorage(useDebouncedDraft 内部已处理 userId 为 null 的情况)
   useDebouncedDraft(userId, draft);
 
-  /* ─── 步骤 2/3/4 老状态(Phase 4-7 过渡桥接用,Phase 7 完成后撤掉) ─── */
-  const [template, setTemplate] = useState<CertificateTemplateDto | null>(null);
-  const [issuingOrgName, setIssuingOrgName] = useState("");
-
-  /* ─── 步骤 3 状态 ─── */
-  const [rows, setRows] = useState<RecipientRow[]>([newRow()]);
-
-  /** 模板列表(供 Step 2 → Step 3 桥接 + 老 Step 4 元数据展示) */
+  /* ─── 模板列表(共享缓存) ─── */
   const templatesQuery = useQuery({
     queryKey: ["certificate-templates", { active: true }],
     queryFn: () => certificateTemplateApi.list(true),
   });
   const allTemplates = templatesQuery.data ?? [];
+  const templateById = useMemo(() => {
+    const map = new Map<string, CertificateTemplateDto>();
+    allTemplates.forEach((t) => map.set(t.id, t));
+    return map;
+  }, [allTemplates]);
 
-  /**
-   * Step 2 → Step 3 桥接:把 records[0] 摊平到老 single-honor 状态。
-   *
-   * 年份 + 日期已经是 draft 顶层共享字段,这里只需补 template + rows + issuingOrg。
-   *
-   * 临时方案 — Phase 5/6 给 Step 3a/3b 提供集体+个人各自的录入页后,
-   * Phase 7 让 Step 4 直接消费 records[],届时此函数可以拿掉。
-   */
-  function bridgeRecordToOldState(record: HonorRecord) {
-    if (record.templateId) {
-      const t = allTemplates.find((tt) => tt.id === record.templateId);
-      if (t) setTemplate(t);
-    }
-    // 个人 → rows;集体 → 暂用集体名作 row.name(Phase 5 会有专门的 collectives 录入)
-    if (record.honorType === "individual") {
-      setRows(
-        record.persons.length > 0
-          ? record.persons.map((p) =>
-              newRow({ name: p.name, empNo: p.empNo, dept: p.dept }),
-            )
-          : [newRow()],
-      );
-    } else {
-      setRows(
-        record.collectives.length > 0
-          ? record.collectives.map((c) => newRow({ name: c.name }))
-          : [newRow()],
-      );
-    }
-    // 颁发机构尝试从 extract 里取(records 没存这个字段,因为本来是模板/全局级)
-    if (extractResult && extractResult.honors[0]?.issuingOrg) {
-      setIssuingOrgName(extractResult.honors[0].issuingOrg);
-    }
-    // 老 selectedHonor 派生需要 idx,桥接后强制 0
-    setSelectedHonorIdx(0);
-  }
+  /* ─── 当前 step 3 焦点 record ─── */
+  const currentRecord = records[clampedSubStepIdx] ?? null;
+  const currentTemplate = currentRecord?.templateId
+    ? templateById.get(currentRecord.templateId)
+    : undefined;
 
   /* ─── 步骤 4 状态 ─── */
-  const [validUntil, setValidUntil] = useState("");
   const [issuing, setIssuing] = useState(false);
   const [results, setResults] = useState<IssueResult[]>([]);
 
-  const designState: DesignerState | null = useMemo(() => {
-    if (!template) return null;
-    try {
-      return JSON.parse(template.designJson) as DesignerState;
-    } catch {
-      return null;
-    }
-  }, [template]);
-
-  /** 当前选中的荣誉(为空时表示手动模式或还没选) */
-  const selectedHonor: ExtractedHonor | null =
-    extractResult && selectedHonorIdx >= 0
-      ? extractResult.honors[selectedHonorIdx] ?? null
-      : null;
-
-  /* ─── 步骤 1 → 步骤 2 时执行:从 AI 提取结果填充后续状态 ─── */
-  function commitStep1(extract: ExtractHonorResponse | null, honorIdx: number) {
-    setExtractResult(extract);
-    setSelectedHonorIdx(honorIdx);
-    setManualMode(!extract);
-
-    if (extract) {
-      if (extract.yearLabel) setYearLabel(extract.yearLabel);
-      const honor = extract.honors[honorIdx];
-      if (honor) {
-        if (honor.issuingOrg) setIssuingOrgName(honor.issuingOrg);
-        // 填充 rows
-        if (honor.recipients.length > 0) {
-          setRows(honor.recipients.map((r) => newRow(r)));
-        }
-      }
-    }
-    setStep(2);
-  }
+  /** 总收件人数(全部 record 合并) */
+  const totalRecipients = useMemo(
+    () => records.reduce((sum, r) => sum + recipientCountOf(r), 0),
+    [records],
+  );
 
   /* ─── 校验 ─── */
   const stepReady = useMemo(() => {
-    // Step 2 (V3):顶层共享字段 + 每条 record
+    // Step 2:顶层共享字段 + 每条 record 必填
     const step2Err = (() => {
       if (!isValidYearLabel(yearLabel))
         return "表彰年度格式不正确(应为「2024」或「2024-2025」)";
       if (!issueDate) return "请选择表彰日期";
       if (records.length === 0) return "至少添加 1 条表彰记录";
       for (let i = 0; i < records.length; i++) {
-        const r = records[i];
-        if (!r.templateId) return `第 ${i + 1} 条记录:请选择模板`;
+        if (!records[i].templateId)
+          return `第 ${i + 1} 条记录:请选择模板`;
       }
       return null;
     })();
 
-    // Step 3 校验:按 subStep 分流
+    // Step 3:当前焦点 record 的收件人至少 1 个非空
     const step3Err = (() => {
-      if (subStep === "a") {
-        // 每条集体 record 至少 1 个非空集体名
-        const coll = records.filter((r) => r.honorType === "collective");
-        for (let i = 0; i < coll.length; i++) {
-          if (!coll[i].collectives.some((c) => c.name.trim())) {
-            return `第 ${i + 1} 条集体记录${coll[i].honorName ? `(${coll[i].honorName})` : ""}:至少添加 1 个被表彰单位`;
-          }
-        }
-        return null;
+      if (!currentRecord) return "没有可填的记录";
+      if (currentRecord.honorType === "collective") {
+        if (!currentRecord.collectives.some((c) => c.name.trim()))
+          return "至少添加 1 个被表彰集体";
+      } else {
+        if (!currentRecord.persons.some((p) => p.name.trim()))
+          return "至少添加 1 位受表彰人员";
       }
-      // subStep === "b" → 老流程
-      return rows.length === 0 || rows.every((r) => !r.name.trim())
-        ? "至少添加 1 位受表彰对象"
-        : null;
+      return null;
     })();
 
     const map: Record<WizardStep, string | null> = {
       1: null,
       2: step2Err,
       3: step3Err,
-      4: null,
+      4: totalRecipients === 0 ? "没有待发证条目" : null,
     };
     return map[step];
-  }, [step, subStep, records, rows, yearLabel, issueDate]);
+  }, [step, currentRecord, records, yearLabel, issueDate, totalRecipients]);
 
-  /* ─── 发证 ─── */
-  const validRows = useMemo(() => rows.filter((r) => r.name.trim()), [rows]);
-
-  async function issueOnce(row: RecipientRow, batchTotal: number): Promise<IssueResult> {
-    if (!template || !designState)
-      return { rid: row.rid, name: row.name, ok: false, reason: "模板未就绪" };
-    if (!row.name.trim())
-      return { rid: row.rid, name: "(空)", ok: false, reason: "姓名为空,跳过" };
-
-    const variableValues: Record<string, string> = {
-      name: row.name.trim(),
-      issueDate: extractResult?.issueDate
-        ? formatChineseDate(extractResult.issueDate)
-        : todayChinese(),
-      certNo: "待生成",
-    };
-    if (row.dept.trim()) variableValues.department = row.dept.trim();
-
-    try {
-      const pdfData = await generateCertificatePdfDataUrl(designState, variableValues);
-      const input: IssueCertificateInput = {
-        templateId: template.id,
-        recipientName: row.name.trim(),
-        recipientEmpNo: row.empNo.trim() || undefined,
-        recipientDept: row.dept.trim() || undefined,
-        yearLabel,
-        batchTotal,
-        variableData: JSON.stringify(variableValues),
-        pdfData,
-        validUntil: validUntil || undefined,
-        issuingOrgName: issuingOrgName.trim() || undefined,
-      };
-      const cert = await certificateIssueApi.issue(input);
-      return { rid: row.rid, name: row.name, ok: true, certNo: cert.certNo };
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : String(e);
-      return { rid: row.rid, name: row.name, ok: false, reason };
-    }
-  }
-
+  /* ─── 发证(双层循环:records → recipients) ─── */
   async function handleIssueAll() {
-    if (!template) return;
+    if (issuing || results.length > 0) return;
     setIssuing(true);
     setResults([]);
-    const batchTotal = validRows.length;
-    for (const row of validRows) {
-      const r = await issueOnce(row, batchTotal);
-      setResults((prev) => [...prev, r]);
+    try {
+      for (let ri = 0; ri < records.length; ri++) {
+        const record = records[ri];
+        const template = record.templateId
+          ? templateById.get(record.templateId)
+          : undefined;
+        if (!template) {
+          // 该 record 未选模板理论 stepReady 已经拦住,兜底跳过
+          continue;
+        }
+        let designState: DesignerState;
+        try {
+          designState = JSON.parse(template.designJson) as DesignerState;
+        } catch {
+          // 模板 designJson 不合法 → 该 record 全部失败
+          const fallback = collectRecipients(record);
+          fallback.forEach((rec) => {
+            setResults((prev) => [
+              ...prev,
+              {
+                key: `${record.rid}-${rec.rid}`,
+                recordIndex: ri,
+                name: rec.name,
+                ok: false,
+                reason: "模板 designJson 解析失败",
+              },
+            ]);
+          });
+          continue;
+        }
+        const recipients = collectRecipients(record);
+        const batchTotal = recipients.length;
+        const issueDateCN = issueDate
+          ? formatChineseDate(issueDate)
+          : todayChinese();
+        for (const rec of recipients) {
+          const variableValues: Record<string, string> = {
+            name: rec.name,
+            issueDate: issueDateCN,
+            certNo: "待生成",
+          };
+          if (rec.dept) variableValues.department = rec.dept;
+          let result: IssueResult;
+          try {
+            const pdfData = await generateCertificatePdfDataUrl(
+              designState,
+              variableValues,
+            );
+            const input: IssueCertificateInput = {
+              templateId: template.id,
+              recipientUserId: rec.userId,
+              recipientName: rec.name,
+              recipientEmpNo: rec.empNo || undefined,
+              recipientDept: rec.dept || undefined,
+              yearLabel,
+              batchTotal,
+              variableData: JSON.stringify(variableValues),
+              pdfData,
+              issuingOrgName: template.issuingOrgName || undefined,
+              honorType: record.honorType,
+              issueDate,
+            };
+            const cert = await certificateIssueApi.issue(input);
+            result = {
+              key: `${record.rid}-${rec.rid}`,
+              recordIndex: ri,
+              name: rec.name,
+              ok: true,
+              certNo: cert.certNo,
+            };
+          } catch (e) {
+            result = {
+              key: `${record.rid}-${rec.rid}`,
+              recordIndex: ri,
+              name: rec.name,
+              ok: false,
+              reason: e instanceof Error ? e.message : String(e),
+            };
+          }
+          setResults((prev) => [...prev, result]);
+        }
+      }
+    } finally {
+      setIssuing(false);
+      qc.invalidateQueries({ queryKey: ["certificates"] });
     }
-    setIssuing(false);
-    qc.invalidateQueries({ queryKey: ["certificates"] });
   }
 
   const finishedAllOk =
     !issuing &&
-    results.length === validRows.length &&
+    results.length === totalRecipients &&
     results.length > 0 &&
     results.every((r) => r.ok);
 
-  /* ─── V3:全部成功 → 清掉草稿(避免下次进来还看到旧状态) ─── */
+  /* 全部成功 → 清掉草稿 */
   useEffect(() => {
-    if (finishedAllOk && userId) {
-      clearDraft(userId);
-    }
+    if (finishedAllOk && userId) clearDraft(userId);
   }, [finishedAllOk, userId]);
+
+  /* ─── Step 1 提交(commitStep1) ─── */
+  function commitStep1(extract: ExtractHonorResponse | null) {
+    setExtractResult(extract);
+    setManualMode(!extract);
+    if (extract && extract.yearLabel) setYearLabel(extract.yearLabel);
+    if (extract && extract.issueDate) setIssueDate(extract.issueDate);
+    setStep(2);
+  }
+
+  /* ─── 导航 ─── */
+  function goNext() {
+    if (step === 1) {
+      setStep(2);
+      return;
+    }
+    if (step === 2) {
+      setSubStepIdx(0);
+      setStep(3);
+      return;
+    }
+    if (step === 3) {
+      if (clampedSubStepIdx < records.length - 1) {
+        setSubStepIdx(clampedSubStepIdx + 1);
+      } else {
+        setStep(4);
+      }
+      return;
+    }
+  }
+
+  function goPrev() {
+    if (step === 4) {
+      setSubStepIdx(Math.max(0, records.length - 1));
+      setStep(3);
+      return;
+    }
+    if (step === 3) {
+      if (clampedSubStepIdx > 0) {
+        setSubStepIdx(clampedSubStepIdx - 1);
+      } else {
+        setStep(2);
+      }
+      return;
+    }
+    if (step === 2) {
+      setStep(1);
+      return;
+    }
+  }
 
   return (
     <div className="h-full flex flex-col bg-[#F7F8FA]">
@@ -383,43 +383,33 @@ export default function CertificateIssuePage() {
         <div className="flex-1">
           <h1 className="text-lg font-bold text-[#1A1A1A]">发证向导</h1>
           <p className="text-xs text-[#9CA3AF] mt-0.5">
-            上传文件 → AI 抽取信息(可跳过)→ 选证书模板 → 确定人员 → 一键发证
+            上传文件 → AI 抽取信息(可跳过)→ 选证书模板 → 逐条录入受表彰对象 → 一键发证
           </p>
         </div>
       </header>
 
       {/* 主体:左 stepper + 右 step 内容 */}
-      <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-[240px_1fr]">
-        {/* 左侧 stepper */}
+      <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-[260px_1fr]">
         <Stepper
           step={step}
-          subStep={subStep}
-          hasCollective={hasCollective}
-          hasIndividual={hasIndividual}
-          hasAnyRecord={records.length > 0}
+          subStepIdx={clampedSubStepIdx}
+          records={records}
+          templates={allTemplates}
+          onJumpToSubStep={(idx) => {
+            // 允许点击已 done 的子步骤跳回去修改;pending 的不让跳
+            if (step !== 3) return;
+            if (idx <= clampedSubStepIdx) setSubStepIdx(idx);
+          }}
         />
 
-        {/* 右侧步骤内容 */}
         <div className="overflow-auto p-6 flex flex-col">
           <div className="flex-1">
             {step === 1 && (
               <Step1Upload
                 extractResult={extractResult}
-                onExtractDone={(r) => {
-                  setExtractResult(r);
-                  // Phase 3 过渡期:下游单 honor 流仍只用第 1 项;Phase 4 改 records[] 后此变量退场
-                  setSelectedHonorIdx(r.honors.length > 0 ? 0 : -1);
-                }}
-                onReset={() => {
-                  // 重置 = 清掉抽取结果,回到上传面板;effect 会把 draft.extracted 同步为 null
-                  setExtractResult(null);
-                  setSelectedHonorIdx(-1);
-                }}
-                onSkipAI={() => {
-                  setExtractResult(null);
-                  setSelectedHonorIdx(-1);
-                  commitStep1(null, -1);
-                }}
+                onExtractDone={(r) => setExtractResult(r)}
+                onReset={() => setExtractResult(null)}
+                onSkipAI={() => commitStep1(null)}
               />
             )}
 
@@ -435,34 +425,29 @@ export default function CertificateIssuePage() {
               />
             )}
 
-            {step === 3 && subStep === "a" && (
-              <Step3aUnitsForm
-                records={records}
-                onRecordsChange={setRecords}
-                templates={allTemplates}
-              />
-            )}
-
-            {step === 3 && subStep === "b" && (
-              <Step3Recipients
-                rows={rows}
-                onChange={setRows}
-                fromAi={Boolean(selectedHonor)}
-                honorName={selectedHonor?.honorName}
+            {step === 3 && currentRecord && (
+              <Step3RecipientsForm
+                record={currentRecord}
+                template={currentTemplate}
+                onRecordChange={(newRecord) =>
+                  setRecords((prev) =>
+                    prev.map((r) => (r.rid === newRecord.rid ? newRecord : r)),
+                  )
+                }
+                recordIndex={clampedSubStepIdx}
+                totalRecords={records.length}
               />
             )}
 
             {step === 4 && (
-              <Step4Confirm
-                template={template}
-                honorName={selectedHonor?.honorName}
+              <Step4PreviewIssue
+                records={records}
+                templates={templateById}
                 yearLabel={yearLabel}
-                issuingOrgName={issuingOrgName}
-                validUntil={validUntil}
-                onValidUntilChange={setValidUntil}
-                rows={validRows}
+                issueDate={issueDate}
                 results={results}
                 issuing={issuing}
+                totalRecipients={totalRecipients}
                 onIssueAll={handleIssueAll}
               />
             )}
@@ -481,46 +466,14 @@ export default function CertificateIssuePage() {
                 ? "选择数据来源开始"
                 : step === 2
                   ? `${records.length} 条表彰记录`
-                  : step === 3 && subStep === "a"
-                    ? `${records
-                        .filter((r) => r.honorType === "collective")
-                        .reduce(
-                          (sum, r) =>
-                            sum +
-                            r.collectives.filter((c) => c.name.trim()).length,
-                          0,
-                        )} 个被表彰集体`
-                    : `共 ${validRows.length} 位待发证`}
+                  : step === 3 && currentRecord
+                    ? `第 ${clampedSubStepIdx + 1} / ${records.length} 条 · ${recipientCountOf(currentRecord)} 个收件人`
+                    : `共 ${totalRecipients} 张待发证`}
             </div>
             <div className="flex items-center gap-2">
               {step > 1 && (
                 <button
-                  onClick={() => {
-                    if (step === 3) {
-                      // b → a(若有集体);a → step 2
-                      if (subStep === "b" && hasCollective) {
-                        setSubStep("a");
-                        return;
-                      }
-                      setStep(2);
-                      return;
-                    }
-                    if (step === 4) {
-                      // step 4 → step 3 末子步骤(优先 b)
-                      if (hasIndividual) {
-                        const firstIndiv = records.find(
-                          (r) => r.honorType === "individual",
-                        );
-                        if (firstIndiv) bridgeRecordToOldState(firstIndiv);
-                        setSubStep("b");
-                      } else {
-                        setSubStep("a");
-                      }
-                      setStep(3);
-                      return;
-                    }
-                    setStep((s) => (Math.max(1, s - 1) as WizardStep));
-                  }}
+                  onClick={goPrev}
                   disabled={issuing}
                   className="flex items-center gap-1 px-3 py-1.5 rounded text-sm border border-[#E9E9E9] hover:bg-[#F7F8FA] disabled:opacity-50"
                 >
@@ -530,63 +483,7 @@ export default function CertificateIssuePage() {
               )}
               {step < 4 && (
                 <button
-                  onClick={() => {
-                    if (step === 1) {
-                      // 上一步抽取了内容 → 直接进 Step 2;Step 2 内有「AI 识别」按钮把
-                      // extractResult.honors 灌成 records[]。手动模式则 step 2 空表起步。
-                      setStep(2);
-                      return;
-                    }
-                    if (step === 2) {
-                      // Step 2 → Step 3:按 records 决定先进哪个子步骤
-                      if (hasCollective) {
-                        // 有集体 → 先进 3a;3a 不依赖老 single-honor state,无需 bridge
-                        setSubStep("a");
-                        setStep(3);
-                      } else if (hasIndividual) {
-                        // 只有个人 → 直接进 3b,桥接第 1 条 individual
-                        const firstIndiv = records.find(
-                          (r) => r.honorType === "individual",
-                        );
-                        if (firstIndiv) bridgeRecordToOldState(firstIndiv);
-                        if (records.length > 1) {
-                          toast.info(
-                            `本期只发第 1 项「${firstIndiv?.honorName || "未命名"}」 — 多荣誉一体发证将在 Phase 7 完成`,
-                          );
-                        }
-                        setSubStep("b");
-                        setStep(3);
-                      } else {
-                        // 理论 stepReady 会卡住,兜底
-                        setStep(3);
-                      }
-                      return;
-                    }
-                    if (step === 3) {
-                      if (subStep === "a") {
-                        if (hasIndividual) {
-                          // a → b,桥接第 1 条 individual
-                          const firstIndiv = records.find(
-                            (r) => r.honorType === "individual",
-                          );
-                          if (firstIndiv) bridgeRecordToOldState(firstIndiv);
-                          setSubStep("b");
-                        } else {
-                          // 只有集体 → step 4,桥第 1 条 collective(Phase 7 撤桥)
-                          const firstColl = records.find(
-                            (r) => r.honorType === "collective",
-                          );
-                          if (firstColl) bridgeRecordToOldState(firstColl);
-                          setStep(4);
-                        }
-                      } else {
-                        // subStep === "b" → step 4
-                        setStep(4);
-                      }
-                      return;
-                    }
-                    setStep((s) => (Math.min(4, s + 1) as WizardStep));
-                  }}
+                  onClick={goNext}
                   disabled={
                     Boolean(stepReady) ||
                     (step === 1 &&
@@ -600,7 +497,7 @@ export default function CertificateIssuePage() {
                     !manualMode &&
                     (!extractResult || extractResult.honors.length === 0)
                       ? "请先上传表彰文件或选择「跳过 AI」"
-                      : stepReady ?? ""
+                      : (stepReady ?? "")
                   }
                 >
                   下一步
@@ -621,8 +518,7 @@ export default function CertificateIssuePage() {
                     onClick={handleIssueAll}
                     disabled={
                       issuing ||
-                      validRows.length === 0 ||
-                      !template ||
+                      totalRecipients === 0 ||
                       results.length > 0
                     }
                     className="flex items-center gap-1.5 px-4 py-1.5 rounded text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
@@ -636,7 +532,9 @@ export default function CertificateIssuePage() {
                     ) : (
                       <>
                         <SendIcon className="w-4 h-4" />
-                        {results.length > 0 ? "已完成" : `全部发证 (${validRows.length})`}
+                        {results.length > 0
+                          ? "已完成"
+                          : `全部发证 (${totalRecipients})`}
                       </>
                     )}
                   </button>
@@ -650,6 +548,38 @@ export default function CertificateIssuePage() {
   );
 }
 
+/**
+ * 把 record 折成可发证的扁平 recipient 列表(集体 → CollectiveRow,个人 → PersonRow)。
+ * 过滤空姓名;返回每条的统一形态。
+ */
+function collectRecipients(record: HonorRecord): Array<{
+  rid: string;
+  name: string;
+  empNo: string;
+  dept: string;
+  userId?: string;
+}> {
+  if (record.honorType === "collective") {
+    return record.collectives
+      .filter((c) => c.name.trim())
+      .map((c) => ({
+        rid: c.rid,
+        name: c.name.trim(),
+        empNo: "",
+        dept: "",
+      }));
+  }
+  return record.persons
+    .filter((p) => p.name.trim())
+    .map((p) => ({
+      rid: p.rid,
+      name: p.name.trim(),
+      empNo: p.empNo.trim(),
+      dept: p.dept.trim(),
+      userId: p.userId,
+    }));
+}
+
 /* ─── 左侧 Stepper ─── */
 
 type StepperStatus = "done" | "active" | "pending";
@@ -658,23 +588,30 @@ interface StepperItem {
   key: string;
   badge: string;
   label: string;
+  /** desc 行;若 typeChip 存在则在 desc 后追加色块 */
   desc: string;
   icon: typeof UploadIcon;
   status: StepperStatus;
+  /** 集体/个人色块,用于 step 3 的子步骤 */
+  typeChip?: "collective" | "individual";
+  /** 子步骤可跳的索引(0-based,仅用于 step 3) */
+  jumpIdx?: number;
 }
+
+const SUB_LETTERS = "abcdefghijklmnopqrstuvwxyz";
 
 function Stepper({
   step,
-  subStep,
-  hasCollective,
-  hasIndividual,
-  hasAnyRecord,
+  subStepIdx,
+  records,
+  templates,
+  onJumpToSubStep,
 }: {
   step: WizardStep;
-  subStep: "a" | "b";
-  hasCollective: boolean;
-  hasIndividual: boolean;
-  hasAnyRecord: boolean;
+  subStepIdx: number;
+  records: HonorRecord[];
+  templates: CertificateTemplateDto[];
+  onJumpToSubStep: (idx: number) => void;
 }) {
   const items: StepperItem[] = [];
 
@@ -695,67 +632,51 @@ function Stepper({
     status: step === 2 ? "active" : step > 2 ? "done" : "pending",
   });
 
-  // Step 3:按 records 内 honorType 分布动态渲染 3a / 3b
-  if (hasAnyRecord && hasCollective && hasIndividual) {
+  // Step 3:per-record 子步骤
+  if (records.length === 0) {
     items.push({
-      key: "3a",
-      badge: "3a",
-      label: "录入被表彰集体",
-      desc: "集体 / 单位名自由文本",
-      icon: Building2Icon,
-      status:
-        step === 3 && subStep === "a"
-          ? "active"
-          : step > 3 || (step === 3 && subStep === "b")
-            ? "done"
-            : "pending",
-    });
-    items.push({
-      key: "3b",
-      badge: "3b",
-      label: "确定受表彰人员",
-      desc: "员工编号识别 / 表格",
-      icon: UsersIcon,
-      status:
-        step === 3 && subStep === "b"
-          ? "active"
-          : step > 3
-            ? "done"
-            : "pending",
-    });
-  } else if (hasAnyRecord && hasCollective) {
-    items.push({
-      key: "3a-only",
+      key: "3-placeholder",
       badge: "3",
-      label: "录入被表彰集体",
-      desc: "集体 / 单位名自由文本",
-      icon: Building2Icon,
-      status: step === 3 ? "active" : step > 3 ? "done" : "pending",
-    });
-  } else if (hasAnyRecord && hasIndividual) {
-    items.push({
-      key: "3b-only",
-      badge: "3",
-      label: "确定受表彰人员",
-      desc: "员工编号识别 / 表格",
+      label: "录入对象",
+      desc: "待 Step 2 决定记录",
       icon: UsersIcon,
       status: step === 3 ? "active" : step > 3 ? "done" : "pending",
     });
   } else {
-    // records 为空(step 1/2 时常态):占位,让用户能看到大致流程
-    items.push({
-      key: "3",
-      badge: "3",
-      label: "录入对象",
-      desc: "待 Step 2 决定类型",
-      icon: UsersIcon,
-      status: step === 3 ? "active" : step > 3 ? "done" : "pending",
+    records.forEach((r, i) => {
+      const t = r.templateId
+        ? templates.find((tt) => tt.id === r.templateId)
+        : undefined;
+      const label = r.honorName || t?.name || `第 ${i + 1} 条`;
+      const status: StepperStatus =
+        step < 3
+          ? "pending"
+          : step > 3
+            ? "done"
+            : i < subStepIdx
+              ? "done"
+              : i === subStepIdx
+                ? "active"
+                : "pending";
+      items.push({
+        key: `3-${i}`,
+        badge: `3${SUB_LETTERS[i] ?? String(i + 1)}`,
+        label,
+        desc:
+          r.honorType === "collective"
+            ? "集体录入"
+            : "个人粘贴 / 识别",
+        icon: r.honorType === "collective" ? Building2Icon : UsersIcon,
+        status,
+        typeChip: r.honorType,
+        jumpIdx: i,
+      });
     });
   }
 
   items.push({
     key: "4",
-    badge: "4",
+    badge: String(records.length === 0 ? 4 : 4),
     label: "清单 + 发证",
     desc: "最终确认并批量发证",
     icon: ListChecksIcon,
@@ -768,16 +689,29 @@ function Stepper({
         const done = it.status === "done";
         const active = it.status === "active";
         const Icon = it.icon;
+        const clickable =
+          step === 3 && it.jumpIdx !== undefined && it.jumpIdx <= subStepIdx;
+        const chipBg =
+          it.typeChip === "collective"
+            ? "bg-blue-100 text-blue-700 border-blue-200"
+            : "bg-orange-100 text-orange-700 border-orange-200";
         return (
           <div key={it.key} className="relative">
             <div
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onClick={() => {
+                if (clickable && it.jumpIdx !== undefined) {
+                  onJumpToSubStep(it.jumpIdx);
+                }
+              }}
               className={`flex items-start gap-3 rounded-lg p-3 transition-all ${
                 active
                   ? "bg-party-soft border border-[var(--party-primary)]"
                   : done
                     ? "border border-transparent"
                     : "border border-transparent opacity-50"
-              }`}
+              } ${clickable && !active ? "cursor-pointer hover:bg-[#F7F8FA]" : ""}`}
             >
               <div
                 className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold ${
@@ -796,10 +730,23 @@ function Stepper({
                     active ? "text-[var(--party-primary)]" : "text-[#1A1A1A]"
                   }`}
                 >
-                  <Icon className="w-3.5 h-3.5 opacity-70" />
-                  {it.label}
+                  <Icon className="w-3.5 h-3.5 opacity-70 flex-shrink-0" />
+                  <span className="truncate" title={it.label}>
+                    {it.label}
+                  </span>
                 </div>
-                <div className="text-[11px] text-[#9CA3AF] mt-0.5">{it.desc}</div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-[11px] text-[#9CA3AF] truncate">
+                    {it.desc}
+                  </span>
+                  {it.typeChip && (
+                    <span
+                      className={`text-[9px] px-1 py-0.5 rounded border font-semibold flex-shrink-0 ${chipBg}`}
+                    >
+                      {it.typeChip === "collective" ? "集体" : "个人"}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             {i < items.length - 1 && (
@@ -812,180 +759,46 @@ function Stepper({
   );
 }
 
-/* ─── 步骤 1 已下沉到 ../components/issue/Step1Upload.tsx(Phase 3) ─── */
+/* ─── Step 4 简版 ─── */
 
-/* ─── 步骤 2 已下沉到 ../components/issue/Step2HonorRecords.tsx(Phase 4) ─── */
-
-/* ─── 步骤 3:确定人员 ─── */
-
-function Step3Recipients({
-  rows,
-  onChange,
-  fromAi,
-  honorName,
-}: {
-  rows: RecipientRow[];
-  onChange: (rows: RecipientRow[]) => void;
-  fromAi: boolean;
-  honorName?: string;
-}) {
-  function patch(rid: string, p: Partial<RecipientRow>) {
-    onChange(rows.map((r) => (r.rid === rid ? { ...r, ...p } : r)));
-  }
-  function remove(rid: string) {
-    onChange(rows.filter((r) => r.rid !== rid));
-  }
-  function add() {
-    onChange([...rows, newRow()]);
-  }
-
-  const validCount = rows.filter((r) => r.name.trim()).length;
-
-  return (
-    <div>
-      <h2 className="text-base font-bold text-[#1A1A1A] mb-1">第三步 · 确定受表彰人员</h2>
-      <p className="text-xs text-[#9CA3AF] mb-4">
-        {fromAi
-          ? `AI 已从文件抽取了「${honorName ?? ""}」的受表彰名单。请人工核对、补全员工编号 / 部门后进入下一步。`
-          : "添加本次发证的受表彰人员。点「+ 添加」加行,姓名为空的行会被忽略。"}
-      </p>
-
-      <div className="rounded-lg border border-[#E9E9E9] overflow-hidden bg-white">
-        <table className="w-full text-xs">
-          <thead className="bg-[#F7F8FA]">
-            <tr className="text-[10px] text-[#6B7280] uppercase tracking-wide">
-              <th className="px-2 py-2 text-left w-10">#</th>
-              <th className="px-2 py-2 text-left">姓名 *</th>
-              <th className="px-2 py-2 text-left">员工编号</th>
-              <th className="px-2 py-2 text-left">部门</th>
-              <th className="px-2 py-2 w-10"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#F0F0F0]">
-            {rows.map((r, i) => (
-              <tr key={r.rid}>
-                <td className="px-2 py-1 text-[#9CA3AF] font-mono">{i + 1}</td>
-                <td className="px-2 py-1">
-                  <input
-                    type="text"
-                    value={r.name}
-                    onChange={(e) => patch(r.rid, { name: e.target.value })}
-                    placeholder="姓名"
-                    className="w-full px-1.5 py-1 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
-                  />
-                </td>
-                <td className="px-2 py-1">
-                  <input
-                    type="text"
-                    value={r.empNo}
-                    onChange={(e) => patch(r.rid, { empNo: e.target.value })}
-                    placeholder="可选"
-                    className="w-full px-1.5 py-1 text-xs font-mono rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
-                  />
-                </td>
-                <td className="px-2 py-1">
-                  <input
-                    type="text"
-                    value={r.dept}
-                    onChange={(e) => patch(r.rid, { dept: e.target.value })}
-                    placeholder="可选"
-                    className="w-full px-1.5 py-1 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
-                  />
-                </td>
-                <td className="px-2 py-1 text-center">
-                  <button
-                    type="button"
-                    onClick={() => remove(r.rid)}
-                    disabled={rows.length === 1}
-                    className="p-1 rounded text-[#9CA3AF] hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    <XIcon className="w-3 h-3" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="px-2 py-2 border-t border-[#F0F0F0] bg-[#FAFAFB] flex items-center justify-between">
-          <button
-            type="button"
-            onClick={add}
-            className="flex items-center gap-1 text-[11px] text-[var(--party-primary)] hover:underline"
-          >
-            <PlusIcon className="w-3 h-3" />
-            添加一行
-          </button>
-          <span className="text-[10px] text-[#9CA3AF]">
-            有效:{validCount} / {rows.length}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── 步骤 4:清单 + 发证 ─── */
-
-function Step4Confirm({
-  template,
-  honorName,
+function Step4PreviewIssue({
+  records,
+  templates,
   yearLabel,
-  issuingOrgName,
-  validUntil,
-  onValidUntilChange,
-  rows,
+  issueDate,
   results,
   issuing,
+  totalRecipients,
   onIssueAll,
 }: {
-  template: CertificateTemplateDto | null;
-  honorName?: string;
+  records: HonorRecord[];
+  templates: Map<string, CertificateTemplateDto>;
   yearLabel: string;
-  issuingOrgName: string;
-  validUntil: string;
-  onValidUntilChange: (v: string) => void;
-  rows: RecipientRow[];
+  issueDate: string;
   results: IssueResult[];
   issuing: boolean;
+  totalRecipients: number;
   onIssueAll: () => void;
 }) {
   const okCount = results.filter((r) => r.ok).length;
   const failCount = results.length - okCount;
-  const pct = rows.length ? Math.round((results.length / rows.length) * 100) : 0;
+  const pct = totalRecipients
+    ? Math.round((results.length / totalRecipients) * 100)
+    : 0;
 
   return (
     <div>
-      <h2 className="text-base font-bold text-[#1A1A1A] mb-1">第四步 · 最终确认并发证</h2>
+      <h2 className="text-base font-bold text-[#1A1A1A] mb-1">
+        第四步 · 清单 + 一键发证
+      </h2>
       <p className="text-xs text-[#9CA3AF] mb-4">
-        核对清单,点「全部发证」一键生成 {rows.length} 张证书。同批次共享{" "}
-        <span className="font-mono">{yearLabel}-{template?.honorCode ?? "?"}-{rows.length}</span>{" "}
-        编号前缀,seq 自动 001~{String(rows.length).padStart(3, "0")}。
+        共 {records.length} 条表彰记录,合计 {totalRecipients} 张待发证。
+        每条 record 一个 batch,certNo 各自从 001 起编号。
+        <span className="ml-2">表彰年度:</span>
+        <span className="font-mono text-[#1A1A1A]">{yearLabel}</span>
+        <span className="ml-2">表彰日期:</span>
+        <span className="font-mono text-[#1A1A1A]">{issueDate}</span>
       </p>
-
-      {/* 摘要卡 */}
-      <div className="rounded-lg border border-[#E9E9E9] bg-white p-4 mb-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-        <Summary label="模板" value={template?.name ?? "—"} />
-        <Summary
-          label="honorCode"
-          value={template?.honorCode ?? "—"}
-          mono
-        />
-        <Summary label="年份" value={yearLabel} mono />
-        <Summary label="批次总数" value={String(rows.length)} mono />
-        {honorName && <Summary label="荣誉" value={honorName} />}
-        {issuingOrgName && <Summary label="颁发机构" value={issuingOrgName} />}
-        <div>
-          <div className="text-[10px] text-[#9CA3AF] mb-1">有效期至</div>
-          <input
-            type="date"
-            value={validUntil}
-            onChange={(e) => onValidUntilChange(e.target.value)}
-            disabled={issuing || results.length > 0}
-            className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none disabled:bg-[#F7F8FA]"
-          />
-          <div className="text-[10px] text-[#9CA3AF] mt-0.5">留空=永久</div>
-        </div>
-      </div>
 
       {/* 进度 */}
       {(issuing || results.length > 0) && (
@@ -995,7 +808,7 @@ function Step4Confirm({
               {issuing ? "发证中…" : "完成"}
             </span>
             <span className="text-[#6B7280] font-mono">
-              {results.length} / {rows.length}
+              {results.length} / {totalRecipients}
             </span>
           </div>
           <div className="h-2 rounded-full bg-[#F0F0F0] overflow-hidden mb-2">
@@ -1019,56 +832,68 @@ function Step4Confirm({
         </div>
       )}
 
-      {/* 清单表 */}
-      <div className="rounded-lg border border-[#E9E9E9] overflow-hidden bg-white">
-        <table className="w-full text-xs">
-          <thead className="bg-[#F7F8FA]">
-            <tr className="text-[10px] text-[#6B7280] uppercase tracking-wide">
-              <th className="px-3 py-2 text-left w-10">#</th>
-              <th className="px-3 py-2 text-left">姓名</th>
-              <th className="px-3 py-2 text-left">员工编号</th>
-              <th className="px-3 py-2 text-left">部门</th>
-              <th className="px-3 py-2 text-left">证书编号 / 状态</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#F0F0F0]">
-            {rows.map((r, i) => {
-              const res = results.find((x) => x.rid === r.rid);
-              return (
-                <tr key={r.rid}>
-                  <td className="px-3 py-2 text-[#9CA3AF] font-mono">{i + 1}</td>
-                  <td className="px-3 py-2 text-[#1A1A1A]">{r.name}</td>
-                  <td className="px-3 py-2 font-mono text-[#6B7280]">{r.empNo || "—"}</td>
-                  <td className="px-3 py-2 text-[#6B7280]">{r.dept || "—"}</td>
-                  <td className="px-3 py-2">
-                    {!res ? (
-                      <span className="text-[#9CA3AF]">待发证</span>
-                    ) : res.ok ? (
-                      <span className="inline-flex items-center gap-1 text-green-700 font-mono">
-                        <CheckCircle2Icon className="w-3.5 h-3.5" />
-                        {res.certNo}
-                      </span>
-                    ) : (
-                      <span
-                        className="inline-flex items-center gap-1 text-red-700"
-                        title={res.reason}
-                      >
-                        <AlertCircleIcon className="w-3.5 h-3.5" />
-                        失败:{(res.reason ?? "").slice(0, 40)}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {/* 按 record 分组展示 */}
+      <div className="space-y-4">
+        {records.map((record, ri) => {
+          const t = record.templateId
+            ? templates.get(record.templateId)
+            : undefined;
+          const recordResults = results.filter((r) => r.recordIndex === ri);
+          const isCollective = record.honorType === "collective";
+          const headerColor = isCollective
+            ? "bg-blue-50 border-blue-200"
+            : "bg-orange-50 border-orange-200";
+          const recipientCount = isCollective
+            ? record.collectives.filter((c) => c.name.trim()).length
+            : record.persons.filter((p) => p.name.trim()).length;
+          return (
+            <div
+              key={record.rid}
+              className="rounded-lg border border-[#E9E9E9] overflow-hidden bg-white"
+            >
+              <div
+                className={`px-3 py-2 border-b border-[#E9E9E9] flex items-center gap-3 ${headerColor}`}
+              >
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-semibold border ${
+                    isCollective
+                      ? "bg-blue-100 text-blue-700 border-blue-300"
+                      : "bg-orange-100 text-orange-700 border-orange-300"
+                  }`}
+                >
+                  {isCollective ? "集体" : "个人"}
+                </span>
+                <span className="text-sm font-semibold text-[#1A1A1A] truncate">
+                  {record.honorName || t?.name || "未命名"}
+                </span>
+                <span className="text-[11px] text-[#6B7280]">
+                  · 模板 {t?.name ?? "?"} ·{" "}
+                  <span className="font-mono">{t?.honorCode ?? "?"}</span> ·{" "}
+                  {recipientCount} 张
+                </span>
+              </div>
+              {isCollective ? (
+                <CollectiveResultTable
+                  collectives={record.collectives.filter((c) => c.name.trim())}
+                  recordRid={record.rid}
+                  recordResults={recordResults}
+                />
+              ) : (
+                <PersonResultTable
+                  persons={record.persons.filter((p) => p.name.trim())}
+                  recordRid={record.rid}
+                  recordResults={recordResults}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* 一些隐藏的、可能后续展开的功能提示 */}
       {!issuing && results.length === 0 && (
-        <p className="mt-3 text-[10px] text-[#9CA3AF] text-center">
-          点底部「全部发证」开始 · 单张失败不影响其他继续发 · 发完后可去「已发证书」批量下载 PDF
+        <p className="mt-4 text-[10px] text-[#9CA3AF] text-center">
+          点底部「全部发证」开始 · 单张失败不影响其他继续发 ·
+          发完后可去「已发证书」批量下载 PDF
         </p>
       )}
 
@@ -1077,25 +902,107 @@ function Step4Confirm({
   );
 }
 
-function Summary({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+/* ─── Step 4 result tables(按类型拆开,让 TS 准确推断行字段) ─── */
+
+function StatusCell({ res }: { res: IssueResult | undefined }) {
+  if (!res) return <span className="text-[#9CA3AF]">待发证</span>;
+  if (res.ok) {
+    return (
+      <span className="inline-flex items-center gap-1 text-green-700 font-mono">
+        <CheckCircle2Icon className="w-3.5 h-3.5" />
+        {res.certNo}
+      </span>
+    );
+  }
   return (
-    <div>
-      <div className="text-[10px] text-[#9CA3AF] mb-1">{label}</div>
-      <div
-        className={`text-[#1A1A1A] font-medium truncate ${mono ? "font-mono text-[var(--party-primary)]" : ""}`}
-        title={value}
-      >
-        {value}
-      </div>
-    </div>
+    <span
+      className="inline-flex items-center gap-1 text-red-700"
+      title={res.reason}
+    >
+      <AlertCircleIcon className="w-3.5 h-3.5" />
+      失败:{(res.reason ?? "").slice(0, 40)}
+    </span>
   );
 }
 
-/* ─── 工具 ─── */
+function CollectiveResultTable({
+  collectives,
+  recordRid,
+  recordResults,
+}: {
+  collectives: CollectiveRow[];
+  recordRid: string;
+  recordResults: IssueResult[];
+}) {
+  return (
+    <table className="w-full text-xs">
+      <thead className="bg-[#F7F8FA]">
+        <tr className="text-[10px] text-[#6B7280] uppercase tracking-wide">
+          <th className="px-3 py-1.5 text-left w-10">#</th>
+          <th className="px-3 py-1.5 text-left">集体名</th>
+          <th className="px-3 py-1.5 text-left">证书编号 / 状态</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-[#F0F0F0]">
+        {collectives.map((c, i) => {
+          const res = recordResults.find(
+            (r) => r.key === `${recordRid}-${c.rid}`,
+          );
+          return (
+            <tr key={c.rid}>
+              <td className="px-3 py-1.5 text-[#9CA3AF] font-mono">{i + 1}</td>
+              <td className="px-3 py-1.5 text-[#1A1A1A]">{c.name}</td>
+              <td className="px-3 py-1.5">
+                <StatusCell res={res} />
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
 
-function formatChineseDate(iso: string): string {
-  // iso 形如 "2024-12-15" → "2024年12月15日"
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return iso;
-  return `${m[1]}年${m[2]}月${m[3]}日`;
+function PersonResultTable({
+  persons,
+  recordRid,
+  recordResults,
+}: {
+  persons: PersonRow[];
+  recordRid: string;
+  recordResults: IssueResult[];
+}) {
+  return (
+    <table className="w-full text-xs">
+      <thead className="bg-[#F7F8FA]">
+        <tr className="text-[10px] text-[#6B7280] uppercase tracking-wide">
+          <th className="px-3 py-1.5 text-left w-10">#</th>
+          <th className="px-3 py-1.5 text-left">姓名</th>
+          <th className="px-3 py-1.5 text-left w-28">员工编号</th>
+          <th className="px-3 py-1.5 text-left">部门</th>
+          <th className="px-3 py-1.5 text-left">证书编号 / 状态</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-[#F0F0F0]">
+        {persons.map((p, i) => {
+          const res = recordResults.find(
+            (r) => r.key === `${recordRid}-${p.rid}`,
+          );
+          return (
+            <tr key={p.rid}>
+              <td className="px-3 py-1.5 text-[#9CA3AF] font-mono">{i + 1}</td>
+              <td className="px-3 py-1.5 text-[#1A1A1A]">{p.name}</td>
+              <td className="px-3 py-1.5 font-mono text-[#6B7280]">
+                {p.empNo || "—"}
+              </td>
+              <td className="px-3 py-1.5 text-[#6B7280]">{p.dept || "—"}</td>
+              <td className="px-3 py-1.5">
+                <StatusCell res={res} />
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
 }
