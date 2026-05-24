@@ -109,8 +109,11 @@ export class CertificateExtractionService {
       cfg.model ||
       this.config.get<string>('DEEPSEEK_MODEL') ||
       'deepseek-v4-flash';
+    // 默认 110s — DeepSeek thinking 模式 + 大 PDF 可以跑 30-90s。
+    // 前端 axios 对 extract 给了 120s,这里留 10s 缓冲。
+    // 可通过 .env DEEPSEEK_TIMEOUT_MS 覆盖。
     const timeoutMs = Number(
-      this.config.get<string>('DEEPSEEK_TIMEOUT_MS') ?? '30000',
+      this.config.get<string>('DEEPSEEK_TIMEOUT_MS') ?? '110000',
     );
 
     let raw: string;
@@ -149,9 +152,9 @@ export class CertificateExtractionService {
         err.message ??
         '未知错误';
       this.logger.error(`LLM (${cfg.provider}) 调用失败: ${detail}`);
-      if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+      if (isTimeoutError(err)) {
         throw new ServiceUnavailableException(
-          `${cfg.provider} 超时(${timeoutMs}ms),请稍后重试或换更小的文件`,
+          `${cfg.provider}(${model})超时(${Math.round(timeoutMs / 1000)}s)。常见原因:模型选了带 thinking 的版本(如 deepseek-v4-pro)+ 大文件。建议:在「系统设置 → 外部 API」把 DeepSeek 默认模型换成 deepseek-v4-flash。`,
         );
       }
       throw new ServiceUnavailableException(`${cfg.provider} 调用失败:${detail}`);
@@ -248,7 +251,7 @@ export class CertificateExtractionService {
     const apiKey = cfg.apiKey;
     const apiUrl = (cfg.apiUrl || '').replace(/\/+$/, '');
     const model = cfg.model;
-    const timeoutMs = 60000; // 视觉调用较慢,放宽到 60s
+    const timeoutMs = 110000; // 视觉调用较慢,跟文本路径一致 110s
 
     // 图片转 base64 data URL
     const base64 = file.buffer.toString('base64');
@@ -299,9 +302,9 @@ export class CertificateExtractionService {
       const detail =
         err.response?.data?.error?.message ?? err.message ?? '未知错误';
       this.logger.error(`Vision (${cfg.provider}) 调用失败: ${detail}`);
-      if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+      if (isTimeoutError(err)) {
         throw new ServiceUnavailableException(
-          `${cfg.provider} vision 超时(${timeoutMs}ms)`,
+          `${cfg.provider}(${model})vision 超时(${Math.round(timeoutMs / 1000)}s),请换更小的图片或换更快的视觉模型`,
         );
       }
       throw new ServiceUnavailableException(
@@ -438,6 +441,24 @@ export class CertificateExtractionService {
 }
 
 /* ─── 解析辅助 ─── */
+
+/**
+ * axios 在不同阶段超时给出的错误信息差异较大:
+ *   - 连接超时:err.code = 'ECONNABORTED' / 'ETIMEDOUT' + message "timeout of X"
+ *   - 响应流中断:message = "stream has been aborted"(实际也是超时触发)
+ *   - 慢响应被 AbortController 杀:err.name = "CanceledError"
+ * 统一识别
+ */
+function isTimeoutError(err: AxiosError): boolean {
+  if (!err) return false;
+  if (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') return true;
+  if (err.name === 'CanceledError') return true;
+  const msg = (err.message || '').toLowerCase();
+  if (msg.includes('timeout')) return true;
+  if (msg.includes('aborted')) return true;
+  if (msg.includes('stream has been aborted')) return true;
+  return false;
+}
 
 function normalizeRecipients(input: unknown): ExtractedRecipient[] {
   if (!Array.isArray(input)) return [];
