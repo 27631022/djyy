@@ -171,10 +171,12 @@ async function seedExternalApis() {
       provider: 'deepseek',
       name: 'DeepSeek 大模型',
       description:
-        '深度求索,性价比首选,中文能力强。用于证书 AI 提取等场景。' +
+        '深度求索,性价比首选,中文能力强。' +
+        '证书 AI 提取推荐 deepseek-v4-flash(便宜+快,thinking 默认关);' +
+        '复杂推理场景换 deepseek-v4-pro。' +
         '注意 base_url 用 OpenAI 兼容那个(/anthropic 是给 Claude Code 用的)。',
       apiUrl: 'https://api.deepseek.com',
-      model: 'deepseek-v4-pro',
+      model: 'deepseek-v4-flash',
       rechargeUrl: 'https://platform.deepseek.com/top_up',
     },
     {
