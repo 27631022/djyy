@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeftIcon,
   SendIcon,
   Loader2Icon,
-  FileTextIcon,
-  CameraIcon,
   UploadIcon,
   SparklesIcon,
   CheckIcon,
@@ -20,7 +18,6 @@ import {
   CheckCircle2Icon,
   AlertCircleIcon,
 } from "lucide-react";
-import { toast } from "sonner";
 import {
   certificateIssueApi,
   certificateTemplateApi,
@@ -29,15 +26,24 @@ import {
   type ExtractHonorResponse,
   type ExtractedHonor,
 } from "@/features/certificate";
+import { useAuth } from "@/stores/auth";
 import { generateCertificatePdfDataUrl } from "../lib/certificatePdf";
 import { isValidYearLabel } from "../lib/certificateNumber";
 import type { DesignerState } from "../lib/designerTypes";
+import {
+  emptyDraft,
+  loadDraft,
+  clearDraft,
+  useDebouncedDraft,
+  type CertificateDraftV1,
+  type WizardStep,
+} from "../lib/certificateDraft";
+import { Step1Upload } from "../components/issue/Step1Upload";
 
 const PARTY = "var(--party-primary)";
 
 /* ─── Wizard 状态 ─── */
-
-type WizardStep = 1 | 2 | 3 | 4;
+// WizardStep 类型已迁到 lib/certificateDraft.ts(Phase 2),这里 import 复用
 
 interface RecipientRow {
   /** 行内 key,前端 useId 用 */
@@ -75,6 +81,14 @@ export default function CertificateIssuePage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
+  /* ─── V3 草稿持久化 ─── */
+  // 仅用 me.id 作 key,未登录时跳过持久化(用户应该不可能看到此页,但兜底防崩)
+  const { me } = useAuth();
+  const userId = me?.id ?? null;
+  // 注意:首次渲染时 me 还在加载中,draft 暂用 empty;mount effect 里再 hydrate
+  const [draft, setDraft] = useState<CertificateDraftV1>(() => emptyDraft());
+  const hydratedRef = useRef(false);
+
   const [step, setStep] = useState<WizardStep>(1);
 
   /* ─── 步骤 1 状态 ─── */
@@ -82,6 +96,31 @@ export default function CertificateIssuePage() {
   const [selectedHonorIdx, setSelectedHonorIdx] = useState<number>(-1);
   /** true 表示用户走「跳过 AI」手动模式,extractResult 保持 null */
   const [manualMode, setManualMode] = useState(false);
+
+  /* ─── 草稿 ↔ 内存状态双向同步 ─── */
+  // 1) 首次拿到 userId 时,从 localStorage 拉旧 draft 恢复 step + extracted
+  useEffect(() => {
+    if (!userId || hydratedRef.current) return;
+    const saved = loadDraft(userId);
+    hydratedRef.current = true;
+    if (!saved) return;
+    setDraft(saved);
+    setStep(saved.step);
+    if (saved.extracted) {
+      setExtractResult(saved.extracted);
+      // 多 honor 时让用户重新选(避免老的 selectedHonorIdx 与新 list 错位)
+      setSelectedHonorIdx(saved.extracted.honors.length === 1 ? 0 : -1);
+    }
+  }, [userId]);
+
+  // 2) step / extracted 变化 → 同步进 draft(由 useDebouncedDraft 200ms 后落盘)
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    setDraft((d) => ({ ...d, step, extracted: extractResult }));
+  }, [step, extractResult]);
+
+  // 3) 防抖写 localStorage(useDebouncedDraft 内部已处理 userId 为 null 的情况)
+  useDebouncedDraft(userId, draft);
 
   /* ─── 步骤 2 状态 ─── */
   const [template, setTemplate] = useState<CertificateTemplateDto | null>(null);
@@ -210,6 +249,13 @@ export default function CertificateIssuePage() {
     results.length > 0 &&
     results.every((r) => r.ok);
 
+  /* ─── V3:全部成功 → 清掉草稿(避免下次进来还看到旧状态) ─── */
+  useEffect(() => {
+    if (finishedAllOk && userId) {
+      clearDraft(userId);
+    }
+  }, [finishedAllOk, userId]);
+
   return (
     <div className="h-full flex flex-col bg-[#F7F8FA]">
       {/* Header */}
@@ -246,12 +292,13 @@ export default function CertificateIssuePage() {
                 onSelectHonor={setSelectedHonorIdx}
                 onExtractDone={(r) => {
                   setExtractResult(r);
-                  if (r.honors.length === 1) {
-                    // 单 honor 不必让用户选,自动选中
-                    setSelectedHonorIdx(0);
-                  } else {
-                    setSelectedHonorIdx(-1);
-                  }
+                  // 单 honor 不必让用户选,自动选中;多 honor 强制让用户挑
+                  setSelectedHonorIdx(r.honors.length === 1 ? 0 : -1);
+                }}
+                onReset={() => {
+                  // 重置 = 清掉抽取结果,回到上传 tile;同时 effect 会把 draft.extracted 设为 null
+                  setExtractResult(null);
+                  setSelectedHonorIdx(-1);
                 }}
                 onSkipAI={() => {
                   setExtractResult(null);
@@ -446,346 +493,7 @@ function Stepper({ step }: { step: WizardStep }) {
   );
 }
 
-/* ─── 步骤 1:上传 / 录入 ─── */
-
-function Step1Upload({
-  extractResult,
-  selectedHonorIdx,
-  onSelectHonor,
-  onExtractDone,
-  onSkipAI,
-  onContinueWithHonor,
-  onGoExternal,
-}: {
-  extractResult: ExtractHonorResponse | null;
-  selectedHonorIdx: number;
-  onSelectHonor: (i: number) => void;
-  onExtractDone: (r: ExtractHonorResponse) => void;
-  onSkipAI: () => void;
-  onContinueWithHonor: () => void;
-  onGoExternal: () => void;
-}) {
-  const docInputRef = useRef<HTMLInputElement | null>(null);
-  const imgInputRef = useRef<HTMLInputElement | null>(null);
-
-  const extractMut = useMutation({
-    mutationFn: (f: File) => certificateIssueApi.extract(f),
-    onSuccess: (r) => {
-      if (r.honors.length === 0) {
-        toast.warning("AI 未识别到任何荣誉项,请检查文件内容或人工填写");
-      } else {
-        const total = r.honors.reduce((s, h) => s + h.recipients.length, 0);
-        const via =
-          r.source.usedProvider && r.source.pipeline
-            ? ` · 走 ${r.source.usedProvider}(${r.source.pipeline})`
-            : "";
-        toast.success(`提取完成:${r.honors.length} 项荣誉,${total} 位对象${via}`);
-      }
-      onExtractDone(r);
-    },
-    onError: (e: unknown) =>
-      toast.error(e instanceof Error ? e.message : "提取失败"),
-  });
-
-  function handleFile(f: File) {
-    extractMut.mutate(f);
-  }
-
-  if (extractResult) {
-    return (
-      <ExtractedResults
-        result={extractResult}
-        selectedHonorIdx={selectedHonorIdx}
-        onSelectHonor={onSelectHonor}
-        onReset={() => {
-          if (docInputRef.current) docInputRef.current.value = "";
-          if (imgInputRef.current) imgInputRef.current.value = "";
-          onExtractDone({
-            honors: [],
-            yearLabel: "",
-            source: { fileName: "", bytes: 0, textLength: 0 },
-          });
-        }}
-        onContinue={onContinueWithHonor}
-      />
-    );
-  }
-
-  return (
-    <div>
-      <h2 className="text-base font-bold text-[#1A1A1A] mb-1">第一步 · 选择数据来源</h2>
-      <p className="text-xs text-[#9CA3AF] mb-4">
-        选择最贴合你场景的方式开始。AI 自动按「系统设置 → 外部 API」配置的优先级挑模型 ——
-        文档走 LLM,图片走 Vision。支持「两优一先」一份文件多荣誉的情况。
-      </p>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {/* 选项 A:上传文档 */}
-        <UploadTile
-          color="purple"
-          icon={<FileTextIcon className="w-6 h-6" />}
-          label="上传表彰文件"
-          desc="Word / PDF · AI 提取荣誉、年份、受表彰人员"
-          loading={extractMut.isPending}
-          onClick={() => docInputRef.current?.click()}
-        />
-        <input
-          ref={docInputRef}
-          type="file"
-          accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleFile(f);
-          }}
-        />
-
-        {/* 选项 B:拍照 / 图片(OCR via vision) */}
-        <UploadTile
-          color="blue"
-          icon={<CameraIcon className="w-6 h-6" />}
-          label="拍照录入证书"
-          desc="拍照或选图 · AI 视觉模型识别证书内容(豆包/千问/GPT-4o)"
-          loading={extractMut.isPending}
-          onClick={() => imgInputRef.current?.click()}
-        />
-        <input
-          ref={imgInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleFile(f);
-          }}
-        />
-
-        {/* 选项 C:外部证书 */}
-        <UploadTile
-          color="amber"
-          icon={<UploadIcon className="w-6 h-6" />}
-          label="外部证书直接录入"
-          desc="上传外部单位颁发的 PDF · 录入审核"
-          onClick={onGoExternal}
-        />
-      </div>
-
-      <div className="mt-6 pt-4 border-t border-[#F0F0F0] flex items-center justify-between">
-        <span className="text-xs text-[#9CA3AF]">不想用 AI? 也可以直接手动填表发证</span>
-        <button
-          type="button"
-          onClick={onSkipAI}
-          className="text-xs px-3 py-1.5 rounded border border-[#E9E9E9] hover:bg-[#F7F8FA] text-[#6B7280]"
-        >
-          跳过 AI,手动填 →
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function UploadTile({
-  color,
-  icon,
-  label,
-  desc,
-  onClick,
-  disabled,
-  loading,
-}: {
-  color: "purple" | "blue" | "amber";
-  icon: React.ReactNode;
-  label: string;
-  desc: string;
-  onClick?: () => void;
-  disabled?: boolean;
-  loading?: boolean;
-}) {
-  const colors = {
-    purple: "from-purple-50 to-blue-50 border-purple-200 hover:border-purple-400 text-purple-600",
-    blue: "from-blue-50 to-cyan-50 border-blue-200 hover:border-blue-400 text-blue-600",
-    amber: "from-amber-50 to-orange-50 border-amber-200 hover:border-amber-400 text-amber-700",
-  }[color];
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled || loading}
-      className={`bg-gradient-to-br ${colors} border-2 rounded-lg p-5 text-left transition-all hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed`}
-    >
-      <div className="w-11 h-11 rounded-lg bg-white/80 flex items-center justify-center mb-3">
-        {loading ? <Loader2Icon className="w-6 h-6 animate-spin" /> : icon}
-      </div>
-      <div className="text-sm font-bold text-[#1A1A1A] mb-1">{label}</div>
-      <div className="text-[11px] text-[#6B7280] leading-relaxed">{desc}</div>
-    </button>
-  );
-}
-
-/* ─── 步骤 1 子组件:提取结果(单 honor 自动选,多 honor 让用户挑) ─── */
-
-function ExtractedResults({
-  result,
-  selectedHonorIdx,
-  onSelectHonor,
-  onReset,
-  onContinue,
-}: {
-  result: ExtractHonorResponse;
-  selectedHonorIdx: number;
-  onSelectHonor: (i: number) => void;
-  onReset: () => void;
-  onContinue: () => void;
-}) {
-  // 父组件可能传入空 result 表示要重置(避免维护两套 reset 路径)
-  if (result.honors.length === 0 && !result.source.fileName) {
-    return null;
-  }
-
-  const multi = result.honors.length > 1;
-  return (
-    <div>
-      <h2 className="text-base font-bold text-[#1A1A1A] mb-1 flex items-center gap-2">
-        <SparklesIcon className="w-4 h-4 text-purple-500" />
-        AI 提取完成
-        <button
-          type="button"
-          onClick={onReset}
-          className="ml-auto text-xs font-normal text-[#9CA3AF] hover:text-red-600"
-        >
-          重新上传
-        </button>
-      </h2>
-      <p className="text-xs text-[#9CA3AF] mb-3">
-        源:{result.source.fileName}
-        {result.source.pipeline === "vision"
-          ? " · 图像识别"
-          : ` · ${result.source.textLength} 字`}
-        {result.source.usedProvider
-          ? ` · 由 ${result.source.usedProvider}(${result.source.usedModel ?? ""})${result.source.pipeline === "vision" ? " vision" : ""} 提取`
-          : ""}
-        {result.source.completionTokens
-          ? ` · ${result.source.promptTokens ?? "?"}+${result.source.completionTokens} tokens`
-          : ""}
-      </p>
-
-      <div className="rounded-lg bg-[#F7F8FA] p-3 mb-4 text-xs grid grid-cols-2 gap-2">
-        <InfoLine label="文件级年份" value={result.yearLabel || "—"} mono />
-        <InfoLine label="文件级颁发日期" value={result.issueDate || "—"} mono />
-      </div>
-
-      {result.honors.length === 0 ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
-          <AlertCircleIcon className="w-6 h-6 mx-auto text-amber-500 mb-1" />
-          <div className="text-sm text-amber-900">未识别到任何荣誉项</div>
-          <div className="text-[11px] text-amber-700 mt-1">
-            可点「重新上传」换一份文件,或返回「跳过 AI」手动填
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-[#1A1A1A]">
-              {multi ? (
-                <>
-                  发现 <span className="text-[var(--party-primary)]">{result.honors.length}</span>{" "}
-                  项荣誉 — 请选择本次要发的一项
-                </>
-              ) : (
-                "识别到 1 项荣誉"
-              )}
-            </h3>
-            <span className="text-[11px] text-[#9CA3AF]">
-              本次只发选中项;其余可后续重新进入向导发证
-            </span>
-          </div>
-
-          <div className="space-y-2">
-            {result.honors.map((h, i) => {
-              const active = i === selectedHonorIdx;
-              return (
-                <button
-                  type="button"
-                  key={i}
-                  onClick={() => onSelectHonor(i)}
-                  className={`w-full text-left rounded-lg border-2 p-3 transition-all ${
-                    active
-                      ? "border-[var(--party-primary)] bg-party-soft"
-                      : "border-[#E9E9E9] hover:border-[#CBD5E1] bg-white"
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    <div
-                      className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                        active
-                          ? "bg-[var(--party-primary)] text-white"
-                          : "border border-[#CBD5E1]"
-                      }`}
-                    >
-                      {active && <CheckIcon className="w-3 h-3" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-[#1A1A1A]">{h.honorName}</div>
-                      {h.issuingOrg && (
-                        <div className="text-[11px] text-[#6B7280] mt-0.5">
-                          颁发机构:{h.issuingOrg}
-                        </div>
-                      )}
-                      <div className="mt-1.5 text-[11px] text-[#9CA3AF]">
-                        受表彰对象 {h.recipients.length} 位
-                        {h.recipients.length > 0 && (
-                          <span className="ml-2 font-mono text-[#6B7280]">
-                            {h.recipients
-                              .slice(0, 5)
-                              .map((r) => r.name)
-                              .join("、")}
-                            {h.recipients.length > 5 && ` 等`}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {selectedHonorIdx >= 0 && (
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={onContinue}
-                className="flex items-center gap-1 px-4 py-2 rounded text-sm font-medium text-white"
-                style={{ backgroundColor: "var(--party-primary)" }}
-              >
-                确认并进入下一步
-                <ChevronRightIcon className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function InfoLine({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex gap-2">
-      <span className="text-[#9CA3AF]">{label}</span>
-      <span className={`text-[#1A1A1A] ${mono ? "font-mono" : ""}`}>{value}</span>
-    </div>
-  );
-}
+/* ─── 步骤 1 已下沉到 ../components/issue/Step1Upload.tsx(Phase 3) ─── */
 
 /* ─── 步骤 2:选证书模板 ─── */
 

@@ -134,6 +134,10 @@ export interface IssueCertificateInput {
   validUntil?: string;
   issuingOrgId?: string;
   issuingOrgName?: string;
+  /** V3:荣誉类型(个人 / 集体 / 单位) */
+  honorType?: "individual" | "collective" | "unit";
+  /** V3:颁发日期 ISO YYYY-MM-DD;不传走后端默认 now() */
+  issueDate?: string;
 }
 
 export interface CertificateListFilter {
@@ -153,6 +157,12 @@ export interface ExtractedRecipient {
 export interface ExtractedHonor {
   honorName: string;
   issuingOrg?: string;
+  /**
+   * 荣誉类型(V3 新增):individual / collective / unit。
+   * 由后端 normalizeHonorType 保证有值 — LLM 直返 > honorName 关键词推断 > 默认 individual。
+   * 老 draft 可能没有此字段,前端按 individual 兜底渲染。
+   */
+  honorType?: "individual" | "collective" | "unit";
   recipients: ExtractedRecipient[];
 }
 
