@@ -59,6 +59,8 @@ export const ADMIN_TYPE_OPTIONS: { value: AdminType; label: string }[] = [
 export interface Organization {
   id: string;
   name: string;
+  /** 全称 — 证书 / 公文 / 印章等正式场合用,可空兼容老数据。日常展示用 name(简称) */
+  fullName: string | null;
   code: string;
   kind: OrgKind;
   type: OrgType;

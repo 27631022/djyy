@@ -25,6 +25,7 @@ import {
 } from "@/features/dictionary";
 import { userCustomFieldsApi, type UserCustomField } from "@/features/user-custom-field";
 import { matchesPinyin, highlightMatch } from "@/shared/lib/pinyinSearch";
+import { OrgPicker } from "../components/OrgPicker";
 
 /* ═══════════════════════════════════════════════════════════════
    Color tokens
@@ -162,6 +163,8 @@ export default function UsersPage() {
         <UserDetailDrawer
           userId={selectedId}
           onClose={() => setSelectedId(null)}
+          adminTree={adminTreeQuery.data ?? []}
+          partyTree={partyTreeQuery.data ?? []}
           adminFlat={adminFlat}
           partyFlat={partyFlat}
           allOrgsById={allOrgsById}
@@ -448,10 +451,12 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
    ═══════════════════════════════════════════════════════════════ */
 
 function UserDetailDrawer({
-  userId, onClose, adminFlat, partyFlat, allOrgsById, roles, onSaved,
+  userId, onClose, adminTree, partyTree, adminFlat, partyFlat, allOrgsById, roles, onSaved,
 }: {
   userId: string;
   onClose: () => void;
+  adminTree: OrgTreeNode[];
+  partyTree: OrgTreeNode[];
   adminFlat: FlatOrg[];
   partyFlat: FlatOrg[];
   allOrgsById: Map<string, FlatOrg>;
@@ -545,6 +550,8 @@ function UserDetailDrawer({
           ) : tab === "org" ? (
             <MembershipsTab
               user={u}
+              adminTree={adminTree}
+              partyTree={partyTree}
               adminFlat={adminFlat}
               partyFlat={partyFlat}
               allOrgsById={allOrgsById}
@@ -685,9 +692,11 @@ function BasicInfoTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
 
 /* ─── Tab: 组织归属 ─── */
 function MembershipsTab({
-  user, adminFlat, partyFlat, onSaved,
+  user, adminTree, partyTree, adminFlat, partyFlat, onSaved,
 }: {
   user: UserDetail;
+  adminTree: OrgTreeNode[];
+  partyTree: OrgTreeNode[];
   adminFlat: FlatOrg[];
   partyFlat: FlatOrg[];
   /** caller 还在传(签名兼容),本组件目前未直接消费 */
@@ -816,22 +825,16 @@ function MembershipsTab({
               const usedExceptSelf = new Set(adminRows.filter((_, i) => i !== idx).map((r) => r.orgId));
               return (
                 <div key={idx} className="flex items-center gap-2 p-2 border border-[#E9E9E9] rounded-md">
-                  <select
+                  <OrgPicker
+                    tree={adminTree}
                     value={row.orgId}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setAdminRows((rows) => rows.map((r, i) => (i === idx ? { ...r, orgId: v } : r)));
-                    }}
-                    className="text-xs px-2 py-1 border border-[#E9E9E9] rounded flex-1 min-w-0"
-                  >
-                    {adminFlat.map((o) => (
-                      <option key={o.id} value={o.id} disabled={usedExceptSelf.has(o.id) && o.id !== row.orgId}>
-                        {"  ".repeat(o.depth)}
-                        {o.isVirtual ? "★ " : ""}
-                        {o.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(orgId) =>
+                      setAdminRows((rows) => rows.map((r, i) => (i === idx ? { ...r, orgId } : r)))
+                    }
+                    title="选择行政归属"
+                    kind="admin"
+                    excludeOrgIds={Array.from(usedExceptSelf)}
+                  />
                   <DictPositionPicker
                     dict={adminPositionDict.data}
                     title="选择行政职务"
@@ -899,18 +902,14 @@ function MembershipsTab({
 
         {partyRow ? (
           <div className="flex items-center gap-2 p-2 border border-[#E9E9E9] rounded-md">
-            <select
+            <OrgPicker
+              tree={partyTree}
               value={partyRow.orgId}
-              onChange={(e) => setPartyRow({ ...partyRow, orgId: e.target.value })}
-              className="text-xs px-2 py-1 border border-[#E9E9E9] rounded flex-1 min-w-0"
-            >
-              {partyBranchOptions.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.isVirtual ? "★ " : ""}
-                  {o.name}
-                </option>
-              ))}
-            </select>
+              onChange={(orgId) => setPartyRow({ ...partyRow, orgId })}
+              title="选择党组织(党支部 / 临时党支部)"
+              kind="party"
+              selectableTypes={["branch", "temp_branch"]}
+            />
             <DictPositionPicker
               dict={partyPositionDict.data}
               title="选择党组织职务"
