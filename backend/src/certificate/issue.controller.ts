@@ -21,6 +21,7 @@ import { Permission } from '../permission';
 import { CertificateIssueService } from './issue.service';
 import { CertificateExtractionService } from './extraction.service';
 import { IssueCertificateDto } from './dto/issue-certificate.dto';
+import { IssueExternalCertificateDto } from './dto/external-certificate.dto';
 import {
   BulkDownloadDto,
   RevokeCertificateDto,
@@ -105,6 +106,24 @@ export class CertificateIssueController {
     @Req() req: Request,
   ) {
     return this.svc.revoke(id, dto, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
+  }
+
+  /**
+   * 外部证书上传(Phase E)— 不绑模板,直接上传 PDF 入库。
+   * 编号同样按 batch 规则,source = 'external'。
+   */
+  @Post('external')
+  @Permission('certificate:issue')
+  issueExternal(
+    @Body() dto: IssueExternalCertificateDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.issueExternal(dto, {
       actorId: me.sub,
       actorName: me.name,
       ip: req.ip,

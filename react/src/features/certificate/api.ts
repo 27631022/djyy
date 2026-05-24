@@ -97,6 +97,23 @@ export interface CertificateDetailDto extends CertificateListItemDto {
   externalFileData: string | null;
 }
 
+export interface IssueExternalCertificateInput {
+  honorName: string;
+  honorCode: string;
+  recipientUserId?: string;
+  recipientName: string;
+  recipientEmpNo?: string;
+  recipientDept?: string;
+  recipientIdCard?: string;
+  recipientPhone?: string;
+  yearLabel: string;
+  batchTotal: number;
+  externalFileData: string;
+  variableData?: string;
+  validUntil?: string;
+  issuingOrgName?: string;
+}
+
 export interface IssueCertificateInput {
   templateId: string;
   /** 关联系统用户 — 可选,不传则用手填的 recipientName */
@@ -149,6 +166,11 @@ export interface ExtractHonorResponse {
 export const certificateIssueApi = {
   issue: (input: IssueCertificateInput) =>
     api.post<CertificateDetailDto>("/certificates", input).then((r) => r.data),
+
+  issueExternal: (input: IssueExternalCertificateInput) =>
+    api
+      .post<CertificateDetailDto>("/certificates/external", input)
+      .then((r) => r.data),
 
   extract: (file: File) => {
     const form = new FormData();

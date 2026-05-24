@@ -228,19 +228,31 @@ npm run db:seed
 - 2 级字典 popup picker
 - 用户多组织归属 + 多角色 + custom scope
 - **(2026-05-23)放弃微前端/插件包,转模块化单体** + 5 条后端约束 + 前端 features/shared 分层 + eslint-plugin-boundaries + madge 在 pre-commit 强制
+- **(2026-05-23)证书管理 V1**:模板设计器(8 种元素 / 撤销重做 50 步 / 变量绑定 / 预览 / PNG+PDF 导出 / 缩略图)+ 模板 CRUD + 列表卡片。详见 docs/specs/2026-05-23-certificate-v1.md
+- **(2026-05-24)证书管理 V2**:发证 + 公开验证 + AI 提取 + CSV 批量 + 外部证书。详见 docs/specs/2026-05-24-certificate-v2-issue-verify.md
+  - 5 阶段闭环:Phase A 核心发证(单证 + 列表 + PDF 下载,certNo 格式 `{年}-{honorCode}-{总数}-{seq}`,事务保证批次唯一)
+  - Phase B 启用 PermissionGuard + 公开 `/verify` 查询页(SearchBox 组件留给后续"首页综合查询"复用)
+  - Phase C 撤销 + 多选批量下载 ZIP(jszip,文件名「荣誉-姓名-员工号.pdf」)
+  - Phase D 接入 DeepSeek AI(用户上传 Word/PDF → 抽出表彰荣誉/年份/受表彰人 → 预填表单 → 人工确认发证)
+  - Phase E 外部证书上传(source='external')+ CSV 批量发证(papaparse 解析 + 自动字段映射 + 进度条 + 失败行回显)
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
 2. **访问量/点赞统计**:NavItem.likes/views 接真实计数 + Redis 缓存
 3. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面
-4. **业务模块**:党费、活动报名、积分等 —— 按 conventions.md 的"加新模块"清单逐个加(每个都是 features/<x> + backend/src/<x>)
+4. **首页综合查询**:`<CertificateSearchBox embedded />` 已具备,把它和其他业务的查询入口拼到 NavPage / 新首页查询板块
+5. **业务模块**:任务管理 / 排座 / AI 图片分拣 等 —— 按 conventions.md 的"加新模块"清单逐个加
 
 ### ❌ 明确延后/放弃(有真实需求再做)
-- **细粒度权限校验**(PermissionGuard + 前端 UI 隐藏)—— 用户明确"延后",单人 MVP 用不上
 - 信创适配(达梦 / 麒麟 / 国密)
 - K8s 部署
 - SAML / CAS / LDAP 协议适配
+- 证书 PDF 改对象存储(目前 base64 存 DB,V3 改 MinIO/OSS)
+- 证书自动失效(到期变"已过期"批处理)
+- 模板版本历史
+- 证书图片 OCR(AI 提取仅支持 docx/pdf)
 - ~~插件包/微前端~~ — 已放弃(2026-05-23,见决策记录)
+- ~~细粒度权限校验~~ — 已落地(2026-05-24 证书 V2 Phase B,@Permission + 全局 PermissionGuard,platform_admin 直通)
 
 ---
 

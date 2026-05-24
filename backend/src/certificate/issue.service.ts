@@ -8,6 +8,7 @@ import JSZip from 'jszip';
 import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
 import { IssueCertificateDto } from './dto/issue-certificate.dto';
+import { IssueExternalCertificateDto } from './dto/external-certificate.dto';
 import { RevokeCertificateDto } from './dto/revoke-certificate.dto';
 
 interface IssueCtx {
@@ -215,6 +216,92 @@ export class CertificateIssueService {
     });
     if (!cert) throw new NotFoundException('证书不存在');
     return cert;
+  }
+
+  /* ─── 外部证书上传(Phase E)─── */
+
+  /**
+   * source='external' 路径:不绑定模板,直接接收用户上传的 PDF。
+   * 证书编号同样按 batch 规则生成。
+   */
+  async issueExternal(dto: IssueExternalCertificateDto, ctx: IssueCtx) {
+    let userSnapshot: { name: string; username: string } | null = null;
+    if (dto.recipientUserId) {
+      const u = await this.prisma.user.findUnique({
+        where: { id: dto.recipientUserId },
+      });
+      if (!u) throw new NotFoundException('持证人用户不存在');
+      userSnapshot = { name: u.name, username: u.username };
+    }
+
+    const batchKey = buildBatchKey(dto.yearLabel, dto.honorCode, dto.batchTotal);
+    const publicToken = randomBytes(24).toString('base64url');
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const inBatch = await tx.certificate.count({ where: { batchKey } });
+      if (inBatch >= dto.batchTotal) {
+        throw new BadRequestException(
+          `批次 ${batchKey} 已发完(${inBatch}/${dto.batchTotal})。如要追加发证,请使用不同的 batchTotal。`,
+        );
+      }
+      const batchSeq = inBatch + 1;
+      const certNo = buildCertNo(
+        dto.yearLabel,
+        dto.honorCode,
+        dto.batchTotal,
+        batchSeq,
+      );
+
+      return tx.certificate.create({
+        data: {
+          certNo,
+          yearLabel: dto.yearLabel,
+          honorCode: dto.honorCode,
+          batchKey,
+          batchTotal: dto.batchTotal,
+          batchSeq,
+          publicToken,
+
+          templateId: null,
+          source: 'external',
+
+          recipientUserId: dto.recipientUserId,
+          recipientName: userSnapshot?.name ?? dto.recipientName,
+          recipientEmpNo: userSnapshot?.username ?? dto.recipientEmpNo,
+          recipientDept: dto.recipientDept,
+          recipientIdCard: dto.recipientIdCard,
+          recipientPhone: dto.recipientPhone,
+
+          variableData: dto.variableData ?? '{}',
+          validUntil: dto.validUntil ? new Date(dto.validUntil) : null,
+
+          issuedBy: ctx.actorId ?? '',
+          issuerName: ctx.actorName ?? '',
+          issuingOrgName: dto.issuingOrgName,
+
+          // 外部 PDF 同时存到 pdfData(批量下载用)+ externalFileData(标记来源)
+          pdfData: dto.externalFileData,
+          externalFileData: dto.externalFileData,
+        },
+      });
+    });
+
+    await this.audit.log({
+      action: 'cert.issue.external',
+      target: created.id,
+      actorId: ctx.actorId,
+      actorName: ctx.actorName,
+      ip: ctx.ip,
+      detail: JSON.stringify({
+        certNo: created.certNo,
+        honorName: dto.honorName,
+        honorCode: dto.honorCode,
+        recipientName: created.recipientName,
+        batchKey: created.batchKey,
+      }),
+    });
+
+    return created;
   }
 
   /* ─── 撤销 + 批量下载(Phase C) ─── */
