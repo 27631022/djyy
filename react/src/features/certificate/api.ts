@@ -146,6 +146,21 @@ export const certificateIssueApi = {
 
   get: (id: string) =>
     api.get<CertificateDetailDto>(`/certificates/${id}`).then((r) => r.data),
+
+  revoke: (id: string, reason?: string) =>
+    api
+      .patch<CertificateDetailDto>(`/certificates/${id}/revoke`, { reason })
+      .then((r) => r.data),
+
+  /** 批量下载,返回 application/zip 的 Blob */
+  bulkDownload: (ids: string[]) =>
+    api
+      .post<Blob>(
+        "/certificates/bulk-download",
+        { ids },
+        { responseType: "blob" },
+      )
+      .then((r) => r.data),
 };
 
 /* ─── 公开验证(无需登录;同样形态留给未来"首页综合查询"复用) ─── */

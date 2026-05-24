@@ -2,30 +2,37 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
+  Patch,
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { Permission } from '../permission';
 import { CertificateIssueService } from './issue.service';
 import { IssueCertificateDto } from './dto/issue-certificate.dto';
+import {
+  BulkDownloadDto,
+  RevokeCertificateDto,
+} from './dto/revoke-certificate.dto';
 
 /**
  * 已发证书相关 admin API。
  *
- * Phase A 范围:
- *   POST   /certificates       单证发证
- *   GET    /certificates       已发列表(不带 pdfData)
- *   GET    /certificates/:id   详情(带 pdfData,下载/预览用)
+ * 权限点(Phase B 启用):
+ *   POST   /certificates                @Permission('certificate:issue')
+ *   PATCH  /certificates/:id/revoke     @Permission('certificate:revoke')
+ *   POST   /certificates/bulk-download  @Permission('certificate:bulk-download')
+ *   GET 系列只校验登录,任意登录用户可查
  *
- * Phase B 会在路由方法上加 @Permission('certificate:issue' | 'certificate:list')。
- * Phase C 加撤销 + 批量下载。
- * Phase D 加 AI 提取。
- * Phase E 加外部证书 + CSV 批量。
+ * 未来:
+ *   Phase D 加 POST /certificates/extract(AI 提取)
+ *   Phase E 加 POST /certificates/external + POST /certificates/bulk(CSV)
  */
 @Controller('certificates')
 @UseGuards(AuthGuard)
@@ -67,5 +74,54 @@ export class CertificateIssueController {
   @Get(':id')
   get(@Param('id') id: string) {
     return this.svc.get(id);
+  }
+
+  /**
+   * 撤销证书 — 软标记 revoked=true,不删数据(审计/公开验证页都还能查到状态)。
+   */
+  @Patch(':id/revoke')
+  @Permission('certificate:revoke')
+  revoke(
+    @Param('id') id: string,
+    @Body() dto: RevokeCertificateDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.revoke(id, dto, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
+  }
+
+  /**
+   * 批量下载 — body { ids[] } → 后端打 ZIP → 直接以 application/zip 流式返回。
+   * 文件名格式 djyy-certificates-YYYYMMDD-HHmm.zip。
+   */
+  @Post('bulk-download')
+  @Permission('certificate:bulk-download')
+  @Header('Content-Type', 'application/zip')
+  async bulkDownload(
+    @Body() dto: BulkDownloadDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const buf = await this.svc.bulkDownload(dto.ids, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
+    const now = new Date();
+    const stamp =
+      `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}` +
+      `${String(now.getDate()).padStart(2, '0')}-` +
+      `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    const filename = `djyy-certificates-${stamp}.zip`;
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
+    res.send(buf);
   }
 }

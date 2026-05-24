@@ -4,9 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
+import JSZip from 'jszip';
 import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
 import { IssueCertificateDto } from './dto/issue-certificate.dto';
+import { RevokeCertificateDto } from './dto/revoke-certificate.dto';
 
 interface IssueCtx {
   actorId?: string;
@@ -215,6 +217,101 @@ export class CertificateIssueService {
     return cert;
   }
 
+  /* ─── 撤销 + 批量下载(Phase C) ─── */
+
+  async revoke(id: string, dto: RevokeCertificateDto, ctx: IssueCtx) {
+    const cert = await this.prisma.certificate.findUnique({ where: { id } });
+    if (!cert) throw new NotFoundException('证书不存在');
+    if (cert.revoked) {
+      throw new BadRequestException('证书已撤销,不能重复操作');
+    }
+    const updated = await this.prisma.certificate.update({
+      where: { id },
+      data: {
+        revoked: true,
+        revokedAt: new Date(),
+        revokedReason: dto.reason,
+        revokedBy: ctx.actorId,
+      },
+    });
+    await this.audit.log({
+      action: 'cert.issue.revoke',
+      target: id,
+      actorId: ctx.actorId,
+      actorName: ctx.actorName,
+      ip: ctx.ip,
+      detail: JSON.stringify({
+        certNo: cert.certNo,
+        recipientName: cert.recipientName,
+        reason: dto.reason,
+      }),
+    });
+    return updated;
+  }
+
+  /**
+   * 批量下载:把指定 ids 的证书 PDF 打成 ZIP 返回 buffer。
+   * 文件名:{荣誉名}-{姓名}-{员工编号}.pdf,清洗非法字符;
+   * 同名加 -2 -3 后缀避免冲突。
+   * pdfData 缺失的(很少)用 externalFileData 兜底,都没有就跳过并记入 missing。
+   */
+  async bulkDownload(ids: string[], ctx: IssueCtx): Promise<Buffer> {
+    if (ids.length === 0) throw new BadRequestException('请选择至少 1 张证书');
+    const certs = await this.prisma.certificate.findMany({
+      where: { id: { in: ids } },
+      include: { template: { select: { name: true } } },
+    });
+    if (certs.length === 0) throw new NotFoundException('未找到任何证书');
+
+    const zip = new JSZip();
+    const usedNames = new Set<string>();
+    const missing: string[] = [];
+
+    for (const c of certs) {
+      const pdfDataUrl = c.pdfData ?? c.externalFileData;
+      if (!pdfDataUrl) {
+        missing.push(c.certNo);
+        continue;
+      }
+      const base = buildPdfBaseName({
+        honorName: c.template?.name ?? c.honorCode,
+        recipientName: c.recipientName,
+        recipientEmpNo: c.recipientEmpNo,
+      });
+      // 防同名:第 2 张同名加 -2,第 3 张 -3
+      let name = `${base}.pdf`;
+      let n = 1;
+      while (usedNames.has(name)) {
+        n += 1;
+        name = `${base}-${n}.pdf`;
+      }
+      usedNames.add(name);
+
+      const buf = dataUrlToBuffer(pdfDataUrl);
+      zip.file(name, buf);
+    }
+
+    if (usedNames.size === 0) {
+      throw new BadRequestException(
+        `所选 ${certs.length} 张证书都缺少 PDF 文件,无法打包`,
+      );
+    }
+
+    await this.audit.log({
+      action: 'cert.issue.bulk-download',
+      actorId: ctx.actorId,
+      actorName: ctx.actorName,
+      ip: ctx.ip,
+      detail: JSON.stringify({
+        total: certs.length,
+        packed: usedNames.size,
+        missing,
+      }),
+    });
+
+    return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+  }
+
   /* ─── 公开接口(供 PublicVerifyController 用,不挂 AuthGuard) ─── */
 
   /** 公开验证:通过 publicToken 拉一张证书,过滤敏感字段 */
@@ -252,6 +349,26 @@ export class CertificateIssueService {
     });
     return fuzzy.map(sanitizeForPublicList);
   }
+}
+
+/* ─── 文件名 + 数据转换辅助 ─── */
+
+/** 默认文件名:{荣誉名}-{姓名}-{员工号},去掉非法字符 */
+function buildPdfBaseName(opts: {
+  honorName: string;
+  recipientName: string;
+  recipientEmpNo?: string | null;
+}): string {
+  const parts = [opts.honorName, opts.recipientName];
+  if (opts.recipientEmpNo) parts.push(opts.recipientEmpNo);
+  return parts.map((p) => p.trim().replace(/[\\/:*?"<>|]/g, '_')).join('-');
+}
+
+function dataUrlToBuffer(dataUrl: string): Buffer {
+  const idx = dataUrl.indexOf(',');
+  if (idx < 0) return Buffer.from('');
+  const b64 = dataUrl.slice(idx + 1);
+  return Buffer.from(b64, 'base64');
 }
 
 /* ─── 公开接口字段脱敏 ─── */
