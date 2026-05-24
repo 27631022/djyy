@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import {
   AlertCircleIcon,
   AwardIcon,
+  Building2Icon,
   CheckIcon,
   PencilIcon,
   PlusIcon,
@@ -402,6 +403,18 @@ function RecordRow({
               <div className="text-xs text-[#9CA3AF] mt-0.5 font-mono">
                 荣誉代码 = {selectedTemplate.honorCode}
               </div>
+              {/* 落款单位 — 与模板名同列下方,Building2 图标 + 完整文本 */}
+              {selectedTemplate.issuingOrgName && (
+                <div
+                  className="flex items-start gap-1 mt-1 text-xs text-emerald-700"
+                  title={`落款单位:${selectedTemplate.issuingOrgName}`}
+                >
+                  <Building2Icon className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                  <span className="break-words">
+                    {selectedTemplate.issuingOrgName}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                 {selectedTemplate.honorLevel && (
                   <HonorLevelBadge level={selectedTemplate.honorLevel} />

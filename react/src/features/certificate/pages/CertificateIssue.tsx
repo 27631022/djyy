@@ -348,7 +348,7 @@ export default function CertificateIssuePage() {
         <div className="flex-1">
           <h1 className="text-lg font-bold text-[#1A1A1A]">发证向导</h1>
           <p className="text-xs text-[#9CA3AF] mt-0.5">
-            上传文件 → AI 抽取信息(可跳过)→ 选证书 → 确定人员 → 一键发证
+            上传文件 → AI 抽取信息(可跳过)→ 选证书模板 → 确定人员 → 一键发证
           </p>
         </div>
       </header>
@@ -537,7 +537,7 @@ export default function CertificateIssuePage() {
 function Stepper({ step }: { step: WizardStep }) {
   const items = [
     { idx: 1 as WizardStep, label: "荣誉文件上传", desc: "Word / PDF · AI 自动识别", icon: UploadIcon },
-    { idx: 2 as WizardStep, label: "选证书", desc: "确定使用哪个模板", icon: AwardIcon },
+    { idx: 2 as WizardStep, label: "选证书模板", desc: "建立表彰记录,挑模板", icon: AwardIcon },
     { idx: 3 as WizardStep, label: "确定人员", desc: "审核 AI 抽取或手填", icon: UsersIcon },
     { idx: 4 as WizardStep, label: "清单 + 发证", desc: "最终确认并批量发证", icon: ListChecksIcon },
   ];

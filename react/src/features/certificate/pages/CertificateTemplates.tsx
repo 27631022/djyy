@@ -362,10 +362,16 @@ function TemplateCard({
           </span>
         )}
 
-        {/* 右上:横/竖 + 禁用蒙层 */}
+        {/* 右上:横/竖 + 尺寸 + 禁用蒙层 */}
         <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${orientation.cls}`}>
             {orientation.label}
+          </span>
+          <span
+            className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/85 text-[#6B7280] border border-[#E9E9E9] shadow-sm"
+            title="画布尺寸"
+          >
+            {template.width}×{template.height}
           </span>
           {!template.active && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#9CA3AF] text-white">
@@ -384,7 +390,7 @@ function TemplateCard({
           {template.name}
         </div>
 
-        {/* V3 徽章行:类型 + 等级 + 分类(短标签放一起) */}
+        {/* V3 徽章行 + 落款单位 — 全部并到一行(自动换行) */}
         <div className="flex items-center gap-1 flex-wrap min-h-[18px]">
           {template.honorType && (
             <span
@@ -405,22 +411,15 @@ function TemplateCard({
               {template.category}
             </span>
           )}
-        </div>
-
-        {/* 落款单位 — 单独一行,完整显示(长名称会自动换行而不被截断) */}
-        {template.issuingOrgName && (
-          <div
-            className="flex items-start gap-1 text-[11px] text-emerald-700 leading-snug"
-            title={`落款单位:${template.issuingOrgName}`}
-          >
-            <Building2Icon className="w-3 h-3 mt-0.5 flex-shrink-0" />
-            <span className="break-words">{template.issuingOrgName}</span>
-          </div>
-        )}
-
-        {/* 尺寸小行 */}
-        <div className="text-[10px] text-[#9CA3AF] font-mono">
-          {template.width} × {template.height}
+          {template.issuingOrgName && (
+            <span
+              className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-start gap-0.5 max-w-full"
+              title={`落款单位:${template.issuingOrgName}`}
+            >
+              <Building2Icon className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />
+              <span className="break-words">{template.issuingOrgName}</span>
+            </span>
+          )}
         </div>
 
         {/* 操作行 — 编辑占主、启停/复制/删放右 */}
