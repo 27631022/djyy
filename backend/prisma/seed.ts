@@ -2,31 +2,34 @@
  * 党建益友 种子数据
  * 运行: npm run db:seed
  *
- * 构造两棵并行的组织树:
+ * 组织结构(2026-05-25 固化为「中国石油昆仑物流有限公司」真实结构,
+ * 详见 fixtures/kunlun-logistics-orgs.ts):
  *
- *   党组织 (kind=party)                          行政机构 (kind=admin)
- *   ─────────                                    ─────────
- *   集团党委 (committee)                          集团公司 (corp)
- *   ├─ 党委组织部 (general)                       ├─ 总部办公室 (dept)
- *   │   ├─ 第一党支部·机关综合处 (branch)         ├─ 机关综合处 (dept)        ◄ 第一支部对应
- *   │   └─ 第二党支部·财务审计处 (branch)         ├─ 财务审计处 (dept)        ◄ 第二支部对应
- *   ├─ 党群工作部 (general)                       ├─ 人力资源处 (dept)        ◄ 第三支部对应
- *   │   ├─ 第三党支部·人力资源处 (branch)         ├─ 业务发展部 (dept)        ◄ 第四支部对应
- *   │   └─ 第四党支部·业务发展部 (branch)         ├─ 信息技术中心 (dept)      ◄ 第五支部对应
- *   └─ 基层党委 (general)                         ├─ 市场运营部 (dept)
- *       ├─ 第五党支部·信息技术中心 (branch)        ├─ 法律合规处 (dept)
- *       ├─ ... (第六~第十支部)                    ├─ 后勤保障处 (dept)
- *                                                 ├─ 安全管理处 (dept)
- *                                                 └─ 宣传文化处 (dept)
+ *   行政机构(kind=admin)                            党组织(kind=party)
+ *   ─────────                                       ─────────
+ *   昆仑物流 (level1)                                昆仑物流党委 (committee)
+ *   ├─ 公司机关 (level2, virtual)                   ├─ 公司机关党委 (committee, L2)
+ *   │   └─ 11 个部门 (level3,党委办公室~党群工作部)  │   └─ 11 个机关党支部 (branch, L3)
+ *   └─ 基层单位 (level2, virtual)                   └─ 34 个二级党组织(直挂顶级)
+ *       └─ 34 个分公司/中心 (level3)                     ├─ 33 个分公司党委 (committee)
+ *                                                        └─ 哈萨克分公司党总支 (general)
  *
- * 演示用户:
+ * 演示用户(挂在真实组织上,展示 5 种典型双归属):
  *   admin    平台管理员
- *   王总书记 集团党委 党委书记 + 集团公司 总经理         (kind 双归属, scope=all)
- *   李经理   第二党支部 支部书记 + 财务审计处 部门经理   (典型干部双重身份)
- *   张三     第一党支部 普通党员 + 机关综合处 综合干事   (普通职工)
+ *   王总书记 昆仑物流党委 党委书记 + 昆仑物流 总经理         (kind 双归属, scope=all)
+ *   李经理   机关第三党支部 书记 + 财务部 部门经理            (典型干部双重身份)
+ *   张三     机关第一党支部 党员 + 党委办公室 综合干事        (普通职工)
+ *   赵专员   机关第十一党支部 党员 + 党群工作部 专员           (展示党群岗)
+ *   钱英雄   机关第九党支部 副书记 + 科技信息部 IT 工程师      (技术骨干)
  */
 
 import { PrismaClient } from '@prisma/client';
+import {
+  KUNLUN_ADMIN_ORGS,
+  KUNLUN_PARTY_ORGS,
+  type KunlunAdminSeed,
+  type KunlunPartySeed,
+} from './fixtures/kunlun-logistics-orgs';
 
 const prisma = new PrismaClient();
 
@@ -40,76 +43,82 @@ type SeedNode = {
   children?: SeedNode[];
 };
 
-/* ─── 党组织树 ─── */
-const PARTY_TREE: SeedNode = {
-  code: 'PARTY-ROOT',
-  name: '集团党委',
-  kind: 'party',
-  type: 'committee',
-  sortOrder: 0,
-  children: [
-    {
-      code: 'PARTY-ORG-DEPT',
-      name: '党委组织部',
-      kind: 'party',
-      type: 'general',
-      sortOrder: 10,
-      children: [
-        { code: 'PARTY-BR-01', name: '第一党支部·机关综合处', kind: 'party', type: 'branch', sortOrder: 1 },
-        { code: 'PARTY-BR-02', name: '第二党支部·财务审计处', kind: 'party', type: 'branch', sortOrder: 2 },
-      ],
-    },
-    {
-      code: 'PARTY-MASS-WORK',
-      name: '党群工作部',
-      kind: 'party',
-      type: 'general',
-      sortOrder: 20,
-      children: [
-        { code: 'PARTY-BR-03', name: '第三党支部·人力资源处', kind: 'party', type: 'branch', sortOrder: 3 },
-        { code: 'PARTY-BR-04', name: '第四党支部·业务发展部', kind: 'party', type: 'branch', sortOrder: 4 },
-      ],
-    },
-    {
-      code: 'PARTY-GRASSROOTS',
-      name: '基层党委',
-      kind: 'party',
-      type: 'general',
-      sortOrder: 30,
-      children: [
-        { code: 'PARTY-BR-05', name: '第五党支部·信息技术中心', kind: 'party', type: 'branch', sortOrder: 5 },
-        { code: 'PARTY-BR-06', name: '第六党支部·市场运营部',   kind: 'party', type: 'branch', sortOrder: 6 },
-        { code: 'PARTY-BR-07', name: '第七党支部·法律合规处',   kind: 'party', type: 'branch', sortOrder: 7 },
-        { code: 'PARTY-BR-08', name: '第八党支部·后勤保障处',   kind: 'party', type: 'branch', sortOrder: 8 },
-        { code: 'PARTY-BR-09', name: '第九党支部·安全管理处',   kind: 'party', type: 'branch', sortOrder: 9 },
-        { code: 'PARTY-BR-10', name: '第十党支部·宣传文化处',   kind: 'party', type: 'branch', sortOrder: 10 },
-      ],
-    },
-  ],
-};
+// 删除 2026-05-25 以前的演示 demo 组织(老 `PARTY-` 与 `ADMIN-` 前缀树)。
+// 老 demo 数据没有任何客户在用,只是开发期 placeholder。
+// 这些 code 的 userOrganization / userRoleScope FK 都设了 onDelete:Cascade,
+// 删 org 时会自动清掉用户归属/角色 scope,不会 FK 失败。
+//
+// 反复删叶子直到树清空(parentId 自引用,DB 没设 cascade,得手动反向)。
+const LEGACY_DEMO_ORG_CODES = [
+  // 老 PARTY 树
+  'PARTY-ROOT', 'PARTY-ORG-DEPT', 'PARTY-MASS-WORK', 'PARTY-GRASSROOTS',
+  'PARTY-BR-01', 'PARTY-BR-02', 'PARTY-BR-03', 'PARTY-BR-04', 'PARTY-BR-05',
+  'PARTY-BR-06', 'PARTY-BR-07', 'PARTY-BR-08', 'PARTY-BR-09', 'PARTY-BR-10',
+  // 老 ADMIN 树
+  'ADMIN-ROOT', 'ADMIN-HQ', 'ADMIN-GEN', 'ADMIN-FIN', 'ADMIN-HR', 'ADMIN-BIZ',
+  'ADMIN-IT', 'ADMIN-MKT', 'ADMIN-LAW', 'ADMIN-LOG', 'ADMIN-SEC', 'ADMIN-PR',
+];
 
-/* ─── 行政机构树 ─── */
-/* 行政机构 type 表示企业层级:level1 集团总部 / level2 子公司或职能部门 / level3 分公司或二级部门 / level4 项目部班组 */
-const ADMIN_TREE: SeedNode = {
-  code: 'ADMIN-ROOT',
-  name: '集团公司',
-  kind: 'admin',
-  type: 'level1',
-  sortOrder: 0,
-  children: [
-    { code: 'ADMIN-HQ',    name: '总部办公室',     kind: 'admin', type: 'level2', sortOrder: 1 },
-    { code: 'ADMIN-GEN',   name: '机关综合处',     kind: 'admin', type: 'level2', sortOrder: 2 },
-    { code: 'ADMIN-FIN',   name: '财务审计处',     kind: 'admin', type: 'level2', sortOrder: 3 },
-    { code: 'ADMIN-HR',    name: '人力资源处',     kind: 'admin', type: 'level2', sortOrder: 4 },
-    { code: 'ADMIN-BIZ',   name: '业务发展部',     kind: 'admin', type: 'level2', sortOrder: 5 },
-    { code: 'ADMIN-IT',    name: '信息技术中心',   kind: 'admin', type: 'level2', sortOrder: 6 },
-    { code: 'ADMIN-MKT',   name: '市场运营部',     kind: 'admin', type: 'level2', sortOrder: 7 },
-    { code: 'ADMIN-LAW',   name: '法律合规处',     kind: 'admin', type: 'level2', sortOrder: 8 },
-    { code: 'ADMIN-LOG',   name: '后勤保障处',     kind: 'admin', type: 'level2', sortOrder: 9 },
-    { code: 'ADMIN-SEC',   name: '安全管理处',     kind: 'admin', type: 'level2', sortOrder: 10 },
-    { code: 'ADMIN-PR',    name: '宣传文化处',     kind: 'admin', type: 'level2', sortOrder: 11 },
-  ],
-};
+async function purgeLegacyDemoOrgs(): Promise<number> {
+  let total = 0;
+  for (let i = 0; i < 100; i++) {
+    const leaves = await prisma.organization.findMany({
+      where: {
+        code: { in: LEGACY_DEMO_ORG_CODES },
+        children: { none: {} },
+      },
+      select: { id: true },
+    });
+    if (leaves.length === 0) break;
+    const r = await prisma.organization.deleteMany({
+      where: { id: { in: leaves.map((l) => l.id) } },
+    });
+    total += r.count;
+  }
+  return total;
+}
+
+/* ─── 主组织树:消费 fixtures/kunlun-logistics-orgs.ts ─── */
+async function seedKunlunOrgs() {
+  const upsertOne = async (
+    node: KunlunAdminSeed | KunlunPartySeed,
+    kind: 'admin' | 'party',
+    parentIdByCode: Map<string, string>,
+  ): Promise<void> => {
+    const parentId = node.parentCode
+      ? (parentIdByCode.get(node.parentCode) ?? null)
+      : null;
+    if (node.parentCode && !parentId) {
+      throw new Error(
+        `[seed] node ${node.code} 的父节点 ${node.parentCode} 未找到 —— fixture 顺序错误?`,
+      );
+    }
+    const isVirtual = (node as KunlunAdminSeed).isVirtual === true;
+    const data = {
+      name: node.shortName,
+      code: node.code,
+      kind,
+      type: node.type,
+      isVirtual,
+      sortOrder: node.sortOrder,
+      active: true,
+      parentId,
+    };
+    const existing = await prisma.organization.findUnique({
+      where: { code: node.code },
+    });
+    const saved = existing
+      ? await prisma.organization.update({ where: { id: existing.id }, data })
+      : await prisma.organization.create({ data });
+    parentIdByCode.set(node.code, saved.id);
+  };
+
+  const adminMap = new Map<string, string>();
+  for (const n of KUNLUN_ADMIN_ORGS) await upsertOne(n, 'admin', adminMap);
+
+  const partyMap = new Map<string, string>();
+  for (const n of KUNLUN_PARTY_ORGS) await upsertOne(n, 'party', partyMap);
+}
 
 async function upsertNode(node: SeedNode, parentId: string | null): Promise<string> {
   const existing = await prisma.organization.findUnique({ where: { code: node.code } });
@@ -141,13 +150,13 @@ async function upsertNode(node: SeedNode, parentId: string | null): Promise<stri
  * 虚拟组织挂在某个实体组织下表示发起单位/牵头部门,成员可跨实体灵活进出。
  */
 const VIRTUAL_ORGS: { node: SeedNode; parentCode: string }[] = [
-  /* 党组织 · 临时党支部 (虚拟) */
-  { node: { code: 'VPARTY-TASKFORCE', name: '党建学习专班', kind: 'party', type: 'temp_branch', isVirtual: true, sortOrder: 100 }, parentCode: 'PARTY-ROOT' },
-  { node: { code: 'VPARTY-COMMANDO',  name: '党员突击队',   kind: 'party', type: 'temp_branch', isVirtual: true, sortOrder: 101 }, parentCode: 'PARTY-ROOT' },
-  { node: { code: 'VPARTY-SERVICE',   name: '党员服务队',   kind: 'party', type: 'temp_branch', isVirtual: true, sortOrder: 102 }, parentCode: 'PARTY-ROOT' },
-  /* 行政 · 虚拟 (跨部门项目组,挂在父节点之下,层级跟随)  */
-  { node: { code: 'VADMIN-DIGITAL',   name: '数字化转型项目组', kind: 'admin', type: 'level2', isVirtual: true, sortOrder: 100 }, parentCode: 'ADMIN-ROOT' },
-  { node: { code: 'VADMIN-AUDIT-25',  name: '2025 年度审计专班', kind: 'admin', type: 'level3', isVirtual: true, sortOrder: 101 }, parentCode: 'ADMIN-FIN' },
+  /* 党组织 · 临时党支部(虚拟)— 挂在昆仑物流党委下 */
+  { node: { code: 'VPARTY-TASKFORCE', name: '党建学习专班', kind: 'party', type: 'temp_branch', isVirtual: true, sortOrder: 100 }, parentCode: 'KL-PARTY-ROOT' },
+  { node: { code: 'VPARTY-COMMANDO',  name: '党员突击队',   kind: 'party', type: 'temp_branch', isVirtual: true, sortOrder: 101 }, parentCode: 'KL-PARTY-ROOT' },
+  { node: { code: 'VPARTY-SERVICE',   name: '党员服务队',   kind: 'party', type: 'temp_branch', isVirtual: true, sortOrder: 102 }, parentCode: 'KL-PARTY-ROOT' },
+  /* 行政 · 虚拟(跨部门项目组)—— 挂在公司机关 / 财务部 */
+  { node: { code: 'VADMIN-DIGITAL',   name: '数字化转型项目组', kind: 'admin', type: 'level3', isVirtual: true, sortOrder: 100 }, parentCode: 'KL-ADMIN-L2-HQ' },
+  { node: { code: 'VADMIN-AUDIT-25',  name: '2025 年度审计专班', kind: 'admin', type: 'level4', isVirtual: true, sortOrder: 101 }, parentCode: 'KL-ADMIN-L3-HQ-03' },
 ];
 
 async function seedVirtualOrgs() {
@@ -356,9 +365,9 @@ async function seedDemoUsers() {
     create: { username: 'wang_zs', name: '王总书记', email: 'wang@dyy.local', active: true },
     update: { name: '王总书记' },
   });
-  const partyRoot   = await orgByCode('PARTY-ROOT');
-  const branch01    = await orgByCode('PARTY-BR-01');
-  const adminRoot   = await orgByCode('ADMIN-ROOT');
+  const partyRoot   = await orgByCode('KL-PARTY-ROOT');
+  const branch01    = await orgByCode('KL-PARTY-L3-HQ-01');  // 机关第一党支部(党委办公室对应)
+  const adminRoot   = await orgByCode('KL-ADMIN-ROOT');
   const vPartyTf    = await orgByCode('VPARTY-TASKFORCE');
   const vAdminDig   = await orgByCode('VADMIN-DIGITAL');
   await prisma.userOrganization.deleteMany({ where: { userId: wang.id } });
@@ -385,14 +394,15 @@ async function seedDemoUsers() {
     create: { username: 'li_mgr', name: '李经理', email: 'li@dyy.local', active: true },
     update: { name: '李经理' },
   });
-  const branch02 = await orgByCode('PARTY-BR-02');
-  const adminFin = await orgByCode('ADMIN-FIN');
+  // 李经理:机关第三党支部(对应 R38 财务部),财务部部门经理
+  const branch02 = await orgByCode('KL-PARTY-L3-HQ-03');
+  const adminFin = await orgByCode('KL-ADMIN-L3-HQ-03'); // 财务部
   const vAuditTf = await orgByCode('VADMIN-AUDIT-25');
   await prisma.userOrganization.deleteMany({ where: { userId: li.id } });
   await prisma.userOrganization.createMany({
     data: [
       { userId: li.id, orgId: branch02.id, position: '支部书记',       isPrimary: true },
-      { userId: li.id, orgId: adminFin.id, position: '财务审计处经理', isPrimary: true },
+      { userId: li.id, orgId: adminFin.id, position: '财务部部门经理', isPrimary: true },
       { userId: li.id, orgId: vAuditTf.id, position: '审计专班组长',   isPrimary: false },
     ],
   });
@@ -422,7 +432,8 @@ async function seedDemoUsers() {
     create: { username: 'zhang_san', name: '张三', email: 'zhang@dyy.local', active: true },
     update: { name: '张三' },
   });
-  const adminGen = await orgByCode('ADMIN-GEN');
+  // 党委办公室(KL-ADMIN-L3-HQ-01,对应 R36)— 跟 PARTY-L3-HQ-01 是同行
+  const adminGen = await orgByCode('KL-ADMIN-L3-HQ-01');
   const vSvcZhang = await orgByCode('VPARTY-SERVICE');
   await prisma.userOrganization.deleteMany({ where: { userId: zhang.id } });
   await prisma.userOrganization.createMany({
@@ -444,13 +455,15 @@ async function seedDemoUsers() {
     create: { username: 'zhao_zy', name: '赵专员', email: 'zhao@dyy.local', active: true },
     update: { name: '赵专员' },
   });
-  const branch03 = await orgByCode('PARTY-BR-03');
-  const adminHr  = await orgByCode('ADMIN-HR');
+  // 赵专员:机关第十一党支部(KL-PARTY-L3-HQ-11) + 党群工作部(KL-ADMIN-L3-HQ-11)
+  // 注:旧 demo 用「人力资源处」,昆仑物流没独立人力资源处,改挂党群工作部(语义最接近)
+  const branch03 = await orgByCode('KL-PARTY-L3-HQ-11');
+  const adminHr  = await orgByCode('KL-ADMIN-L3-HQ-11');
   await prisma.userOrganization.deleteMany({ where: { userId: zhao.id } });
   await prisma.userOrganization.createMany({
     data: [
       { userId: zhao.id, orgId: branch03.id,  position: '党员',         isPrimary: true },
-      { userId: zhao.id, orgId: adminHr.id,   position: '人力资源专员', isPrimary: true },
+      { userId: zhao.id, orgId: adminHr.id,   position: '党群专员',     isPrimary: true },
       { userId: zhao.id, orgId: vPartyTf.id,  position: '专班成员',     isPrimary: false },
       { userId: zhao.id, orgId: vAdminDig.id, position: '项目协调',     isPrimary: false },
     ],
@@ -466,8 +479,9 @@ async function seedDemoUsers() {
     create: { username: 'qian_hero', name: '钱英雄', email: 'qian@dyy.local', active: true },
     update: { name: '钱英雄' },
   });
-  const branch05 = await orgByCode('PARTY-BR-05');
-  const adminIt  = await orgByCode('ADMIN-IT');
+  // 钱英雄:机关第九党支部(KL-PARTY-L3-HQ-09) + 科技信息部(KL-ADMIN-L3-HQ-09)
+  const branch05 = await orgByCode('KL-PARTY-L3-HQ-09');
+  const adminIt  = await orgByCode('KL-ADMIN-L3-HQ-09');
   const vCmd     = await orgByCode('VPARTY-COMMANDO');
   const vSvc     = await orgByCode('VPARTY-SERVICE');
   await prisma.userOrganization.deleteMany({ where: { userId: qian.id } });
@@ -946,14 +960,13 @@ async function seedNavigation() {
 async function main() {
   console.log('🌱 开始 seed 数据...');
 
-  await upsertNode(PARTY_TREE, null);
-  console.log('  ✓ 党组织树已写入');
-
-  await upsertNode(ADMIN_TREE, null);
-  console.log('  ✓ 行政机构树已写入');
+  await seedKunlunOrgs();
+  console.log(
+    `  ✓ 昆仑物流真实组织树已写入(行政 ${KUNLUN_ADMIN_ORGS.length} + 党组织 ${KUNLUN_PARTY_ORGS.length})`,
+  );
 
   await seedVirtualOrgs();
-  console.log('  ✓ 虚拟组织已写入');
+  console.log('  ✓ 虚拟组织(临时党支部 / 跨部门项目组)已写入');
 
   await seedDictionaries();
   console.log('  ✓ 数据字典已写入');
@@ -972,6 +985,13 @@ async function main() {
 
   await seedExternalApis();
   console.log('  ✓ 外部 API 预置已写入');
+
+  // 收尾清理:此时所有 user 归属 / 虚拟组织都已重新指向 KL-* 节点,
+  // 老的 PARTY-*/ADMIN-* 节点既无业务引用也无 children,可放心删。
+  const purged = await purgeLegacyDemoOrgs();
+  if (purged > 0) {
+    console.log(`  ✓ 清理老 demo 组织 ${purged} 条`);
+  }
 
   const partyCount = await prisma.organization.count({ where: { kind: 'party' } });
   const adminCount = await prisma.organization.count({ where: { kind: 'admin' } });

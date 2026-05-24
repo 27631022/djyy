@@ -8,7 +8,7 @@
  *   行政机构(admin)                                                党组织(party)
  *   ───────────────────                                            ──────────────
  *   中国石油昆仑物流有限公司 (level1, name:昆仑物流)                中共中国石油昆仑物流有限公司委员会 (committee, name:昆仑物流党委)
- *   ├─ 公司机关 (level2, 实体)                                      ├─ 公司机关党委 (committee, L2)
+ *   ├─ 公司机关 (level2, isVirtual=true 虚拟分组)                  ├─ 公司机关党委 (committee, L2)
  *   │   ├─ 党委办公室 (level3)                                       │   ├─ 机关第一党支部 (branch, L3)
  *   │   ├─ … 11 个部门                                               │   ├─ … 11 个机关支部
  *   │   └─ 党群工作部 (level3)                                       │   └─ 机关第十一党支部 (branch)
@@ -73,7 +73,7 @@ export const KUNLUN_ADMIN_ORGS: KunlunAdminSeed[] = [
     sortOrder: 0,
   },
 
-  // L2 公司机关(实体)
+  // L2 公司机关(虚拟分组节点 — 用户决策:不直接挂业务实体,11 个部门挂它下面)
   {
     code: 'KL-ADMIN-L2-HQ',
     shortName: '公司机关',
@@ -81,6 +81,7 @@ export const KUNLUN_ADMIN_ORGS: KunlunAdminSeed[] = [
     type: 'level2',
     sortOrder: 1,
     parentCode: 'KL-ADMIN-ROOT',
+    isVirtual: true,
   },
   // L2 基层单位(虚拟分组节点)
   {
