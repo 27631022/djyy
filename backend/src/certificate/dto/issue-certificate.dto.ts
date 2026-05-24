@@ -1,5 +1,6 @@
 import {
   IsDateString,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -92,4 +93,23 @@ export class IssueCertificateDto {
   @IsString()
   @MaxLength(128)
   issuingOrgName?: string;
+
+  /**
+   * 荣誉类型(V3):
+   *   individual(个人)— 老接口/老前端不传时默认走个人路径
+   *   collective(集体)
+   *   unit(单位)
+   * 取值校验:仅允许这 3 种
+   */
+  @IsOptional()
+  @IsIn(['individual', 'collective', 'unit'])
+  honorType?: 'individual' | 'collective' | 'unit';
+
+  /**
+   * 颁发日期(V3):前端表彰记录上的"表彰日期"。
+   * 不传时后端用 prisma 默认值 now()(老接口兼容)。
+   */
+  @IsOptional()
+  @IsDateString()
+  issueDate?: string;
 }

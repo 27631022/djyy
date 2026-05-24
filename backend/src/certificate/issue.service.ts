@@ -118,15 +118,28 @@ export class CertificateIssueService {
 
           templateId: template.id,
           source: 'internal',
+          // V3:荣誉类型(可空兼容老调用)
+          honorType: dto.honorType,
 
+          // V3:集体/单位荣誉时 recipientName 就是集体/单位名,
+          //    不再用 User 快照覆盖(防止 userSnapshot.name 误覆盖)。
+          //    仅 individual(或老调用未传 honorType)时才允许 User 快照覆盖。
           recipientUserId: dto.recipientUserId,
-          recipientName: userSnapshot?.name ?? dto.recipientName,
-          recipientEmpNo: userSnapshot?.username ?? dto.recipientEmpNo,
+          recipientName:
+            dto.honorType && dto.honorType !== 'individual'
+              ? dto.recipientName
+              : userSnapshot?.name ?? dto.recipientName,
+          recipientEmpNo:
+            dto.honorType && dto.honorType !== 'individual'
+              ? dto.recipientEmpNo
+              : userSnapshot?.username ?? dto.recipientEmpNo,
           recipientDept: dto.recipientDept,
           recipientIdCard: dto.recipientIdCard,
           recipientPhone: dto.recipientPhone,
 
           variableData: dto.variableData,
+          // V3:允许前端覆盖颁发日期(表彰日期),否则用 prisma @default(now())
+          issueDate: dto.issueDate ? new Date(dto.issueDate) : undefined,
           validUntil: dto.validUntil ? new Date(dto.validUntil) : null,
 
           issuedBy: ctx.actorId ?? '',
@@ -264,10 +277,17 @@ export class CertificateIssueService {
 
           templateId: null,
           source: 'external',
+          honorType: dto.honorType,
 
           recipientUserId: dto.recipientUserId,
-          recipientName: userSnapshot?.name ?? dto.recipientName,
-          recipientEmpNo: userSnapshot?.username ?? dto.recipientEmpNo,
+          recipientName:
+            dto.honorType && dto.honorType !== 'individual'
+              ? dto.recipientName
+              : userSnapshot?.name ?? dto.recipientName,
+          recipientEmpNo:
+            dto.honorType && dto.honorType !== 'individual'
+              ? dto.recipientEmpNo
+              : userSnapshot?.username ?? dto.recipientEmpNo,
           recipientDept: dto.recipientDept,
           recipientIdCard: dto.recipientIdCard,
           recipientPhone: dto.recipientPhone,

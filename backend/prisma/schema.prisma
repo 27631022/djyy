@@ -469,6 +469,12 @@ model Certificate {
 
   // 持证人来源 + 关联 + 快照
   source          String  @default("internal") // internal | external
+  // 荣誉类型(V3):individual | collective | unit
+  //   individual:个人荣誉,recipientName=人名,可关联 User
+  //   collective:集体荣誉,recipientName=集体名,自由文本
+  //   unit:单位荣誉(如"先进基层党组织"),recipientName=单位名,自由文本
+  // 老数据 null 兼容,前端按 individual 渲染
+  honorType       String?
   recipientUserId String?
   recipientUser   User?   @relation(fields: [recipientUserId], references: [id], onDelete: SetNull)
   recipientName   String // 持证人姓名(必填,即使关联 User 也存快照)

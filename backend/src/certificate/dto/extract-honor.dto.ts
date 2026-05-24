@@ -15,6 +15,14 @@ export interface ExtractedRecipient {
 }
 
 /**
+ * 荣誉类型(V3):
+ * - individual:个人荣誉(优秀共产党员、优秀党务工作者)
+ * - collective:集体荣誉(某某小组、某某团队)
+ * - unit:单位荣誉(先进基层党组织、文明单位)
+ */
+export type HonorType = 'individual' | 'collective' | 'unit';
+
+/**
  * 一个荣誉项 — 一份表彰文件可能包含多个(如"两优一先":
  * 优秀共产党员 / 优秀党务工作者 / 先进基层党组织)。
  */
@@ -23,6 +31,11 @@ export interface ExtractedHonor {
   honorName: string;
   /** 该荣誉的颁发机构(若文中能抽到,如 "中共 XX 委员会") */
   issuingOrg?: string;
+  /**
+   * 荣誉类型(V3):individual / collective / unit。
+   * AI 抽取时 LLM 应返回;若缺失,后端按关键词推断,推不出兜底 individual。
+   */
+  honorType?: HonorType;
   /** 表彰对象列表 */
   recipients: ExtractedRecipient[];
 }

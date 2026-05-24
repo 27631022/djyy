@@ -48,14 +48,19 @@ const SYSTEM_PROMPT = `你是一个证书管理系统的「荣誉表彰文件解
 提取要点:
 1. honors:荣誉项数组,每项含:
    - honorName:荣誉名称(如"优秀共产党员",不要带年份前缀)
+   - honorType:荣誉类型,严格三选一:
+     · "individual" — 个人荣誉(优秀共产党员、优秀党务工作者、先进个人 等)
+     · "collective" — 集体荣誉(青年突击队、巾帼建功示范岗、某某小组 等)
+     · "unit"       — 单位荣誉(先进基层党组织、文明单位、五好家庭 等)
+     如无法明确判断,默认 "individual"
    - issuingOrg:该荣誉的颁发机构,如"中共 XX 委员会"(找不到留空字符串)
    - recipients:对应受表彰对象/单位的数组,每项含 name(必填)/ empNo(可选)/ dept(可选)
-     · 当荣誉表彰的是单位(如"先进基层党组织"),把 name 填成单位名,empNo/dept 留空
+     · honorType=unit 或 collective 时,把 name 填成单位/集体名,empNo/dept 留空
 2. yearLabel:整个文件级别的年份,"2024" 或 "2024-2025"。抽不到留空
 3. issueDate:整个文件的颁发/落款日期,ISO 格式 YYYY-MM-DD,抽不到留空
 
 输出严格 JSON,不要 markdown / 围栏 / 解释:
-{"honors":[{"honorName":"...","issuingOrg":"...","recipients":[{"name":"..."}]}],"yearLabel":"...","issueDate":"..."}`;
+{"honors":[{"honorName":"...","honorType":"individual","issuingOrg":"...","recipients":[{"name":"..."}]}],"yearLabel":"...","issueDate":"..."}`;
 
 @Injectable()
 export class CertificateExtractionService {
@@ -183,9 +188,11 @@ export class CertificateExtractionService {
     if (Array.isArray(parsed.honors)) {
       honors = normalizeHonors(parsed.honors);
     } else if (parsed.honorName !== undefined || parsed.recipients !== undefined) {
+      const fbName = String(parsed.honorName ?? '').trim();
       honors = [
         {
-          honorName: String(parsed.honorName ?? '').trim(),
+          honorName: fbName,
+          honorType: normalizeHonorType(undefined, fbName),
           recipients: normalizeRecipients(parsed.recipients),
         },
       ];
@@ -332,9 +339,11 @@ export class CertificateExtractionService {
     if (Array.isArray(parsed.honors)) {
       honors = normalizeHonors(parsed.honors);
     } else if (parsed.honorName !== undefined || parsed.recipients !== undefined) {
+      const fbName = String(parsed.honorName ?? '').trim();
       honors = [
         {
-          honorName: String(parsed.honorName ?? '').trim(),
+          honorName: fbName,
+          honorType: normalizeHonorType(undefined, fbName),
           recipients: normalizeRecipients(parsed.recipients),
         },
       ];
@@ -486,11 +495,52 @@ function normalizeHonors(input: unknown[]): ExtractedHonor[] {
     if (!honorName) continue;
     out.push({
       honorName,
+      honorType: normalizeHonorType(obj.honorType, honorName),
       issuingOrg: String(obj.issuingOrg ?? '').trim() || undefined,
       recipients: normalizeRecipients(obj.recipients),
     });
   }
   return out;
+}
+
+/**
+ * honorType 规整:
+ *   1. LLM 直接返回合法值 → 直接用
+ *   2. 否则按 honorName 关键词推断(党组织/单位/集体/团队 → unit/collective)
+ *   3. 兜底 individual
+ */
+function normalizeHonorType(
+  raw: unknown,
+  honorName: string,
+): 'individual' | 'collective' | 'unit' {
+  const v = String(raw ?? '').trim().toLowerCase();
+  if (v === 'individual' || v === 'collective' || v === 'unit') return v;
+  // 关键词推断
+  const name = honorName.toLowerCase();
+  if (
+    name.includes('党组织') ||
+    name.includes('党支部') ||
+    name.includes('党委') ||
+    name.includes('党总支') ||
+    name.includes('党小组') ||
+    name.includes('单位') ||
+    name.includes('集体') ||
+    name.includes('文明') ||
+    name.includes('五好家庭') ||
+    name.includes('家庭')
+  ) {
+    return 'unit';
+  }
+  if (
+    name.includes('团队') ||
+    name.includes('班组') ||
+    name.includes('突击队') ||
+    name.includes('示范岗') ||
+    name.includes('小组')
+  ) {
+    return 'collective';
+  }
+  return 'individual';
 }
 
 function normalizeYearLabel(s: string): string {
