@@ -5,6 +5,7 @@ import { CreateDictionaryDto } from './dto/create-dictionary.dto';
 import { UpdateDictionaryDto } from './dto/update-dictionary.dto';
 import { CreateDictItemDto } from './dto/create-dict-item.dto';
 import { UpdateDictItemDto } from './dto/update-dict-item.dto';
+import { ReorderDictItemsDto } from './dto/reorder-items.dto';
 
 interface ActorContext {
   actorId?: string;
@@ -231,6 +232,54 @@ export class DictionaryService {
     });
 
     return { id: itemId, deleted: true };
+  }
+
+  /**
+   * 批量重排序 — 同一父项下的兄弟项按 orderedIds 顺序重写 sortOrder。
+   * 失败保护:任何 id 不属于该 dict 或该 parent 都 400,事务回滚。
+   * sortOrder 以 10 为步长(0/10/20/...),给手动插入留余地。
+   */
+  async reorderItems(
+    dictId: string,
+    dto: ReorderDictItemsDto,
+    actor: ActorContext,
+  ) {
+    const dict = await this.prisma.dictionary.findUnique({ where: { id: dictId } });
+    if (!dict) throw new NotFoundException('字典不存在');
+
+    const parentId = dto.parentId ?? null;
+    // 校验:全部 id 都属于本字典 + 本父项
+    const items = await this.prisma.dictItem.findMany({
+      where: { id: { in: dto.orderedIds }, dictId, parentId },
+      select: { id: true },
+    });
+    if (items.length !== dto.orderedIds.length) {
+      throw new BadRequestException(
+        '存在不属于该字典或父项的 id,排序拒绝(可能数据已被并发改动,请刷新后重试)',
+      );
+    }
+    // 去重检查(同 id 不能重复出现)
+    if (new Set(dto.orderedIds).size !== dto.orderedIds.length) {
+      throw new BadRequestException('orderedIds 内有重复 id');
+    }
+
+    await this.prisma.$transaction(
+      dto.orderedIds.map((id, idx) =>
+        this.prisma.dictItem.update({
+          where: { id },
+          data: { sortOrder: idx * 10 },
+        }),
+      ),
+    );
+
+    await this.audit.log({
+      ...actor,
+      action: 'dict_item.reorder',
+      target: dictId,
+      detail: { parentId, count: dto.orderedIds.length },
+    });
+
+    return { ok: true, count: dto.orderedIds.length };
   }
 
   /* ─── 校验 parentId:必须为 null 或同字典的根级项 ─── */

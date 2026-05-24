@@ -3,8 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookTextIcon, PlusIcon, SearchIcon, XIcon, TrashIcon,
   AlertCircleIcon, RefreshCwIcon, LockIcon, KeyIcon, EditIcon, CheckIcon,
-  PowerIcon, PowerOffIcon,
+  PowerIcon, PowerOffIcon, GripVerticalIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   dictionariesApi,
   buildDictTree,
@@ -403,8 +404,9 @@ function DictHeader({
   );
 }
 
-/* ─── 项目列表 (2 级树形) ─── */
+/* ─── 项目列表 (2 级树形,支持拖拽排序) ─── */
 function ItemsList({ dict, onChanged }: { dict: DictionaryDetail; onChanged: () => void }) {
+  const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState<null | { parentId: string | null }>(null);
   const [editingItem, setEditingItem] = useState<DictItem | null>(null);
 
@@ -412,6 +414,94 @@ function ItemsList({ dict, onChanged }: { dict: DictionaryDetail; onChanged: () 
   const totalItems = dict.items.length;
   const categoryCount = tree.categories.filter((c) => c.children.length > 0).length;
   const childCount = tree.categories.reduce((sum, c) => sum + c.children.length, 0);
+
+  /* ─── 拖拽状态(同一父项内重排) ─── */
+  type DragInfo = { rowId: string; parentId: string | null };
+  const [drag, setDrag] = useState<DragInfo | null>(null);
+  const [dragOver, setDragOver] = useState<{ rowId: string; pos: "above" | "below" } | null>(null);
+
+  const reorderMu = useMutation({
+    mutationFn: (vars: { parentId: string | null; orderedIds: string[] }) =>
+      dictionariesApi.reorderItems(dict.id, vars.parentId, vars.orderedIds),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dictionary-detail", dict.id] });
+      qc.invalidateQueries({ queryKey: ["dictionary-detail", dict.code] });
+      qc.invalidateQueries({ queryKey: ["dictionaries"] });
+      onChanged();
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "排序保存失败");
+    },
+  });
+
+  function clearDrag() {
+    setDrag(null);
+    setDragOver(null);
+  }
+
+  function handleDragStart(rowId: string, parentId: string | null, e: React.DragEvent) {
+    setDrag({ rowId, parentId });
+    e.dataTransfer.effectAllowed = "move";
+    // Firefox 必须 setData 才能触发后续 dragover
+    e.dataTransfer.setData("text/plain", rowId);
+  }
+
+  function handleDragOver(rowId: string, parentId: string | null, e: React.DragEvent) {
+    if (!drag) return;
+    if (drag.parentId !== parentId) return; // 跨父项不允许重排,以后做"移动到其他分类"另外接
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const pos: "above" | "below" = e.clientY < midY ? "above" : "below";
+    if (dragOver?.rowId !== rowId || dragOver?.pos !== pos) {
+      setDragOver({ rowId, pos });
+    }
+  }
+
+  function handleDrop(parentId: string | null, e: React.DragEvent) {
+    e.preventDefault();
+    if (!drag || !dragOver || drag.parentId !== parentId || drag.rowId === dragOver.rowId) {
+      clearDrag();
+      return;
+    }
+    const siblings: string[] =
+      parentId === null
+        ? tree.categories.map((c) => c.id)
+        : (tree.categories.find((c) => c.id === parentId)?.children.map((c) => c.id) ?? []);
+    const fromIdx = siblings.indexOf(drag.rowId);
+    const targetIdx = siblings.indexOf(dragOver.rowId);
+    if (fromIdx === -1 || targetIdx === -1) {
+      clearDrag();
+      return;
+    }
+    const insertAt = dragOver.pos === "above" ? targetIdx : targetIdx + 1;
+    // 先移除自己,再按调整后的目标索引插入
+    const next = [...siblings];
+    next.splice(fromIdx, 1);
+    const adjustedInsertAt = fromIdx < insertAt ? insertAt - 1 : insertAt;
+    next.splice(adjustedInsertAt, 0, drag.rowId);
+    // 没动直接返回
+    if (siblings.every((id, i) => id === next[i])) {
+      clearDrag();
+      return;
+    }
+    clearDrag();
+    reorderMu.mutate({ parentId, orderedIds: next });
+  }
+
+  function rowDragProps(rowId: string, parentId: string | null) {
+    const isOver = dragOver?.rowId === rowId;
+    return {
+      draggable: true,
+      onDragStart: (e: React.DragEvent) => handleDragStart(rowId, parentId, e),
+      onDragOver: (e: React.DragEvent) => handleDragOver(rowId, parentId, e),
+      onDrop: (e: React.DragEvent) => handleDrop(parentId, e),
+      onDragEnd: clearDrag,
+      dragOverPos: isOver ? dragOver.pos : null,
+      isDragging: drag?.rowId === rowId,
+    };
+  }
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -425,7 +515,7 @@ function ItemsList({ dict, onChanged }: { dict: DictionaryDetail; onChanged: () 
           )}
         </span>
         <span className="text-[10px] text-[#9CA3AF] flex-1 min-w-0">
-          支持 2 级分类(分类下挂职务等具体值)。禁用项不在下拉中显示但保留数据
+          支持 2 级分类。拖拽行首 grip 可重排;同分类内拖动支持顺序调整,跨分类暂不支持
         </span>
         <button
           onClick={() => setAddOpen({ parentId: null })}
@@ -456,7 +546,7 @@ function ItemsList({ dict, onChanged }: { dict: DictionaryDetail; onChanged: () 
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-[#F7F8FA] z-10">
               <tr className="text-left text-[11px] text-[#6B7280] uppercase tracking-wider">
-                <th className="px-4 py-2 font-medium w-16 text-right">排序</th>
+                <th className="px-2 py-2 font-medium w-12 text-center">序</th>
                 <th className="px-4 py-2 font-medium w-48">代码</th>
                 <th className="px-4 py-2 font-medium">显示文字</th>
                 <th className="px-4 py-2 font-medium">描述</th>
@@ -474,6 +564,7 @@ function ItemsList({ dict, onChanged }: { dict: DictionaryDetail; onChanged: () 
                     onAddChild={() => setAddOpen({ parentId: cat.id })}
                     dictId={dict.id}
                     onChanged={onChanged}
+                    {...rowDragProps(cat.id, null)}
                   />
                   {cat.children.map((ch) => (
                     <ItemRow
@@ -483,6 +574,7 @@ function ItemsList({ dict, onChanged }: { dict: DictionaryDetail; onChanged: () 
                       onEdit={() => setEditingItem(ch)}
                       dictId={dict.id}
                       onChanged={onChanged}
+                      {...rowDragProps(ch.id, cat.id)}
                     />
                   ))}
                 </Fragment>
@@ -500,6 +592,7 @@ function ItemsList({ dict, onChanged }: { dict: DictionaryDetail; onChanged: () 
                       onEdit={() => setEditingItem(o)}
                       dictId={dict.id}
                       onChanged={onChanged}
+                      // orphans 没父项,不参与拖拽排序
                     />
                   ))}
                 </Fragment>
@@ -544,6 +637,8 @@ function ItemsList({ dict, onChanged }: { dict: DictionaryDetail; onChanged: () 
 /* ─── 单行 ─── */
 function ItemRow({
   item, isCategory, onEdit, onAddChild, dictId, onChanged,
+  draggable, onDragStart, onDragOver, onDrop, onDragEnd,
+  dragOverPos, isDragging,
 }: {
   item: DictItem;
   isCategory: boolean;
@@ -551,13 +646,45 @@ function ItemRow({
   onAddChild?: () => void;
   dictId: string;
   onChanged: () => void;
+  /* ─ 拖拽排序 props(orphans 时为 undefined,行不可拖) ─ */
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
+  onDragEnd?: () => void;
+  dragOverPos?: "above" | "below" | null;
+  isDragging?: boolean;
 }) {
+  // 拖拽指示:行的顶部或底部画 2px 蓝色线(用 inset box-shadow 兼容 <tr>)
+  const dropIndicator =
+    dragOverPos === "above"
+      ? "inset 0 2px 0 0 #3B82F6"
+      : dragOverPos === "below"
+        ? "inset 0 -2px 0 0 #3B82F6"
+        : undefined;
   return (
     <tr
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
       className="border-b border-[#F0F0F0] hover:bg-[#FAFBFC]"
-      style={isCategory ? { backgroundColor: "#FAFBFC" } : undefined}
+      style={{
+        backgroundColor: isCategory ? "#FAFBFC" : undefined,
+        opacity: isDragging ? 0.4 : undefined,
+        boxShadow: dropIndicator,
+      }}
     >
-      <td className="px-4 py-2 text-xs text-[#9CA3AF] text-right">{item.sortOrder}</td>
+      <td className="px-2 py-2 w-12">
+        <div
+          className={`flex items-center justify-center gap-1 ${draggable ? "cursor-grab active:cursor-grabbing text-[#9CA3AF]" : "text-[#D1D5DB]"}`}
+          title={draggable ? "拖拽以重排序" : "孤立项不支持拖拽"}
+        >
+          <GripVerticalIcon className="w-3 h-3" />
+          <span className="text-[10px] font-mono">{item.sortOrder}</span>
+        </div>
+      </td>
       <td className="px-4 py-2 text-xs font-mono text-[#4B5563]">
         {!isCategory && <span className="text-[#D1D5DB] mr-1">└</span>}
         {item.code}

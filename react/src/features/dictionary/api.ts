@@ -130,6 +130,20 @@ export const dictionariesApi = {
 
   removeItem: (dictId: string, itemId: string) =>
     api.delete(`/dictionaries/${dictId}/items/${itemId}`).then((r) => r.data),
+
+  /**
+   * 批量重排序同一父项下的字典项。
+   * - parentId=null 排序的是根级分类
+   * - parentId=cat-id 排序的是该分类下的二级项
+   * orderedIds 必须是同一父项下的全部子项 id(可去重,顺序即新顺序)
+   */
+  reorderItems: (dictId: string, parentId: string | null, orderedIds: string[]) =>
+    api
+      .post<{ ok: true; count: number }>(`/dictionaries/${dictId}/items/reorder`, {
+        parentId,
+        orderedIds,
+      })
+      .then((r) => r.data),
 };
 
 /* ─── 常用字典代码常量(供前端引用) ─── */

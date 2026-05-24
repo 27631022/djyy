@@ -17,6 +17,7 @@ import { CreateDictionaryDto } from './dto/create-dictionary.dto';
 import { UpdateDictionaryDto } from './dto/update-dictionary.dto';
 import { CreateDictItemDto } from './dto/create-dict-item.dto';
 import { UpdateDictItemDto } from './dto/update-dict-item.dto';
+import { ReorderDictItemsDto } from './dto/reorder-items.dto';
 
 @Controller('dictionaries')
 @UseGuards(AuthGuard)
@@ -85,5 +86,22 @@ export class DictionaryController {
     @Req() req: Request,
   ) {
     return this.dicts.removeItem(id, itemId, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /**
+   * 批量重排序同父项下的字典项 — 拖拽完成后前端一次性提交新顺序。
+   */
+  @Post(':id/items/reorder')
+  reorderItems(
+    @Param('id') id: string,
+    @Body() dto: ReorderDictItemsDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.dicts.reorderItems(id, dto, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
   }
 }
