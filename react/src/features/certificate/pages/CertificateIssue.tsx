@@ -536,7 +536,7 @@ export default function CertificateIssuePage() {
 
 function Stepper({ step }: { step: WizardStep }) {
   const items = [
-    { idx: 1 as WizardStep, label: "上传 / 录入", desc: "文件 / 拍照 / 外部证书", icon: UploadIcon },
+    { idx: 1 as WizardStep, label: "荣誉文件上传", desc: "Word / PDF · AI 自动识别", icon: UploadIcon },
     { idx: 2 as WizardStep, label: "选证书", desc: "确定使用哪个模板", icon: AwardIcon },
     { idx: 3 as WizardStep, label: "确定人员", desc: "审核 AI 抽取或手填", icon: UsersIcon },
     { idx: 4 as WizardStep, label: "清单 + 发证", desc: "最终确认并批量发证", icon: ListChecksIcon },

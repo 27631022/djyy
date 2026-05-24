@@ -14,7 +14,10 @@ import {
 import { toast } from "sonner";
 import {
   certificateTemplateApi,
+  HONOR_LEVEL_LABEL,
+  HONOR_TYPE_LABEL,
   type CertificateTemplateDto,
+  type HonorLevel,
 } from "@/features/certificate";
 
 const PARTY = "var(--party-primary)";
@@ -86,7 +89,7 @@ export default function CertificateTemplatesPage() {
         ) : templates.length === 0 ? (
           <EmptyState onNew={() => navigate("/admin/certificate-templates/new")} />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {templates.map((t) => (
               <TemplateCard
                 key={t.id}
@@ -161,81 +164,113 @@ function TemplateCard({
   const orientation = getOrientation(template.width, template.height);
   return (
     <div
-      className={`group relative bg-white rounded-lg overflow-hidden border border-[#E9E9E9] shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 ${
+      className={`group relative bg-white rounded-xl overflow-hidden border border-[#E9E9E9] shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:shadow-[0_8px_24px_rgba(15,23,42,0.08)] hover:-translate-y-0.5 hover:border-[var(--party-primary)] ${
         template.active ? "" : "opacity-60"
       }`}
     >
-      {/* ── 缩略图区 — 所有卡片统一 4:3,横/竖版都按 object-contain 居中 ── */}
+      {/* ── 缩略图区 — 所有卡片统一 4:3 ── */}
       <Link
         to={`/admin/certificate-templates/${template.id}/edit`}
         className="block relative bg-gradient-to-br from-[#F4F5F8] to-[#E9EBF0] overflow-hidden"
         style={{ aspectRatio: "4 / 3" }}
       >
         {template.thumbnail ? (
-          <div className="absolute inset-0 flex items-center justify-center p-4">
+          <div className="absolute inset-0 flex items-center justify-center p-3">
             <img
               src={template.thumbnail}
               alt={template.name}
               className="max-w-full max-h-full object-contain shadow-sm bg-white"
               style={{
-                // 保持原图比例的同时,顶满 4:3 容器(取较紧的一边)
                 aspectRatio: `${template.width} / ${template.height}`,
               }}
             />
           </div>
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-[#B5B9C0] gap-1.5">
-            <ImageOffIcon className="w-8 h-8" />
+            <ImageOffIcon className="w-7 h-7" />
             <span className="text-[10px]">暂无预览</span>
           </div>
         )}
 
-        {/* 左上角:横/竖标签 */}
-        <span
-          className={`absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium ${orientation.cls}`}
-        >
-          {orientation.label}
-        </span>
-
-        {/* 禁用蒙层标签 */}
-        {!template.active && (
-          <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#9CA3AF] text-white">
-            已禁用
+        {/* 左上:荣誉代码徽章(替代旧的横/竖) */}
+        {template.honorCode ? (
+          <span
+            className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[var(--party-primary)] text-white shadow-sm"
+            title="荣誉代码"
+          >
+            {template.honorCode}
+          </span>
+        ) : (
+          <span
+            className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 shadow-sm"
+            title="未配置荣誉代码,无法用于发证"
+          >
+            缺荣誉代码
           </span>
         )}
+
+        {/* 右上:横/竖 + 禁用蒙层 */}
+        <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${orientation.cls}`}>
+            {orientation.label}
+          </span>
+          {!template.active && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#9CA3AF] text-white">
+              已禁用
+            </span>
+          )}
+        </div>
       </Link>
 
       {/* ── 信息区 ── */}
-      <div className="p-3.5 flex flex-col gap-1.5">
+      <div className="p-3 flex flex-col gap-1.5">
         <div
-          className="font-medium text-sm text-[#1A1A1A] truncate leading-tight"
+          className="font-semibold text-sm text-[#1A1A1A] truncate leading-tight"
           title={template.name}
         >
           {template.name}
         </div>
-        <div className="text-[11px] text-[#9CA3AF] flex items-center gap-1.5 flex-wrap">
+
+        {/* V3 徽章行:类型 + 等级 + 分类 */}
+        <div className="flex items-center gap-1 flex-wrap min-h-[18px]">
+          {template.honorType && (
+            <span
+              className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                template.honorType === "collective"
+                  ? "bg-purple-50 text-purple-700 border-purple-200"
+                  : "bg-blue-50 text-blue-700 border-blue-200"
+              }`}
+            >
+              {HONOR_TYPE_LABEL[template.honorType]}
+            </span>
+          )}
+          {template.honorLevel && (
+            <HonorLevelBadge level={template.honorLevel} />
+          )}
           {template.category && (
-            <span className="px-1.5 py-0.5 rounded bg-[#F7F8FA] text-[#6B7280]">
+            <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#F7F8FA] text-[#6B7280] border border-[#E9E9E9]">
               {template.category}
             </span>
           )}
-          <span className="font-mono">
-            {template.width} × {template.height}
-          </span>
         </div>
 
-        {/* 操作行 */}
-        <div className="mt-2 flex items-center gap-1.5">
+        {/* 尺寸小行 */}
+        <div className="text-[10px] text-[#9CA3AF] font-mono">
+          {template.width} × {template.height}
+        </div>
+
+        {/* 操作行 — 编辑占主、启停/删放右 */}
+        <div className="mt-1.5 flex items-center gap-1">
           <Link
             to={`/admin/certificate-templates/${template.id}/edit`}
-            className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded text-xs font-medium border border-[#E9E9E9] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] hover:bg-[#FFF7F8] transition-colors"
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-md text-xs font-medium border border-[#E9E9E9] text-[#374151] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] hover:bg-party-soft transition-colors"
           >
             <EditIcon className="w-3 h-3" />
             编辑
           </Link>
           <button
             onClick={onToggle}
-            className="p-1.5 rounded text-[#6B7280] hover:bg-[#F7F8FA]"
+            className="p-1.5 rounded-md text-[#6B7280] hover:bg-[#F7F8FA]"
             title={template.active ? "禁用" : "启用"}
           >
             {template.active ? (
@@ -246,7 +281,7 @@ function TemplateCard({
           </button>
           <button
             onClick={onDelete}
-            className="p-1.5 rounded text-[#9CA3AF] hover:text-[#EF4444] hover:bg-[#FEE2E2]"
+            className="p-1.5 rounded-md text-[#9CA3AF] hover:text-[#EF4444] hover:bg-[#FEE2E2]"
             title="删除"
           >
             <TrashIcon className="w-3.5 h-3.5" />
@@ -254,6 +289,21 @@ function TemplateCard({
         </div>
       </div>
     </div>
+  );
+}
+
+/* 等级徽章 — 与发证 Step 2 同色阶,集中由 lib 维护 label */
+function HonorLevelBadge({ level }: { level: HonorLevel }) {
+  const cls = {
+    national: "bg-red-50 text-red-700 border-red-200",
+    provincial: "bg-orange-50 text-orange-700 border-orange-200",
+    corporate: "bg-blue-50 text-blue-700 border-blue-200",
+    company: "bg-slate-50 text-slate-700 border-slate-200",
+  }[level];
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${cls}`}>
+      {HONOR_LEVEL_LABEL[level]}
+    </span>
   );
 }
 
