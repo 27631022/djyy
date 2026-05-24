@@ -288,15 +288,13 @@ export default function CertificateIssuePage() {
             {step === 1 && (
               <Step1Upload
                 extractResult={extractResult}
-                selectedHonorIdx={selectedHonorIdx}
-                onSelectHonor={setSelectedHonorIdx}
                 onExtractDone={(r) => {
                   setExtractResult(r);
-                  // 单 honor 不必让用户选,自动选中;多 honor 强制让用户挑
-                  setSelectedHonorIdx(r.honors.length === 1 ? 0 : -1);
+                  // Phase 3 过渡期:下游单 honor 流仍只用第 1 项;Phase 4 改 records[] 后此变量退场
+                  setSelectedHonorIdx(r.honors.length > 0 ? 0 : -1);
                 }}
                 onReset={() => {
-                  // 重置 = 清掉抽取结果,回到上传 tile;同时 effect 会把 draft.extracted 设为 null
+                  // 重置 = 清掉抽取结果,回到上传面板;effect 会把 draft.extracted 同步为 null
                   setExtractResult(null);
                   setSelectedHonorIdx(-1);
                 }}
@@ -305,12 +303,6 @@ export default function CertificateIssuePage() {
                   setSelectedHonorIdx(-1);
                   commitStep1(null, -1);
                 }}
-                onContinueWithHonor={() => {
-                  if (extractResult && selectedHonorIdx >= 0) {
-                    commitStep1(extractResult, selectedHonorIdx);
-                  }
-                }}
-                onGoExternal={() => navigate("/admin/certificates/external")}
               />
             )}
 
@@ -377,13 +369,30 @@ export default function CertificateIssuePage() {
               )}
               {step < 4 && (
                 <button
-                  onClick={() => setStep((s) => (Math.min(4, s + 1) as WizardStep))}
-                  disabled={Boolean(stepReady) || (step === 1 && !manualMode && !selectedHonor)}
+                  onClick={() => {
+                    if (step === 1) {
+                      // Phase 3 过渡:抽取成功 → 用第 1 项 honor 进入老 Step 2/3/4 流;
+                      // Phase 4 会改用 draft.records[] 接管全部荣誉
+                      if (extractResult && extractResult.honors.length > 0) {
+                        commitStep1(extractResult, 0);
+                      }
+                      return;
+                    }
+                    setStep((s) => (Math.min(4, s + 1) as WizardStep));
+                  }}
+                  disabled={
+                    Boolean(stepReady) ||
+                    (step === 1 &&
+                      !manualMode &&
+                      (!extractResult || extractResult.honors.length === 0))
+                  }
                   className="flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ backgroundColor: PARTY }}
                   title={
-                    step === 1 && !manualMode && !selectedHonor
-                      ? "请先上传文件或选择「跳过 AI」"
+                    step === 1 &&
+                    !manualMode &&
+                    (!extractResult || extractResult.honors.length === 0)
+                      ? "请先上传表彰文件或选择「跳过 AI」"
                       : stepReady ?? ""
                   }
                 >
