@@ -192,6 +192,9 @@ export const certificateIssueApi = {
       .post<ExtractHonorResponse>("/certificates/extract", form, {
         // axios 自己设置 boundary
         headers: { "Content-Type": "multipart/form-data" },
+        // AI 提取覆盖默认 15s 超时 —— DeepSeek thinking 模式 + 大 PDF
+        // 可能要 30-60s,vision 路径(豆包/千问处理图片)也类似。给 120s 足够稳。
+        timeout: 120_000,
       })
       .then((r) => r.data);
   },
@@ -223,7 +226,11 @@ export const certificateIssueApi = {
       .post<Blob>(
         "/certificates/bulk-download",
         { ids },
-        { responseType: "blob" },
+        {
+          responseType: "blob",
+          // 大批量打 ZIP 走默认 15s 可能不够,给 60s
+          timeout: 60_000,
+        },
       )
       .then((r) => r.data),
 };

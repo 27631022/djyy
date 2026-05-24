@@ -90,12 +90,17 @@ export const externalApiApi = {
   /** 测试连接 — body 可传 apiKey/apiUrl/model 覆盖,便于「测试当前编辑值」 */
   test: (provider: string, input: TestExternalApiInput = {}) =>
     api
-      .post<ExternalApiTestResult>(`/external-apis/${provider}/test`, input)
+      .post<ExternalApiTestResult>(`/external-apis/${provider}/test`, input, {
+        // 测试本身是个 chat completion,后端给了 15s,这里前端要更宽松些
+        timeout: 30_000,
+      })
       .then((r) => r.data),
 
   /** 查询余额(部分 provider 支持) */
   balance: (provider: string) =>
     api
-      .get<ExternalApiBalance>(`/external-apis/${provider}/balance`)
+      .get<ExternalApiBalance>(`/external-apis/${provider}/balance`, {
+        timeout: 20_000,
+      })
       .then((r) => r.data),
 };
