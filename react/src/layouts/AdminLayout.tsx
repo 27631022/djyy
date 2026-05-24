@@ -6,7 +6,7 @@ import {
   BuildingIcon, ShieldIcon, UserIcon, BookTextIcon,
   EyeIcon, ThumbsUpIcon, MessageSquareIcon,
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
-  AwardIcon, BriefcaseIcon,
+  AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 
@@ -42,6 +42,8 @@ const CATEGORIES: Category[] = [
     icon: BriefcaseIcon,
     items: [
       { path: "/admin/certificate-templates", label: "证书模板", icon: AwardIcon },
+      { path: "/admin/certificates/issue",    label: "发证",     icon: SendIcon  },
+      { path: "/admin/certificates",          label: "已发证书", icon: ListChecksIcon },
     ],
   },
   {

@@ -25,6 +25,12 @@ export class CreateTemplateDto {
   @MaxLength(64)
   category?: string;
 
+  /** V2:荣誉首字母代码,如 "QDJL"(庆典奖励),用于发证编号生成 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  honorCode?: string;
+
   /** DesignerState 序列化的 JSON 字符串。前端 Canvas 设计器负责生成 + 解析。 */
   @IsString()
   designJson!: string;

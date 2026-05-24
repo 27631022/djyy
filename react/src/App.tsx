@@ -13,6 +13,8 @@ import { NavigationPage } from "@/features/nav-category";
 import {
   CertificateTemplatesPage,
   CertificateDesignerPage,
+  CertificateIssuePage,
+  CertificateListPage,
 } from "@/features/certificate";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
@@ -88,6 +90,8 @@ const App = () => (
             <Route path="certificate-templates" element={<CertificateTemplatesPage />} />
             <Route path="certificate-templates/new" element={<CertificateDesignerPage />} />
             <Route path="certificate-templates/:id/edit" element={<CertificateDesignerPage />} />
+            <Route path="certificates" element={<CertificateListPage />} />
+            <Route path="certificates/issue" element={<CertificateIssuePage />} />
           </Route>
         </Routes>
         <Toaster position="top-center" richColors closeButton />

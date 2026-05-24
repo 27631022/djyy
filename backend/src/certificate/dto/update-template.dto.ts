@@ -26,6 +26,12 @@ export class UpdateTemplateDto {
   @MaxLength(64)
   category?: string;
 
+  /** V2:荣誉首字母代码(允许空字符串清空) */
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  honorCode?: string;
+
   @IsOptional()
   @IsString()
   designJson?: string;

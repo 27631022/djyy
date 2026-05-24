@@ -73,6 +73,8 @@ export default function CertificateDesignerPage() {
   /* ─── 模板元数据(不进历史) ─── */
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  /** V2:荣誉首字母代码,如 "QDJL"(庆典奖励)— 用于发证编号 */
+  const [honorCode, setHonorCode] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isPreview, setIsPreview] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -83,6 +85,7 @@ export default function CertificateDesignerPage() {
     const t = existingQuery.data;
     setName(t.name);
     setDescription(t.description ?? "");
+    setHonorCode(t.honorCode ?? "");
     try {
       const parsed = JSON.parse(t.designJson) as Partial<DesignerState>;
       const empty = emptyDesignerState(t.width, t.height);
@@ -313,6 +316,7 @@ export default function CertificateDesignerPage() {
       certificateTemplateApi.update(id!, {
         name,
         description: description || undefined,
+        honorCode: honorCode.trim() || undefined,
         designJson: JSON.stringify(state),
         width: state.canvasWidth,
         height: state.canvasHeight,
@@ -336,6 +340,7 @@ export default function CertificateDesignerPage() {
       createMut.mutate({
         name: name.trim(),
         description: description || undefined,
+        honorCode: honorCode.trim() || undefined,
         designJson: JSON.stringify(state),
         width: state.canvasWidth,
         height: state.canvasHeight,
@@ -595,6 +600,23 @@ export default function CertificateDesignerPage() {
               placeholder="可选,记录用途/颁发对象等"
               className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none resize-none"
             />
+          </div>
+          <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
+            <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
+              荣誉首字母代码 <span className="text-[10px] text-[#9CA3AF] normal-case">用于发证编号</span>
+            </div>
+            <input
+              type="text"
+              value={honorCode}
+              onChange={(e) => setHonorCode(e.target.value.toUpperCase().slice(0, 16))}
+              placeholder="如 QDJL (庆典奖励)"
+              className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none font-mono uppercase tracking-wider"
+            />
+            <p className="mt-1 text-[10px] text-[#9CA3AF] leading-relaxed">
+              发证编号格式:<span className="font-mono">2024-{honorCode || "XXXX"}-100-001</span>
+              <br />
+              未填将无法用该模板发证
+            </p>
           </div>
           <div className="mt-4 pt-3 border-t border-[#F0F0F0] text-[10px] text-[#9CA3AF] leading-relaxed">
             <div className="font-semibold mb-1">快捷键</div>

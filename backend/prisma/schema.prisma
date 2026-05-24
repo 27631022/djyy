@@ -75,8 +75,9 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  memberships UserOrganization[]
-  roles       UserRole[]
+  memberships  UserOrganization[]
+  roles        UserRole[]
+  certificates Certificate[] // V2:作为持证人的已发证书
 }
 
 // 用户 ↔ 组织 多对多 (一人可挂多个组织,但只能有一个 primary)
@@ -373,19 +374,23 @@ model AuditLog {
 }
 
 // ─────────────────────────────────────────────────────────
-// 证书管理(V1:仅模板)
+// 证书管理(V1:模板;V2:模板 + 发证 + 公开验证 + AI 提取)
 // ─────────────────────────────────────────────────────────
 // 一个 CertificateTemplate 就是「证书的可视化设计 + 变量字段定义」,
 // designJson 序列化整个 DesignerState(elements 数组 + background +
 // canvas 尺寸 + 变量字段),由前端 Canvas 设计器读写。
 //
-// V2 会加 Certificate 表(已发证书记录,@relation 回这里 onDelete: Restrict)。
+// V2:Certificate 表挂接发证记录,onDelete:Restrict 保护已发模板不被误删。
+// honorCode 是 V2 加的:荣誉首字母代码(如 "QDJL" 庆典奖励),
+// 用于证书编号生成 {年份}-{honorCode}-{batchTotal}-{batchSeq}。
+// 一个模板 = 一种荣誉。
 // @module: certificate
 model CertificateTemplate {
   id          String   @id @default(cuid())
   name        String // 模板名,如"年度优秀党员证书"
   description String?
   category    String? // 分类:奖励/荣誉/培训... 留 null 即可
+  honorCode   String? // V2:荣誉首字母代码,如 "QDJL"。发证时拷贝快照到 Certificate
   designJson  String // DesignerState 序列化(JSON 字符串)
   thumbnail   String? // 缩略图(data URL / base64),列表显示用
   width       Int      @default(800) // 画布宽 px
@@ -395,6 +400,79 @@ model CertificateTemplate {
   updatedAt   DateTime @updatedAt
   createdBy   String? // user id,可空
 
+  certificates Certificate[] // V2 反向关联
+
   @@index([active])
   @@index([category])
+}
+
+// 已发证书 — V2 新增
+// 编号 certNo 格式:{yearLabel}-{honorCode}-{batchTotal}-{batchSeq3位}
+//   例:2024-QDJL-100-001
+// batchKey = `${yearLabel}-${honorCode}-${batchTotal}`,同批次共享 → batchSeq 在批内 1..batchTotal
+// 追加发证视为新批次(batchTotal 不同)
+//
+// source 取值:
+//   internal  用本系统模板生成,有 templateId
+//   external  上传的外部 PDF,templateId=null,externalFileData 存原文件
+//
+// pdfData / externalFileData 都是 base64 data URL。批量下载时后端拿来直接打 ZIP。
+// V3 会改成对象存储,字段保留兼容。
+// @module: certificate
+model Certificate {
+  id          String  @id @default(cuid())
+  certNo      String  @unique // 完整证书编号,如 "2024-QDJL-100-001"
+  yearLabel   String // 年份段,如 "2024" 或 "2024-2025"
+  honorCode   String // 荣誉首字母快照
+  batchKey    String // `${yearLabel}-${honorCode}-${batchTotal}` 同批次共享
+  batchTotal  Int // 本批次总数
+  batchSeq    Int // 批内序号,1-based
+  publicToken String  @unique // 公开验证 URL token
+
+  templateId String?
+  template   CertificateTemplate? @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  // 持证人来源 + 关联 + 快照
+  source          String  @default("internal") // internal | external
+  recipientUserId String?
+  recipientUser   User?   @relation(fields: [recipientUserId], references: [id], onDelete: SetNull)
+  recipientName   String // 持证人姓名(必填,即使关联 User 也存快照)
+  recipientEmpNo  String? // 员工编号快照(= User.username)
+  recipientDept   String? // 部门快照
+  recipientIdCard String? // 身份证号(可选)
+  recipientPhone  String?
+
+  // 变量值快照 — 发证时把表单值固化进来。即使后续改模板变量定义,本张还能还原
+  variableData String // JSON 字符串,形如 { name: "张三", certNo: "...", ... }
+
+  // 时间
+  issueDate  DateTime  @default(now())
+  validUntil DateTime? // 永久 = null
+
+  // 发证人 + 机构(快照,审计需要)
+  issuedBy       String // user id
+  issuerName     String // 发证人姓名
+  issuingOrgId   String? // Organization id(发证机构)
+  issuingOrgName String?
+
+  // 撤销
+  revoked       Boolean   @default(false)
+  revokedAt     DateTime?
+  revokedReason String?
+  revokedBy     String?
+
+  // 渲染产物 / 外部文件
+  pdfData          String? // 前端 jspdf 生成 base64,internal 必有,external 可空
+  externalFileData String? // source='external' 时存上传的原 PDF base64
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([templateId])
+  @@index([recipientUserId])
+  @@index([revoked])
+  @@index([issueDate])
+  @@index([batchKey])
+  @@index([source])
+  @@index([certNo])
 }
