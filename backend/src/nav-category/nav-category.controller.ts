@@ -17,6 +17,10 @@ import {
   UpdateNavCategoryDto,
 } from './dto/category.dto';
 import { CreateNavItemDto, UpdateNavItemDto } from './dto/item.dto';
+import {
+  ReorderNavCategoriesDto,
+  ReorderNavItemsDto,
+} from './dto/reorder.dto';
 
 @Controller('nav-categories')
 export class NavCategoryController {
@@ -100,5 +104,38 @@ export class NavCategoryController {
     @Req() req: Request,
   ) {
     return this.svc.removeItem(itemId, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /* ─── 拖拽排序 ─── */
+
+  /** 一级分类整体重排序 — 前端把全部分类的新顺序一次性提交 */
+  @Post('reorder')
+  @UseGuards(AuthGuard)
+  reorderCategories(
+    @Body() dto: ReorderNavCategoriesDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.reorderCategories(dto, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
+  }
+
+  /** 某分类下的项目重排序 — 跨分类不允许,服务端校验 */
+  @Post(':id/items/reorder')
+  @UseGuards(AuthGuard)
+  reorderItems(
+    @Param('id') categoryId: string,
+    @Body() dto: ReorderNavItemsDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.reorderItems(categoryId, dto, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
   }
 }

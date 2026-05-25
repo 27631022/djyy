@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   SettingsIcon, RefreshCwIcon, SaveIcon, RotateCcwIcon,
   TagIcon, ImageIcon, MegaphoneIcon, LinkIcon, PaletteIcon,
-  PlusIcon, TrashIcon, GlobeIcon, MenuIcon,
+  PlusIcon, TrashIcon, GlobeIcon, MenuIcon, GripVerticalIcon,
 } from "lucide-react";
 import {
   siteSettingApi,
@@ -365,6 +365,70 @@ function HeroForm({ value, onChange }: { value: SiteSettingsData["hero"]; onChan
   );
 }
 
+/**
+ * 列表拖拽排序 hook — 给 site setting 的纯本地 state 列表用。
+ * 数据没有稳定 id,只能按 idx 跟踪;重排后调 reorder(next),
+ * 父组件再 setDirty(true) 让顶栏「保存」按钮亮起。
+ */
+function useIndexDrag<T>(items: T[], reorder: (next: T[]) => void) {
+  const [drag, setDrag] = useState<number | null>(null);
+  const [over, setOver] = useState<{ idx: number; pos: "above" | "below" } | null>(null);
+
+  function clear() {
+    setDrag(null);
+    setOver(null);
+  }
+
+  function rowProps(idx: number) {
+    const isDragging = drag === idx;
+    const isOver = over?.idx === idx;
+    const dropIndicator =
+      isOver && over?.pos === "above"
+        ? "inset 0 2px 0 0 #3B82F6"
+        : isOver && over?.pos === "below"
+          ? "inset 0 -2px 0 0 #3B82F6"
+          : undefined;
+    return {
+      draggable: true,
+      onDragStart: (e: React.DragEvent) => {
+        setDrag(idx);
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(idx));
+      },
+      onDragOver: (e: React.DragEvent) => {
+        if (drag === null) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        const pos: "above" | "below" = e.clientY < midY ? "above" : "below";
+        if (over?.idx !== idx || over?.pos !== pos) setOver({ idx, pos });
+      },
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault();
+        if (drag === null || !over || drag === over.idx) {
+          clear();
+          return;
+        }
+        const next = [...items];
+        const [moved] = next.splice(drag, 1);
+        const insertAt = over.pos === "above" ? over.idx : over.idx + 1;
+        const adjusted = drag < insertAt ? insertAt - 1 : insertAt;
+        next.splice(adjusted, 0, moved);
+        clear();
+        reorder(next);
+      },
+      onDragEnd: clear,
+      style: {
+        opacity: isDragging ? 0.4 : undefined,
+        boxShadow: dropIndicator,
+      } as React.CSSProperties,
+    };
+  }
+
+  return { rowProps };
+}
+
 /* ─── TopNav(首页顶端导航条) ─── */
 function TopNavForm({
   value,
@@ -383,13 +447,7 @@ function TopNavForm({
   function removeItem(idx: number) {
     onChange({ items: value.items.filter((_, i) => i !== idx) });
   }
-  function moveItem(idx: number, dir: -1 | 1) {
-    const next = [...value.items];
-    const target = idx + dir;
-    if (target < 0 || target >= next.length) return;
-    [next[idx], next[target]] = [next[target], next[idx]];
-    onChange({ items: next });
-  }
+  const { rowProps } = useIndexDrag(value.items, (next) => onChange({ items: next }));
 
   return (
     <div>
@@ -397,7 +455,7 @@ function TopNavForm({
         <div className="flex items-center justify-between mb-2">
           <FieldLabel
             label="顶端导航链接"
-            hint="显示在前台头部 LOGO 右侧,顺序即展示顺序。URL 填 # 表示暂未启用"
+            hint="显示在前台头部 LOGO 右侧。拖拽行首 ⋮ 可重排顺序;URL 填 # 表示暂未启用"
           />
           <button
             onClick={addItem}
@@ -414,60 +472,41 @@ function TopNavForm({
               暂无顶端链接,点击右上角「添加链接」
             </div>
           )}
-          {value.items.map((it, idx) => {
-            const isFirst = idx === 0;
-            const isLast = idx === value.items.length - 1;
-            return (
-              <div
-                key={idx}
-                className="flex items-center gap-2 p-2 border border-[#E9E9E9] rounded-md hover:border-[var(--party-primary)]/40 transition-colors"
+          {value.items.map((it, idx) => (
+            <div
+              key={idx}
+              {...rowProps(idx)}
+              className="flex items-center gap-2 p-2 border border-[#E9E9E9] rounded-md hover:border-[var(--party-primary)]/40 transition-colors"
+            >
+              <span
+                className="flex items-center gap-1 w-10 flex-shrink-0 cursor-grab active:cursor-grabbing text-[#9CA3AF]"
+                title="拖拽以重排序"
               >
-                <span className="text-[10px] font-mono text-[#9CA3AF] w-5 text-center flex-shrink-0">
-                  {idx + 1}
-                </span>
-                <input
-                  value={it.label}
-                  onChange={(e) => updateItem(idx, { label: e.target.value })}
-                  placeholder="链接文字(如:党务公开)"
-                  className="w-36 border border-[#E9E9E9] rounded px-2 py-1 text-xs focus:outline-none focus:border-[var(--party-primary)]"
-                />
-                <input
-                  value={it.url}
-                  onChange={(e) => updateItem(idx, { url: e.target.value })}
-                  placeholder="/ 或 https://... 或 #"
-                  className="flex-1 border border-[#E9E9E9] rounded px-2 py-1 text-xs focus:outline-none focus:border-[var(--party-primary)] font-mono"
-                />
-                <div className="flex flex-col gap-0.5 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => moveItem(idx, -1)}
-                    disabled={isFirst}
-                    className="px-1.5 py-0.5 text-[10px] rounded border border-[#E9E9E9] text-[#6B7280] hover:bg-[#F7F8FA] disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="上移"
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveItem(idx, 1)}
-                    disabled={isLast}
-                    className="px-1.5 py-0.5 text-[10px] rounded border border-[#E9E9E9] text-[#6B7280] hover:bg-[#F7F8FA] disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="下移"
-                  >
-                    ↓
-                  </button>
-                </div>
-                <button
-                  onClick={() => removeItem(idx)}
-                  type="button"
-                  className="p-1 rounded hover:bg-party-soft text-[#9CA3AF] hover:text-[var(--party-primary)] transition-colors flex-shrink-0"
-                  title="删除"
-                >
-                  <TrashIcon className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            );
-          })}
+                <GripVerticalIcon className="w-3 h-3" />
+                <span className="text-[10px] font-mono">{idx + 1}</span>
+              </span>
+              <input
+                value={it.label}
+                onChange={(e) => updateItem(idx, { label: e.target.value })}
+                placeholder="链接文字(如:党务公开)"
+                className="w-36 border border-[#E9E9E9] rounded px-2 py-1 text-xs focus:outline-none focus:border-[var(--party-primary)]"
+              />
+              <input
+                value={it.url}
+                onChange={(e) => updateItem(idx, { url: e.target.value })}
+                placeholder="/ 或 https://... 或 #"
+                className="flex-1 border border-[#E9E9E9] rounded px-2 py-1 text-xs focus:outline-none focus:border-[var(--party-primary)] font-mono"
+              />
+              <button
+                onClick={() => removeItem(idx)}
+                type="button"
+                className="p-1 rounded hover:bg-party-soft text-[#9CA3AF] hover:text-[var(--party-primary)] transition-colors flex-shrink-0"
+                title="删除"
+              >
+                <TrashIcon className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
         </div>
       </div>
       <p className="text-[11px] text-[#9CA3AF] leading-relaxed">
@@ -493,6 +532,7 @@ function FooterForm({ value, onChange }: { value: SiteSettingsData["footer"]; on
   function removeLink(idx: number) {
     onChange({ friendLinks: value.friendLinks.filter((_, i) => i !== idx) });
   }
+  const { rowProps } = useIndexDrag(value.friendLinks, (next) => onChange({ friendLinks: next }));
 
   return (
     <div>
@@ -512,7 +552,7 @@ function FooterForm({ value, onChange }: { value: SiteSettingsData["footer"]; on
 
       <div className="mb-5">
         <div className="flex items-center justify-between mb-2">
-          <FieldLabel label="友情链接" hint="显示在页脚顶部,可任意增减" />
+          <FieldLabel label="友情链接" hint="显示在页脚顶部。拖拽行首 ⋮ 可重排顺序" />
           <button
             onClick={addLink}
             type="button"
@@ -529,7 +569,18 @@ function FooterForm({ value, onChange }: { value: SiteSettingsData["footer"]; on
             </div>
           )}
           {value.friendLinks.map((link, idx) => (
-            <div key={idx} className="flex items-center gap-2 p-2 border border-[#E9E9E9] rounded-md hover:border-[var(--party-primary)]/40 transition-colors">
+            <div
+              key={idx}
+              {...rowProps(idx)}
+              className="flex items-center gap-2 p-2 border border-[#E9E9E9] rounded-md hover:border-[var(--party-primary)]/40 transition-colors"
+            >
+              <span
+                className="flex items-center gap-1 w-10 flex-shrink-0 cursor-grab active:cursor-grabbing text-[#9CA3AF]"
+                title="拖拽以重排序"
+              >
+                <GripVerticalIcon className="w-3 h-3" />
+                <span className="text-[10px] font-mono">{idx + 1}</span>
+              </span>
               <GlobeIcon className="w-4 h-4 text-[#9CA3AF] flex-shrink-0" />
               <input
                 value={link.label}

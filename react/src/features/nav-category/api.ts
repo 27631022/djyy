@@ -97,4 +97,17 @@ export const navApi = {
     api.patch<NavItemDto>(`/nav-categories/items/${itemId}`, data).then((r) => r.data),
   deleteItem: (itemId: string) =>
     api.delete<{ ok: boolean }>(`/nav-categories/items/${itemId}`).then((r) => r.data),
+
+  /* 拖拽排序 — 拖完成立即提交,服务端整批更新 sortOrder */
+  reorderCategories: (orderedIds: string[]) =>
+    api
+      .post<{ ok: true; count: number }>("/nav-categories/reorder", { orderedIds })
+      .then((r) => r.data),
+  reorderItems: (categoryId: string, orderedIds: string[]) =>
+    api
+      .post<{ ok: true; count: number }>(
+        `/nav-categories/${categoryId}/items/reorder`,
+        { orderedIds },
+      )
+      .then((r) => r.data),
 };
