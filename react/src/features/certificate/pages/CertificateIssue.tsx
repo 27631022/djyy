@@ -21,8 +21,6 @@ import {
   AwardIcon,
   UsersIcon,
   ListChecksIcon,
-  CheckCircle2Icon,
-  AlertCircleIcon,
   Building2Icon,
 } from "lucide-react";
 import {
@@ -40,30 +38,21 @@ import {
   emptyDraft,
   loadDraft,
   clearDraft,
+  flattenRecipients,
   useDebouncedDraft,
   type CertificateDraftV1,
-  type CollectiveRow,
   type HonorRecord,
-  type PersonRow,
   type WizardStep,
 } from "../lib/certificateDraft";
 import { Step1Upload } from "../components/issue/Step1Upload";
 import { Step2HonorRecords } from "../components/issue/Step2HonorRecords";
 import { Step3RecipientsForm } from "../components/issue/Step3RecipientsForm";
+import {
+  Step4PreviewIssue,
+  type IssueResult,
+} from "../components/issue/Step4PreviewIssue";
 
 const PARTY = "var(--party-primary)";
-
-interface IssueResult {
-  /** 唯一 key:`${recordRid}-${recipientRid}` */
-  key: string;
-  /** 所属 record(按显示顺序的序号,便于结果表分组) */
-  recordIndex: number;
-  /** 当前条目对应的 record + recipient name 拼接,展示用 */
-  name: string;
-  ok: boolean;
-  certNo?: string;
-  reason?: string;
-}
 
 function todayChinese(): string {
   const d = new Date();
@@ -233,7 +222,7 @@ export default function CertificateIssuePage() {
           designState = JSON.parse(template.designJson) as DesignerState;
         } catch {
           // 模板 designJson 不合法 → 该 record 全部失败
-          const fallback = collectRecipients(record);
+          const fallback = flattenRecipients(record);
           fallback.forEach((rec) => {
             setResults((prev) => [
               ...prev,
@@ -248,7 +237,7 @@ export default function CertificateIssuePage() {
           });
           continue;
         }
-        const recipients = collectRecipients(record);
+        const recipients = flattenRecipients(record);
         const batchTotal = recipients.length;
         const issueDateCN = issueDate
           ? formatChineseDate(issueDate)
@@ -403,7 +392,7 @@ export default function CertificateIssuePage() {
         />
 
         <div className="overflow-auto p-6 flex flex-col">
-          <div className="flex-1">
+          <div className="flex-1 min-h-0">
             {step === 1 && (
               <Step1Upload
                 extractResult={extractResult}
@@ -546,38 +535,6 @@ export default function CertificateIssuePage() {
       </div>
     </div>
   );
-}
-
-/**
- * 把 record 折成可发证的扁平 recipient 列表(集体 → CollectiveRow,个人 → PersonRow)。
- * 过滤空姓名;返回每条的统一形态。
- */
-function collectRecipients(record: HonorRecord): Array<{
-  rid: string;
-  name: string;
-  empNo: string;
-  dept: string;
-  userId?: string;
-}> {
-  if (record.honorType === "collective") {
-    return record.collectives
-      .filter((c) => c.name.trim())
-      .map((c) => ({
-        rid: c.rid,
-        name: c.name.trim(),
-        empNo: "",
-        dept: "",
-      }));
-  }
-  return record.persons
-    .filter((p) => p.name.trim())
-    .map((p) => ({
-      rid: p.rid,
-      name: p.name.trim(),
-      empNo: p.empNo.trim(),
-      dept: p.dept.trim(),
-      userId: p.userId,
-    }));
 }
 
 /* ─── 左侧 Stepper ─── */
@@ -759,250 +716,4 @@ function Stepper({
   );
 }
 
-/* ─── Step 4 简版 ─── */
-
-function Step4PreviewIssue({
-  records,
-  templates,
-  yearLabel,
-  issueDate,
-  results,
-  issuing,
-  totalRecipients,
-  onIssueAll,
-}: {
-  records: HonorRecord[];
-  templates: Map<string, CertificateTemplateDto>;
-  yearLabel: string;
-  issueDate: string;
-  results: IssueResult[];
-  issuing: boolean;
-  totalRecipients: number;
-  onIssueAll: () => void;
-}) {
-  const okCount = results.filter((r) => r.ok).length;
-  const failCount = results.length - okCount;
-  const pct = totalRecipients
-    ? Math.round((results.length / totalRecipients) * 100)
-    : 0;
-
-  return (
-    <div>
-      <h2 className="text-base font-bold text-[#1A1A1A] mb-1">
-        第四步 · 清单 + 一键发证
-      </h2>
-      <p className="text-xs text-[#9CA3AF] mb-4">
-        共 {records.length} 条表彰记录,合计 {totalRecipients} 张待发证。
-        每条 record 一个 batch,certNo 各自从 001 起编号。
-        <span className="ml-2">表彰年度:</span>
-        <span className="font-mono text-[#1A1A1A]">{yearLabel}</span>
-        <span className="ml-2">表彰日期:</span>
-        <span className="font-mono text-[#1A1A1A]">{issueDate}</span>
-      </p>
-
-      {/* 进度 */}
-      {(issuing || results.length > 0) && (
-        <div className="rounded-lg bg-white border border-[#E9E9E9] p-3 mb-4">
-          <div className="flex items-center justify-between mb-2 text-xs">
-            <span className="font-medium text-[#1A1A1A]">
-              {issuing ? "发证中…" : "完成"}
-            </span>
-            <span className="text-[#6B7280] font-mono">
-              {results.length} / {totalRecipients}
-            </span>
-          </div>
-          <div className="h-2 rounded-full bg-[#F0F0F0] overflow-hidden mb-2">
-            <div
-              className="h-full bg-gradient-to-r from-[var(--party-primary)] to-[var(--party-accent)] transition-all"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <div className="flex items-center gap-4 text-xs">
-            <span className="flex items-center gap-1 text-green-700">
-              <CheckCircle2Icon className="w-3.5 h-3.5" />
-              成功 {okCount}
-            </span>
-            {failCount > 0 && (
-              <span className="flex items-center gap-1 text-red-700">
-                <AlertCircleIcon className="w-3.5 h-3.5" />
-                失败 {failCount}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 按 record 分组展示 */}
-      <div className="space-y-4">
-        {records.map((record, ri) => {
-          const t = record.templateId
-            ? templates.get(record.templateId)
-            : undefined;
-          const recordResults = results.filter((r) => r.recordIndex === ri);
-          const isCollective = record.honorType === "collective";
-          const headerColor = isCollective
-            ? "bg-blue-50 border-blue-200"
-            : "bg-orange-50 border-orange-200";
-          const recipientCount = isCollective
-            ? record.collectives.filter((c) => c.name.trim()).length
-            : record.persons.filter((p) => p.name.trim()).length;
-          return (
-            <div
-              key={record.rid}
-              className="rounded-lg border border-[#E9E9E9] overflow-hidden bg-white"
-            >
-              <div
-                className={`px-3 py-2 border-b border-[#E9E9E9] flex items-center gap-3 ${headerColor}`}
-              >
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded font-semibold border ${
-                    isCollective
-                      ? "bg-blue-100 text-blue-700 border-blue-300"
-                      : "bg-orange-100 text-orange-700 border-orange-300"
-                  }`}
-                >
-                  {isCollective ? "集体" : "个人"}
-                </span>
-                <span className="text-sm font-semibold text-[#1A1A1A] truncate">
-                  {record.honorName || t?.name || "未命名"}
-                </span>
-                <span className="text-[11px] text-[#6B7280]">
-                  · 模板 {t?.name ?? "?"} ·{" "}
-                  <span className="font-mono">{t?.honorCode ?? "?"}</span> ·{" "}
-                  {recipientCount} 张
-                </span>
-              </div>
-              {isCollective ? (
-                <CollectiveResultTable
-                  collectives={record.collectives.filter((c) => c.name.trim())}
-                  recordRid={record.rid}
-                  recordResults={recordResults}
-                />
-              ) : (
-                <PersonResultTable
-                  persons={record.persons.filter((p) => p.name.trim())}
-                  recordRid={record.rid}
-                  recordResults={recordResults}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {!issuing && results.length === 0 && (
-        <p className="mt-4 text-[10px] text-[#9CA3AF] text-center">
-          点底部「全部发证」开始 · 单张失败不影响其他继续发 ·
-          发完后可去「已发证书」批量下载 PDF
-        </p>
-      )}
-
-      {!onIssueAll && null /* 防 lint 把 prop 当 unused */}
-    </div>
-  );
-}
-
-/* ─── Step 4 result tables(按类型拆开,让 TS 准确推断行字段) ─── */
-
-function StatusCell({ res }: { res: IssueResult | undefined }) {
-  if (!res) return <span className="text-[#9CA3AF]">待发证</span>;
-  if (res.ok) {
-    return (
-      <span className="inline-flex items-center gap-1 text-green-700 font-mono">
-        <CheckCircle2Icon className="w-3.5 h-3.5" />
-        {res.certNo}
-      </span>
-    );
-  }
-  return (
-    <span
-      className="inline-flex items-center gap-1 text-red-700"
-      title={res.reason}
-    >
-      <AlertCircleIcon className="w-3.5 h-3.5" />
-      失败:{(res.reason ?? "").slice(0, 40)}
-    </span>
-  );
-}
-
-function CollectiveResultTable({
-  collectives,
-  recordRid,
-  recordResults,
-}: {
-  collectives: CollectiveRow[];
-  recordRid: string;
-  recordResults: IssueResult[];
-}) {
-  return (
-    <table className="w-full text-xs">
-      <thead className="bg-[#F7F8FA]">
-        <tr className="text-[10px] text-[#6B7280] uppercase tracking-wide">
-          <th className="px-3 py-1.5 text-left w-10">#</th>
-          <th className="px-3 py-1.5 text-left">集体名</th>
-          <th className="px-3 py-1.5 text-left">证书编号 / 状态</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-[#F0F0F0]">
-        {collectives.map((c, i) => {
-          const res = recordResults.find(
-            (r) => r.key === `${recordRid}-${c.rid}`,
-          );
-          return (
-            <tr key={c.rid}>
-              <td className="px-3 py-1.5 text-[#9CA3AF] font-mono">{i + 1}</td>
-              <td className="px-3 py-1.5 text-[#1A1A1A]">{c.name}</td>
-              <td className="px-3 py-1.5">
-                <StatusCell res={res} />
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
-}
-
-function PersonResultTable({
-  persons,
-  recordRid,
-  recordResults,
-}: {
-  persons: PersonRow[];
-  recordRid: string;
-  recordResults: IssueResult[];
-}) {
-  return (
-    <table className="w-full text-xs">
-      <thead className="bg-[#F7F8FA]">
-        <tr className="text-[10px] text-[#6B7280] uppercase tracking-wide">
-          <th className="px-3 py-1.5 text-left w-10">#</th>
-          <th className="px-3 py-1.5 text-left">姓名</th>
-          <th className="px-3 py-1.5 text-left w-28">员工编号</th>
-          <th className="px-3 py-1.5 text-left">部门</th>
-          <th className="px-3 py-1.5 text-left">证书编号 / 状态</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-[#F0F0F0]">
-        {persons.map((p, i) => {
-          const res = recordResults.find(
-            (r) => r.key === `${recordRid}-${p.rid}`,
-          );
-          return (
-            <tr key={p.rid}>
-              <td className="px-3 py-1.5 text-[#9CA3AF] font-mono">{i + 1}</td>
-              <td className="px-3 py-1.5 text-[#1A1A1A]">{p.name}</td>
-              <td className="px-3 py-1.5 font-mono text-[#6B7280]">
-                {p.empNo || "—"}
-              </td>
-              <td className="px-3 py-1.5 text-[#6B7280]">{p.dept || "—"}</td>
-              <td className="px-3 py-1.5">
-                <StatusCell res={res} />
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
-}
+/* Step 4 三列预览发证已下沉到 components/issue/Step4PreviewIssue.tsx — 容器只透传状态 */

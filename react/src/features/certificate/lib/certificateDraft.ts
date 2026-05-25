@@ -225,6 +225,43 @@ export function newHonorRecord(partial?: Partial<HonorRecord>): HonorRecord {
   };
 }
 
+/**
+ * 把 record 折成统一形态的扁平收件人列表 — 集体走 CollectiveRow,个人走 PersonRow,
+ * 都过滤掉 name 为空的脏数据。
+ *
+ * Step 4(预览 / 发证)和容器的 handleIssueAll 都用这个,
+ * 不要散在两边各写一份避免漂移。
+ */
+export interface FlatRecipient {
+  rid: string;
+  name: string;
+  empNo: string;
+  dept: string;
+  userId?: string;
+}
+
+export function flattenRecipients(record: HonorRecord): FlatRecipient[] {
+  if (record.honorType === "collective") {
+    return record.collectives
+      .filter((c) => c.name.trim())
+      .map((c) => ({
+        rid: c.rid,
+        name: c.name.trim(),
+        empNo: "",
+        dept: "",
+      }));
+  }
+  return record.persons
+    .filter((p) => p.name.trim())
+    .map((p) => ({
+      rid: p.rid,
+      name: p.name.trim(),
+      empNo: p.empNo.trim(),
+      dept: p.dept.trim(),
+      userId: p.userId,
+    }));
+}
+
 /* ─── 防抖 hook ─── */
 
 /**
