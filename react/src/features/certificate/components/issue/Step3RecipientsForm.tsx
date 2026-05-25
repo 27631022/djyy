@@ -34,6 +34,18 @@ import { parsePersonLines } from "../../lib/parsePersonLines";
 import type { CertificateTemplateDto } from "../../api";
 import { usersApi } from "@/features/user";
 
+/**
+ * 通用:按换行切 + 去空行(兼容 \r\n)。
+ * 集体批量粘贴 + 个人粘贴预览都用,避免 split 写法不一致(原 /\n/ 在 Windows
+ * CRLF 下会残留 \r 给后续 trim,虽然 trim 能盖掉但写法不一致是隐患)。
+ */
+function splitNonEmptyLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
 interface Step3RecipientsFormProps {
   record: HonorRecord;
   template?: CertificateTemplateDto;
@@ -168,10 +180,7 @@ function CollectiveEditor({
   }
 
   function applyBulk() {
-    const lines = bulkText
-      .split(/\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
+    const lines = splitNonEmptyLines(bulkText);
     if (lines.length === 0) return;
     onRecordChange({
       ...record,
@@ -184,7 +193,7 @@ function CollectiveEditor({
     setBulkOpen(false);
   }
 
-  const bulkPreviewCount = bulkText.split(/\n/).filter((l) => l.trim()).length;
+  const bulkPreviewCount = splitNonEmptyLines(bulkText).length;
   const validCount = record.collectives.filter((c) => c.name.trim()).length;
 
   return (
@@ -400,7 +409,8 @@ function IndividualEditor({
     }
   }
 
-  const pastePreviewCount = parsePersonLines(pasteText).length;
+  // 只数行(非空)即可,无需触发完整的 name/empNo 解析
+  const pastePreviewCount = splitNonEmptyLines(pasteText).length;
   const validCount = record.persons.filter((p) => p.name.trim()).length;
 
   return (
@@ -511,21 +521,7 @@ function IndividualEditor({
                   />
                 </td>
                 <td className="px-2 py-1">
-                  {p.found ? (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">
-                      <CheckCircle2Icon className="w-3 h-3" />
-                      已匹配
-                    </span>
-                  ) : p.empNo ? (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200">
-                      <AlertCircleIcon className="w-3 h-3" />
-                      库中暂无
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-[#F3F4F6] text-[#6B7280] border border-[#E5E7EB]">
-                      手填
-                    </span>
-                  )}
+                  <MatchBadge found={p.found} hasEmpNo={Boolean(p.empNo)} />
                 </td>
                 <td className="px-2 py-1 text-center">
                   <button
@@ -556,5 +552,33 @@ function IndividualEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * 个人行状态徽章:库匹配优先,其次有员工号但库里没人,最次手填。
+ * 用 early-return 替代嵌套三元(对齐项目规范)。
+ */
+function MatchBadge({ found, hasEmpNo }: { found: boolean; hasEmpNo: boolean }) {
+  if (found) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">
+        <CheckCircle2Icon className="w-3 h-3" />
+        已匹配
+      </span>
+    );
+  }
+  if (hasEmpNo) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200">
+        <AlertCircleIcon className="w-3 h-3" />
+        库中暂无
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-[#F3F4F6] text-[#6B7280] border border-[#E5E7EB]">
+      手填
+    </span>
   );
 }
