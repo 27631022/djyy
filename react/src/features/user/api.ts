@@ -138,6 +138,9 @@ export interface UserByEmpNoLite {
 
 export type LookupByEmpNoResponse = Record<string, UserByEmpNoLite | null>;
 
+/** 按姓名批量查 —— 每个姓名命中数组(0 / 1 / 多;重名时 >1) */
+export type LookupByNameResponse = Record<string, UserByEmpNoLite[]>;
+
 export const usersApi = {
   list: (q: ListUsersQuery = {}) =>
     api
@@ -181,5 +184,14 @@ export const usersApi = {
   lookupByEmpNo: (empNos: string[]) =>
     api
       .post<LookupByEmpNoResponse>("/users/lookup-by-empno", { empNos })
+      .then((r) => r.data),
+
+  /**
+   * 批量按姓名查 User —— 没填工号时用姓名兜底补工号+单位。最多 200 个。
+   * 响应:`{ [name]: UserByEmpNoLite[] }` —— 重名时数组 >1。
+   */
+  lookupByName: (names: string[]) =>
+    api
+      .post<LookupByNameResponse>("/users/lookup-by-name", { names })
       .then((r) => r.data),
 };

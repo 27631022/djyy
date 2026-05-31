@@ -411,8 +411,8 @@ export default function CertificateIssuePage() {
           }}
         />
 
-        <div className="overflow-auto p-6 flex flex-col">
-          <div className="flex-1 min-h-0">
+        <div className="flex flex-col min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-auto p-6">
             {step === 1 && (
               <Step1Upload
                 extractResult={extractResult}
@@ -475,8 +475,8 @@ export default function CertificateIssuePage() {
             )}
           </div>
 
-          {/* 底部导航 */}
-          <div className="mt-6 flex items-center justify-between pt-4 border-t border-[#E9E9E9]">
+          {/* 底部导航 — 固定在底部(flex-shrink-0),内容区单独滚动,避免人数多时表格压到按钮上 */}
+          <div className="flex-shrink-0 flex items-center justify-between px-6 py-3 border-t border-[#E9E9E9] bg-white">
             <div className="text-[11px] text-[#9CA3AF]">
               {step === 1
                 ? "选择数据来源开始"

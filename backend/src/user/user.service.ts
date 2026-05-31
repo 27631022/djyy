@@ -8,6 +8,7 @@ import { ReplaceRolesDto, SCOPE_VALUES } from './dto/replace-roles.dto';
 import { ListUsersQuery } from './dto/list-users.query';
 import {
   LookupByEmpNoDto,
+  LookupByNameDto,
   UserByEmpNoLite,
 } from './dto/lookup-by-empno.dto';
 import { AuditService } from '../audit';
@@ -366,6 +367,48 @@ export class UserService {
         partyOrgName: partyMember?.org.name ?? null,
         partyOrgId: partyMember?.orgId ?? null,
       };
+    }
+    return result;
+  }
+
+  /**
+   * 批量按姓名查 User —— 发证页:粘贴的人没填工号时,用姓名兜底补工号+单位。
+   * 姓名可能重名 → 每个姓名返回命中数组(0 / 1 / 多)。
+   * 前端:命中 1 个 → 补工号+单位并标「按姓名·待核对」;命中多个 → 标「重名·待核对」不自动补工号。
+   */
+  async lookupByName(
+    dto: LookupByNameDto,
+  ): Promise<Record<string, UserByEmpNoLite[]>> {
+    const names = Array.from(
+      new Set(dto.names.map((n) => n.trim()).filter(Boolean)),
+    );
+    const result: Record<string, UserByEmpNoLite[]> = {};
+    for (const n of names) result[n] = [];
+    if (names.length === 0) return result;
+
+    const users = await this.prisma.user.findMany({
+      where: { name: { in: names } },
+      include: {
+        memberships: { include: { org: true }, orderBy: [{ isPrimary: 'desc' }] },
+      },
+    });
+
+    for (const u of users) {
+      const adminMember =
+        u.memberships.find((m) => m.org.kind === 'admin' && m.isPrimary) ??
+        u.memberships.find((m) => m.org.kind === 'admin');
+      const partyMember =
+        u.memberships.find((m) => m.org.kind === 'party' && m.isPrimary) ??
+        u.memberships.find((m) => m.org.kind === 'party');
+      (result[u.name] ??= []).push({
+        id: u.id,
+        username: u.username,
+        name: u.name,
+        adminOrgName: adminMember?.org.name ?? null,
+        adminOrgId: adminMember?.orgId ?? null,
+        partyOrgName: partyMember?.org.name ?? null,
+        partyOrgId: partyMember?.orgId ?? null,
+      });
     }
     return result;
   }

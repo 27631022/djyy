@@ -22,3 +22,33 @@ export function buildOrgPath(tree: OrgTreeNode[], orgId: string): string {
   };
   return walk(tree, []) ?? "";
 }
+
+/**
+ * 按名称在组织树里找匹配的单位:先精确(节点名完全相等),再模糊(节点名与查询互相包含)。
+ * 用于「先进集体」按集体名兜底匹配所在单位 —— 不精确的命中由调用方标「待核对」。
+ * 返回 { orgId, path 全称路径, exact 是否完全相同 },无命中返回 null。
+ */
+export function findOrgByName(
+  tree: OrgTreeNode[],
+  rawName: string,
+): { orgId: string; path: string; exact: boolean } | null {
+  const name = rawName.trim();
+  if (!name) return null;
+  const flat: { id: string; name: string; path: string }[] = [];
+  const walk = (nodes: OrgTreeNode[], trail: string[]) => {
+    for (const n of nodes) {
+      const next = [...trail, n.name];
+      flat.push({ id: n.id, name: n.name, path: next.join(" / ") });
+      if (n.children?.length) walk(n.children, next);
+    }
+  };
+  walk(tree, []);
+  const exact = flat.find((f) => f.name === name);
+  if (exact) return { orgId: exact.id, path: exact.path, exact: true };
+  // 模糊:互相包含,取名字最长的(最具体)那个
+  const fuzzy = flat
+    .filter((f) => f.name.includes(name) || name.includes(f.name))
+    .sort((a, b) => b.name.length - a.name.length)[0];
+  if (fuzzy) return { orgId: fuzzy.id, path: fuzzy.path, exact: false };
+  return null;
+}

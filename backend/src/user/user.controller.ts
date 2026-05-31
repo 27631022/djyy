@@ -19,7 +19,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ReplaceMembershipsDto } from './dto/replace-memberships.dto';
 import { ReplaceRolesDto } from './dto/replace-roles.dto';
 import { ListUsersQuery } from './dto/list-users.query';
-import { LookupByEmpNoDto } from './dto/lookup-by-empno.dto';
+import { LookupByEmpNoDto, LookupByNameDto } from './dto/lookup-by-empno.dto';
 
 @Controller('users')
 @UseGuards(AuthGuard)
@@ -40,6 +40,15 @@ export class UserController {
   @Post('lookup-by-empno')
   lookupByEmpNo(@Body() dto: LookupByEmpNoDto) {
     return this.users.lookupByEmpNo(dto);
+  }
+
+  /**
+   * 批量按姓名查 User(发证页:没填工号时用姓名兜底补工号+单位)。
+   * 同样必须放在 `:id` 之前。返回「姓名 → 命中数组」,重名时数组 >1。
+   */
+  @Post('lookup-by-name')
+  lookupByName(@Body() dto: LookupByNameDto) {
+    return this.users.lookupByName(dto);
   }
 
   @Get(':id')

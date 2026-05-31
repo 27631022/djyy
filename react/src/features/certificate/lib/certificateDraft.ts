@@ -47,6 +47,10 @@ export interface PersonRow {
   userId?: string;
   /** 库中是否找到 — 控制 UI 状态徽章 */
   found: boolean;
+  /** 工号/单位是「按姓名」兜底补的(非工号精确匹配)→ 标「待核对」重点检查 */
+  byName?: boolean;
+  /** 姓名命中多人(重名)→ 未自动补工号,标「重名·待核对」 */
+  ambiguous?: boolean;
 }
 
 /**
@@ -62,6 +66,8 @@ export interface CollectiveRow {
   dept: string;
   /** 选中的组织 orgId — 让 OrgPicker 能回显选中项 */
   deptOrgId?: string;
+  /** 单位由「按集体名」模糊匹配填入(名称不完全相同)→ 标「待核对」重点检查 */
+  deptReview?: boolean;
 }
 
 /**
@@ -223,6 +229,8 @@ export function newPersonRow(partial?: Partial<PersonRow>): PersonRow {
     deptOrgId: partial?.deptOrgId,
     userId: partial?.userId,
     found: partial?.found ?? false,
+    byName: partial?.byName,
+    ambiguous: partial?.ambiguous,
   };
 }
 
@@ -232,6 +240,7 @@ export function newCollectiveRow(partial?: Partial<CollectiveRow>): CollectiveRo
     name: partial?.name ?? "",
     dept: partial?.dept ?? "",
     deptOrgId: partial?.deptOrgId,
+    deptReview: partial?.deptReview,
   };
 }
 

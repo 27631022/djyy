@@ -23,6 +23,19 @@ export class LookupByEmpNoDto {
   empNos!: string[];
 }
 
+/**
+ * 批量按姓名查 User —— 发证页:粘贴的人没填工号时,用姓名兜底补工号+单位。
+ * 姓名可能重名,故返回是「姓名 → 命中数组」。
+ */
+export class LookupByNameDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @MaxLength(64, { each: true })
+  names!: string[];
+}
+
 /** 单条返回 —— 命中则给摘要,未命中则 null */
 export interface UserByEmpNoLite {
   id: string;

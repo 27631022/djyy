@@ -32,7 +32,7 @@ import {
   type PersonRow,
 } from "../../lib/certificateDraft";
 import { parsePersonLines } from "../../lib/parsePersonLines";
-import { buildOrgPath } from "../../lib/orgPath";
+import { buildOrgPath, findOrgByName } from "../../lib/orgPath";
 import type { CertificateTemplateDto } from "../../api";
 import { usersApi, OrgPicker } from "@/features/user";
 import { organizationsApi, type OrgTreeNode } from "@/features/organization";
@@ -210,8 +210,35 @@ function CollectiveEditor({
     setBulkText("");
   }
 
+  /** 按集体名在组织树里匹配所在单位:精确则填,模糊则填并标「待核对」;已手动选过的(有 deptOrgId)不覆盖 */
+  function matchByNames() {
+    let exactN = 0;
+    let fuzzyN = 0;
+    let missN = 0;
+    const next = record.collectives.map((c) => {
+      if (!c.name.trim() || c.deptOrgId) return c;
+      const m = findOrgByName(orgTree, c.name);
+      if (!m) {
+        missN += 1;
+        return c;
+      }
+      if (m.exact) exactN += 1;
+      else fuzzyN += 1;
+      return { ...c, deptOrgId: m.orgId, dept: m.path, deptReview: !m.exact };
+    });
+    onRecordChange({ ...record, collectives: next });
+    const parts: string[] = [];
+    if (exactN) parts.push(`精确 ${exactN}`);
+    if (fuzzyN) parts.push(`模糊 ${fuzzyN}(待核对)`);
+    if (missN) parts.push(`未命中 ${missN}(请手动点选)`);
+    toast.success(
+      parts.length ? `按名称匹配:${parts.join(" · ")}` : "没有可匹配的集体",
+    );
+  }
+
   const bulkPreviewCount = splitNonEmptyLines(bulkText).length;
   const validCount = record.collectives.filter((c) => c.name.trim()).length;
+  const reviewCount = record.collectives.filter((c) => c.deptReview).length;
 
   return (
     <div>
@@ -293,6 +320,7 @@ function CollectiveEditor({
                       patchCollective(c.rid, {
                         deptOrgId: orgId || undefined,
                         dept: orgId ? buildOrgPath(orgTree, orgId) : "",
+                        deptReview: false,
                       })
                     }
                     title="选择所在单位/部门"
@@ -300,6 +328,12 @@ function CollectiveEditor({
                     placeholder="(从组织选)"
                     width="w-full"
                   />
+                  {c.deptReview && (
+                    <span className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                      <AlertCircleIcon className="w-2.5 h-2.5" />
+                      名称不完全匹配·待核对
+                    </span>
+                  )}
                   {c.dept && !c.deptOrgId && (
                     <div
                       className="mt-0.5 text-[10px] text-[#9CA3AF] truncate"
@@ -324,16 +358,30 @@ function CollectiveEditor({
           </tbody>
         </table>
         <div className="px-2 py-2 border-t border-[#F0F0F0] bg-[#FAFAFB] flex items-center justify-between">
-          <button
-            type="button"
-            onClick={addCollective}
-            className="flex items-center gap-1 text-[11px] text-[var(--party-primary)] hover:underline"
-          >
-            <PlusIcon className="w-3 h-3" />
-            添加一行
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={addCollective}
+              className="flex items-center gap-1 text-[11px] text-[var(--party-primary)] hover:underline"
+            >
+              <PlusIcon className="w-3 h-3" />
+              添加一行
+            </button>
+            <button
+              type="button"
+              onClick={matchByNames}
+              title="按集体名在组织树里匹配所在单位(不精确的会标「待核对」)"
+              className="flex items-center gap-1 text-[11px] text-[#6B7280] hover:text-[var(--party-primary)]"
+            >
+              <ScanLineIcon className="w-3 h-3" />
+              按名称匹配单位
+            </button>
+          </div>
           <span className="text-[10px] text-[#9CA3AF]">
             有效:{validCount} / {record.collectives.length}
+            {reviewCount > 0 && (
+              <span className="ml-1 text-amber-600">· {reviewCount} 待核对</span>
+            )}
           </span>
         </div>
       </div>
@@ -386,50 +434,88 @@ function IndividualEditor({
     }
     setBusy(true);
     try {
-      // 拿出需要去库里查的 empNo(去重 + 非空)
+      // 有工号 → 按工号精确查;没工号 → 收集姓名按姓名兜底查
       const empNos = Array.from(
         new Set(parsed.map((p) => p.empNo).filter(Boolean)),
       );
-      let lookup: Awaited<ReturnType<typeof usersApi.lookupByEmpNo>> = {};
-      if (empNos.length > 0) {
-        try {
-          lookup = await usersApi.lookupByEmpNo(empNos);
-        } catch {
-          toast.warning(
-            "员工号批量查询失败,所有行按「库中暂无」状态保留 — 仍可手填部门继续发证",
-          );
-        }
+      const nameOnly = Array.from(
+        new Set(
+          parsed
+            .filter((p) => !p.empNo && p.name.trim())
+            .map((p) => p.name.trim()),
+        ),
+      );
+      let byEmpNo: Awaited<ReturnType<typeof usersApi.lookupByEmpNo>> = {};
+      let byName: Awaited<ReturnType<typeof usersApi.lookupByName>> = {};
+      try {
+        if (empNos.length > 0) byEmpNo = await usersApi.lookupByEmpNo(empNos);
+        if (nameOnly.length > 0) byName = await usersApi.lookupByName(nameOnly);
+      } catch {
+        toast.warning("批量查询失败,未命中的行按手填保留 — 仍可发证");
       }
+
       const newPersons: PersonRow[] = parsed.map((p) => {
-        const hit = p.empNo ? lookup[p.empNo] : null;
-        // 主行政归属能在行政树里定位 → 存 orgId(让 OrgPicker 回显)+ 取全称路径;
-        // 否则退到行政/党组织名做快照,orgId 留空(用户可再点选规范化)
-        const adminId = hit?.adminOrgId ?? null;
-        const adminPath = adminId ? buildOrgPath(orgTree, adminId) : "";
-        return newPersonRow({
-          // 命中库优先用库里的姓名(更规范),否则用粘贴的姓名
-          name: hit?.name ?? p.name,
-          empNo: p.empNo,
-          dept: adminPath || hit?.adminOrgName || hit?.partyOrgName || "",
-          deptOrgId: adminPath ? adminId ?? undefined : undefined,
-          userId: hit?.id,
-          found: Boolean(hit),
-        });
+        // 1) 有工号 → 按工号精确匹配(主路径)
+        if (p.empNo) {
+          const hit = byEmpNo[p.empNo];
+          const adminId = hit?.adminOrgId ?? null;
+          const adminPath = adminId ? buildOrgPath(orgTree, adminId) : "";
+          return newPersonRow({
+            name: hit?.name ?? p.name,
+            empNo: p.empNo,
+            dept: adminPath || hit?.adminOrgName || hit?.partyOrgName || "",
+            deptOrgId: adminPath ? adminId ?? undefined : undefined,
+            userId: hit?.id,
+            found: Boolean(hit),
+          });
+        }
+        // 2) 没工号 → 按姓名兜底补工号+单位
+        const matches = byName[p.name.trim()] ?? [];
+        if (matches.length === 1) {
+          // 唯一命中 → 补工号 + 单位,标「按姓名·待核对」(重点检查)
+          const hit = matches[0];
+          const adminId = hit.adminOrgId ?? null;
+          const adminPath = adminId ? buildOrgPath(orgTree, adminId) : "";
+          return newPersonRow({
+            name: hit.name,
+            empNo: hit.username,
+            dept: adminPath || hit.adminOrgName || hit.partyOrgName || "",
+            deptOrgId: adminPath ? adminId ?? undefined : undefined,
+            userId: hit.id,
+            found: true,
+            byName: true,
+          });
+        }
+        if (matches.length > 1) {
+          // 重名多人 → 不自动补工号(避免认错人),标「重名·待核对」
+          return newPersonRow({
+            name: p.name,
+            empNo: "",
+            found: false,
+            byName: true,
+            ambiguous: true,
+          });
+        }
+        // 3) 没命中 → 手填
+        return newPersonRow({ name: p.name, empNo: "", found: false });
       });
+
       onRecordChange({
         ...record,
         persons: [...record.persons, ...newPersons],
       });
       setPasteText("");
-      const hits = newPersons.filter((p) => p.found).length;
-      const misses = newPersons.length - hits;
-      if (misses === 0) {
-        toast.success(`已识别 ${newPersons.length} 人,全部命中库`);
-      } else {
-        toast.success(
-          `已识别 ${newPersons.length} 人,${hits} 命中 / ${misses} 暂无(可手填部门保留)`,
-        );
-      }
+
+      const empnoHits = newPersons.filter((p) => p.found && !p.byName).length;
+      const nameHits = newPersons.filter((p) => p.found && p.byName).length;
+      const dupes = newPersons.filter((p) => p.ambiguous).length;
+      const misses = newPersons.filter((p) => !p.found && !p.ambiguous).length;
+      const parts = [`识别 ${newPersons.length} 人`];
+      if (empnoHits) parts.push(`工号命中 ${empnoHits}`);
+      if (nameHits) parts.push(`姓名补足 ${nameHits}(待核对)`);
+      if (dupes) parts.push(`重名 ${dupes}(待核对)`);
+      if (misses) parts.push(`未命中 ${misses}`);
+      toast.success(parts.join(" · "));
     } finally {
       setBusy(false);
     }
@@ -525,11 +611,13 @@ function IndividualEditor({
                     type="text"
                     value={p.empNo}
                     onChange={(e) =>
-                      // 手动改 empNo → 该行视为未匹配,清掉 found + userId 防止误绑
+                      // 手动改 empNo → 该行视为未匹配,清掉 found/userId/待核对标记 防止误绑
                       patchPerson(p.rid, {
                         empNo: e.target.value,
                         found: false,
                         userId: undefined,
+                        byName: false,
+                        ambiguous: false,
                       })
                     }
                     placeholder="可选"
@@ -561,7 +649,12 @@ function IndividualEditor({
                   )}
                 </td>
                 <td className="px-2 py-1">
-                  <MatchBadge found={p.found} hasEmpNo={Boolean(p.empNo)} />
+                  <MatchBadge
+                    found={p.found}
+                    hasEmpNo={Boolean(p.empNo)}
+                    byName={p.byName}
+                    ambiguous={p.ambiguous}
+                  />
                 </td>
                 <td className="px-2 py-1 text-center">
                   <button
@@ -599,7 +692,35 @@ function IndividualEditor({
  * 个人行状态徽章:库匹配优先,其次有员工号但库里没人,最次手填。
  * 用 early-return 替代嵌套三元(对齐项目规范)。
  */
-function MatchBadge({ found, hasEmpNo }: { found: boolean; hasEmpNo: boolean }) {
+function MatchBadge({
+  found,
+  hasEmpNo,
+  byName,
+  ambiguous,
+}: {
+  found: boolean;
+  hasEmpNo: boolean;
+  byName?: boolean;
+  ambiguous?: boolean;
+}) {
+  // 重名命中多人:没自动补工号,重点核对
+  if (ambiguous) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+        <AlertCircleIcon className="w-3 h-3" />
+        重名·待核对
+      </span>
+    );
+  }
+  // 按姓名兜底补的工号/单位:重点核对(可能认错人)
+  if (found && byName) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+        <AlertCircleIcon className="w-3 h-3" />
+        按姓名·待核对
+      </span>
+    );
+  }
   if (found) {
     return (
       <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">
