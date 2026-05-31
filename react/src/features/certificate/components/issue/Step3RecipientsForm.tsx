@@ -153,7 +153,6 @@ function CollectiveEditor({
   record: HonorRecord;
   onRecordChange: (record: HonorRecord) => void;
 }) {
-  const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
 
   function patchCollective(crid: string, patch: Partial<CollectiveRow>) {
@@ -190,7 +189,6 @@ function CollectiveEditor({
       ],
     });
     setBulkText("");
-    setBulkOpen(false);
   }
 
   const bulkPreviewCount = splitNonEmptyLines(bulkText).length;
@@ -198,6 +196,36 @@ function CollectiveEditor({
 
   return (
     <div>
+      {/* 批量粘贴区(置顶常显,与个人录入位置一致)*/}
+      <div className="rounded-lg border border-[#E9E9E9] bg-white p-3 mb-4">
+        <div className="text-[11px] text-[#6B7280] mb-2">
+          批量粘贴受表彰单位 / 集体,<span className="font-mono mx-0.5">每行 1 个</span>
+          (空行自动忽略)。点「追加」加到下方列表(不覆盖已有)。
+        </div>
+        <textarea
+          value={bulkText}
+          onChange={(e) => setBulkText(e.target.value)}
+          rows={5}
+          placeholder={"机关党支部\n青年突击队\n第二联络部党支部\n后勤保障党小组"}
+          className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none font-mono"
+        />
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-[10px] text-[#9CA3AF]">
+            预解析到 {bulkPreviewCount} 行
+          </span>
+          <button
+            type="button"
+            onClick={applyBulk}
+            disabled={bulkPreviewCount === 0}
+            className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: "var(--party-primary)" }}
+          >
+            <ClipboardListIcon className="w-3.5 h-3.5" />
+            追加 {bulkPreviewCount} 项
+          </button>
+        </div>
+      </div>
+
       <div className="rounded-lg border border-[#E9E9E9] overflow-hidden bg-white">
         <table className="w-full text-xs">
           <thead className="bg-[#F7F8FA]">
@@ -216,7 +244,7 @@ function CollectiveEditor({
                   colSpan={3}
                   className="px-2 py-6 text-center text-[#9CA3AF] text-xs"
                 >
-                  还没有录入 —— 点底部「+ 添加一行」或「批量粘贴」开始
+                  还没有录入 —— 上方批量粘贴,或点下方「+ 添加一行」
                 </td>
               </tr>
             )}
@@ -254,70 +282,19 @@ function CollectiveEditor({
           </tbody>
         </table>
         <div className="px-2 py-2 border-t border-[#F0F0F0] bg-[#FAFAFB] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={addCollective}
-              className="flex items-center gap-1 text-[11px] text-[var(--party-primary)] hover:underline"
-            >
-              <PlusIcon className="w-3 h-3" />
-              添加一行
-            </button>
-            <span className="w-px h-3 bg-[#E9E9E9]" />
-            <button
-              type="button"
-              onClick={() => setBulkOpen((v) => !v)}
-              className="flex items-center gap-1 text-[11px] text-[#6B7280] hover:text-[var(--party-primary)] hover:underline"
-            >
-              <ClipboardListIcon className="w-3 h-3" />
-              {bulkOpen ? "收起批量粘贴" : "批量粘贴(每行 1 个)"}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={addCollective}
+            className="flex items-center gap-1 text-[11px] text-[var(--party-primary)] hover:underline"
+          >
+            <PlusIcon className="w-3 h-3" />
+            添加一行
+          </button>
           <span className="text-[10px] text-[#9CA3AF]">
             有效:{validCount} / {record.collectives.length}
           </span>
         </div>
       </div>
-
-      {bulkOpen && (
-        <div className="mt-3 p-3 rounded-lg bg-white border border-[#E9E9E9]">
-          <div className="text-[11px] text-[#6B7280] mb-2">
-            把名单粘进来,每行 1 个(空行自动忽略)。会
-            <span className="font-semibold text-[#1A1A1A]">追加</span>
-            到已有列表后面,不覆盖。
-          </div>
-          <textarea
-            value={bulkText}
-            onChange={(e) => setBulkText(e.target.value)}
-            rows={5}
-            placeholder={
-              "机关党支部\n青年突击队\n第二联络部党支部\n后勤保障党小组"
-            }
-            className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none font-mono"
-          />
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setBulkText("");
-                setBulkOpen(false);
-              }}
-              className="px-3 py-1 text-xs rounded border border-[#E9E9E9] hover:bg-[#F7F8FA]"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              onClick={applyBulk}
-              disabled={bulkPreviewCount === 0}
-              className="px-3 py-1 text-xs rounded text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: "var(--party-primary)" }}
-            >
-              追加 {bulkPreviewCount} 项
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -419,17 +396,18 @@ function IndividualEditor({
       <div className="rounded-lg border border-[#E9E9E9] bg-white p-3 mb-4">
         <div className="flex items-center justify-between mb-2">
           <div className="text-[11px] text-[#6B7280]">
-            粘贴名单,每行 1 人 — 空格 / Tab / 逗号(中英都行)分隔
+            粘贴名单,每行 1 人 —
             <span className="font-mono mx-1">姓名</span>和
-            <span className="font-mono mx-1">员工编号</span>。顺序无所谓,
-            3 位以上纯数字识别为员工号。
+            <span className="font-mono mx-1">员工编号</span>
+            可用 空格 / 逗号 / 顿号 / - / . 等分隔,也可直接连写(如「张三10001」);
+            全角半角都行,顺序无所谓,3 位以上数字识别为员工号。
           </div>
         </div>
         <textarea
           value={pasteText}
           onChange={(e) => setPasteText(e.target.value)}
           rows={5}
-          placeholder={"张三  10001\n李四,20003\n10005  王五\n赵六 30002 综合处(职务/备注会被忽略)"}
+          placeholder={"张三 10001\n李四、20003\n王五10005\n10002 赵六(分隔/顺序随意,备注忽略)"}
           className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none font-mono"
         />
         <div className="mt-2 flex items-center justify-between">
