@@ -49,6 +49,45 @@ export const DEFAULT_VARIABLES: VariableField[] = [
   { key: "grade", label: "成绩/等级", defaultValue: "{{成绩}}", sampleValue: "优秀" },
 ];
 
+/**
+ * 证书变量面板 / 插入器实际展示的预设变量(按荣誉类型策划)。
+ * 个人 / 集体都用这 5 个:证书编号 · 姓名(集体=获奖集体) · 颁发日期 · 有效期 · 颁发机构。
+ * DEFAULT_VARIABLES 里其余 key(职务 / 部门 / 等级)仍保留在 state.variables,
+ * 仅用于兼容老模板已放置的占位符替换,不再出现在面板里。
+ */
+export const CERT_PALETTE_KEYS = [
+  "certNo",
+  "name",
+  "issueDate",
+  "validUntil",
+  "issuer",
+] as const;
+
+/**
+ * 按荣誉类型把 "name" 变量在「姓名 / 获奖集体」之间切换。
+ * 只改显示 label + 示例值;占位符 token 保持 {{姓名}} 不变 —— 改 token 会导致
+ * 此前已用 {{姓名}} 设计的集体模板替换不上。值映射按 key("name")走,个人/集体通用。
+ */
+export function deriveVariables(
+  variables: VariableField[],
+  honorType: "individual" | "collective",
+): VariableField[] {
+  return variables.map((v) => {
+    if (v.key !== "name") return v;
+    return honorType === "collective"
+      ? { ...v, label: "获奖集体", sampleValue: "青年突击队" }
+      : { ...v, label: "姓名", sampleValue: "张三" };
+  });
+}
+
+/** 取面板/插入器要展示的变量(CERT_PALETTE_KEYS 子集,按其顺序) */
+export function paletteVariables(variables: VariableField[]): VariableField[] {
+  const byKey = new Map(variables.map((v) => [v.key, v]));
+  return CERT_PALETTE_KEYS.map((k) => byKey.get(k)).filter(
+    (v): v is VariableField => Boolean(v),
+  );
+}
+
 export function emptyDesignerState(width = 800, height = 566): DesignerState {
   return {
     elements: [],
@@ -300,11 +339,31 @@ export function pickElementAt(
   return null;
 }
 
-/** 把变量占位符 {{label}} 替换为 sampleValue,用于预览模式(Phase D) */
+/** 正则元字符转义 — 用 label 拼正则时防止 "/" 等字符破坏匹配 */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * 把文本里的变量占位符替换为 sampleValue,用于预览 / 发证渲染。
+ *
+ * 匹配两种形态,优先级从精确到兼容:
+ *  1. 变量自身的占位符串 `v.defaultValue`(如 "{{成绩}}")——元素就是用它创建的,
+ *     用 split/join 精确替换,不走正则,避免特殊字符问题。
+ *     (修复历史 bug:旧实现用 `{{label}}` 拼正则,而 grade 的 label "成绩/等级"
+ *      与占位符 "{{成绩}}" 对不上,导致 grade 永远替换不掉。)
+ *  2. `{{label}}` 形式(老数据 / 用户手填),正则匹配并转义 label。
+ */
 export function replaceVariables(text: string, variables: VariableField[]): string {
   let out = text;
   for (const v of variables) {
-    out = out.replace(new RegExp(`\\{\\{\\s*${v.label}\\s*\\}\\}`, "g"), v.sampleValue);
+    if (v.defaultValue) {
+      out = out.split(v.defaultValue).join(v.sampleValue);
+    }
+    out = out.replace(
+      new RegExp(`\\{\\{\\s*${escapeRegExp(v.label)}\\s*\\}\\}`, "g"),
+      v.sampleValue,
+    );
   }
   return out;
 }

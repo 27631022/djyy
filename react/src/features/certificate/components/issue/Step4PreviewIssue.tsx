@@ -33,6 +33,7 @@ import {
   type HonorRecord,
 } from "../../lib/certificateDraft";
 import type { DesignerState } from "../../lib/designerTypes";
+import { buildVariableValues } from "../../lib/variableMapping";
 
 /* ─── 与容器约定的结果形态 ─── */
 
@@ -56,27 +57,6 @@ interface Step4PreviewIssueProps {
   totalRecipients: number;
   /** 父容器持有的发证执行函数,Step 4 只是个 view */
   onIssueAll: () => void;
-}
-
-/* ─── 小工具 ─── */
-
-function formatChineseDate(iso: string): string {
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return iso;
-  return `${m[1]}年${m[2]}月${m[3]}日`;
-}
-
-/** 预览时还没真发证 → certNo 用 batch 形态的占位 */
-function placeholderCertNo(
-  yearLabel: string,
-  honorCode: string | null,
-  total: number,
-  seqIdx: number,
-): string {
-  const code = honorCode ?? "----";
-  const totalStr = String(Math.max(1, total)).padStart(2, "0");
-  const seqStr = String(seqIdx + 1).padStart(3, "0");
-  return `${yearLabel}-${code}-${totalStr}-${seqStr}`;
 }
 
 /* ─── 主组件 ─── */
@@ -141,12 +121,12 @@ export function Step4PreviewIssue({
     if (idx < 0 || recipients.length === 0) return null;
     const recipient = recipients[idx];
 
-    const variables: Record<string, string> = {
-      name: recipient.name,
-      issueDate: formatChineseDate(issueDate),
-      certNo: placeholderCertNo(yearLabel, t.honorCode, recipients.length, idx),
-    };
-    if (recipient.dept) variables.department = recipient.dept;
+    const variables = buildVariableValues({
+      recipient: { name: recipient.name, dept: recipient.dept },
+      template: t,
+      yearLabel,
+      issueDate,
+    });
 
     return { state, template: t, variables, recipient };
   }, [effectiveHover, records, templates, yearLabel, issueDate]);

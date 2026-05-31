@@ -32,6 +32,7 @@ import {
 } from "@/features/certificate";
 import { useAuth } from "@/stores/auth";
 import { generateCertificatePdfDataUrl } from "../lib/certificatePdf";
+import { buildVariableValues } from "../lib/variableMapping";
 import { isValidYearLabel } from "../lib/certificateNumber";
 import type { DesignerState } from "../lib/designerTypes";
 import {
@@ -53,17 +54,6 @@ import {
 } from "../components/issue/Step4PreviewIssue";
 
 const PARTY = "var(--party-primary)";
-
-function todayChinese(): string {
-  const d = new Date();
-  return `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, "0")}月${String(d.getDate()).padStart(2, "0")}日`;
-}
-
-function formatChineseDate(iso: string): string {
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return iso;
-  return `${m[1]}年${m[2]}月${m[3]}日`;
-}
 
 /** record 的有效收件人数(按类型取对应数组里非空的那些) */
 function recipientCountOf(record: HonorRecord): number {
@@ -239,16 +229,14 @@ export default function CertificateIssuePage() {
         }
         const recipients = flattenRecipients(record);
         const batchTotal = recipients.length;
-        const issueDateCN = issueDate
-          ? formatChineseDate(issueDate)
-          : todayChinese();
         for (const rec of recipients) {
-          const variableValues: Record<string, string> = {
-            name: rec.name,
-            issueDate: issueDateCN,
-            certNo: "待生成",
-          };
-          if (rec.dept) variableValues.department = rec.dept;
+          // 统一映射:三处(发证/预览/CSV)共用,确保每个变量都拿到真实值或显式空串
+          const variableValues = buildVariableValues({
+            recipient: { name: rec.name, dept: rec.dept },
+            template,
+            yearLabel,
+            issueDate,
+          });
           let result: IssueResult;
           try {
             const pdfData = await generateCertificatePdfDataUrl(

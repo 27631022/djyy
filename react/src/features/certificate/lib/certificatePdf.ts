@@ -108,19 +108,30 @@ function injectVariableValues(
   });
 }
 
+/** 发证 / 导出 PDF·PNG 的超采样倍率。设计像素 × 3 → 屏幕、截图、A4/A5 打印都够清晰 */
+export const EXPORT_SCALE = 3;
+
 /**
- * 渲染 state 到指定 canvas(尺寸跟 state 一致),含预加载。
- * 用于:1) 发证页预览 2) PDF 生成
+ * 渲染 state 到指定 canvas,含预加载。
+ * 用于:1) 发证页预览 2) PDF/PNG 生成
+ *
+ * scale = 超采样倍率:backing store 放大到 设计尺寸 × scale,再用 ctx.setTransform(scale)
+ * 让所有渲染代码继续用逻辑坐标 —— 这样画布像素更多 = 更清晰,渲染逻辑零改动。
+ *   - 屏幕预览传 devicePixelRatio(高分屏不糊)
+ *   - 导出/发证 PDF 传 EXPORT_SCALE(下载/打印清晰)
  */
 export async function renderStateToCanvas(
   canvas: HTMLCanvasElement,
   state: DesignerState,
   variableValues: Record<string, string> = {},
+  scale = 1,
 ): Promise<void> {
-  canvas.width = state.canvasWidth;
-  canvas.height = state.canvasHeight;
+  const s = scale > 0 ? scale : 1;
+  canvas.width = Math.round(state.canvasWidth * s);
+  canvas.height = Math.round(state.canvasHeight * s);
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("无法获取画布上下文");
+  ctx.setTransform(s, 0, 0, s, 0, 0);
 
   const stateWithValues: DesignerState = {
     ...state,
@@ -131,13 +142,13 @@ export async function renderStateToCanvas(
   renderAll(ctx, stateWithValues, { bgImage, imageCache, isPreview: true });
 }
 
-/** 生成证书 PDF 的 data URL(data:application/pdf;base64,...) */
+/** 生成证书 PDF 的 data URL(data:application/pdf;base64,...)。图按 EXPORT_SCALE 超采样,页面仍用逻辑尺寸 → 高 DPI */
 export async function generateCertificatePdfDataUrl(
   state: DesignerState,
   variableValues: Record<string, string>,
 ): Promise<string> {
   const canvas = document.createElement("canvas");
-  await renderStateToCanvas(canvas, state, variableValues);
+  await renderStateToCanvas(canvas, state, variableValues, EXPORT_SCALE);
 
   const imgData = canvas.toDataURL("image/png");
   const w = state.canvasWidth;
@@ -148,8 +159,19 @@ export async function generateCertificatePdfDataUrl(
     format: [w, h],
     hotfixes: ["px_scaling"],
   });
+  // 页面尺寸是逻辑 w×h,但 imgData 是 ×EXPORT_SCALE 的高清图 → 嵌入后等效高 DPI
   pdf.addImage(imgData, "PNG", 0, 0, w, h);
   return pdf.output("datauristring");
+}
+
+/** 生成证书 PNG 的 data URL(高清,按 EXPORT_SCALE 超采样) */
+export async function generateCertificatePngDataUrl(
+  state: DesignerState,
+  variableValues: Record<string, string> = {},
+): Promise<string> {
+  const canvas = document.createElement("canvas");
+  await renderStateToCanvas(canvas, state, variableValues, EXPORT_SCALE);
+  return canvas.toDataURL("image/png");
 }
 
 /** 触发浏览器下载 — 把 data URL 包成 <a download> 点一下 */

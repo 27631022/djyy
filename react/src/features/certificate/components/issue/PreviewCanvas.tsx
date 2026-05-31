@@ -34,7 +34,9 @@ export function PreviewCanvas({
       const canvas = canvasRef.current;
       if (!canvas) return;
       try {
-        await renderStateToCanvas(canvas, state, variableValues);
+        // 屏幕预览按高分屏倍率超采样(封顶 ×3),避免 Retina / 系统缩放下发糊
+        const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+        await renderStateToCanvas(canvas, state, variableValues, dpr);
         if (!cancelled) setRenderTick((t) => t + 1);
       } catch (e) {
         // 预览渲染失败不打断流程

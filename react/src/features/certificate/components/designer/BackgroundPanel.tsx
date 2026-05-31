@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { ImageIcon, TrashIcon, UploadIcon } from "lucide-react";
 import type { CanvasBackground } from "../../lib/designerTypes";
+import { EXPORT_SCALE } from "../../lib/certificatePdf";
 import { toast } from "sonner";
 
 interface BackgroundPanelProps {
@@ -11,7 +12,9 @@ interface BackgroundPanelProps {
   onCanvasSizeChange: (w: number, h: number) => void;
 }
 
-const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB,base64 进 designJson 用 — 再大模板会很臃肿
+// 底图按 ×EXPORT_SCALE 超采样导出,需要较高分辨率才清晰,故放宽到 8MB。
+// (base64 进 designJson 存库,过大模板会臃肿 —— 8MB 是清晰度与体积的平衡)
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 /**
  * V3+:上传背景底图时画布尺寸自动适配。
  * 若图片任一边 > MAX 像素,长边按 MAX 缩放,短边等比;
@@ -67,6 +70,13 @@ export function BackgroundPanel({
         // 画布尺寸跟图变化 → 只当尺寸真的不同才触发,避免无意义历史项
         if (targetW !== canvasWidth || targetH !== canvasHeight) {
           onCanvasSizeChange(targetW, targetH);
+        }
+        // 采样匹配:导出按 ×EXPORT_SCALE 超采样,底图原生分辨率需 ≥ 画布逻辑长边 × EXPORT_SCALE 才清晰
+        const recommendedLong = Math.max(targetW, targetH) * EXPORT_SCALE;
+        if (longest < recommendedLong) {
+          toast.warning(
+            `底图 ${w0}×${h0} 分辨率偏低:×${EXPORT_SCALE} 导出建议底图长边 ≥ ${recommendedLong}px,否则下载/打印可能发虚。建议换更高清底图。`,
+          );
         }
       };
       img.onerror = () => {
@@ -133,7 +143,7 @@ export function BackgroundPanel({
             >
               <UploadIcon className="w-5 h-5" />
               <span className="text-xs">点击上传底图</span>
-              <span className="text-[10px]">JPG/PNG · &lt; 2MB</span>
+              <span className="text-[10px]">JPG/PNG · &lt; 8MB · 建议 ≥ 画布 3 倍分辨率</span>
             </button>
           </>
         ) : (

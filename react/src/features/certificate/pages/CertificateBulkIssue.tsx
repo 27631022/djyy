@@ -24,6 +24,7 @@ import { BatchInfoForm } from "../components/issue/BatchInfoForm";
 import { generateCertificatePdfDataUrl } from "../lib/certificatePdf";
 import { isValidYearLabel } from "../lib/certificateNumber";
 import type { DesignerState, VariableField } from "../lib/designerTypes";
+import { buildVariableValues } from "../lib/variableMapping";
 
 const PARTY = "var(--party-primary)";
 
@@ -177,13 +178,18 @@ export default function CertificateBulkIssuePage() {
           );
           continue;
         }
-        const variableValues: Record<string, string> = {};
+        // 先用统一映射产出默认值(含 certNo / 颁发日期 / 有效期 / 发证机构),
+        // 再让 CSV 里显式映射的列覆盖 —— 既补齐原来漏掉的变量,又保留 CSV 的灵活性。
+        const variableValues = buildVariableValues({
+          recipient: { name, dept: (row[recMap.dept] ?? "").trim() },
+          template,
+          yearLabel,
+          validUntil: validUntil || undefined,
+        });
         for (const v of variables) {
           const csvCol = varMap[v.key];
           if (csvCol && row[csvCol] !== undefined) variableValues[v.key] = row[csvCol];
         }
-        // 自动同步 name
-        if (!variableValues.name) variableValues.name = name;
 
         try {
           const pdfData = await generateCertificatePdfDataUrl(designState, variableValues);

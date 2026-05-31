@@ -12,6 +12,9 @@ import {
   EditIcon,
   DownloadIcon,
   ChevronDownIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
+  MaximizeIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -34,13 +37,16 @@ import type {
 import {
   DEFAULT_VARIABLES,
   cloneElement,
+  deriveVariables,
   emptyDesignerState,
+  paletteVariables,
 } from "../lib/designerUtils";
+import { generateThumbnail } from "../lib/exportUtils";
 import {
-  exportCanvasAsPDF,
-  exportCanvasAsPNG,
-  generateThumbnail,
-} from "../lib/exportUtils";
+  generateCertificatePdfDataUrl,
+  generateCertificatePngDataUrl,
+  triggerDownload,
+} from "../lib/certificatePdf";
 import { useHistory } from "../hooks/useHistory";
 import {
   CanvasStage,
@@ -53,6 +59,12 @@ import { PropertiesPanel } from "../components/designer/PropertiesPanel";
 import { LayerPanel } from "../components/designer/LayerPanel";
 
 const PARTY = "var(--party-primary)";
+
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 4;
+/** 缩放值规整到 [0.1, 4],保留 2 位小数(避免 0.30000004 之类) */
+const clampZoom = (z: number) =>
+  Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(z * 100) / 100));
 
 export default function CertificateDesignerPage() {
   const { id } = useParams<{ id?: string }>();
@@ -87,6 +99,8 @@ export default function CertificateDesignerPage() {
   const [isPreview, setIsPreview] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const canvasStageRef = useRef<CanvasStageHandle>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     if (!existingQuery.data) return;
@@ -121,20 +135,58 @@ export default function CertificateDesignerPage() {
     return state.elements.find((e) => e.id === selectedIds[0]) ?? null;
   }, [state.elements, selectedIds]);
 
+  /* 变量面板 / 插入器按荣誉类型策划:个人「姓名」、集体「获奖集体」,去掉职务/部门/等级 */
+  const paletteVars = useMemo(
+    () => paletteVariables(deriveVariables(state.variables, honorType)),
+    [state.variables, honorType],
+  );
+
+  /* ─── 画布缩放 ─── */
+  /** 计算让画布完整放进中间容器的缩放值(不超过 100%) */
+  const computeFitZoom = useCallback(() => {
+    const el = mainRef.current;
+    if (!el) return 1;
+    const pad = 56; // 容器 p-8 两侧约 64px,留点余量
+    const cw = el.clientWidth - pad;
+    const ch = el.clientHeight - pad;
+    if (cw <= 0 || ch <= 0) return 1;
+    return clampZoom(
+      Math.min(cw / state.canvasWidth, ch / state.canvasHeight, 1),
+    );
+  }, [state.canvasWidth, state.canvasHeight]);
+
+  const fitToScreen = useCallback(
+    () => setZoom(computeFitZoom()),
+    [computeFitZoom],
+  );
+
+  // 画布尺寸变化(加载模板 / 上传底图 / 改尺寸)时,若超出容器自动缩小适配 —— 解决"图片大了显示不全"
+  useEffect(() => {
+    setZoom(computeFitZoom());
+  }, [computeFitZoom]);
+
   /* ─── 操作(都先 record 再 setState) ─── */
 
   const addElement = useCallback(
     (el: DesignerElement) => {
       record();
-      // V3+:新加的印章顶部弧形文字总是用「落款单位」覆盖工厂默认值
-      //     (createStampElement 内置默认是「中共党建益友委员会」,这里强制覆盖)
-      //     落款单位为空时保留工厂默认,提醒用户先填模板表单
-      const enhanced: DesignerElement =
-        el.type === "stamp" && issuingOrgName.trim()
-          ? { ...el, text: issuingOrgName.trim() }
-          : el;
-      setState((s) => ({ ...s, elements: [...s.elements, enhanced] }));
-      setSelectedIds([enhanced.id]);
+      setState((s) => {
+        // 新元素居中到画布:防止生成在画布外 / 被滚动遮住看不见
+        const centered: DesignerElement = {
+          ...el,
+          x: Math.round((s.canvasWidth - el.width) / 2),
+          y: Math.round((s.canvasHeight - el.height) / 2),
+        };
+        // V3+:印章顶部弧形文字总是用「落款单位」覆盖工厂默认值
+        //     (createStampElement 内置默认是「中共党建益友委员会」,这里强制覆盖)
+        //     落款单位为空时保留工厂默认,提醒用户先填模板表单
+        const enhanced: DesignerElement =
+          centered.type === "stamp" && issuingOrgName.trim()
+            ? { ...centered, text: issuingOrgName.trim() }
+            : centered;
+        return { ...s, elements: [...s.elements, enhanced] };
+      });
+      setSelectedIds([el.id]);
     },
     [record, setState, issuingOrgName],
   );
@@ -256,6 +308,23 @@ export default function CertificateDesignerPage() {
       if (isInTextInput(e.target)) return;
 
       const mod = e.ctrlKey || e.metaKey;
+
+      // 缩放:Ctrl/Cmd + 加号 / 减号 / 0(实际大小)
+      if (mod && (e.key === "=" || e.key === "+")) {
+        e.preventDefault();
+        setZoom((z) => clampZoom(z + 0.1));
+        return;
+      }
+      if (mod && e.key === "-") {
+        e.preventDefault();
+        setZoom((z) => clampZoom(z - 0.1));
+        return;
+      }
+      if (mod && e.key === "0") {
+        e.preventDefault();
+        setZoom(1);
+        return;
+      }
 
       if (mod && (e.key === "z" || e.key === "Z") && !e.shiftKey) {
         e.preventDefault();
@@ -388,19 +457,18 @@ export default function CertificateDesignerPage() {
     }
   }
 
-  function handleExport(format: "png" | "pdf") {
-    const c = canvasStageRef.current?.getMainCanvas();
-    if (!c) {
-      toast.error("画布尚未就绪");
-      return;
-    }
+  async function handleExport(format: "png" | "pdf") {
     const baseName = (name.trim() || "证书模板").replace(/[/\\:*?"<>|]/g, "_");
-    if (format === "png") {
-      exportCanvasAsPNG(c, baseName);
-      toast.success("PNG 已下载");
-    } else {
-      exportCanvasAsPDF(c, baseName);
-      toast.success("PDF 已下载");
+    try {
+      // 与发证一致的 ×EXPORT_SCALE 离屏高清渲染(变量显示示例值)
+      const dataUrl =
+        format === "png"
+          ? await generateCertificatePngDataUrl(state, {})
+          : await generateCertificatePdfDataUrl(state, {});
+      triggerDownload(dataUrl, `${baseName}.${format}`);
+      toast.success(`${format.toUpperCase()} 已下载`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "导出失败");
     }
     setExportMenuOpen(false);
   }
@@ -574,7 +642,7 @@ export default function CertificateDesignerPage() {
                 className="flex-1 overflow-auto p-3 m-0"
               >
                 <VariablePanel
-                  variables={state.variables}
+                  variables={paletteVars}
                   canvasWidth={state.canvasWidth}
                   canvasHeight={state.canvasHeight}
                   onAdd={addElement}
@@ -607,24 +675,64 @@ export default function CertificateDesignerPage() {
           </div>
         </aside>
 
-        {/* 中:画布 */}
-        <main className="flex-1 min-w-0 flex items-center justify-center overflow-auto p-8">
-          <CanvasStage
-            ref={canvasStageRef}
-            state={state}
-            selectedIds={selectedIds}
-            onSelectionChange={setSelectedIds}
-            onElementsChange={setElementsArrayDuringDrag}
-            onRecordHistory={record}
-            isPreview={isPreview}
-          />
-        </main>
+        {/* 中:画布(可缩放 + 滚动) */}
+        <div className="flex-1 min-w-0 relative flex flex-col">
+          <main
+            ref={mainRef}
+            className="flex-1 overflow-auto p-8 flex items-center justify-center"
+          >
+            <CanvasStage
+              ref={canvasStageRef}
+              state={state}
+              zoom={zoom}
+              selectedIds={selectedIds}
+              onSelectionChange={setSelectedIds}
+              onElementsChange={setElementsArrayDuringDrag}
+              onRecordHistory={record}
+              isPreview={isPreview}
+            />
+          </main>
+
+          {/* 缩放工具条 — 悬浮在画布区底部中央,不随画布滚动 */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-0.5 bg-white border border-[#E9E9E9] rounded-full shadow-md px-1.5 py-1 text-[#6B7280]">
+            <button
+              onClick={() => setZoom((z) => clampZoom(z - 0.1))}
+              title="缩小 (Ctrl -)"
+              className="p-1.5 rounded-full hover:bg-[#F7F8FA] hover:text-[var(--party-primary)] transition-colors"
+            >
+              <ZoomOutIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setZoom(1)}
+              title="实际大小 (Ctrl 0)"
+              className="min-w-[46px] px-1 py-1 rounded text-xs font-medium tabular-nums hover:bg-[#F7F8FA] hover:text-[var(--party-primary)] transition-colors"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              onClick={() => setZoom((z) => clampZoom(z + 0.1))}
+              title="放大 (Ctrl +)"
+              className="p-1.5 rounded-full hover:bg-[#F7F8FA] hover:text-[var(--party-primary)] transition-colors"
+            >
+              <ZoomInIcon className="w-4 h-4" />
+            </button>
+            <div className="w-px h-4 bg-[#E9E9E9] mx-0.5" />
+            <button
+              onClick={fitToScreen}
+              title="适应屏幕"
+              className="p-1.5 rounded-full hover:bg-[#F7F8FA] hover:text-[var(--party-primary)] transition-colors"
+            >
+              <MaximizeIcon className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
 
         {/* 右:属性 */}
         <aside className="w-72 flex-shrink-0 bg-white border-l border-[#E9E9E9] p-3 overflow-auto">
           <PropertiesPanel
             selected={selected}
             onElementChange={updateElement}
+            variables={paletteVars}
           />
           <div className="mt-6 pt-4 border-t border-[#F0F0F0]">
             <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">

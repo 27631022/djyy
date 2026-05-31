@@ -1,51 +1,9 @@
-import { jsPDF } from "jspdf";
-
-/**
- * 触发浏览器下载 — 把 data URL 包成 <a download> 点一下
- */
-function triggerDownload(dataUrl: string, filename: string): void {
-  const a = document.createElement("a");
-  a.href = dataUrl;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
-
-/** 从主画布导出 PNG 并触发下载 */
-export function exportCanvasAsPNG(
-  canvas: HTMLCanvasElement,
-  filename: string,
-): void {
-  const dataUrl = canvas.toDataURL("image/png");
-  triggerDownload(dataUrl, filename.endsWith(".png") ? filename : `${filename}.png`);
-}
-
-/**
- * 从主画布导出 PDF 并触发下载。
- * 页面尺寸 = 画布像素尺寸(直接 1:1 嵌入,不缩放)。
- * 横/竖排自动按宽高判断。
- */
-export function exportCanvasAsPDF(
-  canvas: HTMLCanvasElement,
-  filename: string,
-): void {
-  const w = canvas.width;
-  const h = canvas.height;
-  const dataUrl = canvas.toDataURL("image/png");
-  const pdf = new jsPDF({
-    orientation: w > h ? "landscape" : "portrait",
-    unit: "px",
-    format: [w, h],
-    hotfixes: ["px_scaling"],
-  });
-  pdf.addImage(dataUrl, "PNG", 0, 0, w, h);
-  pdf.save(filename.endsWith(".pdf") ? filename : `${filename}.pdf`);
-}
-
 /**
  * 从主画布生成缩略图(data URL).
  * 保存模板时调用 — 列表页用 thumbnail 字段渲染卡片预览。
+ *
+ * 注:证书的高清 PNG/PDF 导出统一走 lib/certificatePdf.ts 的
+ * generateCertificatePngDataUrl / generateCertificatePdfDataUrl(按 EXPORT_SCALE 超采样)。
  */
 export function generateThumbnail(
   canvas: HTMLCanvasElement,

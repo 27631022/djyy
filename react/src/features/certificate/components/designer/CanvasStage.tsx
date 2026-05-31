@@ -31,6 +31,8 @@ interface CanvasStageProps {
   onRecordHistory: () => void;
   /** 预览模式:文本变量替换为 sampleValue,隐藏选中框/handle */
   isPreview?: boolean;
+  /** 显示缩放(1 = 100%);仅影响 CSS 显示尺寸,坐标与渲染清晰度自动适配 */
+  zoom?: number;
 }
 
 /** 父组件通过 ref 拿到主画布 element 用于导出 PNG/PDF/缩略图 */
@@ -75,6 +77,7 @@ export const CanvasStage = forwardRef<CanvasStageHandle, CanvasStageProps>(funct
     onElementsChange,
     onRecordHistory,
     isPreview = false,
+    zoom = 1,
   },
   ref,
 ) {
@@ -170,18 +173,24 @@ export const CanvasStage = forwardRef<CanvasStageHandle, CanvasStageProps>(funct
     };
   }, [state]);
 
+  /* 高分屏 + 缩放超采样:backing store = 逻辑尺寸 × renderScale,绘制按逻辑坐标 × renderScale,
+     CSS 显示按 逻辑尺寸 × zoom。renderScale = zoom × devicePixelRatio(封顶 4,保证放大时仍清晰) */
+  const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+  const renderScale = Math.min(4, Math.max(0.1, zoom) * dpr);
+
   /* ── 主画布:state / 背景图 / 元素图加载完成时重绘 ── */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
     renderAll(ctx, state, {
       bgImage: bgImageRef.current,
       imageCache: imageCacheRef.current,
       isPreview,
     });
-  }, [state, bgImageTick, imageCacheTick, isPreview]);
+  }, [state, bgImageTick, imageCacheTick, isPreview, renderScale]);
 
   /* ── overlay:选中框 + handle(预览模式下隐藏) ── */
   useEffect(() => {
@@ -189,21 +198,24 @@ export const CanvasStage = forwardRef<CanvasStageHandle, CanvasStageProps>(funct
     if (!overlay) return;
     const ctx = overlay.getContext("2d");
     if (!ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, overlay.width, overlay.height);
     if (isPreview || selectedIds.length === 0) return;
+    ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
     const selectedElements = selectedIds
       .map((id) => state.elements.find((e) => e.id === id))
       .filter((e): e is DesignerElement => Boolean(e));
     for (const el of selectedElements) renderSelectionOverlay(ctx, el);
     if (selectedElements.length === 1) renderHandles(ctx, selectedElements[0]);
-  }, [state, selectedIds, isPreview]);
+  }, [state, selectedIds, isPreview, renderScale]);
 
   /* ── 坐标转换 ── */
   function toCanvasCoords(clientX: number, clientY: number) {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+    // 用逻辑画布尺寸换算(backing store 已 ×dpr,但元素坐标是逻辑坐标)
+    const scaleX = state.canvasWidth / rect.width;
+    const scaleY = state.canvasHeight / rect.height;
     return {
       x: (clientX - rect.left) * scaleX,
       y: (clientY - rect.top) * scaleY,
@@ -538,24 +550,29 @@ export const CanvasStage = forwardRef<CanvasStageHandle, CanvasStageProps>(funct
   return (
     <div
       className="relative shadow-lg"
-      style={{ width: state.canvasWidth, height: state.canvasHeight }}
+      style={{ width: state.canvasWidth * zoom, height: state.canvasHeight * zoom }}
     >
       <canvas
         ref={canvasRef}
-        width={state.canvasWidth}
-        height={state.canvasHeight}
+        width={Math.round(state.canvasWidth * renderScale)}
+        height={Math.round(state.canvasHeight * renderScale)}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
         className="block bg-white"
-        style={{ cursor: isDragging ? "grabbing" : hoverCursor }}
+        style={{
+          width: state.canvasWidth * zoom,
+          height: state.canvasHeight * zoom,
+          cursor: isDragging ? "grabbing" : hoverCursor,
+        }}
       />
       <canvas
         ref={overlayRef}
-        width={state.canvasWidth}
-        height={state.canvasHeight}
+        width={Math.round(state.canvasWidth * renderScale)}
+        height={Math.round(state.canvasHeight * renderScale)}
         className="absolute inset-0 pointer-events-none"
+        style={{ width: state.canvasWidth * zoom, height: state.canvasHeight * zoom }}
       />
     </div>
   );

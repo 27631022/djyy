@@ -11,17 +11,25 @@ import type {
   RectElement,
   StampElement,
   TextElement,
+  VariableField,
 } from "../../lib/designerTypes";
 import { FONT_STACKS } from "../../lib/designerUtils";
 
-const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+// 图片元素同样被 ×EXPORT_SCALE 超采样导出,放宽到 8MB 以容纳高清图(base64 进 designJson 存库)
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 interface PropertiesPanelProps {
   selected: DesignerElement | null;
   onElementChange: (id: string, patch: Partial<DesignerElement>) => void;
+  /** 当前荣誉类型策划后的变量集,用于文本元素的「插入变量」chip */
+  variables: VariableField[];
 }
 
-export function PropertiesPanel({ selected, onElementChange }: PropertiesPanelProps) {
+export function PropertiesPanel({
+  selected,
+  onElementChange,
+  variables,
+}: PropertiesPanelProps) {
   if (!selected) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center text-xs text-[#9CA3AF]">
@@ -103,7 +111,7 @@ export function PropertiesPanel({ selected, onElementChange }: PropertiesPanelPr
 
       {/* 元素类型特有 */}
       {selected.type === "text" && (
-        <TextProps el={selected} onChange={onElementChange} />
+        <TextProps el={selected} onChange={onElementChange} variables={variables} />
       )}
       {selected.type === "rect" && (
         <RectProps el={selected} onChange={onElementChange} />
@@ -235,21 +243,64 @@ function ColorInput({
 function TextProps({
   el,
   onChange,
+  variables,
 }: {
   el: TextElement;
   onChange: (id: string, patch: Partial<DesignerElement>) => void;
+  variables: VariableField[];
 }) {
+  const taRef = useRef<HTMLTextAreaElement>(null);
+
+  /** 在光标处插入变量占位符(无焦点时追加到末尾),发证时会被替换为实际值 */
+  function insertToken(token: string) {
+    const cur = el.text;
+    const ta = taRef.current;
+    const focused = ta !== null && document.activeElement === ta;
+    const start = focused ? ta.selectionStart ?? cur.length : cur.length;
+    const end = focused ? ta.selectionEnd ?? cur.length : cur.length;
+    onChange(el.id, { text: cur.slice(0, start) + token + cur.slice(end) });
+    // 受控 value 更新后把光标移到插入内容之后,方便接着打字
+    const caret = start + token.length;
+    requestAnimationFrame(() => {
+      const node = taRef.current;
+      if (!node) return;
+      node.focus();
+      node.setSelectionRange(caret, caret);
+    });
+  }
+
   return (
     <>
       <Section title="文本">
         <Field label="内容">
           <textarea
+            ref={taRef}
             rows={3}
             value={el.text}
             onChange={(e) => onChange(el.id, { text: e.target.value })}
             className={`${inputCls} resize-none font-normal`}
           />
         </Field>
+        {variables.length > 0 && (
+          <div>
+            <div className="text-[10px] text-[#9CA3AF] mb-1">
+              插入变量(可放在文字中间,发证时替换为实际值)
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {variables.map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => insertToken(v.defaultValue)}
+                  title={`插入 ${v.defaultValue}`}
+                  className="px-1.5 py-0.5 text-[10px] rounded border border-[#E9E9E9] text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] hover:bg-[#FFF7F8] transition-colors"
+                >
+                  + {v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </Section>
       <Section title="字体">
         <Field label="字体">
