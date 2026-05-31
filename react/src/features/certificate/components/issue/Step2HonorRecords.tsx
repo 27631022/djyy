@@ -55,6 +55,8 @@ export function Step2HonorRecords({
   onYearLabelChange,
   issueDate,
   onIssueDateChange,
+  validUntil,
+  onValidUntilChange,
   extracted,
 }: {
   records: HonorRecord[];
@@ -63,6 +65,8 @@ export function Step2HonorRecords({
   onYearLabelChange: (v: string) => void;
   issueDate: string;
   onIssueDateChange: (v: string) => void;
+  validUntil: string;
+  onValidUntilChange: (v: string) => void;
   extracted: ExtractHonorResponse | null;
 }) {
   const { data, isLoading } = useQuery({
@@ -266,7 +270,7 @@ export function Step2HonorRecords({
         <div className="text-sm font-semibold text-[#1A1A1A] mb-3">
           本次表彰共享信息
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl">
           <label className="block">
             <span className="block text-sm font-medium text-[#374151] mb-1.5">
               表彰年度 <span className="text-red-500">*</span>
@@ -294,6 +298,21 @@ export function Step2HonorRecords({
             />
             <span className="block text-xs text-[#9CA3AF] mt-1">
               所有荣誉证书共用此颁发日期
+            </span>
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium text-[#374151] mb-1.5">
+              有效期{" "}
+              <span className="text-[#9CA3AF] font-normal">(可空 = 永久)</span>
+            </span>
+            <input
+              type="date"
+              value={validUntil}
+              onChange={(e) => onValidUntilChange(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
+            />
+            <span className="block text-xs text-[#9CA3AF] mt-1">
+              留空则证书永久有效
             </span>
           </label>
         </div>

@@ -90,6 +90,8 @@ export interface CertificateDraftV1 {
   yearLabel: string;
   /** 表彰日期 — 同一份表彰文件下所有荣誉共用,ISO「YYYY-MM-DD」 */
   issueDate: string;
+  /** 有效期 — 同一份表彰文件下所有荣誉共用,ISO「YYYY-MM-DD」;空 = 永久有效 */
+  validUntil: string;
   /** Step 2 之后的核心数据 */
   records: HonorRecord[];
   /** 最近一次保存时间,UI 可显示「已保存于 xx 秒前」 */
@@ -136,6 +138,7 @@ export function loadDraft(userId: string): CertificateDraftV1 | null {
         String(new Date().getFullYear()),
       issueDate:
         parsed.issueDate ?? parsed.records[0]?.issueDate ?? todayIso(),
+      validUntil: parsed.validUntil ?? "",
       records: parsed.records,
       updatedAt: parsed.updatedAt ?? new Date().toISOString(),
     };
@@ -191,6 +194,7 @@ export function emptyDraft(): CertificateDraftV1 {
     extracted: null,
     yearLabel: String(new Date().getFullYear()),
     issueDate: todayIso(),
+    validUntil: "",
     records: [],
     updatedAt: new Date().toISOString(),
   };

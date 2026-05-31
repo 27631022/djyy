@@ -40,7 +40,7 @@ export function genId(prefix = "el"): string {
 
 export const DEFAULT_VARIABLES: VariableField[] = [
   { key: "name", label: "姓名", defaultValue: "{{姓名}}", sampleValue: "张三" },
-  { key: "certNo", label: "证书编号", defaultValue: "{{证书编号}}", sampleValue: "DJYY-2026-0001" },
+  { key: "certNo", label: "证书编号", defaultValue: "{{证书编号}}", sampleValue: "2026-QDJL-100-001" },
   { key: "issueDate", label: "颁发日期", defaultValue: "{{颁发日期}}", sampleValue: "2026年05月23日" },
   { key: "validUntil", label: "有效期", defaultValue: "{{有效期}}", sampleValue: "永久有效" },
   { key: "position", label: "职务", defaultValue: "{{职务}}", sampleValue: "党支部书记" },

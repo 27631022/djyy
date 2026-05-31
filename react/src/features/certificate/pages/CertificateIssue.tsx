@@ -88,6 +88,8 @@ export default function CertificateIssuePage() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
+  // 有效期(可空,空 = 永久有效)—— 与年份/日期同在 Step2「共享信息」区编辑
+  const [validUntil, setValidUntil] = useState("");
 
   /* ─── Step 3 子步骤索引(records 内 0-based) ─── */
   // 不持久化:进 step 3 时永远从 0 开始;刷新若 step=3 则也从 0 起,用户可以再点 Next 移动
@@ -108,6 +110,7 @@ export default function CertificateIssuePage() {
     if (saved.extracted) setExtractResult(saved.extracted);
     if (saved.yearLabel) setYearLabel(saved.yearLabel);
     if (saved.issueDate) setIssueDate(saved.issueDate);
+    if (saved.validUntil) setValidUntil(saved.validUntil);
     if (Array.isArray(saved.records)) setRecords(saved.records);
     // step=3 刷新时复位到第 1 条 record(避免引用越界)
     if (saved.step === 3) setSubStepIdx(0);
@@ -121,9 +124,10 @@ export default function CertificateIssuePage() {
       extracted: extractResult,
       yearLabel,
       issueDate,
+      validUntil,
       records,
     }));
-  }, [step, extractResult, yearLabel, issueDate, records]);
+  }, [step, extractResult, yearLabel, issueDate, validUntil, records]);
 
   useDebouncedDraft(userId, draft);
 
@@ -236,6 +240,7 @@ export default function CertificateIssuePage() {
             template,
             yearLabel,
             issueDate,
+            validUntil: validUntil || undefined,
           });
           let result: IssueResult;
           try {
@@ -256,6 +261,7 @@ export default function CertificateIssuePage() {
               issuingOrgName: template.issuingOrgName || undefined,
               honorType: record.honorType,
               issueDate,
+              validUntil: validUntil || undefined,
             };
             const cert = await certificateIssueApi.issue(input);
             result = {
@@ -398,6 +404,8 @@ export default function CertificateIssuePage() {
                 onYearLabelChange={setYearLabel}
                 issueDate={issueDate}
                 onIssueDateChange={setIssueDate}
+                validUntil={validUntil}
+                onValidUntilChange={setValidUntil}
                 extracted={extractResult}
               />
             )}

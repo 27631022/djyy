@@ -378,15 +378,6 @@ function TextProps({
             ))}
           </div>
         </Field>
-        <Field label="首行缩进 (字符)">
-          <NumberInput
-            min={0}
-            max={10}
-            step={0.5}
-            value={el.textIndent ?? 0}
-            onChange={(v) => onChange(el.id, { textIndent: v })}
-          />
-        </Field>
       </Section>
     </>
   );

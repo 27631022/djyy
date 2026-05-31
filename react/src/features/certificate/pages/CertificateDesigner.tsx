@@ -727,109 +727,135 @@ export default function CertificateDesignerPage() {
           </div>
         </div>
 
-        {/* 右:属性 */}
-        <aside className="w-72 flex-shrink-0 bg-white border-l border-[#E9E9E9] p-3 overflow-auto">
-          <PropertiesPanel
-            selected={selected}
-            onElementChange={updateElement}
-            variables={paletteVars}
-          />
-          <div className="mt-6 pt-4 border-t border-[#F0F0F0]">
-            <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
-              模板描述
-            </div>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder="可选,记录用途/颁发对象等"
-              className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none resize-none"
-            />
-          </div>
-          <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
-            <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
-              荣誉代码 <span className="text-red-500">*</span>
-              <span className="text-[10px] text-[#9CA3AF] normal-case ml-1">用于发证编号</span>
-            </div>
-            <input
-              type="text"
-              value={honorCode}
-              onChange={(e) => setHonorCode(e.target.value.toUpperCase().slice(0, 16))}
-              placeholder="如 QDJL (庆典奖励)"
-              className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none font-mono uppercase tracking-wider"
-            />
-            <p className="mt-1 text-[10px] text-[#9CA3AF] leading-relaxed">
-              发证编号格式:<span className="font-mono">2024-{honorCode || "XXXX"}-100-001</span>
-            </p>
-          </div>
+        {/* 右:属性 / 模板 两个 tab(把元素属性与模板设置分开,避免一长条) */}
+        <aside className="w-72 flex-shrink-0 flex flex-col bg-white border-l border-[#E9E9E9] overflow-hidden">
+          <Tabs
+            defaultValue="props"
+            className="flex-1 min-h-0 flex flex-col gap-0"
+          >
+            <TabsList className="w-full h-9 rounded-none border-b border-[#E9E9E9] bg-[#FAFAFA] p-0 flex-shrink-0">
+              <TabsTrigger
+                value="props"
+                className="flex-1 rounded-none data-[state=active]:bg-white data-[state=active]:text-[var(--party-primary)] data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[var(--party-primary)] text-xs"
+              >
+                属性
+              </TabsTrigger>
+              <TabsTrigger
+                value="template"
+                className="flex-1 rounded-none data-[state=active]:bg-white data-[state=active]:text-[var(--party-primary)] data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[var(--party-primary)] text-xs"
+              >
+                模板
+              </TabsTrigger>
+            </TabsList>
 
-          {/* V3:荣誉类型(模板带出,发证时不让用户选) */}
-          <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
-            <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
-              荣誉类型 <span className="text-red-500">*</span>
-            </div>
-            <div className="inline-flex rounded-md border border-[#E9E9E9] overflow-hidden">
-              {(
-                [
-                  { v: "individual" as const, label: "个人" },
-                  { v: "collective" as const, label: "集体" },
-                ]
-              ).map((opt) => {
-                const active = honorType === opt.v;
-                return (
-                  <button
-                    key={opt.v}
-                    type="button"
-                    onClick={() => setHonorType(opt.v)}
-                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                      active
-                        ? "text-white"
-                        : "bg-white text-[#6B7280] hover:bg-[#F7F8FA]"
-                    }`}
-                    style={
-                      active ? { backgroundColor: "var(--party-primary)" } : undefined
-                    }
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-1 text-[10px] text-[#9CA3AF]">
-              发证时此模板所有证书自动用此类型
-            </p>
-          </div>
+            {/* 属性:选中元素的属性 + 快捷键 */}
+            <TabsContent value="props" className="flex-1 overflow-auto p-3 m-0">
+              <PropertiesPanel
+                selected={selected}
+                onElementChange={updateElement}
+                variables={paletteVars}
+              />
+              <div className="mt-4 pt-3 border-t border-[#F0F0F0] text-[10px] text-[#9CA3AF] leading-relaxed">
+                <div className="font-semibold mb-1">快捷键</div>
+                Ctrl+Z 撤销 · Ctrl+Y/Shift+Z 重做
+                <br />
+                Ctrl+D 复制 · Delete 删除
+                <br />
+                Ctrl +/- 缩放 · Ctrl 0 实际大小
+                <br />
+                方向键 微移 (Shift 大步) · Esc 取消选择
+              </div>
+            </TabsContent>
 
-          {/* V3+:落款单位 — 必填,印章顶弧文字默认引用 */}
-          <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
-            <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
-              落款单位(发证机构) <span className="text-red-500">*</span>
-            </div>
-            <input
-              type="text"
-              value={issuingOrgName}
-              onChange={(e) => setIssuingOrgName(e.target.value.slice(0, 64))}
-              placeholder="如:中共 XX 委员会"
-              className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
-            />
-            <p className="mt-1 text-[10px] text-[#9CA3AF]">
-              证书印章顶部弧形文字默认引用此值
-            </p>
-          </div>
+            {/* 模板:名称之外的模板元数据 */}
+            <TabsContent value="template" className="flex-1 overflow-auto p-3 m-0">
+              <div>
+                <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
+                  模板描述
+                </div>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                  placeholder="可选,记录用途/颁发对象等"
+                  className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none resize-none"
+                />
+              </div>
+              <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
+                <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
+                  荣誉代码 <span className="text-red-500">*</span>
+                  <span className="text-[10px] text-[#9CA3AF] normal-case ml-1">用于发证编号</span>
+                </div>
+                <input
+                  type="text"
+                  value={honorCode}
+                  onChange={(e) => setHonorCode(e.target.value.toUpperCase().slice(0, 16))}
+                  placeholder="如 QDJL (庆典奖励)"
+                  className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none font-mono uppercase tracking-wider"
+                />
+                <p className="mt-1 text-[10px] text-[#9CA3AF] leading-relaxed">
+                  发证编号格式:<span className="font-mono">2024-{honorCode || "XXXX"}-100-001</span>
+                </p>
+              </div>
 
-          {/* V3+:荣誉等级 — 字典 cert_honor_level */}
-          <HonorLevelSelect value={honorLevel} onChange={setHonorLevel} />
+              {/* V3:荣誉类型(模板带出,发证时不让用户选) */}
+              <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
+                <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
+                  荣誉类型 <span className="text-red-500">*</span>
+                </div>
+                <div className="inline-flex rounded-md border border-[#E9E9E9] overflow-hidden">
+                  {(
+                    [
+                      { v: "individual" as const, label: "个人" },
+                      { v: "collective" as const, label: "集体" },
+                    ]
+                  ).map((opt) => {
+                    const active = honorType === opt.v;
+                    return (
+                      <button
+                        key={opt.v}
+                        type="button"
+                        onClick={() => setHonorType(opt.v)}
+                        className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                          active
+                            ? "text-white"
+                            : "bg-white text-[#6B7280] hover:bg-[#F7F8FA]"
+                        }`}
+                        style={
+                          active ? { backgroundColor: "var(--party-primary)" } : undefined
+                        }
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-[10px] text-[#9CA3AF]">
+                  发证时此模板所有证书自动用此类型
+                </p>
+              </div>
 
-          <div className="mt-4 pt-3 border-t border-[#F0F0F0] text-[10px] text-[#9CA3AF] leading-relaxed">
-            <div className="font-semibold mb-1">快捷键</div>
-            Ctrl+Z 撤销 · Ctrl+Y/Shift+Z 重做
-            <br />
-            Ctrl+D 复制 · Delete 删除
-            <br />
-            方向键 微移 (Shift 大步)
-            <br />
-            Esc 取消选择 · Shift+点击 多选
-          </div>
+              {/* V3+:落款单位 — 必填,印章顶弧文字默认引用 */}
+              <div className="mt-4 pt-3 border-t border-[#F0F0F0]">
+                <div className="text-[11px] font-semibold text-[#6B7280] mb-2 uppercase tracking-wide">
+                  落款单位(发证机构) <span className="text-red-500">*</span>
+                </div>
+                <input
+                  type="text"
+                  value={issuingOrgName}
+                  onChange={(e) => setIssuingOrgName(e.target.value.slice(0, 64))}
+                  placeholder="如:中共 XX 委员会"
+                  className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
+                />
+                <p className="mt-1 text-[10px] text-[#9CA3AF]">
+                  证书印章顶部弧形文字默认引用此值
+                </p>
+              </div>
+
+              {/* V3+:荣誉等级 — 字典 cert_honor_level */}
+              <HonorLevelSelect value={honorLevel} onChange={setHonorLevel} />
+            </TabsContent>
+          </Tabs>
         </aside>
       </div>
     </div>
