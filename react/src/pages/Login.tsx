@@ -12,12 +12,16 @@ interface DemoAccount {
 }
 
 const DEMO_ACCOUNTS: DemoAccount[] = [
-  { username: "admin",     name: "系统管理员", description: "平台全权限",                       badge: "管理员" },
-  { username: "wang_zs",   name: "王总书记",   description: "党委书记 + 集团总经理",            badge: "高管" },
-  { username: "li_mgr",    name: "李经理",     description: "财务审计处经理 + 第二支部书记",     badge: "干部" },
-  { username: "qian_hero", name: "钱英雄",     description: "IT 工程师 + 突击队队长 + 服务队",   badge: "员工" },
-  { username: "zhang_san", name: "张三",       description: "机关综合处干事 + 第一支部党员",     badge: "员工" },
-  { username: "zhao_zy",   name: "赵专员",     description: "人力资源专员 + 数字化项目组",       badge: "员工" },
+  { username: "admin",    name: "系统管理员", description: "平台全权限",                   badge: "管理员" },
+  { username: "80545411", name: "朱海君",     description: "党群工作部 经理 · 党支部书记",  badge: "干部" },
+  { username: "81243632", name: "张明",       description: "党群工作部 · 党建管理岗",       badge: "员工" },
+  { username: "80543400", name: "杨一凡",     description: "党群工作部 · 副经理",           badge: "干部" },
+  { username: "50267848", name: "李月",       description: "党群工作部 · 共青团管理岗",     badge: "员工" },
+  { username: "80523865", name: "王金雨",     description: "党委组织部 · 组织部部长",       badge: "干部" },
+  { username: "86293664", name: "安丽",       description: "党委组织部 · 党建管理岗",       badge: "员工" },
+  { username: "80523911", name: "李峰",       description: "塔运司领导班子 · 书记",         badge: "干部" },
+  { username: "80523419", name: "孙彩霞",     description: "塔运司综合办公室 · 党建管理岗", badge: "员工" },
+  { username: "80530489", name: "李桂红",     description: "塔运司特车运输大队 · 书记",     badge: "干部" },
 ];
 
 export default function LoginPage() {

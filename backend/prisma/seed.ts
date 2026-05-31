@@ -14,13 +14,16 @@
  *       └─ 34 个分公司/中心 (level3)                     ├─ 33 个分公司党委 (committee)
  *                                                        └─ 哈萨克分公司党总支 (general)
  *
- * 演示用户(挂在真实组织上,展示 5 种典型双归属):
- *   admin    平台管理员
- *   王总书记 昆仑物流党委 党委书记 + 昆仑物流 总经理         (kind 双归属, scope=all)
- *   李经理   机关第三党支部 书记 + 财务部 部门经理            (典型干部双重身份)
- *   张三     机关第一党支部 党员 + 党委办公室 综合干事        (普通职工)
- *   赵专员   机关第十一党支部 党员 + 党群工作部 专员           (展示党群岗)
- *   钱英雄   机关第九党支部 副书记 + 科技信息部 IT 工程师      (技术骨干)
+ * 演示用户(2026-05-31:人员名册已固化到 fixtures/demo-users.ts,此处只留概览):
+ *   admin    平台管理员(非自然人,seed 单独 upsert,保留用于管理 + Mock 登录)
+ *   朱海君 80545411 党群工作部 经理 / 机关第十一党支部 书记(+dept_manager +party_secretary)
+ *   张明 / 杨一凡 / 李月        党群工作部   / 机关第十一党支部
+ *   王金雨 / 安丽               党委组织部   / 机关第四党支部
+ *   李峰 / 孙彩霞 / 李桂红      塔运司各科室 / 塔运司各党支部
+ *
+ * 约定:position 挂主行政归属,partyPosition 挂党组织归属(可空);
+ *       行政、党组织各 isPrimary=true,列表才会分别在「主行政岗位 / 党组织归属」列显示。
+ *       增删演示人员请改 fixtures/demo-users.ts(单一事实来源)。
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -30,6 +33,7 @@ import {
   type KunlunAdminSeed,
   type KunlunPartySeed,
 } from './fixtures/kunlun-logistics-orgs';
+import { DEMO_USERS } from './fixtures/demo-users';
 
 const prisma = new PrismaClient();
 
@@ -291,6 +295,8 @@ async function seedRolesAndPermissions() {
     { code: 'certificate:issue',         name: '发证',             category: 'operation' },
     { code: 'certificate:revoke',        name: '撤销证书',         category: 'operation' },
     { code: 'certificate:bulk-download', name: '批量下载证书',     category: 'operation' },
+    // 删除证书(V3)— 仅 platform_admin 拥有(其余内置角色不含),实现"只有管理员可删"
+    { code: 'certificate:delete',        name: '删除证书',         category: 'operation' },
   ];
   for (const p of permissions) {
     await prisma.permission.upsert({
@@ -337,7 +343,8 @@ async function seedDemoUsers() {
     return r;
   };
 
-  // admin 用户
+  // admin 平台账号(非真实自然人,保留用于平台管理 + Mock 登录)。
+  // update 固化身份:即使有人在界面上改过 admin 的姓名/邮箱,re-seed 也会归位(防串号)。
   await prisma.user.upsert({
     where: { username: 'admin' },
     create: {
@@ -347,165 +354,62 @@ async function seedDemoUsers() {
       active: true,
       roles: { create: [{ role: { connect: { code: 'platform_admin' } }, scope: 'all' }] },
     },
-    update: {},
-  });
-
-  const partySecRole = await roleByCode('party_secretary');
-  const deptMgrRole  = await roleByCode('dept_manager');
-  const memberRole   = await roleByCode('member');
-
-  /* ────────────────────────────────────────────────────────
-   * 重要约定:党员的"组织关系"挂在党支部,党委/总支只是层级容器。
-   * 党委书记、总支书记是 POSITION (职务),持职者本人的党员关系仍在某个党支部。
-   * ──────────────────────────────────────────────────────── */
-
-  /* 王总书记 — 党员关系挂第一党支部,担任党委书记 + 集团总经理
-     5 归属: 党支部党员(主) + 党委(职位) + 集团总经理(主) + 党建专班 + 数字化项目组 */
-  const wang = await prisma.user.upsert({
-    where: { username: 'wang_zs' },
-    create: { username: 'wang_zs', name: '王总书记', email: 'wang@dyy.local', active: true },
-    update: { name: '王总书记' },
-  });
-  const partyRoot   = await orgByCode('KL-PARTY-ROOT');
-  const branch01    = await orgByCode('KL-PARTY-L3-HQ-01');  // 机关第一党支部(党委办公室对应)
-  const adminRoot   = await orgByCode('KL-ADMIN-ROOT');
-  const vPartyTf    = await orgByCode('VPARTY-TASKFORCE');
-  const vAdminDig   = await orgByCode('VADMIN-DIGITAL');
-  await prisma.userOrganization.deleteMany({ where: { userId: wang.id } });
-  await prisma.userOrganization.createMany({
-    data: [
-      { userId: wang.id, orgId: branch01.id,  position: '党员',          isPrimary: true },
-      { userId: wang.id, orgId: partyRoot.id, position: '党委书记',      isPrimary: false },
-      { userId: wang.id, orgId: adminRoot.id, position: '总经理',        isPrimary: true },
-      { userId: wang.id, orgId: vPartyTf.id,  position: '专班组长',      isPrimary: false },
-      { userId: wang.id, orgId: vAdminDig.id, position: '项目组组长',    isPrimary: false },
-    ],
-  });
-  await prisma.userRole.deleteMany({ where: { userId: wang.id } });
-  await prisma.userRole.createMany({
-    data: [
-      { userId: wang.id, roleId: partySecRole.id, scope: 'all' },
-      { userId: wang.id, roleId: deptMgrRole.id,  scope: 'all' },
-    ],
-  });
-
-  /* 李经理 — 第二党支部书记 + 财务审计处部门经理 + 审计专班组长 (3 归属) */
-  const li = await prisma.user.upsert({
-    where: { username: 'li_mgr' },
-    create: { username: 'li_mgr', name: '李经理', email: 'li@dyy.local', active: true },
-    update: { name: '李经理' },
-  });
-  // 李经理:机关第三党支部(对应 R38 财务部),财务部部门经理
-  const branch02 = await orgByCode('KL-PARTY-L3-HQ-03');
-  const adminFin = await orgByCode('KL-ADMIN-L3-HQ-03'); // 财务部
-  const vAuditTf = await orgByCode('VADMIN-AUDIT-25');
-  await prisma.userOrganization.deleteMany({ where: { userId: li.id } });
-  await prisma.userOrganization.createMany({
-    data: [
-      { userId: li.id, orgId: branch02.id, position: '支部书记',       isPrimary: true },
-      { userId: li.id, orgId: adminFin.id, position: '财务部部门经理', isPrimary: true },
-      { userId: li.id, orgId: vAuditTf.id, position: '审计专班组长',   isPrimary: false },
-    ],
-  });
-  await prisma.userRole.deleteMany({ where: { userId: li.id } });
-  // 党支书 — custom scope 指向第二党支部
-  await prisma.userRole.create({
-    data: {
-      userId: li.id,
-      roleId: partySecRole.id,
-      scope: 'custom',
-      scopeOrgs: { create: [{ orgId: branch02.id }] },
-    },
-  });
-  // 部门经理 — custom scope 指向财务审计处 + 审计专班 (示范多选)
-  await prisma.userRole.create({
-    data: {
-      userId: li.id,
-      roleId: deptMgrRole.id,
-      scope: 'custom',
-      scopeOrgs: { create: [{ orgId: adminFin.id }, { orgId: vAuditTf.id }] },
+    update: {
+      name: '系统管理员',
+      email: 'admin@dyy.local',
+      active: true,
     },
   });
 
-  /* 张三 — 第一党支部党员 + 机关综合处干事 + 党员服务队 + 数字化项目组 (4 归属) */
-  const zhang = await prisma.user.upsert({
-    where: { username: 'zhang_san' },
-    create: { username: 'zhang_san', name: '张三', email: 'zhang@dyy.local', active: true },
-    update: { name: '张三' },
-  });
-  // 党委办公室(KL-ADMIN-L3-HQ-01,对应 R36)— 跟 PARTY-L3-HQ-01 是同行
-  const adminGen = await orgByCode('KL-ADMIN-L3-HQ-01');
-  const vSvcZhang = await orgByCode('VPARTY-SERVICE');
-  await prisma.userOrganization.deleteMany({ where: { userId: zhang.id } });
-  await prisma.userOrganization.createMany({
-    data: [
-      { userId: zhang.id, orgId: branch01.id,   position: '党员',         isPrimary: true },
-      { userId: zhang.id, orgId: adminGen.id,   position: '综合干事',     isPrimary: true },
-      { userId: zhang.id, orgId: vSvcZhang.id,  position: '服务队队员',   isPrimary: false },
-      { userId: zhang.id, orgId: vAdminDig.id,  position: '技术骨干',     isPrimary: false },
-    ],
-  });
-  await prisma.userRole.deleteMany({ where: { userId: zhang.id } });
-  await prisma.userRole.create({
-    data: { userId: zhang.id, roleId: memberRole.id, scope: 'self' },
-  });
+  // 清理 2026-05 之前的虚构演示用户(王总书记/李经理/张三/赵专员/钱英雄)。
+  // 用户已要求把默认用户替换为塔运司真实样例 8 人。
+  // 删 user 会级联清 UserOrganization / UserRole;Certificate.recipientUserId 为 SetNull,不会 FK 失败。
+  const OBSOLETE_DEMO_USERNAMES = ['wang_zs', 'li_mgr', 'zhang_san', 'zhao_zy', 'qian_hero'];
+  await prisma.user.deleteMany({ where: { username: { in: OBSOLETE_DEMO_USERNAMES } } });
 
-  /* 赵专员 — 第三党支部党员 + 人力资源处专员 + 党建专班 + 数字化项目组 (4 归属) */
-  const zhao = await prisma.user.upsert({
-    where: { username: 'zhao_zy' },
-    create: { username: 'zhao_zy', name: '赵专员', email: 'zhao@dyy.local', active: true },
-    update: { name: '赵专员' },
-  });
-  // 赵专员:机关第十一党支部(KL-PARTY-L3-HQ-11) + 党群工作部(KL-ADMIN-L3-HQ-11)
-  // 注:旧 demo 用「人力资源处」,昆仑物流没独立人力资源处,改挂党群工作部(语义最接近)
-  const branch03 = await orgByCode('KL-PARTY-L3-HQ-11');
-  const adminHr  = await orgByCode('KL-ADMIN-L3-HQ-11');
-  await prisma.userOrganization.deleteMany({ where: { userId: zhao.id } });
-  await prisma.userOrganization.createMany({
-    data: [
-      { userId: zhao.id, orgId: branch03.id,  position: '党员',         isPrimary: true },
-      { userId: zhao.id, orgId: adminHr.id,   position: '党群专员',     isPrimary: true },
-      { userId: zhao.id, orgId: vPartyTf.id,  position: '专班成员',     isPrimary: false },
-      { userId: zhao.id, orgId: vAdminDig.id, position: '项目协调',     isPrimary: false },
-    ],
-  });
-  await prisma.userRole.deleteMany({ where: { userId: zhao.id } });
-  await prisma.userRole.create({
-    data: { userId: zhao.id, roleId: memberRole.id, scope: 'self' },
-  });
+  /* ─── 样例人员名册(固化在 fixtures/demo-users.ts,含朱海君 + 截图 8 人)─── */
+  // position 挂主行政归属;partyPosition 挂党组织归属(可空)。
+  // 行政、党组织各 isPrimary=true 才会在列表分列显示「主行政岗位 / 党组织归属」。
+  const memberRole = await roleByCode('member');
 
-  /* 钱英雄 — 第五党支部副书记 + IT 中心工程师 + 党员突击队队长 + 党员服务队队员 (4 归属) */
-  const qian = await prisma.user.upsert({
-    where: { username: 'qian_hero' },
-    create: { username: 'qian_hero', name: '钱英雄', email: 'qian@dyy.local', active: true },
-    update: { name: '钱英雄' },
-  });
-  // 钱英雄:机关第九党支部(KL-PARTY-L3-HQ-09) + 科技信息部(KL-ADMIN-L3-HQ-09)
-  const branch05 = await orgByCode('KL-PARTY-L3-HQ-09');
-  const adminIt  = await orgByCode('KL-ADMIN-L3-HQ-09');
-  const vCmd     = await orgByCode('VPARTY-COMMANDO');
-  const vSvc     = await orgByCode('VPARTY-SERVICE');
-  await prisma.userOrganization.deleteMany({ where: { userId: qian.id } });
-  await prisma.userOrganization.createMany({
-    data: [
-      { userId: qian.id, orgId: branch05.id, position: '支部副书记', isPrimary: true },
-      { userId: qian.id, orgId: adminIt.id,  position: 'IT 工程师',  isPrimary: true },
-      { userId: qian.id, orgId: vCmd.id,     position: '突击队队长', isPrimary: false },
-      { userId: qian.id, orgId: vSvc.id,     position: '服务队队员', isPrimary: false },
-    ],
-  });
-  await prisma.userRole.deleteMany({ where: { userId: qian.id } });
-  await prisma.userRole.create({
-    data: {
-      userId: qian.id,
-      roleId: partySecRole.id,
-      scope: 'custom',
-      scopeOrgs: { create: [{ orgId: branch05.id }] },
-    },
-  });
-  await prisma.userRole.create({
-    data: { userId: qian.id, roleId: memberRole.id, scope: 'self' },
-  });
+  for (const spec of DEMO_USERS) {
+    // update 同样固化 name/email/active —— mock 是权威,re-seed 自愈界面上的手动漂移。
+    const user = await prisma.user.upsert({
+      where: { username: spec.username },
+      create: { username: spec.username, name: spec.name, email: `${spec.username}@dyy.local`, active: true },
+      update: { name: spec.name, email: `${spec.username}@dyy.local`, active: true },
+    });
+
+    const adminOrg = await orgByCode(spec.adminCode);
+    const partyOrg = await orgByCode(spec.partyCode);
+
+    // 归属:行政主岗(带职务,isPrimary) + 党支部(可带党内职务,isPrimary 以便列表展示)
+    await prisma.userOrganization.deleteMany({ where: { userId: user.id } });
+    await prisma.userOrganization.createMany({
+      data: [
+        { userId: user.id, orgId: adminOrg.id, position: spec.position,            isPrimary: true },
+        { userId: user.id, orgId: partyOrg.id, position: spec.partyPosition ?? null, isPrimary: true },
+      ],
+    });
+
+    // 角色:基础 member(self) + 附加角色(custom scope 指向部门/支部)
+    await prisma.userRole.deleteMany({ where: { userId: user.id } });
+    await prisma.userRole.create({
+      data: { userId: user.id, roleId: memberRole.id, scope: 'self' },
+    });
+    for (const er of spec.extraRoles ?? []) {
+      const role = await roleByCode(er.code);
+      const scopeOrg = await orgByCode(er.scopeCode);
+      await prisma.userRole.create({
+        data: {
+          userId: user.id,
+          roleId: role.id,
+          scope: 'custom',
+          scopeOrgs: { create: [{ orgId: scopeOrg.id }] },
+        },
+      });
+    }
+  }
 }
 
 /* ─── 数据字典 ─── */

@@ -142,6 +142,12 @@ export const KUNLUN_ADMIN_ORGS: KunlunAdminSeed[] = [
   { code: 'KL-ADMIN-L3-BASE-032', shortName: '建安公司',           fullName: '中国石油昆仑物流有限公司建安公司',           type: 'level3', sortOrder: 32, parentCode: 'KL-ADMIN-L2-BASE' },
   { code: 'KL-ADMIN-L3-BASE-033', shortName: '公共事务中心',       fullName: '中国石油昆仑物流有限公司公共事务中心',       type: 'level3', sortOrder: 33, parentCode: 'KL-ADMIN-L2-BASE' },
   { code: 'KL-ADMIN-L3-BASE-034', shortName: '教育培训中心',       fullName: '中国石油昆仑物流有限公司教育培训中心',       type: 'level3', sortOrder: 34, parentCode: 'KL-ADMIN-L2-BASE' },
+
+  // L4 塔运司下属科室/大队(KL-ADMIN-L3-BASE-001 塔运司 的子节点)
+  // 演示用户(李峰/孙彩霞/李桂红)挂在这三个 level4 单位上。
+  { code: 'KL-ADMIN-L4-TYS-01', shortName: '领导班子',     fullName: '中国石油昆仑物流有限公司塔运司领导班子',     type: 'level4', sortOrder: 1, parentCode: 'KL-ADMIN-L3-BASE-001' },
+  { code: 'KL-ADMIN-L4-TYS-02', shortName: '综合办公室',   fullName: '中国石油昆仑物流有限公司塔运司综合办公室',   type: 'level4', sortOrder: 2, parentCode: 'KL-ADMIN-L3-BASE-001' },
+  { code: 'KL-ADMIN-L4-TYS-03', shortName: '特车运输大队', fullName: '中国石油昆仑物流有限公司塔运司特车运输大队', type: 'level4', sortOrder: 3, parentCode: 'KL-ADMIN-L3-BASE-001' },
 ];
 
 /* ─── 党组织 ─── */
@@ -216,6 +222,11 @@ export const KUNLUN_PARTY_ORGS: KunlunPartySeed[] = [
   { code: 'KL-PARTY-L3-HQ-09', shortName: '机关第九党支部',   fullName: '中共中国石油昆仑物流有限公司机关第九支部委员会',   type: 'branch', sortOrder: 9,  parentCode: 'KL-PARTY-L2-HQ' },
   { code: 'KL-PARTY-L3-HQ-10', shortName: '机关第十党支部',   fullName: '中共中国石油昆仑物流有限公司机关第十支部委员会',   type: 'branch', sortOrder: 10, parentCode: 'KL-PARTY-L2-HQ' },
   { code: 'KL-PARTY-L3-HQ-11', shortName: '机关第十一党支部', fullName: '中共中国石油昆仑物流有限公司机关第十一支部委员会', type: 'branch', sortOrder: 11, parentCode: 'KL-PARTY-L2-HQ' },
+
+  // L3 塔运司党委下属党支部(KL-PARTY-L2-001 塔运司党委 的子节点)
+  // 演示用户(李峰/孙彩霞 挂机关党支部,李桂红 挂特车运输大队党支部)。
+  { code: 'KL-PARTY-L3-TYS-01', shortName: '机关党支部',       fullName: '中共中国石油昆仑物流有限公司塔运司机关支部委员会',       type: 'branch', sortOrder: 1, parentCode: 'KL-PARTY-L2-001' },
+  { code: 'KL-PARTY-L3-TYS-02', shortName: '特车运输大队党支部', fullName: '中共中国石油昆仑物流有限公司塔运司特车运输大队支部委员会', type: 'branch', sortOrder: 2, parentCode: 'KL-PARTY-L2-001' },
 ];
 
 /**
