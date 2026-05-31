@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   Param,
@@ -92,6 +93,30 @@ export class CertificateIssueController {
   @Get(':id')
   get(@Param('id') id: string) {
     return this.svc.get(id);
+  }
+
+  /** 轻量缩略图(压缩预览图,不含 pdfData)— 已发证书详情预览用 */
+  @Get(':id/thumbnail')
+  getThumbnail(@Param('id') id: string) {
+    return this.svc.getThumbnail(id);
+  }
+
+  /**
+   * 删除证书 — 物理删除,管理员专用(@Permission('certificate:delete'),
+   * 仅 platform_admin 拥有该权限点,故"只有管理员可用")。
+   */
+  @Delete(':id')
+  @Permission('certificate:delete')
+  remove(
+    @Param('id') id: string,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.remove(id, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
   }
 
   /**

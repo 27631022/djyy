@@ -13,6 +13,7 @@ import {
   PowerOffIcon,
   ImageOffIcon,
   TagIcon,
+  ListChecksIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -430,6 +431,13 @@ function TemplateCard({
           >
             <EditIcon className="w-3 h-3" />
             编辑
+          </Link>
+          <Link
+            to={`/admin/certificates?templateId=${template.id}`}
+            className="p-1.5 rounded-md text-[#6B7280] hover:text-[var(--party-primary)] hover:bg-party-soft"
+            title="查看关联证书(该模板已发出的证书)"
+          >
+            <ListChecksIcon className="w-3.5 h-3.5" />
           </Link>
           <button
             onClick={onToggle}

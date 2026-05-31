@@ -107,8 +107,16 @@ export interface CertificateListItemDto {
   batchSeq: number;
   publicToken: string;
   templateId: string | null;
-  template: { id: string; name: string; honorCode: string | null } | null;
+  template: {
+    id: string;
+    name: string;
+    honorCode: string | null;
+    /** 荣誉级别(字典 cert_honor_level 的 code)— 取自关联模板,外部证书为 null */
+    honorLevel: string | null;
+  } | null;
   source: CertificateSource;
+  /** 荣誉类型快照:个人 / 集体(外部老数据可能为 null) */
+  honorType: "individual" | "collective" | null;
   recipientUserId: string | null;
   recipientName: string;
   recipientEmpNo: string | null;
@@ -170,6 +178,8 @@ export interface IssueCertificateInput {
   variableData: string;
   /** PDF base64 data URL(前端 jspdf 生成) */
   pdfData: string;
+  /** 压缩预览缩略图 JPEG base64(前端从同一次渲染降采样,约几十 KB)。详情轻量预览用 */
+  thumbnail?: string;
   validUntil?: string;
   issuingOrgId?: string;
   issuingOrgName?: string;
@@ -265,10 +275,20 @@ export const certificateIssueApi = {
   get: (id: string) =>
     api.get<CertificateDetailDto>(`/certificates/${id}`).then((r) => r.data),
 
+  /** 轻量缩略图(压缩预览图,不含 pdfData)。详情预览用 —— 几十 KB,秒回 */
+  getThumbnail: (id: string) =>
+    api
+      .get<{ thumbnail: string | null }>(`/certificates/${id}/thumbnail`)
+      .then((r) => r.data),
+
   revoke: (id: string, reason?: string) =>
     api
       .patch<CertificateDetailDto>(`/certificates/${id}/revoke`, { reason })
       .then((r) => r.data),
+
+  /** 物理删除一张证书(管理员专用 — 后端 @Permission('certificate:delete')) */
+  remove: (id: string) =>
+    api.delete<{ ok: boolean; id: string }>(`/certificates/${id}`).then((r) => r.data),
 
   /** 批量下载,返回 application/zip 的 Blob */
   bulkDownload: (ids: string[]) =>

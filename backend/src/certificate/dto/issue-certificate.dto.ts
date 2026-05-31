@@ -79,6 +79,11 @@ export class IssueCertificateDto {
   @IsString()
   pdfData!: string;
 
+  /** 压缩预览缩略图 JPEG base64(前端从同一次渲染降采样生成,约几十 KB)。可选 */
+  @IsOptional()
+  @IsString()
+  thumbnail?: string;
+
   /** 有效期至,ISO 日期串。空 = 永久 */
   @IsOptional()
   @IsDateString()

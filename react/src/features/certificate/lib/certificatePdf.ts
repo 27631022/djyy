@@ -5,6 +5,7 @@ import {
   getQRCacheKey,
   renderAll,
 } from "./canvasRenderer";
+import { generateThumbnail } from "./exportUtils";
 import type { DesignerState, VariableField } from "./designerTypes";
 
 /**
@@ -164,6 +165,39 @@ export async function generateCertificatePdfDataUrl(
   return pdf.output("datauristring");
 }
 
+/**
+ * 一次渲染同时产出「高清 PDF」+「压缩预览缩略图」。
+ *
+ * 发证时用这个,而不是分别调两次渲染 —— 同一张 ×EXPORT_SCALE 的高清 canvas:
+ *   - 直接出 PDF(高清,用于下载)
+ *   - 降采样出 JPEG 缩略图(约几十 KB,存库供详情轻量预览)
+ * 缩略图准确反映"发证当时"的样子(即使日后改了模板也不受影响)。
+ */
+export async function generateCertificateOutputs(
+  state: DesignerState,
+  variableValues: Record<string, string>,
+  thumbWidth = 700,
+  thumbQuality = 0.72,
+): Promise<{ pdfData: string; thumbnail: string }> {
+  const canvas = document.createElement("canvas");
+  await renderStateToCanvas(canvas, state, variableValues, EXPORT_SCALE);
+
+  const imgData = canvas.toDataURL("image/png");
+  const w = state.canvasWidth;
+  const h = state.canvasHeight;
+  const pdf = new jsPDF({
+    orientation: w > h ? "landscape" : "portrait",
+    unit: "px",
+    format: [w, h],
+    hotfixes: ["px_scaling"],
+  });
+  pdf.addImage(imgData, "PNG", 0, 0, w, h);
+  const pdfData = pdf.output("datauristring");
+
+  const thumbnail = generateThumbnail(canvas, thumbWidth, thumbQuality);
+  return { pdfData, thumbnail };
+}
+
 /** 生成证书 PNG 的 data URL(高清,按 EXPORT_SCALE 超采样) */
 export async function generateCertificatePngDataUrl(
   state: DesignerState,
@@ -174,12 +208,53 @@ export async function generateCertificatePngDataUrl(
   return canvas.toDataURL("image/png");
 }
 
-/** 触发浏览器下载 — 把 data URL 包成 <a download> 点一下 */
-export function triggerDownload(dataUrl: string, filename: string): void {
+/**
+ * data:<mime>[;params];base64,<data> → Blob。解析失败返回 null。
+ * 兼容 jspdf 的 `data:application/pdf;filename=generated.pdf;base64,...` 这种带参数的形态。
+ */
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  try {
+    const comma = dataUrl.indexOf(",");
+    if (comma < 0) return null;
+    const meta = dataUrl.slice(5, comma); // 去掉前缀 "data:"
+    const isBase64 = /;base64/i.test(meta);
+    const mime = meta.split(";")[0] || "application/octet-stream";
+    const dataPart = dataUrl.slice(comma + 1);
+    if (isBase64) {
+      const bin = atob(dataPart);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new Blob([bytes], { type: mime });
+    }
+    return new Blob([decodeURIComponent(dataPart)], { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 触发浏览器下载。
+ *
+ * data: URL 先转成 Blob + object URL 再下载 —— 因为大体积 data: URL(单张高清证书可达十几 MB)
+ * 用 `<a href="data:...">` 直接下载会被 Chrome 等浏览器静默拦截(无报错、无文件)。
+ * blob:/http(s): URL 原样使用(批量下载的 ZIP 已是 object URL)。
+ */
+export function triggerDownload(url: string, filename: string): void {
+  let href = url;
+  let objectUrl: string | null = null;
+  if (url.startsWith("data:")) {
+    const blob = dataUrlToBlob(url);
+    if (blob) {
+      objectUrl = URL.createObjectURL(blob);
+      href = objectUrl;
+    }
+  }
   const a = document.createElement("a");
-  a.href = dataUrl;
+  a.href = href;
   a.download = filename;
+  a.rel = "noopener";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+  if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }

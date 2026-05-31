@@ -9,11 +9,6 @@ async function bootstrap() {
     logger: ['log', 'error', 'warn', 'debug'],
   });
 
-  // Express 默认 JSON body 上限 100KB,但证书模板的 designJson 里可能含
-  // base64 编码的底图 + 图片元素(V2),容易突破。放宽到 10MB(前端上传时已限单图 2MB)。
-  app.use(json({ limit: '10mb' }));
-  app.use(urlencoded({ extended: true, limit: '10mb' }));
-
   const config = app.get(ConfigService);
   const port = config.get<number>('PORT', 3001);
   const corsOrigin = config.get<string>('CORS_ORIGIN', 'http://localhost:5173');
@@ -21,6 +16,10 @@ async function bootstrap() {
 
   const whitelist = corsOrigin.split(',').map((o) => o.trim()).filter(Boolean);
 
+  // ⚠️ CORS 必须注册在 body parser 之前。
+  // 否则「请求体过大(PayloadTooLargeError / 413)」在 body 解析阶段就抛出,
+  // 绕过了 CORS 中间件,错误响应不带 Access-Control-Allow-Origin,
+  // 浏览器会把这个 413 误报成 "No 'Access-Control-Allow-Origin' header"(假 CORS、真 413)。
   app.enableCors({
     origin: (origin, cb) => {
       // 无 Origin(同源请求 / curl / Postman):放行
@@ -34,6 +33,11 @@ async function bootstrap() {
     },
     credentials: true,
   });
+
+  // Express 默认 JSON body 上限 100KB。证书 PDF(V2 起 ×3 超采样 + 底图)的 base64
+  // 单张可能十几 MB,旧的 10MB 上限会触发 413。放宽到 50MB(admin 操作、单张证书,内存可接受)。
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ extended: true, limit: '50mb' }));
 
   app.useGlobalPipes(
     new ValidationPipe({

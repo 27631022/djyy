@@ -47,6 +47,7 @@ function buildBatchKey(
   return `${yearLabel}-${honorCode}-${batchTotal}`;
 }
 
+
 @Injectable()
 export class CertificateIssueService {
   constructor(
@@ -96,13 +97,19 @@ export class CertificateIssueService {
     const publicToken = randomBytes(24).toString('base64url');
 
     const created = await this.prisma.$transaction(async (tx) => {
-      const inBatch = await tx.certificate.count({ where: { batchKey } });
-      if (inBatch >= dto.batchTotal) {
+      // 发号 = 批次现存最大序号 + 1。
+      // 删掉中间某号不会被回填(不复用),也不会撞已存在 certNo(避免 P2002 → 500)。
+      const agg = await tx.certificate.aggregate({
+        where: { batchKey },
+        _max: { batchSeq: true },
+      });
+      const maxSeq = agg._max.batchSeq ?? 0;
+      const batchSeq = maxSeq + 1;
+      if (batchSeq > dto.batchTotal) {
         throw new BadRequestException(
-          `批次 ${batchKey} 已发完(${inBatch}/${dto.batchTotal})。如要追加发证,请使用不同的 batchTotal。`,
+          `批次 ${batchKey} 已发完(${maxSeq}/${dto.batchTotal})。如要追加发证,请使用不同的 batchTotal。`,
         );
       }
-      const batchSeq = inBatch + 1;
       const certNo = buildCertNo(
         dto.yearLabel,
         honorCode,
@@ -152,6 +159,7 @@ export class CertificateIssueService {
           issuingOrgName: dto.issuingOrgName,
 
           pdfData: dto.pdfData,
+          thumbnail: dto.thumbnail,
         },
       });
     });
@@ -199,8 +207,12 @@ export class CertificateIssueService {
         batchSeq: true,
         publicToken: true,
         templateId: true,
-        template: { select: { id: true, name: true, honorCode: true } },
+        template: {
+          select: { id: true, name: true, honorCode: true, honorLevel: true },
+        },
         source: true,
+        // V3:荣誉类型(个人/集体)快照 — 综合搜索 + 列表「持证人/集体」列要用
+        honorType: true,
         recipientUserId: true,
         recipientName: true,
         recipientEmpNo: true,
@@ -229,10 +241,54 @@ export class CertificateIssueService {
   async get(id: string) {
     const cert = await this.prisma.certificate.findUnique({
       where: { id },
-      include: { template: { select: { id: true, name: true, honorCode: true } } },
+      include: {
+        template: {
+          select: { id: true, name: true, honorCode: true, honorLevel: true },
+        },
+      },
     });
     if (!cert) throw new NotFoundException('证书不存在');
     return cert;
+  }
+
+  /**
+   * 轻量缩略图 — 只返回压缩预览图(几十 KB),不带 pdfData(数 MB)。
+   * 已发证书详情的预览用这个,避免每次拉整张高清 PDF。
+   * thumbnail 为空(外部证书 / 老数据)时返回 null,前端回退到完整 PDF 预览。
+   */
+  async getThumbnail(id: string): Promise<{ thumbnail: string | null }> {
+    const cert = await this.prisma.certificate.findUnique({
+      where: { id },
+      select: { thumbnail: true },
+    });
+    if (!cert) throw new NotFoundException('证书不存在');
+    return { thumbnail: cert.thumbnail };
+  }
+
+  /**
+   * 硬删除一张证书(管理员专用,@Permission('certificate:delete'))。
+   * 与「撤销」不同:撤销是软标记保留数据,删除是物理移除。
+   * 注:删除会释放该 batch 内的序号槽位 —— 若随后用相同 batchTotal 追加发证,
+   *     count+1 可能撞到已存在的更高 seq,certNo 唯一约束会拦下(安全失败,不会脏写)。
+   */
+  async remove(id: string, ctx: IssueCtx) {
+    const cert = await this.prisma.certificate.findUnique({ where: { id } });
+    if (!cert) throw new NotFoundException('证书不存在');
+    await this.prisma.certificate.delete({ where: { id } });
+    await this.audit.log({
+      action: 'cert.issue.delete',
+      target: id,
+      actorId: ctx.actorId,
+      actorName: ctx.actorName,
+      ip: ctx.ip,
+      detail: JSON.stringify({
+        certNo: cert.certNo,
+        recipientName: cert.recipientName,
+        batchKey: cert.batchKey,
+        source: cert.source,
+      }),
+    });
+    return { ok: true, id };
   }
 
   /* ─── 外部证书上传(Phase E)─── */
@@ -255,13 +311,17 @@ export class CertificateIssueService {
     const publicToken = randomBytes(24).toString('base64url');
 
     const created = await this.prisma.$transaction(async (tx) => {
-      const inBatch = await tx.certificate.count({ where: { batchKey } });
-      if (inBatch >= dto.batchTotal) {
+      const agg = await tx.certificate.aggregate({
+        where: { batchKey },
+        _max: { batchSeq: true },
+      });
+      const maxSeq = agg._max.batchSeq ?? 0;
+      const batchSeq = maxSeq + 1;
+      if (batchSeq > dto.batchTotal) {
         throw new BadRequestException(
-          `批次 ${batchKey} 已发完(${inBatch}/${dto.batchTotal})。如要追加发证,请使用不同的 batchTotal。`,
+          `批次 ${batchKey} 已发完(${maxSeq}/${dto.batchTotal})。如要追加发证,请使用不同的 batchTotal。`,
         );
       }
-      const batchSeq = inBatch + 1;
       const certNo = buildCertNo(
         dto.yearLabel,
         dto.honorCode,

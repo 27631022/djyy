@@ -31,7 +31,7 @@ import {
   type ExtractHonorResponse,
 } from "@/features/certificate";
 import { useAuth } from "@/stores/auth";
-import { generateCertificatePdfDataUrl } from "../lib/certificatePdf";
+import { generateCertificateOutputs } from "../lib/certificatePdf";
 import { buildVariableValues } from "../lib/variableMapping";
 import { isValidYearLabel } from "../lib/certificateNumber";
 import type { DesignerState } from "../lib/designerTypes";
@@ -244,7 +244,7 @@ export default function CertificateIssuePage() {
           });
           let result: IssueResult;
           try {
-            const pdfData = await generateCertificatePdfDataUrl(
+            const { pdfData, thumbnail } = await generateCertificateOutputs(
               designState,
               variableValues,
             );
@@ -258,6 +258,7 @@ export default function CertificateIssuePage() {
               batchTotal,
               variableData: JSON.stringify(variableValues),
               pdfData,
+              thumbnail,
               issuingOrgName: template.issuingOrgName || undefined,
               honorType: record.honorType,
               issueDate,

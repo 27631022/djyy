@@ -21,7 +21,7 @@ import {
 } from "@/features/certificate";
 import { TemplatePicker } from "../components/issue/TemplatePicker";
 import { BatchInfoForm } from "../components/issue/BatchInfoForm";
-import { generateCertificatePdfDataUrl } from "../lib/certificatePdf";
+import { generateCertificateOutputs } from "../lib/certificatePdf";
 import { isValidYearLabel } from "../lib/certificateNumber";
 import type { DesignerState, VariableField } from "../lib/designerTypes";
 import { buildVariableValues } from "../lib/variableMapping";
@@ -192,7 +192,10 @@ export default function CertificateBulkIssuePage() {
         }
 
         try {
-          const pdfData = await generateCertificatePdfDataUrl(designState, variableValues);
+          const { pdfData, thumbnail } = await generateCertificateOutputs(
+            designState,
+            variableValues,
+          );
           const input: IssueCertificateInput = {
             templateId: template.id,
             recipientName: name,
@@ -202,6 +205,7 @@ export default function CertificateBulkIssuePage() {
             batchTotal: csv.rows.length,
             variableData: JSON.stringify(variableValues),
             pdfData,
+            thumbnail,
             validUntil: validUntil || undefined,
           };
           await certificateIssueApi.issue(input);

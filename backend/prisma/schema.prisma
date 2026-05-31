@@ -511,6 +511,9 @@ model Certificate {
   // 渲染产物 / 外部文件
   pdfData          String? // 前端 jspdf 生成 base64,internal 必有,external 可空
   externalFileData String? // source='external' 时存上传的原 PDF base64
+  // 压缩预览缩略图(发证时由前端从同一次渲染降采样生成的 JPEG base64,约几十 KB)。
+  // 已发证书详情用它做轻量预览,避免每次拉整张高清 PDF(数 MB)。external/老数据为 null。
+  thumbnail        String? // JPEG data URL(压缩预览图)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

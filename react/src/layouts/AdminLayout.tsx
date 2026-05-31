@@ -7,12 +7,13 @@ import {
   EyeIcon, ThumbsUpIcon, MessageSquareIcon,
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
   AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, FileTextIcon,
-  KeyRoundIcon,
+  KeyRoundIcon, PanelLeftCloseIcon, PanelLeftOpenIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 
 /* ─── 顶部一级分类 → 联动左侧二级菜单 ─── */
-interface MenuItem { path: string; label: string; icon: React.ElementType; disabled?: boolean; }
+/** group:可选的二级菜单分组标题(同 group 的项聚在一个小标题下) */
+interface MenuItem { path: string; label: string; icon: React.ElementType; disabled?: boolean; group?: string; }
 interface Category { id: string; label: string; icon: React.ElementType; items: MenuItem[]; }
 
 const CATEGORIES: Category[] = [
@@ -43,11 +44,11 @@ const CATEGORIES: Category[] = [
     label: "业务功能",
     icon: BriefcaseIcon,
     items: [
-      { path: "/admin/certificate-templates", label: "证书模板",   icon: AwardIcon },
-      { path: "/admin/certificates/issue",    label: "颁发证书",   icon: SendIcon  },
-      { path: "/admin/certificates/bulk",     label: "CSV 批量发证", icon: FileTextIcon },
-      { path: "/admin/certificates/external", label: "外部证书录入", icon: UploadIcon },
-      { path: "/admin/certificates",          label: "已发证书",   icon: ListChecksIcon },
+      { path: "/admin/certificate-templates", label: "证书模板",   icon: AwardIcon,      group: "证书管理" },
+      { path: "/admin/certificates/issue",    label: "颁发证书",   icon: SendIcon,       group: "证书管理" },
+      { path: "/admin/certificates/bulk",     label: "CSV 批量发证", icon: FileTextIcon,  group: "证书管理" },
+      { path: "/admin/certificates/external", label: "外部证书录入", icon: UploadIcon,    group: "证书管理" },
+      { path: "/admin/certificates",          label: "已发证书",   icon: ListChecksIcon, group: "证书管理" },
     ],
   },
   {
@@ -71,10 +72,59 @@ function findMenuItem(path: string): { category: Category; item: MenuItem } | nu
   return null;
 }
 
+/* ─── 二级菜单单项(收缩态=图标轨 + tooltip;展开态=图标 + 文字) ─── */
+function SidebarMenuItem({
+  item,
+  active,
+  collapsed,
+  onNavigate,
+}: {
+  item: MenuItem;
+  active: boolean;
+  collapsed: boolean;
+  onNavigate: (path: string) => void;
+}) {
+  const Icon = item.icon;
+  const base = `flex items-center gap-2 rounded-lg text-sm transition-all ${
+    collapsed ? "justify-center px-0 py-2" : "px-3 py-2"
+  }`;
+  if (item.disabled) {
+    return (
+      <div
+        title={collapsed ? `${item.label}(待实现)` : "后续切片实现"}
+        className={`${base} text-[#C0C6D0] cursor-not-allowed`}
+      >
+        <Icon className="w-4 h-4 flex-shrink-0" />
+        {!collapsed && (
+          <>
+            <span className="flex-1 truncate">{item.label}</span>
+            <span className="text-[9px] text-[#D1D5DB]">待实现</span>
+          </>
+        )}
+      </div>
+    );
+  }
+  return (
+    <button
+      onClick={() => onNavigate(item.path)}
+      title={collapsed ? item.label : undefined}
+      className={`${base} ${
+        active
+          ? "bg-party-soft text-[var(--party-primary)] font-semibold"
+          : "text-[#4B5563] hover:bg-[#F7F8FA]"
+      }`}
+    >
+      <Icon className="w-4 h-4 flex-shrink-0" />
+      {!collapsed && <span className="truncate">{item.label}</span>}
+    </button>
+  );
+}
+
 interface Tab { path: string; label: string; icon: React.ElementType; }
 
 const TABS_STORAGE_KEY = "djyy_admin_tabs_v1";
 const CAT_STORAGE_KEY  = "djyy_admin_active_cat_v1";
+const SIDEBAR_COLLAPSED_KEY = "djyy_admin_sidebar_collapsed_v1";
 
 export default function AdminLayout() {
   const location = useLocation();
@@ -105,6 +155,14 @@ export default function AdminLayout() {
     }
   });
 
+  /* ── 左侧二级菜单是否收缩 ── */
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1",
+  );
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? "1" : "0");
+  }, [sidebarCollapsed]);
+
   /* 当前 tab 等于 URL */
   const currentPath = location.pathname;
 
@@ -132,6 +190,21 @@ export default function AdminLayout() {
   }, [activeCatId]);
 
   const activeCat = useMemo(() => CATEGORIES.find((c) => c.id === activeCatId) ?? CATEGORIES[0], [activeCatId]);
+
+  /* 把二级菜单项按 group 聚合(保持出现顺序);无 group 的归到匿名组 "" */
+  const menuGroups = useMemo(() => {
+    const out: { name: string; items: MenuItem[] }[] = [];
+    for (const it of activeCat.items) {
+      const g = it.group ?? "";
+      let bucket = out.find((x) => x.name === g);
+      if (!bucket) {
+        bucket = { name: g, items: [] };
+        out.push(bucket);
+      }
+      bucket.items.push(it);
+    }
+    return out;
+  }, [activeCat]);
 
   function closeTab(path: string, e: React.MouseEvent) {
     e.stopPropagation();
@@ -214,44 +287,56 @@ export default function AdminLayout() {
       {/* ════ 主体 (Sidebar + Content) ════ */}
       <div className="flex-1 flex min-h-0">
 
-        {/* 左下:二级菜单 */}
-        <aside className="w-60 flex-shrink-0 bg-white border-r border-[#E9E9E9] flex flex-col">
-          <div className="px-4 py-3 border-b border-[#F0F0F0] flex items-center gap-2">
-            <activeCat.icon className="w-4 h-4 text-[var(--party-primary)]" />
-            <span className="text-sm font-bold text-[#1A1A1A]">{activeCat.label}</span>
+        {/* 左下:二级菜单(可收缩 + 分组标题) */}
+        <aside
+          style={{ flexGrow: 0, flexShrink: 0, flexBasis: sidebarCollapsed ? "56px" : "240px" }}
+          className="min-w-0 overflow-hidden bg-white border-r border-[#E9E9E9] flex flex-col"
+        >
+          <div
+            className={`border-b border-[#F0F0F0] flex items-center ${
+              sidebarCollapsed ? "justify-center px-0 py-3" : "gap-2 px-4 py-3"
+            }`}
+          >
+            {!sidebarCollapsed && (
+              <>
+                <activeCat.icon className="w-4 h-4 text-[var(--party-primary)] flex-shrink-0" />
+                <span className="text-sm font-bold text-[#1A1A1A] flex-1 truncate">{activeCat.label}</span>
+              </>
+            )}
+            <button
+              onClick={() => setSidebarCollapsed((v) => !v)}
+              title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+              className="p-1 rounded hover:bg-[#F7F8FA] text-[#9CA3AF] hover:text-[var(--party-primary)] transition-colors"
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpenIcon className="w-4 h-4" />
+              ) : (
+                <PanelLeftCloseIcon className="w-4 h-4" />
+              )}
+            </button>
           </div>
           <nav className="flex-1 py-2 px-2 flex flex-col gap-0.5 overflow-y-auto">
-            {activeCat.items.map((it) => {
-              const Icon = it.icon;
-              const active = it.path === currentPath;
-              if (it.disabled) {
-                return (
-                  <div
-                    key={it.path}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[#C0C6D0] cursor-not-allowed"
-                    title="后续切片实现"
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span className="flex-1">{it.label}</span>
-                    <span className="text-[9px] text-[#D1D5DB]">待实现</span>
+            {menuGroups.map((g, gi) => (
+              <div key={g.name || `__anon_${gi}`} className="flex flex-col gap-0.5">
+                {g.name && !sidebarCollapsed && (
+                  <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wide">
+                    {g.name}
                   </div>
-                );
-              }
-              return (
-                <button
-                  key={it.path}
-                  onClick={() => navigate(it.path)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
-                    active
-                      ? "bg-party-soft text-[var(--party-primary)] font-semibold"
-                      : "text-[#4B5563] hover:bg-[#F7F8FA]"
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {it.label}
-                </button>
-              );
-            })}
+                )}
+                {g.name && sidebarCollapsed && gi > 0 && (
+                  <div className="my-1 mx-2 border-t border-[#F0F0F0]" />
+                )}
+                {g.items.map((it) => (
+                  <SidebarMenuItem
+                    key={it.path}
+                    item={it}
+                    active={it.path === currentPath}
+                    collapsed={sidebarCollapsed}
+                    onNavigate={navigate}
+                  />
+                ))}
+              </div>
+            ))}
           </nav>
         </aside>
 
