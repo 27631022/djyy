@@ -45,7 +45,9 @@ djyy/                              ← git 根 + monorepo
 │   ├── src/
 │   │   ├── features/              ← 业务模块,每个对齐 backend 模块
 │   │   │   ├── auth/              ← api.ts + index.ts (无页面)
+│   │   │   ├── certificate/       ← 证书 V1-V3:模板设计器/发证向导/公开验证/AI 提取/外部录入
 │   │   │   ├── dictionary/        ← api.ts + pages/Dictionaries.tsx + index.ts
+│   │   │   ├── external-api/      ← AI 平台配置(DeepSeek/豆包/千问 — key/model/优先级)
 │   │   │   ├── nav-category/
 │   │   │   ├── organization/
 │   │   │   ├── permission/        ← api.ts + index.ts (无独立页面,合并在 role)
@@ -88,6 +90,8 @@ djyy/                              ← git 根 + monorepo
         ├── user-custom-field/     ← 元数据驱动的用户扩展字段 + index.ts
         ├── site-setting/          ← 站点设置(单行 JSON) + index.ts
         ├── nav-category/          ← 首页导航(分类 + 项目两表) + index.ts
+        ├── certificate/           ← 证书 V1-V3:模板 + 发证 + 公开验证 + AI 提取 + 外部录入 + index.ts
+        ├── external-api/          ← AI 平台配置(provider/key/model/visionModel/优先级)+ index.ts
         ├── health/                ← /api/health + index.ts
         └── main.ts                ← listen 0.0.0.0,CORS dev 放开 *:5173
 ```
@@ -235,6 +239,9 @@ npm run db:seed
   - Phase C 撤销 + 多选批量下载 ZIP(jszip,文件名「荣誉-姓名-员工号.pdf」)
   - Phase D 接入 DeepSeek AI(用户上传 Word/PDF → 抽出表彰荣誉/年份/受表彰人 → 预填表单 → 人工确认发证)
   - Phase E 外部证书上传(source='external')+ CSV 批量发证(papaparse 解析 + 自动字段映射 + 进度条 + 失败行回显)
+- **(2026-05-31)证书管理 V3**:把 V2 闭环抛光到"可交付"。发证向导拆 5 步;受表彰人单位/部门改**组织树点选 + 必填**(个人按工号/姓名兜底自动带出全称路径,按姓名补的/重名的标「待核对」;集体按名称匹配单位);公开验证页 `/verify/:token` 直显证书 + 修空白(16MB data:PDF → 14KB 缩略图);详情抽屉预览自动渲染;模板变量加「表彰年度」(默认上一年);编号总数段补零。详见 **docs/specs/2026-05-31-certificate-v3.md**
+  - ⚠ 两个遗留(下次继续):① 证书 PDF/缩略图上烤的是**占位编号**(真号只在记录字段,需改发证流程先发号再渲染)② AI 提取慢——只需把 deepseek 模型 `v4-pro`→`v4-flash`(后台「外部 API 接入」页改 model,纯配置)。详见 V3 spec「已知遗留」+ `~/.claude/plans/ai-swirling-bear.md`
+  - CSV 批量发证页已删(旧路线遗留),改用发证向导的粘贴识别
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
