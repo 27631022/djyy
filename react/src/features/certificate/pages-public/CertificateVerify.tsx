@@ -1,25 +1,32 @@
 import { useEffect } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ShieldCheckIcon, ArrowLeftIcon } from "lucide-react";
+import {
+  ShieldCheckIcon,
+  ArrowLeftIcon,
+  Loader2Icon,
+  AlertCircleIcon,
+} from "lucide-react";
 import { siteSettingApi } from "@/features/site-setting";
-import { CertificateSearchBox } from "../components/public-search/CertificateSearchBox";
+import {
+  CertificateSearchBox,
+  CertificateDetailCard,
+} from "../components/public-search/CertificateSearchBox";
+import { certificatePublicApi } from "../api";
 
 /**
- * 公开证书验证页。
+ * 公开证书验证页(不在 AdminLayout 下,无侧栏 / Tabs / 后台菜单)。
  *
- * 路由形态:
- *   /verify              输入证书编号查询
- *   /verify/:token       已经持有 publicToken(扫码进来)— 此页可直接展示
- *                        (本 MVP 阶段:把 token 自动塞到 SearchBox 也行,
- *                         但更友好的是直接走 verify API。Phase B 先做基础版本。)
+ * 两种入口,同一个页面:
+ *   /verify             — 通用查询:输入证书编号,搜出来再看详情(给"首页综合查询"复用同款 SearchBox)
+ *   /verify/:token      — 单证验证:扫码 / 后台「打开公开验证页」带 publicToken 进来,
+ *                          直接验证并展示该证书。每张证书 token 唯一 → 每个链接展示各自的证书。
  *
- * 不在 AdminLayout 下,没有侧栏 / Tabs / 后台菜单。
+ * 之前的 bug:/verify/:token 只是把 token 塞进搜索框 placeholder,没有真正验证,
+ * 所以"点进去看不到对应证书"。现在 token 存在时直接走 verifyByToken。
  */
 export default function CertificateVerifyPage() {
   const { token } = useParams<{ token?: string }>();
-  const [search] = useSearchParams();
-  const q = search.get("q") ?? token ?? "";
 
   // 站点设置 — 标题/LOGO
   const settingsQuery = useQuery({
@@ -65,37 +72,95 @@ export default function CertificateVerifyPage() {
           </div>
           <h1 className="text-2xl font-bold text-[#1A1A1A]">证书查询验证</h1>
           <p className="text-sm text-[#6B7280] mt-2 max-w-lg mx-auto">
-            输入完整证书编号查询真伪,扫描证书上二维码亦可自动验证。
-            <br className="hidden sm:inline" />
-            查询结果不会泄露持证人敏感信息。
+            {token ? (
+              "以下为该证书的验证结果,扫描证书二维码或访问此链接均可查看。"
+            ) : (
+              <>
+                输入完整证书编号查询真伪,扫描证书上二维码亦可自动验证。
+                <br className="hidden sm:inline" />
+                查询结果不会泄露持证人敏感信息。
+              </>
+            )}
           </p>
         </div>
 
-        <CertificateSearchBox key={q || "default"} placeholder={q || undefined} />
+        {token ? <TokenVerifyResult token={token} /> : <CertificateSearchBox />}
 
-        {/* 简单说明 */}
-        <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center text-xs text-[#6B7280]">
-          <Tip title="编号格式">
-            年份-荣誉代码-总数-序号
-            <br />
-            如 <span className="font-mono">2024-QDJL-100-001</span>
-          </Tip>
-          <Tip title="状态标识">
-            绿色 = 有效
-            <br />
-            红色 = 已撤销
-          </Tip>
-          <Tip title="隐私保护">
-            身份证号 / 手机号 / 外部原文件
-            <br />
-            均不外露,仅显示证书基础信息
-          </Tip>
-        </div>
+        {/* 说明卡片 — 仅在通用查询页显示(单证结果页已自带完整信息) */}
+        {!token && (
+          <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center text-xs text-[#6B7280]">
+            <Tip title="编号格式">
+              年份-荣誉代码-总数-序号
+              <br />
+              如 <span className="font-mono">2024-QDJL-100-001</span>
+            </Tip>
+            <Tip title="状态标识">
+              绿色 = 有效
+              <br />
+              红色 = 已撤销
+            </Tip>
+            <Tip title="隐私保护">
+              身份证号 / 手机号 / 外部原文件
+              <br />
+              均不外露,仅显示证书基础信息
+            </Tip>
+          </div>
+        )}
       </main>
 
       <footer className="mt-12 py-6 text-center text-[11px] text-[#9CA3AF]">
         © {new Date().getFullYear()} {siteName}
       </footer>
+    </div>
+  );
+}
+
+/* ─── 单证验证结果(带 publicToken 进来时)─── */
+function TokenVerifyResult({ token }: { token: string }) {
+  const query = useQuery({
+    queryKey: ["public-verify", token],
+    queryFn: () => certificatePublicApi.verifyByToken(token),
+    retry: false,
+  });
+
+  if (query.isLoading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-[#9CA3AF]">
+        <Loader2Icon className="w-5 h-5 animate-spin" />
+        正在验证证书…
+      </div>
+    );
+  }
+
+  if (query.isError || !query.data) {
+    return (
+      <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-6 text-center">
+        <AlertCircleIcon className="w-8 h-8 mx-auto text-amber-500 mb-2" />
+        <p className="text-sm font-semibold text-amber-900">证书不存在或链接无效</p>
+        <p className="text-xs text-amber-700 mt-1">
+          该验证链接可能已失效或被删除。你也可以手动输入证书编号重新查询。
+        </p>
+        <Link
+          to="/verify"
+          className="inline-block mt-3 text-xs text-[var(--party-primary)] underline underline-offset-2"
+        >
+          手动输入证书编号查询 →
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <CertificateDetailCard detail={query.data} />
+      <div className="mt-4 text-center">
+        <Link
+          to="/verify"
+          className="text-xs text-[var(--party-primary)] hover:underline underline-offset-2"
+        >
+          查询其他证书 →
+        </Link>
+      </div>
     </div>
   );
 }

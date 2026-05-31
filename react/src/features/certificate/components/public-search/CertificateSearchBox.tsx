@@ -204,23 +204,27 @@ function MultipleResults({
   );
 }
 
-function CertificateDetailCard({ detail }: { detail: CertificatePublicDetail }) {
-  function handleDownload() {
-    const pdf = detail.pdfData ?? detail.externalFileData;
-    if (!pdf) {
-      toast.error("证书文件缺失");
-      return;
-    }
-    triggerDownload(
-      pdf,
-      buildPdfFileName({
-        honorName: detail.template?.name ?? detail.honorCode,
-        honorCode: detail.honorCode,
-        recipientName: detail.recipientName,
-        recipientEmpNo: detail.recipientEmpNo,
-      }),
-    );
-  }
+export function CertificateDetailCard({ detail }: { detail: CertificatePublicDetail }) {
+  const downloadMut = useMutation({
+    mutationFn: () => certificatePublicApi.downloadFile(detail.publicToken),
+    onSuccess: ({ pdfData }) => {
+      if (!pdfData) {
+        toast.error("证书文件缺失");
+        return;
+      }
+      triggerDownload(
+        pdfData,
+        buildPdfFileName({
+          honorName: detail.template?.name ?? detail.honorCode,
+          honorCode: detail.honorCode,
+          recipientName: detail.recipientName,
+          recipientEmpNo: detail.recipientEmpNo,
+        }),
+      );
+    },
+    onError: (e: unknown) =>
+      toast.error(e instanceof Error ? e.message : "下载失败"),
+  });
 
   return (
     <div
@@ -250,15 +254,14 @@ function CertificateDetailCard({ detail }: { detail: CertificatePublicDetail }) 
         )}
       </div>
 
-      {/* 证书 PDF 预览 */}
-      {detail.pdfData && (
+      {/* 证书预览 — 轻量缩略图(任何上下文都能 <img> 渲染;不用 data:PDF iframe,避免非 HTTPS 下空白) */}
+      {detail.thumbnail ? (
         <div className="mb-4 rounded border border-[#E9E9E9] bg-white overflow-hidden">
-          <iframe
-            src={detail.pdfData}
-            title="证书 PDF"
-            className="w-full"
-            style={{ height: 420, border: 0 }}
-          />
+          <img src={detail.thumbnail} alt="证书预览" className="w-full block" />
+        </div>
+      ) : (
+        <div className="mb-4 rounded border border-dashed border-[#E9E9E9] bg-white/60 py-6 text-center text-xs text-[#6B7280]">
+          该证书为上传文件,点下方「下载证书」查看原件
         </div>
       )}
 
@@ -290,15 +293,20 @@ function CertificateDetailCard({ detail }: { detail: CertificatePublicDetail }) 
         </Info>
       </div>
 
-      {/* 下载 */}
+      {/* 下载 — 按需拉取原件(避免验证页加载就传十几 MB) */}
       <div className="mt-4 flex justify-end">
         <button
           type="button"
-          onClick={handleDownload}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-white"
+          onClick={() => downloadMut.mutate()}
+          disabled={downloadMut.isPending}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-white disabled:opacity-50"
           style={{ backgroundColor: "var(--party-primary)" }}
         >
-          <DownloadIcon className="w-3.5 h-3.5" />
+          {downloadMut.isPending ? (
+            <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <DownloadIcon className="w-3.5 h-3.5" />
+          )}
           下载证书 PDF
         </button>
       </div>

@@ -14,10 +14,13 @@ import {
   ImageOffIcon,
   TagIcon,
   ListChecksIcon,
+  Loader2Icon,
+  AlertTriangleIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   certificateTemplateApi,
+  certificateIssueApi,
   HONOR_LEVEL_LABEL,
   HONOR_TYPE_LABEL,
   type CertificateTemplateDto,
@@ -497,34 +500,77 @@ function ConfirmDeleteDialog({
   onConfirm: () => void;
   loading: boolean;
 }) {
+  /* 打开时预查该模板关联证书数 —— 有证书则在本页拦下,不让点确认后才报错 */
+  const certQuery = useQuery({
+    queryKey: ["certificates", { templateId: template.id }],
+    queryFn: () => certificateIssueApi.list({ templateId: template.id }),
+    staleTime: 30_000,
+  });
+  const checking = certQuery.isLoading;
+  const certCount = certQuery.data?.length ?? 0;
+  const blocked = !checking && certCount > 0;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
       onClick={onCancel}
     >
       <div
-        className="bg-white rounded-lg w-[400px] p-6"
+        className="bg-white rounded-lg w-[440px] p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-base font-bold text-[#1A1A1A] mb-2">删除模板?</h3>
-        <p className="text-sm text-[#6B7280] mb-4">
-          模板「<span className="font-medium">{template.name}</span>」将被永久删除,不可恢复。
-        </p>
+
+        {checking ? (
+          <p className="flex items-center gap-2 text-sm text-[#6B7280] mb-4">
+            <Loader2Icon className="w-4 h-4 animate-spin" />
+            正在检查该模板是否已被证书引用…
+          </p>
+        ) : blocked ? (
+          <div className="mb-4 rounded-md bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800 leading-relaxed">
+            <div className="flex items-center gap-1.5 font-semibold mb-1 text-amber-900">
+              <AlertTriangleIcon className="w-3.5 h-3.5" />
+              无法删除
+            </div>
+            模板「<span className="font-medium">{template.name}</span>」下已发出{" "}
+            <b className="text-amber-900">{certCount}</b> 张证书,删除会使这些证书失去来源,因此被禁止。
+            <div className="mt-2 space-y-0.5">
+              <div>
+                ·{" "}
+                <Link
+                  to={`/admin/certificates?templateId=${template.id}`}
+                  onClick={onCancel}
+                  className="text-[var(--party-primary)] underline underline-offset-2"
+                >
+                  查看并清理这些证书
+                </Link>
+              </div>
+              <div>· 或改用卡片上的「禁用」,保留历史证书但不再用于发证</div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-[#6B7280] mb-4">
+            模板「<span className="font-medium">{template.name}</span>」将被永久删除,不可恢复。
+          </p>
+        )}
+
         <div className="flex justify-end gap-2">
           <button
             onClick={onCancel}
             disabled={loading}
             className="px-3 py-1.5 rounded text-sm border border-[#E9E9E9] hover:bg-[#F7F8FA]"
           >
-            取消
+            {blocked ? "知道了" : "取消"}
           </button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
-            className="px-3 py-1.5 rounded text-sm font-medium text-white bg-[#EF4444] hover:bg-[#DC2626]"
-          >
-            {loading ? "删除中…" : "确认删除"}
-          </button>
+          {!blocked && (
+            <button
+              onClick={onConfirm}
+              disabled={loading || checking}
+              className="px-3 py-1.5 rounded text-sm font-medium text-white bg-[#EF4444] hover:bg-[#DC2626] disabled:opacity-50"
+            >
+              {loading ? "删除中…" : "确认删除"}
+            </button>
+          )}
         </div>
       </div>
     </div>

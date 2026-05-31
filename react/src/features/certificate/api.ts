@@ -310,8 +310,14 @@ export const certificateIssueApi = {
 /** 公开搜索结果:沿用列表 DTO 但 pdfData/敏感字段已脱敏成 null */
 export type CertificatePublicListItem = CertificateListItemDto;
 
-/** 公开验证详情:含 pdfData(给公开页渲染),idCard/phone/externalFileData 脱敏 */
-export type CertificatePublicDetail = CertificateDetailDto;
+/**
+ * 公开验证详情:列表字段 + 轻量 thumbnail(几十 KB JPEG,公开页用 <img> 预览)。
+ * **不含 pdfData**(单张高清证书可达十几 MB,且 data:PDF 在非 HTTPS 下被浏览器拒绝
+ * iframe 渲染 → 验证页空白)。下载原件走 downloadFile 按需拉。
+ */
+export interface CertificatePublicDetail extends CertificateListItemDto {
+  thumbnail: string | null;
+}
 
 export const certificatePublicApi = {
   search: (q: string) =>
@@ -324,5 +330,14 @@ export const certificatePublicApi = {
   verifyByToken: (token: string) =>
     api
       .get<CertificatePublicDetail>(`/public/certificates/verify/${token}`)
+      .then((r) => r.data),
+
+  /** 按需下载证书原件(pdfData / 外部文件)— 验证页点「下载」时才调,避免页面加载就传大文件 */
+  downloadFile: (token: string) =>
+    api
+      .get<{ pdfData: string | null }>(
+        `/public/certificates/verify/${token}/file`,
+        { timeout: 60_000 },
+      )
       .then((r) => r.data),
 };

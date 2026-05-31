@@ -1,22 +1,22 @@
 /**
  * 证书编号工具
- * 编号格式:{yearLabel}-{honorCode}-{batchTotal}-{batchSeq3 位}
- *   例:2024-QDJL-100-001 / 2024-2025-YXDY-50-007
+ * 编号格式:{yearLabel}-{honorCode}-{batchTotal3 位}-{batchSeq3 位}
+ *   例:2024-QDJL-100-001 / 2024-2025-YXDY-050-007
  */
 
-/** 把 batchSeq 补 0 到 3 位(超出按位数自然展开) */
+/** 补 0 到 3 位(超出按位数自然展开)。总数段、序号段都用它 */
 export function padSeq(seq: number): string {
   return seq.toString().padStart(3, '0');
 }
 
-/** 拼证书编号 */
+/** 拼证书编号 — 与后端 issue.service.ts buildCertNo 保持一致(总数、序号都补 3 位) */
 export function buildCertNo(
   yearLabel: string,
   honorCode: string,
   batchTotal: number,
   batchSeq: number,
 ): string {
-  return `${yearLabel}-${honorCode}-${batchTotal}-${padSeq(batchSeq)}`;
+  return `${yearLabel}-${honorCode}-${padSeq(batchTotal)}-${padSeq(batchSeq)}`;
 }
 
 /** 默认下载文件名:{荣誉名/honorCode}-{姓名}-{员工编号}.pdf */

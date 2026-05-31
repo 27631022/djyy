@@ -25,9 +25,9 @@ interface ListFilter {
   recipientUserId?: string;
 }
 
-/** 把 batchSeq 格式化成 3 位补 0(批量最大 999 内显示美观,超出按位数自然展开) */
-function padSeq(seq: number): string {
-  return seq.toString().padStart(3, '0');
+/** 补 0 到 3 位(最大 999 内显示美观,超出按位数自然展开)。总数段、序号段都用它 */
+function pad3(n: number): string {
+  return n.toString().padStart(3, '0');
 }
 
 function buildCertNo(
@@ -36,7 +36,8 @@ function buildCertNo(
   batchTotal: number,
   batchSeq: number,
 ): string {
-  return `${yearLabel}-${honorCode}-${batchTotal}-${padSeq(batchSeq)}`;
+  // 编号:{年}-{荣誉码}-{总数3位}-{序号3位},如 2026-QDJL-005-001
+  return `${yearLabel}-${honorCode}-${pad3(batchTotal)}-${pad3(batchSeq)}`;
 }
 
 function buildBatchKey(
@@ -44,6 +45,8 @@ function buildBatchKey(
   honorCode: string,
   batchTotal: number,
 ): string {
+  // 内部分组键 — 用原始 batchTotal(不补 0)。仅用于按批次聚合发号,不对外展示,
+  // 故不随 certNo 显示格式变化(避免改格式后把在途批次重新分组/重新编号)。
   return `${yearLabel}-${honorCode}-${batchTotal}`;
 }
 
@@ -485,14 +488,68 @@ export class CertificateIssueService {
 
   /* ─── 公开接口(供 PublicVerifyController 用,不挂 AuthGuard) ─── */
 
-  /** 公开验证:通过 publicToken 拉一张证书,过滤敏感字段 */
+  /**
+   * 公开验证:通过 publicToken 拉一张证书。
+   *
+   * 关键:**不返回 pdfData**(单张高清证书可达十几 MB,data:PDF 又在非 HTTPS 下
+   * 被浏览器拒绝 iframe 渲染 → 公开页空白)。改返回轻量 thumbnail 供前端 <img> 预览;
+   * 下载原件走 getPublicFile(按需拉)。idCard/phone/externalFileData 不外露。
+   */
   async verifyByToken(token: string) {
     const cert = await this.prisma.certificate.findUnique({
       where: { publicToken: token },
-      include: { template: { select: { id: true, name: true, honorCode: true } } },
+      select: {
+        id: true,
+        certNo: true,
+        yearLabel: true,
+        honorCode: true,
+        batchKey: true,
+        batchTotal: true,
+        batchSeq: true,
+        publicToken: true,
+        templateId: true,
+        template: {
+          select: { id: true, name: true, honorCode: true, honorLevel: true },
+        },
+        source: true,
+        honorType: true,
+        recipientUserId: true,
+        recipientName: true,
+        recipientEmpNo: true,
+        recipientDept: true,
+        variableData: true,
+        issueDate: true,
+        validUntil: true,
+        issuedBy: true,
+        issuerName: true,
+        issuingOrgId: true,
+        issuingOrgName: true,
+        revoked: true,
+        revokedAt: true,
+        revokedReason: true,
+        revokedBy: true,
+        // 轻量预览图(几十 KB JPEG)。external 证书可能为 null
+        thumbnail: true,
+        createdAt: true,
+        updatedAt: true,
+        // 显式不取:pdfData / externalFileData / recipientIdCard / recipientPhone
+      },
     });
     if (!cert) throw new NotFoundException('证书不存在或链接无效');
-    return sanitizeForPublic(cert);
+    return cert;
+  }
+
+  /**
+   * 公开下载:按 publicToken 取证书文件(pdfData,外部证书回退 externalFileData)。
+   * 与 verifyByToken 分开 —— 验证页加载只传轻量数据,点「下载」才传大文件。
+   */
+  async getPublicFile(token: string): Promise<{ pdfData: string | null }> {
+    const cert = await this.prisma.certificate.findUnique({
+      where: { publicToken: token },
+      select: { pdfData: true, externalFileData: true },
+    });
+    if (!cert) throw new NotFoundException('证书不存在或链接无效');
+    return { pdfData: cert.pdfData ?? cert.externalFileData ?? null };
   }
 
   /**

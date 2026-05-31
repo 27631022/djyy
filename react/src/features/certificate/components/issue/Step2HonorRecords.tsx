@@ -1,10 +1,7 @@
 /**
- * 发证向导 Step 2 — 表彰记录(V3 新核心,重做版)。
+ * 发证向导 Step 3 — 选证书模板 / 建立表彰记录(V3 核心)。
  *
- * 顶部共享区:
- *   - 表彰年度(yearLabel)
- *   - 表彰日期(issueDate)
- *   同一份表彰文件下所有荣誉共用,不再 per-row 维护
+ * 表彰公共信息(年度 / 日期 / 有效期)已拆到 Step 2(Step2SharedInfo),本步只管记录。
  *
  * 表彰记录表格(一行 = 一项荣誉):
  *   序号 / 荣誉名称(AI 识别) / 证书模板(picker)/ 操作
@@ -51,22 +48,10 @@ const PARTY = "var(--party-primary)";
 export function Step2HonorRecords({
   records,
   onRecordsChange,
-  yearLabel,
-  onYearLabelChange,
-  issueDate,
-  onIssueDateChange,
-  validUntil,
-  onValidUntilChange,
   extracted,
 }: {
   records: HonorRecord[];
   onRecordsChange: (records: HonorRecord[]) => void;
-  yearLabel: string;
-  onYearLabelChange: (v: string) => void;
-  issueDate: string;
-  onIssueDateChange: (v: string) => void;
-  validUntil: string;
-  onValidUntilChange: (v: string) => void;
   extracted: ExtractHonorResponse | null;
 }) {
   const { data, isLoading } = useQuery({
@@ -82,9 +67,7 @@ export function Step2HonorRecords({
   const applyAi = useMemo(
     () => () => {
       if (!extracted || extracted.honors.length === 0) return;
-      // 顶部共享字段从 extracted 取
-      if (extracted.yearLabel) onYearLabelChange(extracted.yearLabel);
-      if (extracted.issueDate) onIssueDateChange(extracted.issueDate);
+      // 年度/日期等公共信息已在 Step 2 确认,这里只生成表彰记录
 
       const generated = extracted.honors.map((h) => {
         const matched = templates.find((t) => {
@@ -130,7 +113,7 @@ export function Step2HonorRecords({
         `AI 识别完成:已生成 ${generated.length} 条表彰记录,自动匹配模板 ${matchedCount}/${generated.length}`,
       );
     },
-    [extracted, templates, onRecordsChange, onYearLabelChange, onIssueDateChange],
+    [extracted, templates, onRecordsChange],
   );
 
   /* ─── 首次进入 Step 2:若 records 为空且有抽取结果 → 自动应用一次 ─── */
@@ -230,9 +213,9 @@ export function Step2HonorRecords({
     <div>
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-lg font-bold text-[#1A1A1A]">第二步 · 建立表彰记录</h2>
+          <h2 className="text-lg font-bold text-[#1A1A1A]">第三步 · 选择证书模板</h2>
           <p className="text-sm text-[#9CA3AF] mt-1">
-            一行 = 一项荣誉。多荣誉(如「两优一先」)可建多行。荣誉名称由所选模板决定。
+            一行 = 一项荣誉。多荣誉(如「两优一先」)可建多行,各自挑选对应证书模板。
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -262,59 +245,6 @@ export function Step2HonorRecords({
           >
             设计模板(暂不开放)
           </button>
-        </div>
-      </div>
-
-      {/* 顶部共享字段:表彰年度 + 表彰日期 */}
-      <div className="rounded-lg border border-[#E9E9E9] bg-white p-4 mb-4">
-        <div className="text-sm font-semibold text-[#1A1A1A] mb-3">
-          本次表彰共享信息
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl">
-          <label className="block">
-            <span className="block text-sm font-medium text-[#374151] mb-1.5">
-              表彰年度 <span className="text-red-500">*</span>
-            </span>
-            <input
-              type="text"
-              value={yearLabel}
-              onChange={(e) => onYearLabelChange(e.target.value.trim())}
-              placeholder="2024 或 2024-2025"
-              className="w-full px-3 py-2 text-sm font-mono rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
-            />
-            <span className="block text-xs text-[#9CA3AF] mt-1">
-              同一份表彰文件下所有荣誉共用此年份
-            </span>
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium text-[#374151] mb-1.5">
-              表彰日期 <span className="text-red-500">*</span>
-            </span>
-            <input
-              type="date"
-              value={issueDate}
-              onChange={(e) => onIssueDateChange(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
-            />
-            <span className="block text-xs text-[#9CA3AF] mt-1">
-              所有荣誉证书共用此颁发日期
-            </span>
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium text-[#374151] mb-1.5">
-              有效期{" "}
-              <span className="text-[#9CA3AF] font-normal">(可空 = 永久)</span>
-            </span>
-            <input
-              type="date"
-              value={validUntil}
-              onChange={(e) => onValidUntilChange(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
-            />
-            <span className="block text-xs text-[#9CA3AF] mt-1">
-              留空则证书永久有效
-            </span>
-          </label>
         </div>
       </div>
 

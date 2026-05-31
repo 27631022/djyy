@@ -22,8 +22,11 @@ import type { ExtractHonorResponse } from "../api";
 /** 荣誉类型(V3):仅 2 类 — 个人 / 集体(团队/单位/党组织 等都归集体)。 */
 export type HonorType = "individual" | "collective";
 
-/** wizard 主步骤数。3a/3b 在 UI 层根据 records 内 honorType 分布决定是否激活 */
-export type WizardStep = 1 | 2 | 3 | 4;
+/**
+ * wizard 主步骤数:
+ *  1 上传/AI · 2 表彰公共信息 · 3 选证书模板 · 4 录入对象(per-record 子步骤) · 5 清单+发证
+ */
+export type WizardStep = 1 | 2 | 3 | 4 | 5;
 
 /**
  * 个人荣誉的被表彰人(Step 3b 填)。

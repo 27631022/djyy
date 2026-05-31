@@ -17,7 +17,6 @@ import {
   CertificateIssuePage,
   CertificateListPage,
   CertificateExternalPage,
-  CertificateBulkIssuePage,
   CertificateVerifyPage,
 } from "@/features/certificate";
 import LoginPage from "@/pages/Login";
@@ -101,7 +100,6 @@ const App = () => (
             <Route path="certificates" element={<CertificateListPage />} />
             <Route path="certificates/issue" element={<CertificateIssuePage />} />
             <Route path="certificates/external" element={<CertificateExternalPage />} />
-            <Route path="certificates/bulk" element={<CertificateBulkIssuePage />} />
           </Route>
         </Routes>
         <Toaster position="top-center" richColors closeButton />

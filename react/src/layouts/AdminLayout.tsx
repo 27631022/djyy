@@ -6,8 +6,9 @@ import {
   BuildingIcon, ShieldIcon, UserIcon, BookTextIcon,
   EyeIcon, ThumbsUpIcon, MessageSquareIcon,
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
-  AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, FileTextIcon,
+  AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon,
   KeyRoundIcon, PanelLeftCloseIcon, PanelLeftOpenIcon,
+  ChevronDownIcon, ChevronRightIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 
@@ -46,7 +47,6 @@ const CATEGORIES: Category[] = [
     items: [
       { path: "/admin/certificate-templates", label: "证书模板",   icon: AwardIcon,      group: "证书管理" },
       { path: "/admin/certificates/issue",    label: "颁发证书",   icon: SendIcon,       group: "证书管理" },
-      { path: "/admin/certificates/bulk",     label: "CSV 批量发证", icon: FileTextIcon,  group: "证书管理" },
       { path: "/admin/certificates/external", label: "外部证书录入", icon: UploadIcon,    group: "证书管理" },
       { path: "/admin/certificates",          label: "已发证书",   icon: ListChecksIcon, group: "证书管理" },
     ],
@@ -125,6 +125,7 @@ interface Tab { path: string; label: string; icon: React.ElementType; }
 const TABS_STORAGE_KEY = "djyy_admin_tabs_v1";
 const CAT_STORAGE_KEY  = "djyy_admin_active_cat_v1";
 const SIDEBAR_COLLAPSED_KEY = "djyy_admin_sidebar_collapsed_v1";
+const GROUP_COLLAPSED_KEY = "djyy_admin_collapsed_groups_v1";
 
 export default function AdminLayout() {
   const location = useLocation();
@@ -162,6 +163,27 @@ export default function AdminLayout() {
   useEffect(() => {
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? "1" : "0");
   }, [sidebarCollapsed]);
+
+  /* ── 二级菜单分组(如「证书管理」)折叠态 ── */
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(GROUP_COLLAPSED_KEY);
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem(GROUP_COLLAPSED_KEY, JSON.stringify([...collapsedGroups]));
+  }, [collapsedGroups]);
+  function toggleGroup(name: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
 
   /* 当前 tab 等于 URL */
   const currentPath = location.pathname;
@@ -316,27 +338,43 @@ export default function AdminLayout() {
             </button>
           </div>
           <nav className="flex-1 py-2 px-2 flex flex-col gap-0.5 overflow-y-auto">
-            {menuGroups.map((g, gi) => (
-              <div key={g.name || `__anon_${gi}`} className="flex flex-col gap-0.5">
-                {g.name && !sidebarCollapsed && (
-                  <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wide">
-                    {g.name}
-                  </div>
-                )}
-                {g.name && sidebarCollapsed && gi > 0 && (
-                  <div className="my-1 mx-2 border-t border-[#F0F0F0]" />
-                )}
-                {g.items.map((it) => (
-                  <SidebarMenuItem
-                    key={it.path}
-                    item={it}
-                    active={it.path === currentPath}
-                    collapsed={sidebarCollapsed}
-                    onNavigate={navigate}
-                  />
-                ))}
-              </div>
-            ))}
+            {menuGroups.map((g, gi) => {
+              // 仅在侧栏展开态生效:点分组标题折叠/展开其子项
+              const groupCollapsed = !!g.name && collapsedGroups.has(g.name);
+              const hideItems = groupCollapsed && !sidebarCollapsed;
+              return (
+                <div key={g.name || `__anon_${gi}`} className="flex flex-col gap-0.5">
+                  {g.name && !sidebarCollapsed && (
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(g.name)}
+                      title={groupCollapsed ? "展开分组" : "收起分组"}
+                      className="flex items-center gap-1.5 px-3 pt-3 pb-1.5 text-[13px] font-bold text-[#374151] hover:text-[var(--party-primary)] transition-colors"
+                    >
+                      {groupCollapsed ? (
+                        <ChevronRightIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                      ) : (
+                        <ChevronDownIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                      )}
+                      <span className="flex-1 text-left truncate">{g.name}</span>
+                    </button>
+                  )}
+                  {g.name && sidebarCollapsed && gi > 0 && (
+                    <div className="my-1 mx-2 border-t border-[#F0F0F0]" />
+                  )}
+                  {!hideItems &&
+                    g.items.map((it) => (
+                      <SidebarMenuItem
+                        key={it.path}
+                        item={it}
+                        active={it.path === currentPath}
+                        collapsed={sidebarCollapsed}
+                        onNavigate={navigate}
+                      />
+                    ))}
+                </div>
+              );
+            })}
           </nav>
         </aside>
 

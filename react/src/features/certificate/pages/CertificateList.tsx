@@ -24,6 +24,7 @@ import {
 import { toast } from "sonner";
 import {
   certificateIssueApi,
+  certificateTemplateApi,
   HONOR_LEVEL_LABEL,
   HONOR_TYPE_LABEL,
   type CertificateListItemDto,
@@ -32,6 +33,8 @@ import { dictionariesApi, DICT_CODES } from "@/features/dictionary";
 import { useAuth } from "@/stores/auth";
 import { buildPdfFileName } from "../lib/certificateNumber";
 import { triggerDownload } from "../lib/certificatePdf";
+import { PreviewCanvas } from "../components/issue/PreviewCanvas";
+import type { DesignerState } from "../lib/designerTypes";
 
 const PARTY = "var(--party-primary)";
 
@@ -43,14 +46,16 @@ function typeOf(c: { honorType: string | null }): "individual" | "collective" {
   return c.honorType === "collective" ? "collective" : "individual";
 }
 
-/** variableData(JSON 字符串)→ [key, value][];解析失败返回空 */
-function parseVariableData(raw: string | null | undefined): [string, string][] {
-  if (!raw) return [];
+/** variableData(JSON 字符串)→ Record<string,string>;解析失败返回 {} */
+function parseVariableValues(raw: string | null | undefined): Record<string, string> {
+  if (!raw) return {};
   try {
     const obj = JSON.parse(raw) as Record<string, unknown>;
-    return Object.entries(obj).map(([k, v]) => [k, String(v ?? "")] as [string, string]);
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(obj)) out[k] = String(v ?? "");
+    return out;
   } catch {
-    return [];
+    return {};
   }
 }
 
@@ -842,26 +847,29 @@ function CertDetailDrawer({
 }) {
   // 信息直接用列表项 → 抽屉秒开,不必再请求详情。
   const c = cert;
-  const variables = parseVariableData(c.variableData);
+  const isExternal = c.source === "external" || !c.templateId;
 
-  // 预览改用轻量缩略图(几十 KB),而非整张高清 PDF(数 MB)。仅在点「加载预览」后拉。
-  const [showPreview, setShowPreview] = useState(false);
-  const thumbQuery = useQuery({
-    queryKey: ["certificate-thumb", c.id],
-    queryFn: () => certificateIssueApi.getThumbnail(c.id),
-    enabled: showPreview,
+  // 打开详情即自动渲染预览:内部证书拉模板 designJson + cert.variableData 现场渲染(轻量),
+  // 并注入真实 certNo 让编号正确。外部证书无模板 → 不内联预览(原件走「下载」按需拉)。
+  const templateQuery = useQuery({
+    queryKey: ["certificate-template-design", c.templateId],
+    queryFn: () => certificateTemplateApi.get(c.templateId as string),
+    enabled: !isExternal && !!c.templateId,
     staleTime: 5 * 60 * 1000,
   });
-  const thumb = thumbQuery.data?.thumbnail ?? null;
-  // 取到了但为空 → 外部证书 / 老数据没缩略图,回退拉完整 PDF
-  const noThumb = thumbQuery.isSuccess && !thumb;
-  const pdfQuery = useQuery({
-    queryKey: ["certificate-detail", c.id],
-    queryFn: () => certificateIssueApi.get(c.id),
-    enabled: showPreview && noThumb,
-    staleTime: 5 * 60 * 1000,
-  });
-  const pdf = pdfQuery.data?.pdfData ?? pdfQuery.data?.externalFileData ?? null;
+  const previewState = useMemo<DesignerState | null>(() => {
+    if (!templateQuery.data) return null;
+    try {
+      return JSON.parse(templateQuery.data.designJson) as DesignerState;
+    } catch {
+      return null;
+    }
+  }, [templateQuery.data]);
+  const previewValues = useMemo<Record<string, string>>(() => {
+    const base = parseVariableValues(c.variableData);
+    // 用真实编号覆盖发证时存的占位编号 —— 让预览显示正确证号
+    return { ...base, certNo: c.certNo };
+  }, [c.variableData, c.certNo]);
 
   const downloadMut = useMutation({
     mutationFn: () => certificateIssueApi.get(c.id),
@@ -924,6 +932,7 @@ function CertDetailDrawer({
 
           {/* 信息表 */}
           <div className="rounded-lg border border-[#E9E9E9] divide-y divide-[#F0F0F0]">
+            <InfoRow label="证书编号" value={c.certNo} mono />
             <InfoRow label="持证人/集体" value={c.recipientName} />
             <InfoRow label="员工编号" value={c.recipientEmpNo || "—"} mono />
             <InfoRow label="单位/部门" value={c.recipientDept || "—"} />
@@ -958,67 +967,37 @@ function CertDetailDrawer({
             打开公开验证页
           </a>
 
-          {/* 变量快照 */}
-          {variables.length > 0 && (
-            <div>
-              <div className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wide mb-1.5">
-                变量快照
-              </div>
-              <div className="rounded-lg border border-[#E9E9E9] divide-y divide-[#F0F0F0]">
-                {variables.map(([k, v]) => (
-                  <InfoRow key={k} label={k} value={v || "—"} small />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* PDF 预览 — 懒加载(按需拉取,避免开详情就传大文件) */}
+          {/* 证书预览 — 打开详情即自动渲染(内部证书现场渲染;外部证书提示下载) */}
           <div>
             <div className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wide mb-1.5">
               证书预览
             </div>
-            {!showPreview ? (
-              <button
-                type="button"
-                onClick={() => setShowPreview(true)}
-                className="w-full flex items-center justify-center gap-1.5 py-6 rounded-lg border border-dashed border-[#E9E9E9] text-xs text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] hover:bg-party-soft transition-colors"
-              >
-                <FileTextIcon className="w-4 h-4" />
-                加载证书预览
-              </button>
-            ) : thumbQuery.isLoading ? (
-              <div className="flex items-center justify-center gap-2 py-10 rounded-lg border border-[#E9E9E9] text-xs text-[#9CA3AF]">
-                <Loader2Icon className="w-4 h-4 animate-spin" />
-                加载中…
-              </div>
-            ) : thumb ? (
-              <div className="space-y-1">
-                <img
-                  src={thumb}
-                  alt="证书预览"
-                  className="w-full rounded-lg border border-[#E9E9E9] bg-[#F7F8FA]"
-                />
-                <div className="text-[10px] text-[#9CA3AF] text-right">
-                  压缩预览图 · 点「下载」获取高清原件
+            {!isExternal ? (
+              templateQuery.isLoading ? (
+                <PreviewLoading />
+              ) : previewState ? (
+                <div className="space-y-1">
+                  <div className="rounded-lg border border-[#E9E9E9] overflow-hidden">
+                    <PreviewCanvas
+                      state={previewState}
+                      variableValues={previewValues}
+                      maxWidth={520}
+                      maxHeight={420}
+                    />
+                  </div>
+                  <div className="text-[10px] text-[#9CA3AF] text-right">
+                    按发证模板实时渲染 · 点「下载」获取高清 PDF 原件
+                  </div>
                 </div>
-              </div>
-            ) : noThumb ? (
-              pdfQuery.isLoading ? (
-                <div className="flex items-center justify-center gap-2 py-10 rounded-lg border border-[#E9E9E9] text-xs text-[#9CA3AF]">
-                  <Loader2Icon className="w-4 h-4 animate-spin" />
-                  无缩略图,加载完整证书…
-                </div>
-              ) : pdf ? (
-                <iframe
-                  src={pdf}
-                  title="证书 PDF 预览"
-                  className="w-full h-[360px] rounded-lg border border-[#E9E9E9] bg-[#F7F8FA]"
-                />
               ) : (
-                <div className="text-xs text-[#9CA3AF]">无可预览内容</div>
+                <div className="text-xs text-[#9CA3AF] py-6 text-center rounded-lg border border-[#E9E9E9]">
+                  模板已删除或无法解析,无法预览。可点「下载」获取已发 PDF。
+                </div>
               )
             ) : (
-              <div className="text-xs text-[#9CA3AF]">无可预览内容</div>
+              <div className="text-xs text-[#9CA3AF] py-6 text-center rounded-lg border border-dashed border-[#E9E9E9]">
+                外部上传证书,点下方「下载」查看原件
+              </div>
             )}
           </div>
         </div>
@@ -1090,6 +1069,15 @@ function InfoRow({
       >
         {value}
       </span>
+    </div>
+  );
+}
+
+function PreviewLoading() {
+  return (
+    <div className="flex items-center justify-center gap-2 py-10 rounded-lg border border-[#E9E9E9] text-xs text-[#9CA3AF]">
+      <Loader2Icon className="w-4 h-4 animate-spin" />
+      加载中…
     </div>
   );
 }

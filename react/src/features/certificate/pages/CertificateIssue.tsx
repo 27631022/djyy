@@ -1,9 +1,10 @@
 /**
  * 证书发证向导(V3 Phase 6+):
- *  - Step 1 上传 / AI 抽取  (Step1Upload)
- *  - Step 2 建表彰记录       (Step2HonorRecords)
- *  - Step 3 per-record 受表彰对象录入(每条 record 一个子步骤,统一 Step3RecipientsForm 按 record.honorType 分支)
- *  - Step 4 预览 + 批量发证   (Phase 6 是简版:summary + 直接发;Phase 7 升级为 3 列含预览)
+ *  - Step 1 上传 / AI 抽取   (Step1Upload)
+ *  - Step 2 确认表彰公共信息  (Step2SharedInfo:年度/日期/有效期)
+ *  - Step 3 选证书模板/建表彰记录 (Step2HonorRecords)
+ *  - Step 4 per-record 受表彰对象录入(每条 record 一个子步骤,统一 Step3RecipientsForm 按 record.honorType 分支)
+ *  - Step 5 预览 + 批量发证   (3 列含预览)
  *
  * 全程字段级 200ms 防抖写 localStorage,刷新不丢。
  */
@@ -22,6 +23,7 @@ import {
   UsersIcon,
   ListChecksIcon,
   Building2Icon,
+  CalendarDaysIcon,
 } from "lucide-react";
 import {
   certificateIssueApi,
@@ -46,6 +48,7 @@ import {
   type WizardStep,
 } from "../lib/certificateDraft";
 import { Step1Upload } from "../components/issue/Step1Upload";
+import { Step2SharedInfo } from "../components/issue/Step2SharedInfo";
 import { Step2HonorRecords } from "../components/issue/Step2HonorRecords";
 import { Step3RecipientsForm } from "../components/issue/Step3RecipientsForm";
 import {
@@ -91,8 +94,8 @@ export default function CertificateIssuePage() {
   // 有效期(可空,空 = 永久有效)—— 与年份/日期同在 Step2「共享信息」区编辑
   const [validUntil, setValidUntil] = useState("");
 
-  /* ─── Step 3 子步骤索引(records 内 0-based) ─── */
-  // 不持久化:进 step 3 时永远从 0 开始;刷新若 step=3 则也从 0 起,用户可以再点 Next 移动
+  /* ─── Step 4(录入对象)子步骤索引(records 内 0-based) ─── */
+  // 不持久化:进 step 4 时永远从 0 开始;刷新若 step=4 则也从 0 起,用户可以再点 Next 移动
   const [subStepIdx, setSubStepIdx] = useState(0);
   const clampedSubStepIdx = useMemo(
     () => Math.max(0, Math.min(subStepIdx, Math.max(0, records.length - 1))),
@@ -112,8 +115,8 @@ export default function CertificateIssuePage() {
     if (saved.issueDate) setIssueDate(saved.issueDate);
     if (saved.validUntil) setValidUntil(saved.validUntil);
     if (Array.isArray(saved.records)) setRecords(saved.records);
-    // step=3 刷新时复位到第 1 条 record(避免引用越界)
-    if (saved.step === 3) setSubStepIdx(0);
+    // step=4(录入对象)刷新时复位到第 1 条 record(避免引用越界)
+    if (saved.step === 4) setSubStepIdx(0);
   }, [userId]);
 
   useEffect(() => {
@@ -143,13 +146,13 @@ export default function CertificateIssuePage() {
     return map;
   }, [allTemplates]);
 
-  /* ─── 当前 step 3 焦点 record ─── */
+  /* ─── 当前 step 4(录入对象)焦点 record ─── */
   const currentRecord = records[clampedSubStepIdx] ?? null;
   const currentTemplate = currentRecord?.templateId
     ? templateById.get(currentRecord.templateId)
     : undefined;
 
-  /* ─── 步骤 4 状态 ─── */
+  /* ─── 步骤 5(清单 + 发证)状态 ─── */
   const [issuing, setIssuing] = useState(false);
   const [results, setResults] = useState<IssueResult[]>([]);
 
@@ -161,11 +164,16 @@ export default function CertificateIssuePage() {
 
   /* ─── 校验 ─── */
   const stepReady = useMemo(() => {
-    // Step 2:顶层共享字段 + 每条 record 必填
-    const step2Err = (() => {
+    // Step 2:表彰公共信息(年度 / 日期)
+    const sharedErr = (() => {
       if (!isValidYearLabel(yearLabel))
         return "表彰年度格式不正确(应为「2024」或「2024-2025」)";
       if (!issueDate) return "请选择表彰日期";
+      return null;
+    })();
+
+    // Step 3:至少 1 条表彰记录,且每条都选了模板
+    const templateErr = (() => {
       if (records.length === 0) return "至少添加 1 条表彰记录";
       for (let i = 0; i < records.length; i++) {
         if (!records[i].templateId)
@@ -174,8 +182,8 @@ export default function CertificateIssuePage() {
       return null;
     })();
 
-    // Step 3:当前焦点 record 的收件人至少 1 个非空
-    const step3Err = (() => {
+    // Step 4:当前焦点 record 的收件人至少 1 个非空
+    const recipientsErr = (() => {
       if (!currentRecord) return "没有可填的记录";
       if (currentRecord.honorType === "collective") {
         if (!currentRecord.collectives.some((c) => c.name.trim()))
@@ -189,9 +197,10 @@ export default function CertificateIssuePage() {
 
     const map: Record<WizardStep, string | null> = {
       1: null,
-      2: step2Err,
-      3: step3Err,
-      4: totalRecipients === 0 ? "没有待发证条目" : null,
+      2: sharedErr,
+      3: templateErr,
+      4: recipientsErr,
+      5: totalRecipients === 0 ? "没有待发证条目" : null,
     };
     return map[step];
   }, [step, currentRecord, records, yearLabel, issueDate, totalRecipients]);
@@ -313,36 +322,47 @@ export default function CertificateIssuePage() {
   /* ─── 导航 ─── */
   function goNext() {
     if (step === 1) {
+      // 进入「表彰公共信息」前,把 AI 抽取的年度/日期带过去供确认
+      if (extractResult?.yearLabel) setYearLabel(extractResult.yearLabel);
+      if (extractResult?.issueDate) setIssueDate(extractResult.issueDate);
       setStep(2);
       return;
     }
     if (step === 2) {
-      setSubStepIdx(0);
       setStep(3);
       return;
     }
     if (step === 3) {
+      setSubStepIdx(0);
+      setStep(4);
+      return;
+    }
+    if (step === 4) {
       if (clampedSubStepIdx < records.length - 1) {
         setSubStepIdx(clampedSubStepIdx + 1);
       } else {
-        setStep(4);
+        setStep(5);
       }
       return;
     }
   }
 
   function goPrev() {
-    if (step === 4) {
+    if (step === 5) {
       setSubStepIdx(Math.max(0, records.length - 1));
-      setStep(3);
+      setStep(4);
       return;
     }
-    if (step === 3) {
+    if (step === 4) {
       if (clampedSubStepIdx > 0) {
         setSubStepIdx(clampedSubStepIdx - 1);
       } else {
-        setStep(2);
+        setStep(3);
       }
+      return;
+    }
+    if (step === 3) {
+      setStep(2);
       return;
     }
     if (step === 2) {
@@ -381,7 +401,7 @@ export default function CertificateIssuePage() {
           templates={allTemplates}
           onJumpToSubStep={(idx) => {
             // 允许点击已 done 的子步骤跳回去修改;pending 的不让跳
-            if (step !== 3) return;
+            if (step !== 4) return;
             if (idx <= clampedSubStepIdx) setSubStepIdx(idx);
           }}
         />
@@ -398,20 +418,25 @@ export default function CertificateIssuePage() {
             )}
 
             {step === 2 && (
-              <Step2HonorRecords
-                records={records}
-                onRecordsChange={setRecords}
+              <Step2SharedInfo
                 yearLabel={yearLabel}
                 onYearLabelChange={setYearLabel}
                 issueDate={issueDate}
                 onIssueDateChange={setIssueDate}
                 validUntil={validUntil}
                 onValidUntilChange={setValidUntil}
+              />
+            )}
+
+            {step === 3 && (
+              <Step2HonorRecords
+                records={records}
+                onRecordsChange={setRecords}
                 extracted={extractResult}
               />
             )}
 
-            {step === 3 && currentRecord && (
+            {step === 4 && currentRecord && (
               <Step3RecipientsForm
                 record={currentRecord}
                 template={currentTemplate}
@@ -425,7 +450,7 @@ export default function CertificateIssuePage() {
               />
             )}
 
-            {step === 4 && (
+            {step === 5 && (
               <Step4PreviewIssue
                 records={records}
                 templates={templateById}
@@ -451,10 +476,12 @@ export default function CertificateIssuePage() {
               {step === 1
                 ? "选择数据来源开始"
                 : step === 2
-                  ? `${records.length} 条表彰记录`
-                  : step === 3 && currentRecord
-                    ? `第 ${clampedSubStepIdx + 1} / ${records.length} 条 · ${recipientCountOf(currentRecord)} 个收件人`
-                    : `共 ${totalRecipients} 张待发证`}
+                  ? "确认表彰公共信息(年度 / 日期 / 有效期)"
+                  : step === 3
+                    ? `${records.length} 条表彰记录`
+                    : step === 4 && currentRecord
+                      ? `第 ${clampedSubStepIdx + 1} / ${records.length} 条 · ${recipientCountOf(currentRecord)} 个收件人`
+                      : `共 ${totalRecipients} 张待发证`}
             </div>
             <div className="flex items-center gap-2">
               {step > 1 && (
@@ -467,7 +494,7 @@ export default function CertificateIssuePage() {
                   上一步
                 </button>
               )}
-              {step < 4 && (
+              {step < 5 && (
                 <button
                   onClick={goNext}
                   disabled={
@@ -490,7 +517,7 @@ export default function CertificateIssuePage() {
                   <ChevronRightIcon className="w-4 h-4" />
                 </button>
               )}
-              {step === 4 && (
+              {step === 5 && (
                 <>
                   {finishedAllOk && (
                     <button
@@ -546,9 +573,9 @@ interface StepperItem {
   desc: string;
   icon: typeof UploadIcon;
   status: StepperStatus;
-  /** 集体/个人色块,用于 step 3 的子步骤 */
+  /** 集体/个人色块,用于 step 4 的子步骤 */
   typeChip?: "collective" | "individual";
-  /** 子步骤可跳的索引(0-based,仅用于 step 3) */
+  /** 子步骤可跳的索引(0-based,仅用于 step 4) */
   jumpIdx?: number;
 }
 
@@ -580,21 +607,29 @@ function Stepper({
   items.push({
     key: "2",
     badge: "2",
+    label: "表彰公共信息",
+    desc: "年度 / 日期 / 有效期",
+    icon: CalendarDaysIcon,
+    status: step === 2 ? "active" : step > 2 ? "done" : "pending",
+  });
+  items.push({
+    key: "3",
+    badge: "3",
     label: "选证书模板",
     desc: "建立表彰记录,挑模板",
     icon: AwardIcon,
-    status: step === 2 ? "active" : step > 2 ? "done" : "pending",
+    status: step === 3 ? "active" : step > 3 ? "done" : "pending",
   });
 
-  // Step 3:per-record 子步骤
+  // Step 4:per-record 子步骤
   if (records.length === 0) {
     items.push({
-      key: "3-placeholder",
-      badge: "3",
+      key: "4-placeholder",
+      badge: "4",
       label: "录入对象",
-      desc: "待 Step 2 决定记录",
+      desc: "待 Step 3 决定记录",
       icon: UsersIcon,
-      status: step === 3 ? "active" : step > 3 ? "done" : "pending",
+      status: step === 4 ? "active" : step > 4 ? "done" : "pending",
     });
   } else {
     records.forEach((r, i) => {
@@ -603,9 +638,9 @@ function Stepper({
         : undefined;
       const label = r.honorName || t?.name || `第 ${i + 1} 条`;
       const status: StepperStatus =
-        step < 3
+        step < 4
           ? "pending"
-          : step > 3
+          : step > 4
             ? "done"
             : i < subStepIdx
               ? "done"
@@ -613,8 +648,8 @@ function Stepper({
                 ? "active"
                 : "pending";
       items.push({
-        key: `3-${i}`,
-        badge: `3${SUB_LETTERS[i] ?? String(i + 1)}`,
+        key: `4-${i}`,
+        badge: `4${SUB_LETTERS[i] ?? String(i + 1)}`,
         label,
         desc:
           r.honorType === "collective"
@@ -629,12 +664,12 @@ function Stepper({
   }
 
   items.push({
-    key: "4",
-    badge: String(records.length === 0 ? 4 : 4),
+    key: "5",
+    badge: "5",
     label: "清单 + 发证",
     desc: "最终确认并批量发证",
     icon: ListChecksIcon,
-    status: step === 4 ? "active" : "pending",
+    status: step === 5 ? "active" : "pending",
   });
 
   return (
@@ -644,7 +679,7 @@ function Stepper({
         const active = it.status === "active";
         const Icon = it.icon;
         const clickable =
-          step === 3 && it.jumpIdx !== undefined && it.jumpIdx <= subStepIdx;
+          step === 4 && it.jumpIdx !== undefined && it.jumpIdx <= subStepIdx;
         const chipBg =
           it.typeChip === "collective"
             ? "bg-blue-100 text-blue-700 border-blue-200"

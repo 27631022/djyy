@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
 import { CreateTemplateDto } from './dto/create-template.dto';
@@ -89,6 +93,16 @@ export class CertificateService {
 
   async removeTemplate(id: string, ctx: AuditCtx) {
     const t = await this.getTemplate(id);
+    // schema 里 Certificate.template 是 onDelete: Restrict —— 直接删会抛英文 P2003。
+    // 这里提前 count 并抛中文友好错误(certificate 模块同时拥有这两张表,直查 OK)。
+    const certCount = await this.prisma.certificate.count({
+      where: { templateId: id },
+    });
+    if (certCount > 0) {
+      throw new BadRequestException(
+        `该模板下已发出 ${certCount} 张证书,无法删除。请先在「已发证书」中删除或撤销这些证书;若只是不想再用于发证,可改为「禁用」本模板。`,
+      );
+    }
     await this.prisma.certificateTemplate.delete({ where: { id } });
     await this.audit.log({
       action: 'cert.template.delete',

@@ -19,10 +19,16 @@ import { CertificateIssueService } from './issue.service';
 export class CertificatePublicVerifyController {
   constructor(private readonly svc: CertificateIssueService) {}
 
-  /** 凭 publicToken 拿一张证书 — 公开,含 pdfData 给前端渲染 */
+  /** 凭 publicToken 拿一张证书 — 公开,轻量元数据 + thumbnail(不含大文件 pdfData) */
   @Get('verify/:token')
   verify(@Param('token') token: string) {
     return this.svc.verifyByToken(token);
+  }
+
+  /** 凭 publicToken 下载证书原件(pdfData / 外部文件)— 点「下载」时才拉,避免验证页传大文件 */
+  @Get('verify/:token/file')
+  file(@Param('token') token: string) {
+    return this.svc.getPublicFile(token);
   }
 
   /** 公开搜索 — 按证书编号 q(精确优先,然后 contains 模糊) */
