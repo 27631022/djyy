@@ -103,7 +103,9 @@ export function Step2HonorRecords({
               : [],
           collectives:
             honorType === "collective"
-              ? h.recipients.map((r) => newCollectiveRow({ name: r.name }))
+              ? h.recipients.map((r) =>
+                  newCollectiveRow({ name: r.name, dept: r.dept }),
+                )
               : [],
         });
       });

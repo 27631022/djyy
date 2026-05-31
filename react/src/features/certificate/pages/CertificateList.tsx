@@ -867,9 +867,10 @@ function CertDetailDrawer({
   }, [templateQuery.data]);
   const previewValues = useMemo<Record<string, string>>(() => {
     const base = parseVariableValues(c.variableData);
-    // 用真实编号覆盖发证时存的占位编号 —— 让预览显示正确证号
-    return { ...base, certNo: c.certNo };
-  }, [c.variableData, c.certNo]);
+    // 用真实值覆盖:编号用真实 certNo、年度用记录上的 yearLabel
+    //(老证书 variableData 里没有 yearLabel 也能正确显示)
+    return { ...base, certNo: c.certNo, yearLabel: c.yearLabel };
+  }, [c.variableData, c.certNo, c.yearLabel]);
 
   const downloadMut = useMutation({
     mutationFn: () => certificateIssueApi.get(c.id),
@@ -940,6 +941,7 @@ function CertDetailDrawer({
             <InfoRow label="荣誉代码" value={c.honorCode} mono />
             <InfoRow label="荣誉级别" value={levelLabel(c.template?.honorLevel) || "—"} />
             <InfoRow label="颁证单位" value={c.issuingOrgName || "—"} />
+            <InfoRow label="表彰年度" value={c.yearLabel || "—"} />
             <InfoRow
               label="颁发日期"
               value={new Date(c.issueDate).toLocaleDateString("zh-CN")}
@@ -953,7 +955,6 @@ function CertDetailDrawer({
               }
             />
             <InfoRow label="发证人" value={c.issuerName || "—"} />
-            <InfoRow label="批次序号" value={`${c.batchSeq} / ${c.batchTotal}`} mono />
           </div>
 
           {/* 公开验证 */}

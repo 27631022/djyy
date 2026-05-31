@@ -8,7 +8,7 @@
  * 但本组件仍保留 selectedHonorIdx 兼容当前(Phase 3)的单 honor 流。
  */
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -35,6 +35,7 @@ export function Step1Upload({
   onSkipAI: () => void;
 }) {
   const docInputRef = useRef<HTMLInputElement | null>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const extractMut = useMutation({
     mutationFn: (f: File) => certificateIssueApi.extract(f),
@@ -57,6 +58,20 @@ export function Step1Upload({
 
   function handleFile(f: File) {
     extractMut.mutate(f);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    if (extractMut.isPending) return;
+    const f = e.dataTransfer.files?.[0];
+    if (!f) return;
+    // 拖入不受 input accept 限制,这里补一道扩展名校验(点击上传已被 accept 限定)
+    if (!/\.(docx|pdf)$/i.test(f.name)) {
+      toast.error("仅支持 .docx 或 .pdf 文件");
+      return;
+    }
+    handleFile(f);
   }
 
   // 抽取结果存在 → 渲染结果面板;否则渲染上传面板
@@ -85,7 +100,17 @@ export function Step1Upload({
         type="button"
         onClick={() => docInputRef.current?.click()}
         disabled={extractMut.isPending}
-        className="w-full bg-gradient-to-br from-purple-50 to-blue-50 border-2 border-purple-200 hover:border-purple-400 rounded-lg p-8 text-left transition-all hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-5"
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!extractMut.isPending) setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        className={`w-full bg-gradient-to-br from-purple-50 to-blue-50 border-2 rounded-lg p-8 text-left transition-all hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-5 ${
+          dragOver
+            ? "border-purple-500 bg-purple-100 ring-2 ring-purple-300"
+            : "border-purple-200 hover:border-purple-400"
+        }`}
       >
         <div className="w-14 h-14 rounded-lg bg-white/80 flex items-center justify-center flex-shrink-0">
           {extractMut.isPending ? (
@@ -96,7 +121,11 @@ export function Step1Upload({
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-bold text-[#1A1A1A] mb-1">
-            {extractMut.isPending ? "AI 解析中,请稍候…" : "点击或拖拽上传文件"}
+            {extractMut.isPending
+              ? "AI 解析中,请稍候…"
+              : dragOver
+                ? "松开鼠标即可上传"
+                : "点击或拖拽上传文件"}
           </div>
           <div className="text-[11px] text-[#6B7280] leading-relaxed">
             支持 .docx / .pdf · AI 自动识别多荣誉 + 受表彰人员(姓名 + 员工编号 + 部门)

@@ -19,6 +19,7 @@ import {
 } from "../components/issue/RecipientPicker";
 import { BatchInfoForm } from "../components/issue/BatchInfoForm";
 import { isValidYearLabel } from "../lib/certificateNumber";
+import { defaultYearLabel } from "../lib/certificateDraft";
 
 const PARTY = "var(--party-primary)";
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
@@ -48,7 +49,7 @@ export default function CertificateExternalPage() {
   const [honorName, setHonorName] = useState("");
   const [honorCode, setHonorCode] = useState("");
   const [recipient, setRecipient] = useState<RecipientValue>({ recipientName: "" });
-  const [yearLabel, setYearLabel] = useState(String(new Date().getFullYear()));
+  const [yearLabel, setYearLabel] = useState(defaultYearLabel());
   const [batchTotal, setBatchTotal] = useState(1);
   const [validUntil, setValidUntil] = useState("");
   const [issuingOrgName, setIssuingOrgName] = useState("");

@@ -39,8 +39,10 @@ export interface PersonRow {
   rid: string;
   name: string;
   empNo: string;
-  /** 部门:lookup 命中时取主行政机构,未命中可手填 */
+  /** 所在单位/部门:存组织全称路径快照(从组织树点选 / 工号命中自动带出) */
   dept: string;
+  /** 选中的组织 orgId — 让 OrgPicker 能回显选中项;发证不直接用(用 dept 路径快照) */
+  deptOrgId?: string;
   /** lookup 命中后的 User.id,发证时作为 recipientUserId(命中才传) */
   userId?: string;
   /** 库中是否找到 — 控制 UI 状态徽章 */
@@ -56,6 +58,10 @@ export interface CollectiveRow {
   rid: string;
   /** 集体名,如「青年突击队」/「机关党支部」/「先进基层党组织(机关综合处)」 */
   name: string;
+  /** 所在单位/部门:存组织全称路径快照(从组织树点选) */
+  dept: string;
+  /** 选中的组织 orgId — 让 OrgPicker 能回显选中项 */
+  deptOrgId?: string;
 }
 
 /**
@@ -138,7 +144,7 @@ export function loadDraft(userId: string): CertificateDraftV1 | null {
       yearLabel:
         parsed.yearLabel ??
         parsed.records[0]?.yearLabel ??
-        String(new Date().getFullYear()),
+        defaultYearLabel(),
       issueDate:
         parsed.issueDate ?? parsed.records[0]?.issueDate ?? todayIso(),
       validUntil: parsed.validUntil ?? "",
@@ -190,12 +196,17 @@ function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** 默认表彰年度 = 上一年(表彰通常针对上一年度的业绩,如 2026 年初表彰 2025 年度先进) */
+export function defaultYearLabel(): string {
+  return String(new Date().getFullYear() - 1);
+}
+
 export function emptyDraft(): CertificateDraftV1 {
   return {
     version: 1,
     step: 1,
     extracted: null,
-    yearLabel: String(new Date().getFullYear()),
+    yearLabel: defaultYearLabel(),
     issueDate: todayIso(),
     validUntil: "",
     records: [],
@@ -209,6 +220,7 @@ export function newPersonRow(partial?: Partial<PersonRow>): PersonRow {
     name: partial?.name ?? "",
     empNo: partial?.empNo ?? "",
     dept: partial?.dept ?? "",
+    deptOrgId: partial?.deptOrgId,
     userId: partial?.userId,
     found: partial?.found ?? false,
   };
@@ -218,6 +230,8 @@ export function newCollectiveRow(partial?: Partial<CollectiveRow>): CollectiveRo
   return {
     rid: makeRid(),
     name: partial?.name ?? "",
+    dept: partial?.dept ?? "",
+    deptOrgId: partial?.deptOrgId,
   };
 }
 
@@ -255,7 +269,7 @@ export function flattenRecipients(record: HonorRecord): FlatRecipient[] {
         rid: c.rid,
         name: c.name.trim(),
         empNo: "",
-        dept: "",
+        dept: (c.dept ?? "").trim(),
       }));
   }
   return record.persons

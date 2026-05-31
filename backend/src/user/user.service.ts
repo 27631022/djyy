@@ -362,7 +362,9 @@ export class UserService {
         username: u.username,
         name: u.name,
         adminOrgName: adminMember?.org.name ?? null,
+        adminOrgId: adminMember?.orgId ?? null,
         partyOrgName: partyMember?.org.name ?? null,
+        partyOrgId: partyMember?.orgId ?? null,
       };
     }
     return result;

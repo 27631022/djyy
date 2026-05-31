@@ -30,6 +30,10 @@ export interface UserByEmpNoLite {
   name: string;
   /** 主行政归属名(取 isPrimary 优先,否则取第一个 active) */
   adminOrgName: string | null;
+  /** 主行政归属 orgId — 发证时用来在组织树里预选「所在单位/部门」 */
+  adminOrgId: string | null;
   /** 主党组织归属名 */
   partyOrgName: string | null;
+  /** 主党组织归属 orgId */
+  partyOrgId: string | null;
 }

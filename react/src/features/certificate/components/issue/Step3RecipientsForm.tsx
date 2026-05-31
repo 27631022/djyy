@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Building2Icon,
   UsersIcon,
@@ -31,8 +32,10 @@ import {
   type PersonRow,
 } from "../../lib/certificateDraft";
 import { parsePersonLines } from "../../lib/parsePersonLines";
+import { buildOrgPath } from "../../lib/orgPath";
 import type { CertificateTemplateDto } from "../../api";
-import { usersApi } from "@/features/user";
+import { usersApi, OrgPicker } from "@/features/user";
+import { organizationsApi, type OrgTreeNode } from "@/features/organization";
 
 /**
  * 通用:按换行切 + 去空行(兼容 \r\n)。
@@ -61,6 +64,12 @@ export function Step3RecipientsForm({
   recordIndex,
   totalRecords,
 }: Step3RecipientsFormProps) {
+  // 行政机构树 —— 给「所在单位/部门」组织点选器用(缓存,跨 record 复用)
+  const { data: orgTree = [] } = useQuery({
+    queryKey: ["organizations", "tree", "admin"],
+    queryFn: () => organizationsApi.tree("admin"),
+    staleTime: 5 * 60 * 1000,
+  });
   return (
     <div>
       <HeaderBand
@@ -70,9 +79,17 @@ export function Step3RecipientsForm({
         totalRecords={totalRecords}
       />
       {record.honorType === "collective" ? (
-        <CollectiveEditor record={record} onRecordChange={onRecordChange} />
+        <CollectiveEditor
+          record={record}
+          onRecordChange={onRecordChange}
+          orgTree={orgTree}
+        />
       ) : (
-        <IndividualEditor record={record} onRecordChange={onRecordChange} />
+        <IndividualEditor
+          record={record}
+          onRecordChange={onRecordChange}
+          orgTree={orgTree}
+        />
       )}
     </div>
   );
@@ -149,9 +166,11 @@ function HeaderBand({
 function CollectiveEditor({
   record,
   onRecordChange,
+  orgTree,
 }: {
   record: HonorRecord;
   onRecordChange: (record: HonorRecord) => void;
+  orgTree: OrgTreeNode[];
 }) {
   const [bulkText, setBulkText] = useState("");
 
@@ -231,9 +250,8 @@ function CollectiveEditor({
           <thead className="bg-[#F7F8FA]">
             <tr className="text-[10px] text-[#6B7280] uppercase tracking-wide">
               <th className="px-2 py-2 text-left w-12">#</th>
-              <th className="px-2 py-2 text-left">
-                被表彰单位 / 集体名称 *
-              </th>
+              <th className="px-2 py-2 text-left">被表彰集体名称 *</th>
+              <th className="px-2 py-2 text-left">单位 / 部门 *</th>
               <th className="px-2 py-2 w-10"></th>
             </tr>
           </thead>
@@ -241,7 +259,7 @@ function CollectiveEditor({
             {record.collectives.length === 0 && (
               <tr>
                 <td
-                  colSpan={3}
+                  colSpan={4}
                   className="px-2 py-6 text-center text-[#9CA3AF] text-xs"
                 >
                   还没有录入 —— 上方批量粘贴,或点下方「+ 添加一行」
@@ -262,10 +280,34 @@ function CollectiveEditor({
                       onChange={(e) =>
                         patchCollective(c.rid, { name: e.target.value })
                       }
-                      placeholder="如「机关党支部」/「青年突击队」/「先进基层党组织(机关综合处)」"
+                      placeholder="如「青年突击队」/「先进基层党组织」"
                       className="flex-1 px-1.5 py-1 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
                     />
                   </div>
+                </td>
+                <td className="px-2 py-1">
+                  <OrgPicker
+                    tree={orgTree}
+                    value={c.deptOrgId ?? ""}
+                    onChange={(orgId) =>
+                      patchCollective(c.rid, {
+                        deptOrgId: orgId || undefined,
+                        dept: orgId ? buildOrgPath(orgTree, orgId) : "",
+                      })
+                    }
+                    title="选择所在单位/部门"
+                    kind="admin"
+                    placeholder="(从组织选)"
+                    width="w-full"
+                  />
+                  {c.dept && !c.deptOrgId && (
+                    <div
+                      className="mt-0.5 text-[10px] text-[#9CA3AF] truncate"
+                      title={c.dept}
+                    >
+                      {c.dept}
+                    </div>
+                  )}
                 </td>
                 <td className="px-2 py-1 text-center">
                   <button
@@ -304,9 +346,11 @@ function CollectiveEditor({
 function IndividualEditor({
   record,
   onRecordChange,
+  orgTree,
 }: {
   record: HonorRecord;
   onRecordChange: (record: HonorRecord) => void;
+  orgTree: OrgTreeNode[];
 }) {
   const [pasteText, setPasteText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -358,11 +402,16 @@ function IndividualEditor({
       }
       const newPersons: PersonRow[] = parsed.map((p) => {
         const hit = p.empNo ? lookup[p.empNo] : null;
+        // 主行政归属能在行政树里定位 → 存 orgId(让 OrgPicker 回显)+ 取全称路径;
+        // 否则退到行政/党组织名做快照,orgId 留空(用户可再点选规范化)
+        const adminId = hit?.adminOrgId ?? null;
+        const adminPath = adminId ? buildOrgPath(orgTree, adminId) : "";
         return newPersonRow({
           // 命中库优先用库里的姓名(更规范),否则用粘贴的姓名
           name: hit?.name ?? p.name,
           empNo: p.empNo,
-          dept: hit?.adminOrgName ?? hit?.partyOrgName ?? "",
+          dept: adminPath || hit?.adminOrgName || hit?.partyOrgName || "",
+          deptOrgId: adminPath ? adminId ?? undefined : undefined,
           userId: hit?.id,
           found: Boolean(hit),
         });
@@ -439,7 +488,7 @@ function IndividualEditor({
               <th className="px-2 py-2 text-left w-10">#</th>
               <th className="px-2 py-2 text-left">姓名 *</th>
               <th className="px-2 py-2 text-left w-28">员工编号</th>
-              <th className="px-2 py-2 text-left">部门</th>
+              <th className="px-2 py-2 text-left">单位/部门 *</th>
               <th className="px-2 py-2 w-24">状态</th>
               <th className="px-2 py-2 w-10"></th>
             </tr>
@@ -488,15 +537,28 @@ function IndividualEditor({
                   />
                 </td>
                 <td className="px-2 py-1">
-                  <input
-                    type="text"
-                    value={p.dept}
-                    onChange={(e) =>
-                      patchPerson(p.rid, { dept: e.target.value })
+                  <OrgPicker
+                    tree={orgTree}
+                    value={p.deptOrgId ?? ""}
+                    onChange={(orgId) =>
+                      patchPerson(p.rid, {
+                        deptOrgId: orgId || undefined,
+                        dept: orgId ? buildOrgPath(orgTree, orgId) : "",
+                      })
                     }
-                    placeholder="可选(命中库会自动填)"
-                    className="w-full px-1.5 py-1 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
+                    title="选择所在单位/部门"
+                    kind="admin"
+                    placeholder="(从组织选)"
+                    width="w-full"
                   />
+                  {p.dept && !p.deptOrgId && (
+                    <div
+                      className="mt-0.5 text-[10px] text-[#9CA3AF] truncate"
+                      title={p.dept}
+                    >
+                      {p.dept}
+                    </div>
+                  )}
                 </td>
                 <td className="px-2 py-1">
                   <MatchBadge found={p.found} hasEmpNo={Boolean(p.empNo)} />

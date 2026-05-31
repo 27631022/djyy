@@ -277,7 +277,10 @@ export function CertificateDetailCard({ detail }: { detail: CertificatePublicDet
             <span className="font-mono">{detail.recipientEmpNo}</span>
           </Info>
         )}
-        {detail.recipientDept && <Info label="部门">{detail.recipientDept}</Info>}
+        {detail.recipientDept && <Info label="单位/部门">{detail.recipientDept}</Info>}
+        <Info label="表彰年度">
+          <span className="font-mono">{detail.yearLabel}</span>
+        </Info>
         <Info label="颁发日期">
           {new Date(detail.issueDate).toLocaleDateString("zh-CN")}
         </Info>

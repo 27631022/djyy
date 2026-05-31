@@ -43,6 +43,7 @@ import {
   clearDraft,
   flattenRecipients,
   useDebouncedDraft,
+  defaultYearLabel,
   type CertificateDraftV1,
   type HonorRecord,
   type WizardStep,
@@ -86,7 +87,7 @@ export default function CertificateIssuePage() {
 
   /* ─── 步骤 2 状态:多荣誉表彰记录 + 顶层共享字段 ─── */
   const [records, setRecords] = useState<HonorRecord[]>([]);
-  const [yearLabel, setYearLabel] = useState(String(new Date().getFullYear()));
+  const [yearLabel, setYearLabel] = useState(defaultYearLabel());
   const [issueDate, setIssueDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -182,15 +183,19 @@ export default function CertificateIssuePage() {
       return null;
     })();
 
-    // Step 4:当前焦点 record 的收件人至少 1 个非空
+    // Step 4:当前焦点 record 的收件人 — 至少 1 个非空 + 每人都填了「所在单位/部门」(必填)
     const recipientsErr = (() => {
       if (!currentRecord) return "没有可填的记录";
       if (currentRecord.honorType === "collective") {
-        if (!currentRecord.collectives.some((c) => c.name.trim()))
-          return "至少添加 1 个被表彰集体";
+        const named = currentRecord.collectives.filter((c) => c.name.trim());
+        if (named.length === 0) return "至少添加 1 个被表彰集体";
+        const missing = named.filter((c) => !c.dept.trim()).length;
+        if (missing > 0) return `有 ${missing} 个集体未选「所在单位/部门」(必填)`;
       } else {
-        if (!currentRecord.persons.some((p) => p.name.trim()))
-          return "至少添加 1 位受表彰人员";
+        const named = currentRecord.persons.filter((p) => p.name.trim());
+        if (named.length === 0) return "至少添加 1 位受表彰人员";
+        const missing = named.filter((p) => !p.dept.trim()).length;
+        if (missing > 0) return `有 ${missing} 位未选「所在单位/部门」(必填)`;
       }
       return null;
     })();

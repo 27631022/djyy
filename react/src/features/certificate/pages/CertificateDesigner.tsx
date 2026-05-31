@@ -35,7 +35,7 @@ import type {
   DesignerState,
 } from "../lib/designerTypes";
 import {
-  DEFAULT_VARIABLES,
+  withDefaultVariables,
   cloneElement,
   deriveVariables,
   emptyDesignerState,
@@ -117,10 +117,8 @@ export default function CertificateDesignerPage() {
       reset({
         ...empty,
         ...parsed,
-        variables:
-          parsed.variables && parsed.variables.length > 0
-            ? parsed.variables
-            : DEFAULT_VARIABLES,
+        // 合并:老模板缺失的预设变量(如新增的「表彰年度」)补齐,保留已有自定义
+        variables: withDefaultVariables(parsed.variables),
         background: parsed.background ?? empty.background,
         elements: parsed.elements ?? [],
       });

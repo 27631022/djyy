@@ -40,7 +40,8 @@ export function genId(prefix = "el"): string {
 
 export const DEFAULT_VARIABLES: VariableField[] = [
   { key: "name", label: "姓名", defaultValue: "{{姓名}}", sampleValue: "张三" },
-  { key: "certNo", label: "证书编号", defaultValue: "{{证书编号}}", sampleValue: "2026-QDJL-100-001" },
+  { key: "certNo", label: "证书编号", defaultValue: "{{证书编号}}", sampleValue: "2026-QDJL-010-001" },
+  { key: "yearLabel", label: "表彰年度", defaultValue: "{{表彰年度}}", sampleValue: "2026" },
   { key: "issueDate", label: "颁发日期", defaultValue: "{{颁发日期}}", sampleValue: "2026年05月23日" },
   { key: "validUntil", label: "有效期", defaultValue: "{{有效期}}", sampleValue: "永久有效" },
   { key: "position", label: "职务", defaultValue: "{{职务}}", sampleValue: "党支部书记" },
@@ -51,12 +52,13 @@ export const DEFAULT_VARIABLES: VariableField[] = [
 
 /**
  * 证书变量面板 / 插入器实际展示的预设变量(按荣誉类型策划)。
- * 个人 / 集体都用这 5 个:证书编号 · 姓名(集体=获奖集体) · 颁发日期 · 有效期 · 颁发机构。
+ * 个人 / 集体都用这 6 个:证书编号 · 表彰年度 · 姓名(集体=获奖集体) · 颁发日期 · 有效期 · 颁发机构。
  * DEFAULT_VARIABLES 里其余 key(职务 / 部门 / 等级)仍保留在 state.variables,
  * 仅用于兼容老模板已放置的占位符替换,不再出现在面板里。
  */
 export const CERT_PALETTE_KEYS = [
   "certNo",
+  "yearLabel",
   "name",
   "issueDate",
   "validUntil",
@@ -86,6 +88,21 @@ export function paletteVariables(variables: VariableField[]): VariableField[] {
   return CERT_PALETTE_KEYS.map((k) => byKey.get(k)).filter(
     (v): v is VariableField => Boolean(v),
   );
+}
+
+/**
+ * 把 DEFAULT_VARIABLES 里缺失的预设变量补进模板自带的变量表(保留已有自定义)。
+ * 用于加载老模板:老模板存的 variables 没有后来新增的预设变量(如「表彰年度」yearLabel),
+ * 合并后该变量才会出现在变量面板、且渲染时能按 {{表彰年度}} 占位符替换。
+ */
+export function withDefaultVariables(variables?: VariableField[]): VariableField[] {
+  if (!variables || variables.length === 0) return [...DEFAULT_VARIABLES];
+  const merged = [...variables];
+  const keys = new Set(merged.map((v) => v.key));
+  for (const dv of DEFAULT_VARIABLES) {
+    if (!keys.has(dv.key)) merged.push(dv);
+  }
+  return merged;
 }
 
 export function emptyDesignerState(width = 800, height = 566): DesignerState {

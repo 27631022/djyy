@@ -80,7 +80,7 @@ export interface BuildVariableCtx {
 /**
  * 产出模板全部预设变量(designerUtils.DEFAULT_VARIABLES 的 key)的展示值。
  *
- * certNo 用占位编号 `{年份}-{荣誉码}-100-001`(前两位动态、后两位写死):
+ * certNo 用占位编号 `{年份}-{荣誉码}-010-001`(前两段动态、后两段写死):
  * 真实编号在发证后由后端按批次生成,显示在「已发证书」列表/详情,
  * 不在前端 PDF 上追求精确(避免编号还没分配就要先渲染的鸡生蛋问题)。
  */
@@ -89,7 +89,10 @@ export function buildVariableValues(ctx: BuildVariableCtx): Record<string, strin
   const issueIso = ctx.issueDate || todayIso();
   return {
     name: ctx.recipient.name,
-    certNo: `${ctx.yearLabel}-${honorCode}-100-001`,
+    certNo: `${ctx.yearLabel}-${honorCode}-010-001`,
+    // 表彰年度(原样,如 "2024" / "2024-2025")—— 模板可绑定 {{表彰年度}};
+    // 需要"年度"二字时在模板里加静态文字即可
+    yearLabel: ctx.yearLabel,
     issueDate: toChineseUpperDate(issueIso),
     validUntil: ctx.validUntil ? toChineseUpperDate(ctx.validUntil) : "永久有效",
     issuer: ctx.template?.issuingOrgName ?? "",

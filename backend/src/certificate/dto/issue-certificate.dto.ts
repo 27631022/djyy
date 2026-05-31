@@ -43,10 +43,11 @@ export class IssueCertificateDto {
   @MaxLength(64)
   recipientEmpNo?: string;
 
-  @IsOptional()
+  /** 所在单位/部门 — 必填(发证向导从组织树点选,存全称路径快照),否则无法识别表彰对象 */
   @IsString()
-  @MaxLength(128)
-  recipientDept?: string;
+  @MinLength(1)
+  @MaxLength(256)
+  recipientDept!: string;
 
   @IsOptional()
   @IsString()
