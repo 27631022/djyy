@@ -278,7 +278,7 @@ function CollectiveEditor({
             <tr className="text-[10px] text-[#6B7280] uppercase tracking-wide">
               <th className="px-2 py-2 text-left w-12">#</th>
               <th className="px-2 py-2 text-left">被表彰集体名称 *</th>
-              <th className="px-2 py-2 text-left">单位 / 部门 *</th>
+              <th className="px-2 py-2 text-left">单位 / 部门</th>
               <th className="px-2 py-2 w-10"></th>
             </tr>
           </thead>
@@ -574,7 +574,7 @@ function IndividualEditor({
               <th className="px-2 py-2 text-left w-10">#</th>
               <th className="px-2 py-2 text-left">姓名 *</th>
               <th className="px-2 py-2 text-left w-28">员工编号</th>
-              <th className="px-2 py-2 text-left">单位/部门 *</th>
+              <th className="px-2 py-2 text-left">单位/部门</th>
               <th className="px-2 py-2 w-24">状态</th>
               <th className="px-2 py-2 w-10"></th>
             </tr>

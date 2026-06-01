@@ -183,19 +183,16 @@ export default function CertificateIssuePage() {
       return null;
     })();
 
-    // Step 4:当前焦点 record 的收件人 — 至少 1 个非空 + 每人都填了「所在单位/部门」(必填)
+    // Step 4:当前焦点 record 的收件人 — 至少 1 个非空即可。
+    // (2026-06-01)「所在单位/部门」暂时放开必填,不再拦截留空的行(后端 DTO 同步放开)。
     const recipientsErr = (() => {
       if (!currentRecord) return "没有可填的记录";
       if (currentRecord.honorType === "collective") {
         const named = currentRecord.collectives.filter((c) => c.name.trim());
         if (named.length === 0) return "至少添加 1 个被表彰集体";
-        const missing = named.filter((c) => !c.dept.trim()).length;
-        if (missing > 0) return `有 ${missing} 个集体未选「所在单位/部门」(必填)`;
       } else {
         const named = currentRecord.persons.filter((p) => p.name.trim());
         if (named.length === 0) return "至少添加 1 位受表彰人员";
-        const missing = named.filter((p) => !p.dept.trim()).length;
-        if (missing > 0) return `有 ${missing} 位未选「所在单位/部门」(必填)`;
       }
       return null;
     })();

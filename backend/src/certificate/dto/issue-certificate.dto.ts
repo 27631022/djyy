@@ -43,11 +43,15 @@ export class IssueCertificateDto {
   @MaxLength(64)
   recipientEmpNo?: string;
 
-  /** 所在单位/部门 — 必填(发证向导从组织树点选,存全称路径快照),否则无法识别表彰对象 */
+  /**
+   * 所在单位/部门 —— 发证向导从组织树点选,存全称路径快照。
+   * (2026-06-01)暂时放开「必填」:允许留空以支持快速发证。
+   * 恢复必填:去掉 @IsOptional()、加回 @MinLength(1),并把末尾 `?` 改回 `!`。
+   */
+  @IsOptional()
   @IsString()
-  @MinLength(1)
   @MaxLength(256)
-  recipientDept!: string;
+  recipientDept?: string;
 
   @IsOptional()
   @IsString()
