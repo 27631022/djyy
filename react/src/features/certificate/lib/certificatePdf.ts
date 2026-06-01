@@ -143,7 +143,24 @@ export async function renderStateToCanvas(
   renderAll(ctx, stateWithValues, { bgImage, imageCache, isPreview: true });
 }
 
-/** 生成证书 PDF 的 data URL(data:application/pdf;base64,...)。图按 EXPORT_SCALE 超采样,页面仍用逻辑尺寸 → 高 DPI */
+/**
+ * canvas → JPEG data URL,先垫白底再编码。
+ * JPEG 无 alpha,透明区会被填黑;证书整页不透明,垫白安全且体积比 PNG 小一个量级
+ * (×3 超采样的整页 PNG 单张可 20MB+,JPEG q0.92 约 1-2MB → 下载/存储/局域网传输都稳)。
+ */
+function canvasToJpegDataUrl(src: HTMLCanvasElement, quality = 0.92): string {
+  const flat = document.createElement("canvas");
+  flat.width = src.width;
+  flat.height = src.height;
+  const ctx = flat.getContext("2d");
+  if (!ctx) return src.toDataURL("image/jpeg", quality);
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, flat.width, flat.height);
+  ctx.drawImage(src, 0, 0);
+  return flat.toDataURL("image/jpeg", quality);
+}
+
+/** 生成证书 PDF 的 data URL(data:application/pdf;base64,...)。图按 EXPORT_SCALE 超采样 → 高 DPI,JPEG 压缩控体积 */
 export async function generateCertificatePdfDataUrl(
   state: DesignerState,
   variableValues: Record<string, string>,
@@ -151,7 +168,7 @@ export async function generateCertificatePdfDataUrl(
   const canvas = document.createElement("canvas");
   await renderStateToCanvas(canvas, state, variableValues, EXPORT_SCALE);
 
-  const imgData = canvas.toDataURL("image/png");
+  const imgData = canvasToJpegDataUrl(canvas);
   const w = state.canvasWidth;
   const h = state.canvasHeight;
   const pdf = new jsPDF({
@@ -161,28 +178,28 @@ export async function generateCertificatePdfDataUrl(
     hotfixes: ["px_scaling"],
   });
   // 页面尺寸是逻辑 w×h,但 imgData 是 ×EXPORT_SCALE 的高清图 → 嵌入后等效高 DPI
-  pdf.addImage(imgData, "PNG", 0, 0, w, h);
+  pdf.addImage(imgData, "JPEG", 0, 0, w, h);
   return pdf.output("datauristring");
 }
 
 /**
- * 一次渲染同时产出「高清 PDF」+「压缩预览缩略图」。
+ * 一次渲染同时产出「高清 PDF(Blob)」+「压缩预览缩略图(data URL)」。
  *
- * 发证时用这个,而不是分别调两次渲染 —— 同一张 ×EXPORT_SCALE 的高清 canvas:
- *   - 直接出 PDF(高清,用于下载)
- *   - 降采样出 JPEG 缩略图(约几十 KB,存库供详情轻量预览)
+ * 发证时用这个,同一张 ×EXPORT_SCALE 的高清 canvas:
+ *   - PDF 直接出 Blob(V4 上传到 storage,免 base64 中转,省内存/带宽)
+ *   - 降采样出 JPEG 缩略图 data URL(约几十 KB,随发证存 DB 供详情/公开页轻量预览)
  * 缩略图准确反映"发证当时"的样子(即使日后改了模板也不受影响)。
  */
-export async function generateCertificateOutputs(
+export async function generateCertificateUploadOutputs(
   state: DesignerState,
   variableValues: Record<string, string>,
   thumbWidth = 700,
   thumbQuality = 0.72,
-): Promise<{ pdfData: string; thumbnail: string }> {
+): Promise<{ pdfBlob: Blob; thumbnail: string }> {
   const canvas = document.createElement("canvas");
   await renderStateToCanvas(canvas, state, variableValues, EXPORT_SCALE);
 
-  const imgData = canvas.toDataURL("image/png");
+  const imgData = canvasToJpegDataUrl(canvas);
   const w = state.canvasWidth;
   const h = state.canvasHeight;
   const pdf = new jsPDF({
@@ -191,11 +208,11 @@ export async function generateCertificateOutputs(
     format: [w, h],
     hotfixes: ["px_scaling"],
   });
-  pdf.addImage(imgData, "PNG", 0, 0, w, h);
-  const pdfData = pdf.output("datauristring");
+  pdf.addImage(imgData, "JPEG", 0, 0, w, h);
+  const pdfBlob = pdf.output("blob");
 
   const thumbnail = generateThumbnail(canvas, thumbWidth, thumbQuality);
-  return { pdfData, thumbnail };
+  return { pdfBlob, thumbnail };
 }
 
 /** 生成证书 PNG 的 data URL(高清,按 EXPORT_SCALE 超采样) */

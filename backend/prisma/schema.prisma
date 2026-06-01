@@ -455,10 +455,10 @@ model CertificateTemplate {
 //
 // source 取值:
 //   internal  用本系统模板生成,有 templateId
-//   external  上传的外部 PDF,templateId=null,externalFileData 存原文件
+//   external  上传的外部 PDF,templateId=null,pdfFileId 指向上传的原件
 //
-// pdfData / externalFileData 都是 base64 data URL。批量下载时后端拿来直接打 ZIP。
-// V3 会改成对象存储,字段保留兼容。
+// V4(storage):证书 PDF 大文件不再 base64 进库,改存 storage 模块,Certificate 只留
+// pdfFileId 指针;缩略图 thumbnail 仍存 DB(小)。批量下载 / 公开下载经 StorageService 取字节。
 // @module: certificate
 model Certificate {
   id          String  @id @default(cuid())
@@ -508,11 +508,11 @@ model Certificate {
   revokedReason String?
   revokedBy     String?
 
-  // 渲染产物 / 外部文件
-  pdfData          String? // 前端 jspdf 生成 base64,internal 必有,external 可空
-  externalFileData String? // source='external' 时存上传的原 PDF base64
-  // 压缩预览缩略图(发证时由前端从同一次渲染降采样生成的 JPEG base64,约几十 KB)。
-  // 已发证书详情用它做轻量预览,避免每次拉整张高清 PDF(数 MB)。external/老数据为 null。
+  // 渲染产物 / 文件指针(V4 storage:大文件移出 DB,只存 fileId → StoredFile)
+  pdfFileId        String? // 证书 PDF:internal=生成件 / external=上传原件 → StoredFile.id
+  sourceFileId     String? // 该表彰的原始表彰文件(best-effort 存)→ StoredFile.id;供日后查看原文
+  // 压缩预览缩略图(发证时前端从同一次渲染降采样生成的 JPEG base64,约几十 KB)继续存 DB —
+  // 列表卡片 + 公开页 <img> 直接用,小且不受 data:PDF 非 HTTPS 渲染限制。external 为 null。
   thumbnail        String? // JPEG data URL(压缩预览图)
 
   createdAt DateTime @default(now())
@@ -525,4 +525,31 @@ model Certificate {
   @@index([batchKey])
   @@index([source])
   @@index([certNo])
+}
+
+// 统一文件存储 — 平台基础设施模块。一行 = 一个已落地文件的「元数据」,
+// 真实字节由 StorageDriver 存到后端(本地盘 / 挂载的群晖共享盘);本表只存指针 + 校验信息。
+// 消费方(certificate / task 等)用 fileId 松引用本表(string),不建 relation —— 守住「表归属单一模块 + 依赖图 DAG」。
+// sqlite/postgres 兼容:仅用 String/Int/DateTime/Boolean。
+// @module: storage
+model StoredFile {
+  id           String    @id @default(cuid())
+  driver       String // 'local'(未来 'synology' | 's3')—— 存「写入时」的 driver,多后端共存/迁移时按行回查
+  storageKey   String    @unique // driver 内相对路径,如 'certificate/2025-先进工作者/先进工作者-张三-1001.pdf'
+  ownerModule  String // 'certificate' | 'task' … 业务来源(= 顶层文件夹 + 孤儿排查)
+  folder       String? // 业务子文件夹(冗余存,便于按文件夹查/审计)
+  originalName String // 原始/展示文件名(下载时拼 Content-Disposition)
+  mimeType     String
+  size         Int // 字节数(够用;真要存超大文件再换 BigInt)
+  sha256       String // 内容哈希(hex)—— 完整性校验 / 排查重复
+  ext          String? // 规范化小写扩展名(无点),如 'pdf'
+  visibility   String    @default("private") // 'private' | 'public'
+  createdById  String? // 上传者 user id
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime? // 软删:置戳后下载拒绝,真实字节由孤儿回收延迟清
+
+  @@index([ownerModule])
+  @@index([folder])
+  @@index([sha256])
+  @@index([deletedAt])
 }

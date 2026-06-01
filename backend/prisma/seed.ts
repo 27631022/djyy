@@ -297,6 +297,9 @@ async function seedRolesAndPermissions() {
     { code: 'certificate:bulk-download', name: '批量下载证书',     category: 'operation' },
     // 删除证书(V3)— 仅 platform_admin 拥有(其余内置角色不含),实现"只有管理员可删"
     { code: 'certificate:delete',        name: '删除证书',         category: 'operation' },
+    // 文件存储(storage)— file:upload 发给能发证的角色(当前内置仅 platform_admin),file:delete 仅管理员
+    { code: 'file:upload',               name: '上传文件',         category: 'operation' },
+    { code: 'file:delete',               name: '删除文件',         category: 'operation' },
   ];
   for (const p of permissions) {
     await prisma.permission.upsert({

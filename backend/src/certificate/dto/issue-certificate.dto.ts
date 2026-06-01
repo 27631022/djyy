@@ -76,11 +76,19 @@ export class IssueCertificateDto {
   @IsString()
   variableData!: string;
 
-  /** 前端 jspdf 渲染的 PDF base64 data URL */
+  /** 证书 PDF 的 storage 文件 id(前端先 POST /files 上传 PDF 拿到)→ StoredFile.id */
+  @IsOptional()
   @IsString()
-  pdfData!: string;
+  @MaxLength(64)
+  pdfFileId?: string;
 
-  /** 压缩预览缩略图 JPEG base64(前端从同一次渲染降采样生成,约几十 KB)。可选 */
+  /** 该表彰的原始表彰文件 storage id(best-effort,前端发证前上传)→ StoredFile.id */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  sourceFileId?: string;
+
+  /** 压缩预览缩略图 JPEG base64(前端从同一次渲染降采样生成,约几十 KB)。仍存 DB。可选 */
   @IsOptional()
   @IsString()
   thumbnail?: string;

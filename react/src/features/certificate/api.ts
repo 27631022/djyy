@@ -136,12 +136,16 @@ export interface CertificateListItemDto {
   updatedAt: string;
 }
 
-/** 详情:列表字段 + pdfData/externalFileData/idCard/phone */
+/** 详情:列表字段 + 文件指针/idCard/phone(V4:大文件移出 DB,只回 fileId) */
 export interface CertificateDetailDto extends CertificateListItemDto {
   recipientIdCard: string | null;
   recipientPhone: string | null;
-  pdfData: string | null;
-  externalFileData: string | null;
+  /** 证书 PDF 的 storage 文件 id(下载走 /files/:id);external=上传原件 */
+  pdfFileId: string | null;
+  /** 该表彰原始文件 storage id(可空) */
+  sourceFileId: string | null;
+  /** 缩略图(JPEG base64)仍存 DB */
+  thumbnail: string | null;
 }
 
 export interface IssueExternalCertificateInput {
@@ -155,7 +159,8 @@ export interface IssueExternalCertificateInput {
   recipientPhone?: string;
   yearLabel: string;
   batchTotal: number;
-  externalFileData: string;
+  /** 上传的外部 PDF 的 storage 文件 id(前端先 POST /files 上传拿到) */
+  pdfFileId: string;
   variableData?: string;
   validUntil?: string;
   issuingOrgName?: string;
@@ -176,9 +181,11 @@ export interface IssueCertificateInput {
   batchTotal: number;
   /** 变量值 JSON 串(前端 JSON.stringify) */
   variableData: string;
-  /** PDF base64 data URL(前端 jspdf 生成) */
-  pdfData: string;
-  /** 压缩预览缩略图 JPEG base64(前端从同一次渲染降采样,约几十 KB)。详情轻量预览用 */
+  /** 证书 PDF 的 storage 文件 id —— V4 改「发号后用真号渲染再 attachFile 回填」,故 issue 时可不传 */
+  pdfFileId?: string;
+  /** 该表彰的原始表彰文件 storage id(best-effort) */
+  sourceFileId?: string;
+  /** 压缩预览缩略图 JPEG base64(前端从同一次渲染降采样,约几十 KB)。仍存 DB,详情/公开页预览用 */
   thumbnail?: string;
   validUntil?: string;
   issuingOrgId?: string;
@@ -240,6 +247,15 @@ export const certificateIssueApi = {
   issue: (input: IssueCertificateInput) =>
     api.post<CertificateDetailDto>("/certificates", input).then((r) => r.data),
 
+  /** 回填证书文件(发号后用真实 certNo 渲染完 PDF、上传 storage 再调) */
+  attachFile: (
+    id: string,
+    input: { pdfFileId: string; thumbnail?: string; variableData?: string },
+  ) =>
+    api
+      .patch<CertificateDetailDto>(`/certificates/${id}/file`, input)
+      .then((r) => r.data),
+
   issueExternal: (input: IssueExternalCertificateInput) =>
     api
       .post<CertificateDetailDto>("/certificates/external", input)
@@ -290,19 +306,21 @@ export const certificateIssueApi = {
   remove: (id: string) =>
     api.delete<{ ok: boolean; id: string }>(`/certificates/${id}`).then((r) => r.data),
 
-  /** 批量下载,返回 application/zip 的 Blob */
-  bulkDownload: (ids: string[]) =>
-    api
-      .post<Blob>(
-        "/certificates/bulk-download",
-        { ids },
-        {
-          responseType: "blob",
-          // 大批量打 ZIP 走默认 15s 可能不够,给 60s
-          timeout: 60_000,
-        },
-      )
-      .then((r) => r.data),
+  /**
+   * 批量下载:POST 拿 token URL → GET 该 URL 取 ZIP Blob(走 axios,转 blob: 本地下载,
+   * 不触发 HTTP 原生下载的「insecure / HTTPS」警告)。
+   */
+  bulkDownload: async (ids: string[]) => {
+    const { data } = await api.post<{ url: string }>(
+      "/certificates/bulk-download",
+      { ids },
+    );
+    const res = await api.get<Blob>(data.url, {
+      responseType: "blob",
+      timeout: 120_000,
+    });
+    return res.data;
+  },
 };
 
 /* ─── 公开验证(无需登录;同样形态留给未来"首页综合查询"复用) ─── */
@@ -332,12 +350,12 @@ export const certificatePublicApi = {
       .get<CertificatePublicDetail>(`/public/certificates/verify/${token}`)
       .then((r) => r.data),
 
-  /** 按需下载证书原件(pdfData / 外部文件)— 验证页点「下载」时才调,避免页面加载就传大文件 */
+  /** 公开下载证书原件(axios 取 Blob,前端转 blob: URL 下载,不触发 HTTP「insecure」警告) */
   downloadFile: (token: string) =>
     api
-      .get<{ pdfData: string | null }>(
-        `/public/certificates/verify/${token}/file`,
-        { timeout: 60_000 },
-      )
+      .get<Blob>(`/public/certificates/verify/${token}/file`, {
+        responseType: "blob",
+        timeout: 120_000,
+      })
       .then((r) => r.data),
 };

@@ -4,11 +4,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
+import type { Readable } from 'node:stream';
 import JSZip from 'jszip';
 import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
+import { StorageService } from '../storage';
 import { IssueCertificateDto } from './dto/issue-certificate.dto';
 import { IssueExternalCertificateDto } from './dto/external-certificate.dto';
+import { AttachCertificateFileDto } from './dto/attach-file.dto';
 import { RevokeCertificateDto } from './dto/revoke-certificate.dto';
 
 interface IssueCtx {
@@ -56,7 +59,11 @@ export class CertificateIssueService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly storage: StorageService,
   ) {}
+
+  /** 批量下载任务:token → {ids, exp}(内存、短时效)。供浏览器原生下载凭 token 拉 ZIP */
+  private readonly bulkJobs = new Map<string, { ids: string[]; exp: number }>();
 
   /**
    * 发一张证书。
@@ -71,6 +78,9 @@ export class CertificateIssueService {
    * 并发:SQLite 单写者锁保证 count→insert 原子。PG 切过去要加 isolationLevel: 'Serializable'。
    */
   async issue(dto: IssueCertificateDto, ctx: IssueCtx) {
+    // V4:本步「先发号建记录」—— 此时还没 PDF(pdfFileId/thumbnail 可空)。
+    // 前端拿到真实 certNo 后再渲染 PDF、上传 storage、调 attachFile 回填,
+    // 以此根除「占位编号烤进 PDF」(发号在渲染之前)。
     const template = await this.prisma.certificateTemplate.findUnique({
       where: { id: dto.templateId },
     });
@@ -161,7 +171,8 @@ export class CertificateIssueService {
           issuingOrgId: dto.issuingOrgId,
           issuingOrgName: dto.issuingOrgName,
 
-          pdfData: dto.pdfData,
+          pdfFileId: dto.pdfFileId,
+          sourceFileId: dto.sourceFileId,
           thumbnail: dto.thumbnail,
         },
       });
@@ -188,7 +199,35 @@ export class CertificateIssueService {
     return created;
   }
 
-  /** 列表 — 不返 pdfData / externalFileData(列表页用不到,省传输) */
+  /**
+   * 回填证书文件(发号后,用真实 certNo 渲染完 PDF 再调)。
+   * pdfFileId 必填;thumbnail / variableData 可选(真号重渲染后的快照,覆盖发号时的占位)。
+   */
+  async attachFile(id: string, dto: AttachCertificateFileDto, ctx: IssueCtx) {
+    const cert = await this.prisma.certificate.findUnique({ where: { id } });
+    if (!cert) throw new NotFoundException('证书不存在');
+    const updated = await this.prisma.certificate.update({
+      where: { id },
+      data: {
+        pdfFileId: dto.pdfFileId,
+        ...(dto.thumbnail !== undefined ? { thumbnail: dto.thumbnail } : {}),
+        ...(dto.variableData !== undefined
+          ? { variableData: dto.variableData }
+          : {}),
+      },
+    });
+    await this.audit.log({
+      action: 'cert.issue.attach-file',
+      target: id,
+      actorId: ctx.actorId,
+      actorName: ctx.actorName,
+      ip: ctx.ip,
+      detail: JSON.stringify({ certNo: cert.certNo, pdfFileId: dto.pdfFileId }),
+    });
+    return updated;
+  }
+
+  /** 列表 — 不返大文件字段(列表页用不到,省传输) */
   async list(filter: ListFilter) {
     const where: Record<string, unknown> = {};
     if (filter.templateId) where.templateId = filter.templateId;
@@ -278,6 +317,15 @@ export class CertificateIssueService {
     const cert = await this.prisma.certificate.findUnique({ where: { id } });
     if (!cert) throw new NotFoundException('证书不存在');
     await this.prisma.certificate.delete({ where: { id } });
+    // 联动删存储文件:pdfFileId 每证唯一,删证书即删其 PDF,避免孤儿。best-effort 不阻断。
+    // sourceFileId(表彰原始文件)可能被同批多证共享 → 不在此联动删,交给孤儿回收兜底。
+    if (cert.pdfFileId) {
+      try {
+        await this.storage.softDelete(cert.pdfFileId, ctx);
+      } catch {
+        /* 文件删除失败留给孤儿回收,不阻断删证书 */
+      }
+    }
     await this.audit.log({
       action: 'cert.issue.delete',
       target: id,
@@ -366,9 +414,8 @@ export class CertificateIssueService {
           issuerName: ctx.actorName ?? '',
           issuingOrgName: dto.issuingOrgName,
 
-          // 外部 PDF 同时存到 pdfData(批量下载用)+ externalFileData(标记来源)
-          pdfData: dto.externalFileData,
-          externalFileData: dto.externalFileData,
+          // 外部上传原件:字节存 storage,这里只记指针
+          pdfFileId: dto.pdfFileId,
         },
       });
     });
@@ -424,66 +471,96 @@ export class CertificateIssueService {
   }
 
   /**
-   * 批量下载:把指定 ids 的证书 PDF 打成 ZIP 返回 buffer。
-   * 文件名:{荣誉名}-{姓名}-{员工编号}.pdf,清洗非法字符;
-   * 同名加 -2 -3 后缀避免冲突。
-   * pdfData 缺失的(很少)用 externalFileData 兜底,都没有就跳过并记入 missing。
+   * 准备批量下载:存 ids→token(内存、5 分钟失效),返回浏览器原生下载用的 token URL。
+   * 不在此打包 —— 真正的 ZIP 在公开 GET /public/certificates/bulk-zip 流式生成(见 getBulkZip),
+   * 让浏览器边下边写盘(不经 axios 内存 Blob,批量再大也稳)。
    */
-  async bulkDownload(ids: string[], ctx: IssueCtx): Promise<Buffer> {
-    if (ids.length === 0) throw new BadRequestException('请选择至少 1 张证书');
-    const certs = await this.prisma.certificate.findMany({
+  async prepareBulkDownload(
+    ids: string[],
+    ctx: IssueCtx,
+  ): Promise<{ url: string }> {
+    if (!ids || ids.length === 0)
+      throw new BadRequestException('请选择至少 1 张证书');
+    const n = await this.prisma.certificate.count({
       where: { id: { in: ids } },
+    });
+    if (n === 0) throw new NotFoundException('未找到任何证书');
+    this.pruneBulkJobs();
+    const token = randomBytes(18).toString('base64url');
+    this.bulkJobs.set(token, {
+      ids: [...ids],
+      exp: Math.floor(Date.now() / 1000) + 300,
+    });
+    await this.audit.log({
+      action: 'cert.issue.bulk-download',
+      actorId: ctx.actorId,
+      actorName: ctx.actorName,
+      ip: ctx.ip,
+      detail: JSON.stringify({ count: ids.length }),
+    });
+    return { url: `/public/certificates/bulk-zip?token=${token}` };
+  }
+
+  /**
+   * 凭 token 取批量 ZIP(公开下载口用)。文件名 {荣誉名}-{姓名}-{员工编号}.pdf,
+   * 同名加 -2/-3;无 PDF 的跳过;全跳过则报错。
+   */
+  async getBulkZip(
+    token: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    this.pruneBulkJobs();
+    const job = this.bulkJobs.get(token);
+    if (!job || Math.floor(Date.now() / 1000) > job.exp) {
+      throw new NotFoundException('下载链接无效或已过期');
+    }
+    const certs = await this.prisma.certificate.findMany({
+      where: { id: { in: job.ids } },
       include: { template: { select: { name: true } } },
     });
-    if (certs.length === 0) throw new NotFoundException('未找到任何证书');
-
     const zip = new JSZip();
     const usedNames = new Set<string>();
-    const missing: string[] = [];
-
     for (const c of certs) {
-      const pdfDataUrl = c.pdfData ?? c.externalFileData;
-      if (!pdfDataUrl) {
-        missing.push(c.certNo);
-        continue;
+      if (!c.pdfFileId) continue;
+      let buf: Buffer;
+      try {
+        buf = (await this.storage.getBuffer(c.pdfFileId)).buffer;
+      } catch {
+        continue; // 文件缺失/读失败:跳过不阻断整包
       }
       const base = buildPdfBaseName({
         honorName: c.template?.name ?? c.honorCode,
         recipientName: c.recipientName,
         recipientEmpNo: c.recipientEmpNo,
       });
-      // 防同名:第 2 张同名加 -2,第 3 张 -3
       let name = `${base}.pdf`;
-      let n = 1;
+      let k = 1;
       while (usedNames.has(name)) {
-        n += 1;
-        name = `${base}-${n}.pdf`;
+        k += 1;
+        name = `${base}-${k}.pdf`;
       }
       usedNames.add(name);
-
-      const buf = dataUrlToBuffer(pdfDataUrl);
       zip.file(name, buf);
     }
-
     if (usedNames.size === 0) {
-      throw new BadRequestException(
-        `所选 ${certs.length} 张证书都缺少 PDF 文件,无法打包`,
-      );
+      throw new NotFoundException('所选证书都没有可下载的文件');
     }
-
-    await this.audit.log({
-      action: 'cert.issue.bulk-download',
-      actorId: ctx.actorId,
-      actorName: ctx.actorName,
-      ip: ctx.ip,
-      detail: JSON.stringify({
-        total: certs.length,
-        packed: usedNames.size,
-        missing,
-      }),
+    const buffer = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
     });
+    const now = new Date();
+    const stamp =
+      `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}` +
+      `${String(now.getDate()).padStart(2, '0')}-` +
+      `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    return { buffer, filename: `djyy-certificates-${stamp}.zip` };
+  }
 
-    return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+  private pruneBulkJobs(): void {
+    const now = Math.floor(Date.now() / 1000);
+    for (const [t, j] of this.bulkJobs) {
+      if (now > j.exp) this.bulkJobs.delete(t);
+    }
   }
 
   /* ─── 公开接口(供 PublicVerifyController 用,不挂 AuthGuard) ─── */
@@ -532,7 +609,7 @@ export class CertificateIssueService {
         thumbnail: true,
         createdAt: true,
         updatedAt: true,
-        // 显式不取:pdfData / externalFileData / recipientIdCard / recipientPhone
+        // 显式不取:pdfFileId / sourceFileId / recipientIdCard / recipientPhone(下载走 getPublicFileStream)
       },
     });
     if (!cert) throw new NotFoundException('证书不存在或链接无效');
@@ -540,16 +617,32 @@ export class CertificateIssueService {
   }
 
   /**
-   * 公开下载:按 publicToken 取证书文件(pdfData,外部证书回退 externalFileData)。
-   * 与 verifyByToken 分开 —— 验证页加载只传轻量数据,点「下载」才传大文件。
+   * 公开下载:按 publicToken 取证书文件流(从 storage 按 fileId 拉)。
+   * 与 verifyByToken 分开 —— 验证页只传轻量 thumbnail,点「下载」才拉原件。
    */
-  async getPublicFile(token: string): Promise<{ pdfData: string | null }> {
+  async getPublicFileStream(
+    token: string,
+  ): Promise<{ stream: Readable; filename: string; mimeType: string }> {
     const cert = await this.prisma.certificate.findUnique({
       where: { publicToken: token },
-      select: { pdfData: true, externalFileData: true },
+      select: {
+        pdfFileId: true,
+        certNo: true,
+        honorCode: true,
+        recipientName: true,
+        recipientEmpNo: true,
+        template: { select: { name: true } },
+      },
     });
     if (!cert) throw new NotFoundException('证书不存在或链接无效');
-    return { pdfData: cert.pdfData ?? cert.externalFileData ?? null };
+    if (!cert.pdfFileId) throw new NotFoundException('该证书没有可下载的文件');
+    const { meta, stream } = await this.storage.getStream(cert.pdfFileId);
+    const base = buildPdfBaseName({
+      honorName: cert.template?.name ?? cert.honorCode,
+      recipientName: cert.recipientName,
+      recipientEmpNo: cert.recipientEmpNo,
+    });
+    return { stream, filename: `${base}.pdf`, mimeType: meta.mimeType };
   }
 
   /**
@@ -590,13 +683,6 @@ function buildPdfBaseName(opts: {
   const parts = [opts.honorName, opts.recipientName];
   if (opts.recipientEmpNo) parts.push(opts.recipientEmpNo);
   return parts.map((p) => p.trim().replace(/[\\/:*?"<>|]/g, '_')).join('-');
-}
-
-function dataUrlToBuffer(dataUrl: string): Buffer {
-  const idx = dataUrl.indexOf(',');
-  if (idx < 0) return Buffer.from('');
-  const b64 = dataUrl.slice(idx + 1);
-  return Buffer.from(b64, 'base64');
 }
 
 /* ─── 公开接口字段脱敏 ─── */

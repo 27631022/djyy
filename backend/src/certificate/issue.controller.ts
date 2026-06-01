@@ -4,25 +4,24 @@ import {
   Controller,
   Delete,
   Get,
-  Header,
   Param,
   Patch,
   Post,
   Query,
   Req,
-  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Request, Response } from 'express';
+import type { Request } from 'express';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { Permission } from '../permission';
 import { CertificateIssueService } from './issue.service';
 import { CertificateExtractionService } from './extraction.service';
 import { IssueCertificateDto } from './dto/issue-certificate.dto';
 import { IssueExternalCertificateDto } from './dto/external-certificate.dto';
+import { AttachCertificateFileDto } from './dto/attach-file.dto';
 import {
   BulkDownloadDto,
   RevokeCertificateDto,
@@ -66,6 +65,22 @@ export class CertificateIssueController {
     @Req() req: Request,
   ) {
     return this.svc.issue(dto, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
+  }
+
+  /** 回填证书文件 — 发号后用真实 certNo 渲染完 PDF、上传 storage 再调 */
+  @Patch(':id/file')
+  @Permission('certificate:issue')
+  attachFile(
+    @Param('id') id: string,
+    @Body() dto: AttachCertificateFileDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.attachFile(id, dto, {
       actorId: me.sub,
       actorName: me.name,
       ip: req.ip,
@@ -182,33 +197,20 @@ export class CertificateIssueController {
   }
 
   /**
-   * 批量下载 — body { ids[] } → 后端打 ZIP → 直接以 application/zip 流式返回。
-   * 文件名格式 djyy-certificates-YYYYMMDD-HHmm.zip。
+   * 批量下载 — body { ids[] } → 返回 token URL;前端用浏览器原生下载命中
+   * GET /public/certificates/bulk-zip(流式 ZIP,不经 axios 内存 Blob,批量再大也稳)。
    */
   @Post('bulk-download')
   @Permission('certificate:bulk-download')
-  @Header('Content-Type', 'application/zip')
-  async bulkDownload(
+  bulkDownload(
     @Body() dto: BulkDownloadDto,
     @CurrentUser() me: AuthPayload,
     @Req() req: Request,
-    @Res() res: Response,
   ) {
-    const buf = await this.svc.bulkDownload(dto.ids, {
+    return this.svc.prepareBulkDownload(dto.ids, {
       actorId: me.sub,
       actorName: me.name,
       ip: req.ip,
     });
-    const now = new Date();
-    const stamp =
-      `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}` +
-      `${String(now.getDate()).padStart(2, '0')}-` +
-      `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-    const filename = `djyy-certificates-${stamp}.zip`;
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`,
-    );
-    res.send(buf);
   }
 }

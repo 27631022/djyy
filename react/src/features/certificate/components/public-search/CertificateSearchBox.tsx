@@ -207,13 +207,10 @@ function MultipleResults({
 export function CertificateDetailCard({ detail }: { detail: CertificatePublicDetail }) {
   const downloadMut = useMutation({
     mutationFn: () => certificatePublicApi.downloadFile(detail.publicToken),
-    onSuccess: ({ pdfData }) => {
-      if (!pdfData) {
-        toast.error("证书文件缺失");
-        return;
-      }
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob);
       triggerDownload(
-        pdfData,
+        url,
         buildPdfFileName({
           honorName: detail.template?.name ?? detail.honorCode,
           honorCode: detail.honorCode,
@@ -221,6 +218,7 @@ export function CertificateDetailCard({ detail }: { detail: CertificatePublicDet
           recipientEmpNo: detail.recipientEmpNo,
         }),
       );
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
     onError: (e: unknown) =>
       toast.error(e instanceof Error ? e.message : "下载失败"),

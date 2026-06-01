@@ -30,6 +30,7 @@ import {
   type CertificateListItemDto,
 } from "@/features/certificate";
 import { dictionariesApi, DICT_CODES } from "@/features/dictionary";
+import { storageApi } from "@/features/storage";
 import { useAuth } from "@/stores/auth";
 import { buildPdfFileName } from "../lib/certificateNumber";
 import { triggerDownload } from "../lib/certificatePdf";
@@ -698,20 +699,22 @@ function CertRow({
 }) {
   const qc = useQueryClient();
   const downloadMut = useMutation({
-    mutationFn: () => certificateIssueApi.get(cert.id),
-    onSuccess: (full) => {
-      const pdfData = full.pdfData ?? full.externalFileData;
-      if (!pdfData) {
-        toast.error("证书 PDF 文件缺失");
-        return;
-      }
+    mutationFn: async () => {
+      const full = await certificateIssueApi.get(cert.id);
+      if (!full.pdfFileId) throw new Error("证书 PDF 文件缺失");
+      return storageApi.fetchBlob(full.pdfFileId);
+    },
+    onSuccess: (blob) => {
+      // axios 取 Blob → blob: 本地下载(文件名前端拼,中文正确;不触发 HTTP insecure 警告)
+      const url = URL.createObjectURL(blob);
       const filename = buildPdfFileName({
         honorName: cert.template?.name ?? cert.honorCode,
         honorCode: cert.honorCode,
         recipientName: cert.recipientName,
         recipientEmpNo: cert.recipientEmpNo,
       });
-      triggerDownload(pdfData, filename);
+      triggerDownload(url, filename);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       qc.invalidateQueries({ queryKey: ["certificate-detail", cert.id] });
     },
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "下载失败"),
@@ -873,22 +876,25 @@ function CertDetailDrawer({
   }, [c.variableData, c.certNo, c.yearLabel]);
 
   const downloadMut = useMutation({
-    mutationFn: () => certificateIssueApi.get(c.id),
-    onSuccess: (full) => {
-      const data = full.pdfData ?? full.externalFileData;
-      if (!data) {
-        toast.error("证书 PDF 文件缺失");
-        return;
-      }
-      triggerDownload(
-        data,
-        buildPdfFileName({
+    mutationFn: async () => {
+      const full = await certificateIssueApi.get(c.id);
+      if (!full.pdfFileId) throw new Error("证书 PDF 文件缺失");
+      const blob = await storageApi.fetchBlob(full.pdfFileId);
+      return {
+        blob,
+        filename: buildPdfFileName({
           honorName: full.template?.name ?? full.honorCode,
           honorCode: full.honorCode,
           recipientName: full.recipientName,
           recipientEmpNo: full.recipientEmpNo,
         }),
-      );
+      };
+    },
+    onSuccess: ({ blob, filename }) => {
+      // axios 取 Blob → blob: 本地下载(不触发 HTTP insecure 警告)
+      const url = URL.createObjectURL(blob);
+      triggerDownload(url, filename);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "下载失败"),
   });

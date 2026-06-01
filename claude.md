@@ -53,6 +53,7 @@ djyy/                              ← git 根 + monorepo
 │   │   │   ├── permission/        ← api.ts + index.ts (无独立页面,合并在 role)
 │   │   │   ├── role/
 │   │   │   ├── site-setting/
+│   │   │   ├── storage/          ← 文件上传/下载 client(storageApi.upload / fetchBlob / fileUrl)
 │   │   │   ├── user/
 │   │   │   └── user-custom-field/
 │   │   ├── shared/                ← 跨模块复用基础设施
@@ -92,6 +93,7 @@ djyy/                              ← git 根 + monorepo
         ├── nav-category/          ← 首页导航(分类 + 项目两表) + index.ts
         ├── certificate/           ← 证书 V1-V3:模板 + 发证 + 公开验证 + AI 提取 + 外部录入 + index.ts
         ├── external-api/          ← AI 平台配置(provider/key/model/visionModel/优先级)+ index.ts
+        ├── storage/               ← 统一文件存储:StorageDriver 抽象(本地盘默认 / 群晖·S3 占位)+ StoredFile + index.ts
         ├── health/                ← /api/health + index.ts
         └── main.ts                ← listen 0.0.0.0,CORS dev 放开 *:5173
 ```
@@ -242,6 +244,9 @@ npm run db:seed
 - **(2026-05-31)证书管理 V3**:把 V2 闭环抛光到"可交付"。发证向导拆 5 步;受表彰人单位/部门改**组织树点选 + 必填**(个人按工号/姓名兜底自动带出全称路径,按姓名补的/重名的标「待核对」;集体按名称匹配单位);公开验证页 `/verify/:token` 直显证书 + 修空白(16MB data:PDF → 14KB 缩略图);详情抽屉预览自动渲染;模板变量加「表彰年度」(默认上一年);编号总数段补零。详见 **docs/specs/2026-05-31-certificate-v3.md**
   - ⚠ 两个遗留(下次继续):① 证书 PDF/缩略图上烤的是**占位编号**(真号只在记录字段,需改发证流程先发号再渲染)② AI 提取慢——只需把 deepseek 模型 `v4-pro`→`v4-flash`(后台「外部 API 接入」页改 model,纯配置)。详见 V3 spec「已知遗留」+ `~/.claude/plans/ai-swirling-bear.md`
   - CSV 批量发证页已删(旧路线遗留),改用发证向导的粘贴识别
+- **(2026-06-01)统一文件存储模块 + 证书切 storage**:新增 `storage` 模块(StorageDriver 抽象 + **本地盘 driver 默认**,群晖 File Station / S3 留占位)+ StoredFile 元数据表;文件按**业务文件夹**组织(证书 = 每个表彰一个文件夹「年度-荣誉名」,挂载群晖后在 File Station 里可浏览)。证书 PDF / 外部原件从 base64 进库改为**存 storage 只留 fileId**,缩略图仍存 DB(列表/公开页 `<img>` 用)。前端上传统一走 `@/features/storage` 的 `storageApi.upload` 拿 fileId 再提交;公开下载经 `/public/certificates/verify/:token/file` 流式。生产把群晖共享盘挂载到 `STORAGE_LOCAL_DIR`(本机当前 = `backend/storage-data`)即生效,零改代码。规格 + 群晖 File Station API 备忘见 **`~/.claude/plans/ai-swirling-bear.md`**
+  - **(2026-06-01 续)瘦身 + 正确性 + 下载/文件名根治**:① 证书 PDF 内图 PNG→**JPEG q0.92**(单证 ~22MB→~1.5MB,治存储膨胀 + 跨机下载失败)② **占位编号 bug 已修(原 V3 遗留⑤)**——发证改「先 issue 发号 → 用真 certNo 渲染 → `attachFile` 回填」③ 下载全改 **axios 取 Blob → `blob:` 本地下载**(HTTP 局域网不触发 "insecure/HTTPS" 警告;批量走 token + 流式 ZIP 口)④ multipart 中文文件名 **latin1→utf8** 修复(原本落盘/下载名乱码)⑤ 删证书**联动删** storage 文件
+  - ⚠ 仍遗留:① 表彰原始文件「同文件夹」未接(`Certificate.sourceFileId` 列已就绪,需把 Step1 上传件提到容器、发证前传一次)② `file:upload`/`file:delete` 已进 seed,现有 dev 库靠 platform_admin 直通(未整库 reseed)③ SynologyDriver / S3Driver 仅占位 —— 当前 HTTP 局域网用 axios-Blob 下载;将来上 HTTPS 可启用**签名 URL 原生下载**(后端 `/public/files/:id?sig` + `/files/:id/download-url` 已备好)④ **孤儿文件定期回收(GC)未做** —— 删证书已联动删,但"上传后放弃发证"的孤儿需定期清(建议加手动「清理孤儿文件」按钮:storage 列候选 → certificate 用自己表过滤在用的 → 删剩下)
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
@@ -254,7 +259,7 @@ npm run db:seed
 - 信创适配(达梦 / 麒麟 / 国密)
 - K8s 部署
 - SAML / CAS / LDAP 协议适配
-- 证书 PDF 改对象存储(目前 base64 存 DB,V3 改 MinIO/OSS)
+- 证书 PDF 对象存储 —— **storage 抽象 + 本地盘已落地(2026-06-01,见已完成)**;当前群晖走「挂载共享盘 + 本地盘 driver」。S3/MinIO/群晖 File Station API driver 仅占位,有需求再实现
 - 证书自动失效(到期变"已过期"批处理)
 - 模板版本历史
 - 证书图片 OCR(AI 提取仅支持 docx/pdf)
@@ -277,6 +282,7 @@ npm run db:seed
 | 排行榜金/银/铜不跟主题色 | 颜色重构阶段 | 语义色,跟主题色解耦 |
 | 移除 unplugin-auto-import | 基座加固阶段 | 静默吞错,IDE 已能 auto-import,得不偿失 |
 | 权限模型暂不 enforce | 多次确认 | 单人 MVP 没必要,等多角色冲突真发生再补(4-6 小时即可上) |
+| 文件存储:driver 抽象 + 本地盘默认,群晖走挂载 | 2026-06-01 | 单位用群晖;挂载共享盘后 LocalDiskDriver 零改即用,文件落成 File Station 可浏览目录;SynologyDriver(File Station API)/ S3 留占位。消费方用 fileId 松引用、不建跨模块外键(守「表归属 + DAG」) |
 
 ---
 
@@ -291,3 +297,4 @@ npm run db:seed
 - **主题色 / 字典 / 自定义字段** 这三块容易混淆,先翻 docs/conventions.md
 - **用户口语化目标 ≠ 写出来的规划文档**,以用户当下口语意图为准(他要"够用"不要"完美")
 - **TODO/警告类风险登记**:看 docs/roadmap.md
+- **文件上传一律走 storage**:前端 `storageApi.upload(file, {ownerModule, folder})` 拿 fileId 再提交,后端注入 `StorageService`(走 `../storage` barrel);别再把文件 base64 塞进 DB 列。`folder` 决定落盘的业务文件夹

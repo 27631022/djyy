@@ -14,6 +14,7 @@ import { UserCustomFieldModule } from './user-custom-field';
 import { SiteSettingModule } from './site-setting';
 import { NavCategoryModule } from './nav-category';
 import { ExternalApiModule } from './external-api';
+import { StorageModule } from './storage';
 import { CertificateModule } from './certificate';
 
 @Module({
@@ -33,6 +34,7 @@ import { CertificateModule } from './certificate';
     SiteSettingModule,
     NavCategoryModule,
     ExternalApiModule,
+    StorageModule,
     CertificateModule,
   ],
   providers: [

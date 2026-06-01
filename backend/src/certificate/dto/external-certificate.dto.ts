@@ -17,7 +17,7 @@ import {
  * 跟内部发证 DTO 的关键差异:
  *   - 没有 templateId(外部证书不走模板渲染)
  *   - honorCode + honorName 必填(因为没模板可拷快照)
- *   - pdfData 字段名沿用,但实际放上传的外部 PDF
+ *   - pdfFileId 指向上传到 storage 的外部 PDF 原件
  *
  * 编号规则与内部一致:{yearLabel}-{honorCode}-{batchTotal}-{seq}。
  */
@@ -72,9 +72,11 @@ export class IssueExternalCertificateDto {
   @Max(99999)
   batchTotal!: number;
 
-  /** 上传的原 PDF base64 data URL(也会作为 pdfData 用于下载) */
+  /** 上传的外部 PDF 的 storage 文件 id(前端先 POST /files 上传拿到)→ StoredFile.id */
   @IsString()
-  externalFileData!: string;
+  @MinLength(1)
+  @MaxLength(64)
+  pdfFileId!: string;
 
   /** 变量值快照 JSON 串(留空 '{}' 也行,因为外部证书不渲染) */
   @IsOptional()

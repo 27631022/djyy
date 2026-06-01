@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -13,6 +13,7 @@ import {
   certificateIssueApi,
   type IssueExternalCertificateInput,
 } from "@/features/certificate";
+import { storageApi } from "@/features/storage";
 import {
   RecipientPicker,
   type RecipientValue,
@@ -24,20 +25,11 @@ import { defaultYearLabel } from "../lib/certificateDraft";
 const PARTY = "var(--party-primary)";
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
-function fileToDataURL(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("文件读取失败"));
-    reader.readAsDataURL(file);
-  });
-}
-
 /**
  * 外部证书上传页 — 用户/部门把别的单位颁发的证书 PDF 录入到本系统,
  * 仍按统一编号规则纳入查询/验证体系。
  *
- * source = 'external';templateId = null;pdfData = 上传的原文件;externalFileData = 同。
+ * source = 'external';templateId = null;原件上传到 storage,Certificate 存 pdfFileId 指针。
  */
 export default function CertificateExternalPage() {
   const navigate = useNavigate();
@@ -45,7 +37,6 @@ export default function CertificateExternalPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [pdfData, setPdfData] = useState<string>("");
   const [honorName, setHonorName] = useState("");
   const [honorCode, setHonorCode] = useState("");
   const [recipient, setRecipient] = useState<RecipientValue>({ recipientName: "" });
@@ -54,7 +45,18 @@ export default function CertificateExternalPage() {
   const [validUntil, setValidUntil] = useState("");
   const [issuingOrgName, setIssuingOrgName] = useState("");
 
-  async function handleFiles(files: FileList | null) {
+  // 本地预览用 blob: URL(比 data: 可靠,且不把大 base64 塞进 state)。
+  // useMemo 派生 + effect 仅做清理 —— 不在 effect 里 setState。
+  const previewUrl = useMemo(
+    () => (pdfFile ? URL.createObjectURL(pdfFile) : ""),
+    [pdfFile],
+  );
+  useEffect(() => {
+    if (!previewUrl) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     const f = files[0];
     if (f.size > MAX_PDF_BYTES) {
@@ -67,17 +69,11 @@ export default function CertificateExternalPage() {
       toast.error("仅支持 PDF 格式");
       return;
     }
-    try {
-      const url = await fileToDataURL(f);
-      setPdfFile(f);
-      setPdfData(url);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "读取失败");
-    }
+    setPdfFile(f);
   }
 
   const errors: string[] = [];
-  if (!pdfData) errors.push("请上传 PDF 文件");
+  if (!pdfFile) errors.push("请上传 PDF 文件");
   if (!honorName.trim()) errors.push("请填写荣誉名称");
   if (!/^[A-Za-z0-9-]+$/.test(honorCode) || !honorCode) errors.push("请填写荣誉代码(英文/数字)");
   if (!recipient.recipientName.trim()) errors.push("请填写持证人姓名");
@@ -87,7 +83,17 @@ export default function CertificateExternalPage() {
   const formReady = errors.length === 0;
 
   const issueMut = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
+      if (!pdfFile) throw new Error("请先上传 PDF 文件");
+      // 先把外部原件上传到 storage(表彰文件夹),拿 fileId
+      const uploaded = await storageApi.upload(
+        pdfFile,
+        {
+          ownerModule: "certificate",
+          folder: `${yearLabel}-${honorName.trim()}`,
+          visibility: "private",
+        },
+      );
       const input: IssueExternalCertificateInput = {
         honorName: honorName.trim(),
         honorCode: honorCode.trim().toUpperCase(),
@@ -99,7 +105,7 @@ export default function CertificateExternalPage() {
         recipientPhone: recipient.recipientPhone?.trim() || undefined,
         yearLabel,
         batchTotal,
-        externalFileData: pdfData,
+        pdfFileId: uploaded.id,
         validUntil: validUntil || undefined,
         issuingOrgName: issuingOrgName.trim() || undefined,
       };
@@ -240,9 +246,9 @@ export default function CertificateExternalPage() {
             <div className="text-xs font-semibold text-[#6B7280] mb-3 uppercase tracking-wide">
               PDF 预览
             </div>
-            {pdfData ? (
+            {previewUrl ? (
               <iframe
-                src={pdfData}
+                src={previewUrl}
                 title="external pdf preview"
                 className="w-full"
                 style={{ height: 540, border: "1px solid #E9E9E9" }}

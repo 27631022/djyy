@@ -19,6 +19,9 @@ prisma/*.db-journal
 *.sqlite
 *.sqlite3
 
+# 本地文件存储(storage 模块 LocalDiskDriver 默认根;生产指向挂载的群晖共享盘)
+storage-data/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,4 +1,10 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  StreamableFile,
+} from '@nestjs/common';
 import { CertificateIssueService } from './issue.service';
 
 /**
@@ -25,10 +31,25 @@ export class CertificatePublicVerifyController {
     return this.svc.verifyByToken(token);
   }
 
-  /** 凭 publicToken 下载证书原件(pdfData / 外部文件)— 点「下载」时才拉,避免验证页传大文件 */
+  /** 凭 publicToken 下载证书原件 — 从 storage 流式返回,点「下载」时才拉,避免验证页传大文件 */
   @Get('verify/:token/file')
-  file(@Param('token') token: string) {
-    return this.svc.getPublicFile(token);
+  async file(@Param('token') token: string): Promise<StreamableFile> {
+    const { stream, filename, mimeType } =
+      await this.svc.getPublicFileStream(token);
+    return new StreamableFile(stream, {
+      type: mimeType,
+      disposition: `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    });
+  }
+
+  /** 凭 token 下载批量 ZIP — 浏览器原生下载(authed 侧先 POST /certificates/bulk-download 拿 token URL) */
+  @Get('bulk-zip')
+  async bulkZip(@Query('token') token: string): Promise<StreamableFile> {
+    const { buffer, filename } = await this.svc.getBulkZip(token);
+    return new StreamableFile(buffer, {
+      type: 'application/zip',
+      disposition: `attachment; filename="${filename}"`,
+    });
   }
 
   /** 公开搜索 — 按证书编号 q(精确优先,然后 contains 模糊) */

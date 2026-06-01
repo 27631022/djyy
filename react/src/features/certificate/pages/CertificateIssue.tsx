@@ -29,11 +29,11 @@ import {
   certificateIssueApi,
   certificateTemplateApi,
   type CertificateTemplateDto,
-  type IssueCertificateInput,
   type ExtractHonorResponse,
 } from "@/features/certificate";
 import { useAuth } from "@/stores/auth";
-import { generateCertificateOutputs } from "../lib/certificatePdf";
+import { generateCertificateUploadOutputs } from "../lib/certificatePdf";
+import { storageApi } from "@/features/storage";
 import { buildVariableValues } from "../lib/variableMapping";
 import { isValidYearLabel } from "../lib/certificateNumber";
 import type { DesignerState } from "../lib/designerTypes";
@@ -258,11 +258,8 @@ export default function CertificateIssuePage() {
           });
           let result: IssueResult;
           try {
-            const { pdfData, thumbnail } = await generateCertificateOutputs(
-              designState,
-              variableValues,
-            );
-            const input: IssueCertificateInput = {
+            // 1. 先发号建记录(不带 PDF)—— 后端事务分配真实 certNo
+            const cert = await certificateIssueApi.issue({
               templateId: template.id,
               recipientUserId: rec.userId,
               recipientName: rec.name,
@@ -271,14 +268,42 @@ export default function CertificateIssuePage() {
               yearLabel,
               batchTotal,
               variableData: JSON.stringify(variableValues),
-              pdfData,
-              thumbnail,
               issuingOrgName: template.issuingOrgName || undefined,
               honorType: record.honorType,
               issueDate,
               validUntil: validUntil || undefined,
-            };
-            const cert = await certificateIssueApi.issue(input);
+            });
+            try {
+              // 2. 用真实编号重算变量再渲染(根除占位编号烤进 PDF / 下载图)
+              const realValues = { ...variableValues, certNo: cert.certNo };
+              const { pdfBlob, thumbnail } =
+                await generateCertificateUploadOutputs(designState, realValues);
+              // 3. 上传 PDF 到 storage(每个表彰一个文件夹)
+              const fileName = `${record.honorName}-${rec.name}${rec.empNo ? "-" + rec.empNo : ""}.pdf`;
+              const uploaded = await storageApi.upload(
+                pdfBlob,
+                {
+                  ownerModule: "certificate",
+                  folder: `${yearLabel}-${record.honorName}`,
+                  visibility: "private",
+                },
+                fileName,
+              );
+              // 4. 回填 fileId + 缩略图 + 真号变量快照
+              await certificateIssueApi.attachFile(cert.id, {
+                pdfFileId: uploaded.id,
+                thumbnail,
+                variableData: JSON.stringify(realValues),
+              });
+            } catch (inner) {
+              // 渲染/上传/回填失败 → 回滚已发号的空记录,保证「全有或全无」
+              try {
+                await certificateIssueApi.remove(cert.id);
+              } catch {
+                /* 回滚失败忽略(记录会成无 PDF 孤儿,可手动删) */
+              }
+              throw inner;
+            }
             result = {
               key: `${record.rid}-${rec.rid}`,
               recordIndex: ri,
