@@ -1,3 +1,4 @@
+import { FolderPlusIcon } from "lucide-react";
 import { TASK_FIELD_TYPE_LABEL, type TaskFieldType } from "../../api";
 import { FIELD_TYPE_ICONS } from "../fieldTypeIcons";
 
@@ -13,10 +14,19 @@ const TYPE_ORDER: TaskFieldType[] = [
   "doclink",
 ];
 
-/** 左:字段类型面板。点一下把该类型字段加到画布末尾。 */
-export function FieldPalette({ onAdd }: { onAdd: (t: TaskFieldType) => void }) {
+/** 左:字段类型 palette + 添加分组。点类型把字段加到「当前分组」(未选则加到未分组)。 */
+export function FieldPalette({
+  onAdd,
+  onAddGroup,
+  activeGroupLabel,
+}: {
+  onAdd: (t: TaskFieldType) => void;
+  onAddGroup: () => void;
+  /** 新字段将加入的分组名;null = 未分组 */
+  activeGroupLabel: string | null;
+}) {
   return (
-    <div className="w-40 flex-shrink-0 border-r border-[#F0F0F0] bg-[#FBFBFC] p-2 overflow-auto">
+    <div className="w-44 flex-shrink-0 border-r border-[#F0F0F0] bg-[#FBFBFC] p-2 overflow-auto flex flex-col">
       <div className="text-[13px] font-semibold text-[#4B5563] px-1 mb-2">字段类型</div>
       <div className="grid grid-cols-2 gap-1.5">
         {TYPE_ORDER.map((t) => {
@@ -34,9 +44,24 @@ export function FieldPalette({ onAdd }: { onAdd: (t: TaskFieldType) => void }) {
           );
         })}
       </div>
-      <p className="text-[11px] text-[#9CA3AF] mt-3 px-1 leading-relaxed">
-        点一下加到右侧;拖动卡片排序;点标题就地改名。
-      </p>
+
+      <div className="mt-3 pt-3 border-t border-[#E9E9E9]">
+        <button
+          type="button"
+          onClick={onAddGroup}
+          className="w-full flex items-center justify-center gap-1.5 py-2 rounded-md border border-dashed border-[#246BFE]/50 bg-[#eef4ff] text-[#1d4ed8] text-[12px] font-bold hover:border-[#246BFE]"
+        >
+          <FolderPlusIcon className="w-4 h-4" />
+          添加分组
+        </button>
+        <p className="text-[11px] text-[#9CA3AF] mt-2 px-1 leading-relaxed">
+          点字段类型加到
+          <span className="font-bold text-[var(--party-primary)]">
+            {activeGroupLabel ? `「${activeGroupLabel}」` : "未分组"}
+          </span>
+          。点中间分组标题可切换;字段可拖到别的分组。
+        </p>
+      </div>
     </div>
   );
 }

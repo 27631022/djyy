@@ -24,12 +24,12 @@ import {
   FileTextIcon,
   Loader2Icon,
   Wand2Icon,
-  CopyIcon,
   AlertTriangleIcon,
 } from "lucide-react";
 import { useAuth } from "@/stores/auth";
 import {
   taskApi,
+  taskApiErrorMessage,
   type TaskField,
   type TaskTargetInput,
   type TaskExtractResponse,
@@ -38,6 +38,7 @@ import { FieldDesigner } from "../components/FieldDesigner";
 import { TaskFormPreview } from "../components/TaskFormPreview";
 import { TargetPicker, type PickedTarget, type AiScope } from "../components/TargetPicker";
 import { TaskStep1Upload } from "../components/TaskStep1Upload";
+import { CopyTaskPicker } from "../components/CopyTaskPicker";
 
 const PARTY = "var(--party-primary)";
 const PAGE_BG =
@@ -102,8 +103,7 @@ export default function TaskCreatePage() {
       setFields(r.fields.map((f) => ({ ...f })));
       toast.success(`已按填报要求生成 ${r.fields.length} 个字段`);
     },
-    onError: (e: { response?: { data?: { message?: string } }; message?: string }) =>
-      toast.error(e.response?.data?.message ?? e.message ?? "生成失败"),
+    onError: (e) => toast.error(taskApiErrorMessage(e, "生成失败"), { duration: 10000 }),
   });
 
   // 复制往期任务字段
@@ -144,12 +144,9 @@ export default function TaskCreatePage() {
       toast.success(`已派发「${task.title}」到 ${task.targets.length} 个对象`);
       navigate(`/admin/tasks/${task.id}`);
     },
-    onError: (err: { response?: { data?: { message?: string | string[] } }; message?: string }) => {
-      const msg = err.response?.data?.message;
-      // 派发失败的原因(多为字段/对象校验)要看清,延长展示时间
-      toast.error(Array.isArray(msg) ? msg.join("; ") : (msg ?? err.message ?? "派发失败"), {
-        duration: 10000,
-      });
+    onError: (err) => {
+      // 派发失败的原因(无权限 / 字段 / 对象校验)要看清,延长展示时间
+      toast.error(taskApiErrorMessage(err, "派发失败"), { duration: 10000 });
     },
   });
 
@@ -286,24 +283,11 @@ export default function TaskCreatePage() {
                     )}
                     按填报要求生成字段
                   </button>
-                  <div className="relative">
-                    <select
-                      value=""
-                      onChange={(e) => e.target.value && copyTask.mutate(e.target.value)}
-                      disabled={pastTasks.length === 0 || copyTask.isPending}
-                      className="appearance-none pl-8 pr-3 py-1.5 text-[13px] border border-[#dce4ef] rounded-lg bg-white text-[#344054] focus:outline-none focus:border-[var(--party-primary)] disabled:opacity-50"
-                    >
-                      <option value="">
-                        {pastTasks.length === 0 ? "无往期任务可复制" : "复制往期任务字段…"}
-                      </option>
-                      {pastTasks.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.title}（{t.fieldCount} 字段）
-                        </option>
-                      ))}
-                    </select>
-                    <CopyIcon className="w-4 h-4 text-[#9CA3AF] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
+                  <CopyTaskPicker
+                    tasks={pastTasks}
+                    onPick={(id) => copyTask.mutate(id)}
+                    disabled={copyTask.isPending}
+                  />
                   <div className="flex-1" />
                   <span className="text-[12px] text-[#9CA3AF]">{fields.length} 个字段</span>
                 </div>

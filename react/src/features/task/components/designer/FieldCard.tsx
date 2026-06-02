@@ -1,36 +1,19 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  GripVerticalIcon,
-  CopyIcon,
-  Trash2Icon,
-  Settings2Icon,
-} from "lucide-react";
+import { GripVerticalIcon, CopyIcon, Trash2Icon } from "lucide-react";
 import { Switch } from "@/shared/components/ui/switch";
-import { Popover, PopoverTrigger, PopoverContent } from "@/shared/components/ui/popover";
-import { TASK_FIELD_TYPE_LABEL, type TaskField, type TaskFieldType } from "../../api";
+import { type TaskField } from "../../api";
 import { FIELD_TYPE_ICONS } from "../fieldTypeIcons";
 
 type DictLite = { id: string; code: string; name: string };
 
-const TYPE_ORDER: TaskFieldType[] = [
-  "text",
-  "textarea",
-  "number",
-  "date",
-  "select",
-  "file",
-  "image",
-  "richtext",
-  "doclink",
-];
-
 const ctl =
   "w-full px-2.5 py-1.5 text-sm border border-[#E5E7EB] rounded-md bg-white text-[#374151]";
-const setInp =
-  "w-full px-2 py-1.5 text-[13px] border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[var(--party-primary)]";
 
-/** 单个字段「所见即所得」卡片(可拖拽排序、就地改名、悬浮操作、⚙ 深度设置) */
+/**
+ * 单个字段「所见即所得」卡片 —— 可拖拽(含跨分组)、点选高亮、就地改名、悬浮操作。
+ * 深度属性已移到右栏 PropertiesPanel(点选本卡即在右栏编辑)。
+ */
 export function FieldCard({
   field: f,
   selected,
@@ -58,7 +41,7 @@ export function FieldCard({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={onSelect}
-      className={`group rounded-lg border bg-white px-3 py-2.5 ${
+      className={`group rounded-lg border bg-white px-3 py-2.5 cursor-pointer ${
         isDragging ? "opacity-50 shadow-lg" : ""
       } ${
         selected
@@ -66,7 +49,6 @@ export function FieldCard({
           : "border-[#E9E9E9] hover:border-[#D1D5DB]"
       }`}
     >
-      {/* 顶部:手柄 + 标题(就地改名)+ 悬浮操作 */}
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -74,7 +56,7 @@ export function FieldCard({
           {...listeners}
           onClick={(e) => e.stopPropagation()}
           className="cursor-grab active:cursor-grabbing text-[#C0C6D0] hover:text-[#6B7280] touch-none"
-          title="拖动排序"
+          title="拖动排序 / 拖到其它分组"
         >
           <GripVerticalIcon className="w-4 h-4" />
         </button>
@@ -108,20 +90,6 @@ export function FieldCard({
           <IconBtn title="删除" danger onClick={onDelete}>
             <Trash2Icon className="w-3.5 h-3.5" />
           </IconBtn>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                title="更多设置"
-                className="p-1 rounded text-[#6B7280] hover:bg-[#F0F0F0]"
-              >
-                <Settings2Icon className="w-3.5 h-3.5" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-72 p-3" onClick={(e) => e.stopPropagation()}>
-              <SettingsPanel field={f} dicts={dicts} onPatch={onPatch} />
-            </PopoverContent>
-          </Popover>
         </div>
       </div>
 
@@ -211,146 +179,4 @@ function PreviewControl({ field: f, dicts }: { field: TaskField; dicts: DictLite
     default:
       return <input disabled placeholder={f.placeholder || "请输入"} className={ctl} />;
   }
-}
-
-/** ⚙ 深度设置(就近 Popover):类型 + 分组 + 提示 + 说明 + 类型特有 */
-function SettingsPanel({
-  field: f,
-  dicts,
-  onPatch,
-}: {
-  field: TaskField;
-  dicts: DictLite[];
-  onPatch: (partial: Partial<TaskField>) => void;
-}) {
-  return (
-    <div className="space-y-2.5">
-      <div className="text-[13px] font-semibold text-[#374151]">字段设置</div>
-
-      <Row label="类型">
-        <select
-          value={f.type}
-          onChange={(e) => onPatch({ type: e.target.value as TaskFieldType })}
-          className={setInp}
-        >
-          {TYPE_ORDER.map((t) => (
-            <option key={t} value={t}>
-              {TASK_FIELD_TYPE_LABEL[t]}
-            </option>
-          ))}
-        </select>
-      </Row>
-
-      <Row label="分组名" hint="同名归一组">
-        <input
-          value={f.groupLabel ?? ""}
-          onChange={(e) => {
-            const v = e.target.value;
-            onPatch({ group: v || undefined, groupLabel: v || undefined });
-          }}
-          placeholder="如 报送党员数据"
-          className={setInp}
-        />
-      </Row>
-
-      <Row label="提示 / 占位">
-        <input
-          value={f.placeholder ?? ""}
-          onChange={(e) => onPatch({ placeholder: e.target.value })}
-          className={setInp}
-        />
-      </Row>
-      <Row label="说明">
-        <input
-          value={f.description ?? ""}
-          onChange={(e) => onPatch({ description: e.target.value })}
-          className={setInp}
-        />
-      </Row>
-
-      {f.type === "select" && (
-        <Row label="字典" hint="下拉来源">
-          <select
-            value={f.dictCode ?? ""}
-            onChange={(e) => onPatch({ dictCode: e.target.value })}
-            className={setInp}
-          >
-            <option value="">-- 选择字典 --</option>
-            {dicts.map((d) => (
-              <option key={d.id} value={d.code}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </Row>
-      )}
-
-      {f.type === "number" && (
-        <div className="grid grid-cols-2 gap-2">
-          <Row label="最小值">
-            <NumIn value={f.min} onChange={(v) => onPatch({ min: v })} />
-          </Row>
-          <Row label="最大值">
-            <NumIn value={f.max} onChange={(v) => onPatch({ max: v })} />
-          </Row>
-          <Row label="单位">
-            <input
-              value={f.unit ?? ""}
-              onChange={(e) => onPatch({ unit: e.target.value })}
-              placeholder="如 人"
-              className={setInp}
-            />
-          </Row>
-          <Row label="小数位">
-            <NumIn value={f.decimals} onChange={(v) => onPatch({ decimals: v })} />
-          </Row>
-        </div>
-      )}
-
-      {(f.type === "file" || f.type === "image") && (
-        <div className="grid grid-cols-2 gap-2">
-          <Row label="最多文件">
-            <NumIn value={f.maxFiles} onChange={(v) => onPatch({ maxFiles: v })} />
-          </Row>
-          <Row label="接受类型">
-            <input
-              value={f.accept ?? ""}
-              onChange={(e) => onPatch({ accept: e.target.value })}
-              placeholder=".pdf,.docx"
-              className={setInp}
-            />
-          </Row>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <div className="flex items-baseline gap-1.5 mb-1">
-        <span className="text-[12px] font-medium text-[#4B5563]">{label}</span>
-        {hint && <span className="text-[10px] text-[#9CA3AF]">{hint}</span>}
-      </div>
-      {children}
-    </label>
-  );
-}
-
-function NumIn({
-  value,
-  onChange,
-}: {
-  value: number | undefined;
-  onChange: (v: number | undefined) => void;
-}) {
-  return (
-    <input
-      type="number"
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-      className={setInp}
-    />
-  );
 }

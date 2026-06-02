@@ -216,6 +216,20 @@ export function groupTaskFields(fields: TaskField[]): TaskFieldGroup[] {
   return order.map((k) => map.get(k)!);
 }
 
+/* ─── 错误信息友好化(403 无权限最常见)─── */
+export function taskApiErrorMessage(err: unknown, fallback: string): string {
+  const e = err as {
+    response?: { status?: number; data?: { message?: string | string[] } };
+    message?: string;
+  };
+  if (e?.response?.status === 403) {
+    return "当前账号没有「任务管理(task:manage)」权限,无法操作。请改用系统管理员账号,或让管理员在「角色管理」给你的角色勾上该权限。";
+  }
+  const m = e?.response?.data?.message;
+  if (Array.isArray(m)) return m.join("; ");
+  return m ?? e?.message ?? fallback;
+}
+
 /* ─── API ─── */
 export const taskTemplateApi = {
   list: (active?: boolean) =>

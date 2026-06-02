@@ -19,7 +19,6 @@ import {
   ORG_TYPE_LABELS,
   type OrgKind,
   type OrgType,
-  type AdminType,
   type OrgTreeNode,
 } from "@/features/organization";
 import { usersApi } from "@/features/user";
@@ -42,14 +41,19 @@ interface FlatOrg {
   id: string;
   name: string;
   type: OrgType;
+  isVirtual: boolean;
 }
 interface UnitGroup {
   id: string;
   name: string;
   ids: string[];
 }
-
-const ADMIN_LEVELS: AdminType[] = ["level1", "level2", "level3", "level4"];
+/** 虚拟机构(如 公司机关 / 基层单位)及其下属真实单位 —— 快捷选单位以此为维度 */
+interface Wrapper {
+  id: string;
+  name: string;
+  kids: FlatOrg[];
+}
 
 function keyOf(t: { targetType: string; id: string }) {
   return `${t.targetType}:${t.id}`;
@@ -57,7 +61,22 @@ function keyOf(t: { targetType: string; id: string }) {
 function flatten(nodes: OrgTreeNode[]): FlatOrg[] {
   const out: FlatOrg[] = [];
   const walk = (n: OrgTreeNode) => {
-    out.push({ id: n.id, name: n.name, type: n.type });
+    out.push({ id: n.id, name: n.name, type: n.type, isVirtual: n.isVirtual });
+    n.children.forEach(walk);
+  };
+  nodes.forEach(walk);
+  return out;
+}
+/** 找出所有「虚拟机构 + 其非虚拟直接子单位」(公司机关→各部门;基层单位→塔运司/各分公司) */
+function findWrappers(nodes: OrgTreeNode[]): Wrapper[] {
+  const out: Wrapper[] = [];
+  const walk = (n: OrgTreeNode) => {
+    if (n.isVirtual && n.children.length > 0) {
+      const kids = n.children
+        .filter((c) => !c.isVirtual)
+        .map((c) => ({ id: c.id, name: c.name, type: c.type, isVirtual: c.isVirtual }));
+      if (kids.length) out.push({ id: n.id, name: n.name, kids });
+    }
     n.children.forEach(walk);
   };
   nodes.forEach(walk);
@@ -115,9 +134,9 @@ export function TargetPicker({
     () => flatten(adminTreeQuery.data ?? []),
     [adminTreeQuery.data],
   );
-  const presentLevels = useMemo(
-    () => ADMIN_LEVELS.filter((lv) => adminFlat.some((o) => o.type === lv)),
-    [adminFlat],
+  const wrappers = useMemo(
+    () => findWrappers(adminTreeQuery.data ?? []),
+    [adminTreeQuery.data],
   );
 
   function toggle(t: PickedTarget) {
@@ -145,17 +164,12 @@ export function TargetPicker({
     const drop = new Set(ids.map((id) => `org:${id}`));
     onChange(value.filter((v) => !drop.has(keyOf(v))));
   }
-  function orgsOfLevel(lv: AdminType): FlatOrg[] {
-    return adminFlat.filter((o) => o.type === lv);
+  function wrapperAllSelected(w: Wrapper): boolean {
+    return w.kids.length > 0 && w.kids.every((o) => selectedKeys.has(`org:${o.id}`));
   }
-  function levelAllSelected(lv: AdminType): boolean {
-    const orgs = orgsOfLevel(lv);
-    return orgs.length > 0 && orgs.every((o) => selectedKeys.has(`org:${o.id}`));
-  }
-  function toggleLevel(lv: AdminType) {
-    const orgs = orgsOfLevel(lv);
-    if (levelAllSelected(lv)) removeOrgs(orgs.map((o) => o.id));
-    else addOrgs(orgs);
+  function toggleWrapper(w: Wrapper) {
+    if (wrapperAllSelected(w)) removeOrgs(w.kids.map((o) => o.id));
+    else addOrgs(w.kids);
   }
   function groupOrgs(g: UnitGroup): FlatOrg[] {
     const set = new Set(g.ids);
@@ -191,7 +205,8 @@ export function TargetPicker({
     if (!aiScope) return;
     const picks: FlatOrg[] = [];
     if (/^level[1-4]$/.test(aiScope.level)) {
-      picks.push(...orgsOfLevel(aiScope.level as AdminType));
+      // 按层级选时排除虚拟壳(公司机关 / 基层单位 等),只选真实单位
+      picks.push(...adminFlat.filter((o) => o.type === aiScope.level && !o.isVirtual));
     }
     for (const nm of aiScope.units) {
       const t = nm.trim();
@@ -208,15 +223,12 @@ export function TargetPicker({
     addOrgs(picks);
   }
 
-  const aiScopeText = aiScope
-    ? [
-        /^level[1-4]$/.test(aiScope.level) ? `全部${ORG_TYPE_LABELS[aiScope.level as OrgType]}` : "",
-        ...aiScope.units.slice(0, 6),
-      ]
-        .filter(Boolean)
-        .join("、")
-    : "";
-  const showAiBanner = !!aiScope && (/.+/.test(aiScopeText));
+  const aiScopeText = aiScope?.units?.length
+    ? aiScope.units.slice(0, 8).join("、")
+    : aiScope && /^level[1-4]$/.test(aiScope.level)
+      ? "(按通知文件推断的范围)"
+      : "";
+  const showAiBanner = !!aiScope && !!aiScopeText;
 
   return (
     <div className="h-full flex flex-col gap-3">
@@ -269,14 +281,14 @@ export function TargetPicker({
             )}
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {presentLevels.map((lv) => {
-              const all = levelAllSelected(lv);
-              const n = orgsOfLevel(lv).length;
+            {wrappers.map((w) => {
+              const all = wrapperAllSelected(w);
               return (
                 <button
-                  key={lv}
+                  key={w.id}
                   type="button"
-                  onClick={() => toggleLevel(lv)}
+                  onClick={() => toggleWrapper(w)}
+                  title={`选中「${w.name}」下属 ${w.kids.length} 个单位`}
                   className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] border transition-colors ${
                     all
                       ? "border-[var(--party-primary)] bg-party-soft text-[var(--party-primary)] font-bold"
@@ -284,8 +296,8 @@ export function TargetPicker({
                   }`}
                 >
                   {all ? <CheckIcon className="w-3 h-3" /> : <PlusIcon className="w-3 h-3" />}
-                  全部{ORG_TYPE_LABELS[lv]}
-                  <span className="text-[10px] text-[#9CA3AF]">{n}</span>
+                  全选{w.name}
+                  <span className="text-[10px] text-[#9CA3AF]">{w.kids.length}</span>
                 </button>
               );
             })}
@@ -319,7 +331,7 @@ export function TargetPicker({
                 </span>
               );
             })}
-            {presentLevels.length === 0 && (
+            {wrappers.length === 0 && groups.length === 0 && (
               <span className="text-[12px] text-[#9CA3AF]">加载单位中…</span>
             )}
           </div>

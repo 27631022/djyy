@@ -18,7 +18,7 @@ import {
   Building2Icon,
 } from "lucide-react";
 import { storageApi } from "@/features/storage";
-import { taskApi, type TaskExtractResponse } from "../api";
+import { taskApi, taskApiErrorMessage, type TaskExtractResponse } from "../api";
 
 const inputCls =
   "w-full px-3.5 py-2.5 text-[14px] text-[#172033] border border-[#dce4ef] rounded-lg bg-white focus:outline-none focus:border-[var(--party-primary)] focus:ring-2 focus:ring-party-primary-10 placeholder:text-[#9CA3AF]";
@@ -76,10 +76,7 @@ export function TaskStep1Upload({
         `AI 识别完成:${extracted.title || "(未取到任务名)"}${fc ? ` · 生成 ${fc} 个填报字段` : ""}`,
       );
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        (e instanceof Error ? e.message : "");
-      toast.error(msg || "AI 识别失败,可在下方手动填写");
+      toast.error(taskApiErrorMessage(e, "AI 识别失败,可在下方手动填写"), { duration: 8000 });
     } finally {
       setAiBusy(false);
     }
