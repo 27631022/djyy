@@ -88,10 +88,13 @@ export class CertificateExtractionService {
     }
 
     // —— 文本路径 ——
-    const cfg = await this.externalApi.getActiveLLM();
+    // 按「消费功能」解析:管理员可在外部API页把此功能绑定到指定模型,否则按 chat 能力优先级自动选
+    const cfg = await this.externalApi.getConfigForConsumer(
+      'certificate.extract.text',
+    );
     if (!cfg) {
       throw new ServiceUnavailableException(
-        'AI 服务未配置:请到「系统设置 → 外部 API 接入」录入至少一个 LLM 的 API Key(标 chat 能力)。',
+        'AI 服务未配置:请到「系统设置 → 外部 API 接入」录入至少一个标了 chat 能力的模型(或在「模型路由」里给本功能绑定一个)。',
       );
     }
     const apiKey = cfg.apiKey;
@@ -141,8 +144,9 @@ export class CertificateExtractionService {
         },
         {
           headers: {
-            Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
+            // 内网自建模型可无 key:有 key 才带 Authorization
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           },
           timeout: timeoutMs,
         },
@@ -248,10 +252,12 @@ export class CertificateExtractionService {
     file: { originalname: string; mimetype: string; size: number; buffer: Buffer },
     ctx: ExtractCtx,
   ): Promise<ExtractHonorResponse> {
-    const cfg = await this.externalApi.getActiveVision();
+    const cfg = await this.externalApi.getConfigForConsumer(
+      'certificate.extract.image',
+    );
     if (!cfg) {
       throw new ServiceUnavailableException(
-        '未配置支持图像识别的 provider。请到「系统设置 → 外部 API」给豆包/千问/OpenAI/文心 中任一录入 Key,并确认 capabilities 含 vision。',
+        '未配置支持图像识别的模型。请到「系统设置 → 外部 API」给某个模型标上 vision 能力并填好 Key/endpoint(或在「模型路由」里给本功能绑定一个)。',
       );
     }
 
@@ -295,8 +301,9 @@ export class CertificateExtractionService {
         },
         {
           headers: {
-            Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
+            // 内网自建模型可无 key:有 key 才带 Authorization
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           },
           timeout: timeoutMs,
         },

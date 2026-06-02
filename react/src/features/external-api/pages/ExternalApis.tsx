@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   KeyIcon,
@@ -19,6 +19,12 @@ import {
   ZapIcon,
   WalletIcon,
   ExternalLinkIcon,
+  Share2Icon,
+  ChevronDownIcon,
+  AlertTriangleIcon,
+  ServerIcon,
+  CloudIcon,
+  SparklesIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -27,7 +33,16 @@ import {
   type ExternalApiTestResult,
   type ExternalApiBalance,
   type CreateExternalApiInput,
+  type ResolvedConsumer,
 } from "../api";
+import { BrandMonogram } from "@/shared/components/AppIcon";
+import {
+  assetIconUrl,
+  getBrand,
+  matchBrand,
+} from "@/shared/components/iconBrands";
+import { LucideIcon } from "@/shared/components/IconPicker";
+import { IconRefPicker } from "@/features/icon-library";
 
 const PARTY = "var(--party-primary)";
 
@@ -67,11 +82,11 @@ export default function ExternalApisPage() {
   return (
     <div className="h-full flex flex-col bg-[#F7F8FA]">
       <header className="px-6 py-4 bg-white border-b border-[#E9E9E9] flex items-center gap-3">
-        <KeyIcon className="w-5 h-5" style={{ color: PARTY }} />
+        <SparklesIcon className="w-5 h-5" style={{ color: PARTY }} />
         <div className="flex-1">
-          <h1 className="text-lg font-bold text-[#1A1A1A]">外部 API 接入</h1>
+          <h1 className="text-lg font-bold text-[#1A1A1A]">AI 接入管理</h1>
           <p className="text-xs text-[#9CA3AF] mt-0.5">
-            管理 LLM/短信/邮件等平台的 API Key、Endpoint、模型。设置后立即生效,无需重启服务。
+            接入大模型(及短信 / 邮件等)平台,配置 Key、Endpoint、模型与调用路由。设置后立即生效,无需重启。
           </p>
         </div>
         <button
@@ -92,6 +107,9 @@ export default function ExternalApisPage() {
       </header>
 
       <div className="flex-1 overflow-auto p-6">
+        <RoutingOverview />
+
+        <div className="text-sm font-bold text-[#1A1A1A] mb-3">已接入的模型 / 平台</div>
         {listQuery.isLoading ? (
           <div className="text-sm text-[#9CA3AF]">加载中…</div>
         ) : apis.length === 0 ? (
@@ -130,6 +148,298 @@ export default function ExternalApisPage() {
       )}
       {creating && (
         <CreateDialog onCancel={() => setCreating(false)} onDone={() => setCreating(false)} />
+      )}
+    </div>
+  );
+}
+
+/* ─── 模型路由总览(按应用功能 → 模型)─── */
+
+function RoutingOverview() {
+  const qc = useQueryClient();
+  const { data: routes = [], isLoading } = useQuery({
+    queryKey: ["external-apis", "routing"],
+    queryFn: () => externalApiApi.routing(),
+  });
+
+  const bindMut = useMutation({
+    mutationFn: ({ key, provider }: { key: string; provider: string | null }) =>
+      externalApiApi.bindRoute(key, provider),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["external-apis", "routing"] });
+      toast.success(
+        r.mode === "pinned" ? `已指定:${r.resolved?.name ?? "—"}` : "已改为自动",
+      );
+    },
+    onError: (e: unknown) =>
+      toast.error(e instanceof Error ? e.message : "更新失败"),
+  });
+
+  // 按应用分组展示
+  const byApp = useMemo(() => {
+    const m = new Map<string, ResolvedConsumer[]>();
+    for (const r of routes) {
+      const arr = m.get(r.app) ?? [];
+      arr.push(r);
+      m.set(r.app, arr);
+    }
+    return Array.from(m.entries());
+  }, [routes]);
+
+  return (
+    <div className="mb-6 bg-white rounded-lg border border-[#E9E9E9] p-4">
+      <div className="flex items-center gap-2 mb-0.5">
+        <Share2Icon className="w-4 h-4" style={{ color: PARTY }} />
+        <h2 className="text-sm font-bold text-[#1A1A1A]">模型路由</h2>
+        <span className="text-[11px] text-[#9CA3AF]">
+          哪个应用功能 → 调用哪个模型(可单独指定;默认按优先级自动选)
+        </span>
+      </div>
+      {isLoading ? (
+        <div className="text-xs text-[#9CA3AF] py-3">加载中…</div>
+      ) : byApp.length === 0 ? (
+        <div className="text-xs text-[#9CA3AF] py-3">暂无登记的 AI 消费功能</div>
+      ) : (
+        <div className="space-y-3 mt-2">
+          {byApp.map(([app, items]) => (
+            <div key={app}>
+              <div className="text-[11px] font-semibold text-[#6B7280] mb-1.5">
+                {app}
+              </div>
+              <div className="space-y-2">
+                {items.map((r) => (
+                  <ConsumerRow
+                    key={r.consumerKey}
+                    r={r}
+                    binding={bindMut.isPending}
+                    onBind={(provider) =>
+                      bindMut.mutate({ key: r.consumerKey, provider })
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConsumerRow({
+  r,
+  onBind,
+  binding,
+}: {
+  r: ResolvedConsumer;
+  onBind: (provider: string | null) => void;
+  binding: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-md border border-[#F0F0F0] bg-[#FAFAFB] px-3 py-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span
+              className="text-xs font-medium text-[#1A1A1A] truncate"
+              title={r.label}
+            >
+              {r.label}
+            </span>
+            <span
+              className={`px-1.5 py-0.5 rounded text-[10px] ${capColor(r.capability)}`}
+            >
+              {capLabel(r.capability)}
+            </span>
+          </div>
+          {r.description && (
+            <div
+              className="text-[10px] text-[#9CA3AF] mt-0.5 truncate"
+              title={r.description}
+            >
+              {r.description}
+            </div>
+          )}
+        </div>
+
+        {/* 当前命中 */}
+        <div className="text-xs flex items-center gap-1 flex-shrink-0">
+          {r.resolved ? (
+            <>
+              <span className="text-[#9CA3AF]">命中</span>
+              <KindBadge kind={r.resolved.kind} />
+              <span className="font-medium text-[#1A1A1A]">
+                {r.resolved.name}
+              </span>
+              {r.resolved.model && (
+                <code className="text-[10px] text-[#6B7280]">
+                  · {r.resolved.model}
+                </code>
+              )}
+            </>
+          ) : (
+            <span className="text-red-600 font-medium">未配置可用模型</span>
+          )}
+        </div>
+
+        {/* 绑定选择 */}
+        <select
+          value={r.pinnedProvider ?? ""}
+          disabled={binding}
+          onChange={(e) => onBind(e.target.value || null)}
+          title="指定该功能调用的模型,或选自动(按优先级)"
+          className="text-[11px] rounded border border-[#E9E9E9] px-1.5 py-1 bg-white focus:border-[var(--party-primary)] focus:outline-none max-w-[170px] disabled:opacity-50"
+        >
+          <option value="">⚡ 自动(优先级最高)</option>
+          {r.candidates.map((c) => (
+            <option key={c.provider} value={c.provider}>
+              {c.name}
+              {c.eligible ? "" : `(${c.reason})`}
+            </option>
+          ))}
+        </select>
+
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="p-1 rounded text-[#9CA3AF] hover:text-[var(--party-primary)]"
+          title="展开备选链"
+        >
+          <ChevronDownIcon
+            className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        </button>
+      </div>
+
+      {r.warning && (
+        <div className="mt-1.5 flex items-start gap-1 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1">
+          <AlertTriangleIcon className="w-3 h-3 flex-shrink-0 mt-px" />
+          <span>{r.warning}</span>
+        </div>
+      )}
+
+      {open && (
+        <div className="mt-2 border-t border-[#F0F0F0] pt-2">
+          <div className="text-[10px] text-[#9CA3AF] mb-1">
+            备选链(按优先级降序,
+            {r.mode === "pinned" ? "已指定" : "自动取最高可用"}):
+          </div>
+          {r.candidates.length === 0 ? (
+            <div className="text-[10px] text-[#9CA3AF]">
+              该能力({r.capability})下还没有任何模型 —— 去下方新增,或给某个模型的「能力标签」加上 {r.capability}
+            </div>
+          ) : (
+            <ol className="space-y-1">
+              {r.candidates.map((c) => {
+                const isWinner = r.resolved?.provider === c.provider;
+                return (
+                  <li
+                    key={c.provider}
+                    className={`flex items-center gap-1.5 text-[11px] ${c.eligible ? "" : "opacity-60"}`}
+                  >
+                    <span className="font-mono text-[10px] text-[#9CA3AF] w-8">
+                      p{c.priority}
+                    </span>
+                    <KindBadge kind={c.kind} />
+                    <span className="font-medium text-[#1A1A1A]">{c.name}</span>
+                    {c.model && (
+                      <code className="text-[10px] text-[#6B7280]">
+                        {c.model}
+                      </code>
+                    )}
+                    {isWinner && (
+                      <span className="text-[9px] px-1 rounded bg-green-100 text-green-700">
+                        当前命中
+                      </span>
+                    )}
+                    {r.pinnedProvider === c.provider && (
+                      <span className="text-[9px] px-1 rounded bg-indigo-100 text-indigo-700">
+                        已指定
+                      </span>
+                    )}
+                    {!c.eligible && c.reason && (
+                      <span className="text-[9px] px-1 rounded bg-gray-100 text-gray-500">
+                        {c.reason}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 云/内网 小徽章 */
+function KindBadge({ kind }: { kind: string }) {
+  if (kind === "internal") {
+    return (
+      <span
+        className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-teal-100 text-teal-700"
+        title="内网自建模型"
+      >
+        <ServerIcon className="w-2.5 h-2.5" />
+        内网
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-sky-100 text-sky-700"
+      title="云平台"
+    >
+      <CloudIcon className="w-2.5 h-2.5" />云
+    </span>
+  );
+}
+
+/** 云平台 / 内部自建 切换 */
+function KindToggle({
+  value,
+  onChange,
+}: {
+  value: "cloud" | "internal";
+  onChange: (v: "cloud" | "internal") => void;
+}) {
+  return (
+    <div>
+      <span className="block text-[10px] font-medium text-[#6B7280] mb-1">
+        类型
+      </span>
+      <div className="inline-flex rounded-md border border-[#E9E9E9] overflow-hidden text-xs">
+        <button
+          type="button"
+          onClick={() => onChange("cloud")}
+          className={`flex items-center gap-1 px-3 py-1.5 ${
+            value === "cloud"
+              ? "bg-[var(--party-primary)] text-white"
+              : "bg-white text-[#6B7280] hover:bg-[#F7F8FA]"
+          }`}
+        >
+          <CloudIcon className="w-3.5 h-3.5" />
+          云平台
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange("internal")}
+          className={`flex items-center gap-1 px-3 py-1.5 border-l border-[#E9E9E9] ${
+            value === "internal"
+              ? "bg-[var(--party-primary)] text-white"
+              : "bg-white text-[#6B7280] hover:bg-[#F7F8FA]"
+          }`}
+        >
+          <ServerIcon className="w-3.5 h-3.5" />
+          内部自建
+        </button>
+      </div>
+      {value === "internal" && (
+        <p className="mt-1 text-[10px] text-[#9CA3AF] leading-relaxed">
+          内网自建(vLLM / Xinference / Ollama 等,OpenAI 兼容)。Endpoint 填内网地址如{" "}
+          <code>http://10.x.x.x:8000/v1</code>;API Key 可留空(内网直连)。
+        </p>
       )}
     </div>
   );
@@ -218,23 +528,30 @@ function ApiCard({
       }`}
     >
       <div className="flex items-start gap-2 mb-2">
-        <div
-          className="w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: providerColor(api.provider) + "20" }}
-        >
-          <KeyIcon
-            className="w-4 h-4"
-            style={{ color: providerColor(api.provider) }}
-          />
-        </div>
+        <ProviderAvatar provider={api.provider} kind={api.kind} iconRef={api.iconRef} />
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-[#1A1A1A] truncate" title={api.name}>
             {api.name}
           </div>
           <div className="text-[10px] text-[#9CA3AF] font-mono">{api.provider}</div>
         </div>
-        {/* 状态标识 */}
-        {api.hasKey ? (
+        {/* 状态标识:内网自建按「有无 endpoint」判就绪(无需 Key);云平台按「有无 Key」 */}
+        {api.kind === "internal" ? (
+          api.apiUrl ? (
+            <span
+              className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700"
+              title="内网自建模型,无需 Key,已可调用"
+            >
+              <CheckCircle2Icon className="w-3 h-3" />
+              内网就绪
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+              <AlertCircleIcon className="w-3 h-3" />
+              缺 Endpoint
+            </span>
+          )
+        ) : api.hasKey ? (
           <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">
             <CheckCircle2Icon className="w-3 h-3" />
             已配置
@@ -260,8 +577,9 @@ function ApiCard({
         </p>
       )}
 
-      {/* priority + capabilities chip 行 */}
+      {/* kind + priority + capabilities chip 行 */}
       <div className="mt-2 flex items-center gap-1 flex-wrap">
+        <KindBadge kind={api.kind} />
         <span
           className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#F0F4FF] text-[#4F46E5]"
           title="业务优先级 — 数字大的优先被选用"
@@ -489,6 +807,10 @@ function EditDialog({
   const qc = useQueryClient();
   const [name, setName] = useState(api.name);
   const [description, setDescription] = useState(api.description ?? "");
+  const [kind, setKind] = useState<"cloud" | "internal">(
+    api.kind === "internal" ? "internal" : "cloud",
+  );
+  const [iconRef, setIconRef] = useState(api.iconRef ?? "");
   const [apiKeyDraft, setApiKeyDraft] = useState(""); // 空白 = 不动 key
   const [clearKey, setClearKey] = useState(false);
   const [apiUrl, setApiUrl] = useState(api.apiUrl ?? "");
@@ -520,6 +842,8 @@ function EditDialog({
   const mut = useMutation({
     mutationFn: () =>
       externalApiApi.update(api.provider, {
+        kind,
+        iconRef,
         name,
         description: description || undefined,
         apiKey: clearKey ? "" : apiKeyDraft || undefined,
@@ -545,6 +869,13 @@ function EditDialog({
       <div className="space-y-3">
         <LabeledInput label="显示名 *" value={name} onChange={setName} />
         <LabeledInput label="描述" value={description} onChange={setDescription} multiline />
+        <KindToggle value={kind} onChange={setKind} />
+        <div>
+          <span className="block text-[10px] font-medium text-[#6B7280] mb-1">
+            图标(卡片左上角头像;留空按品牌名自动)
+          </span>
+          <IconRefPicker value={iconRef} onChange={setIconRef} />
+        </div>
         <div>
           <div className="text-[10px] font-medium text-[#6B7280] mb-1">
             API Key{" "}
@@ -599,37 +930,22 @@ function EditDialog({
           placeholder="如 https://platform.deepseek.com/top_up"
         />
 
-        {/* 优先级 + 能力标签 */}
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className="block text-[10px] font-medium text-[#6B7280] mb-1">
-              业务优先级 0-100(数字大的优先被选用)
-            </span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={priority}
-              onChange={(e) => setPriority(Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)))}
-              className="w-full px-2 py-1.5 text-xs font-mono rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
-            />
-          </label>
-          <label className="block">
-            <span className="block text-[10px] font-medium text-[#6B7280] mb-1">
-              能力标签(英文系统值,逗号分隔)
-            </span>
-            <input
-              type="text"
-              value={capabilities}
-              onChange={(e) => setCapabilities(e.target.value.toLowerCase())}
-              placeholder="chat,vision,reasoning"
-              className="w-full px-2 py-1.5 text-xs font-mono rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
-            />
-            <span className="block mt-1 text-[10px] text-[#9CA3AF]">
-              chat=对话 · vision=视觉 · reasoning=推理
-            </span>
-          </label>
-        </div>
+        {/* 优先级 */}
+        <label className="block">
+          <span className="block text-[10px] font-medium text-[#6B7280] mb-1">
+            业务优先级 0-100(数字大的优先被选用;仅"自动"路由时生效)
+          </span>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={priority}
+            onChange={(e) => setPriority(Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)))}
+            className="w-full px-2 py-1.5 text-xs font-mono rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
+          />
+        </label>
+        {/* 能力标签(点选) */}
+        <CapabilitiesPicker value={capabilities} onChange={setCapabilities} />
 
         <label className="flex items-center gap-2 text-xs cursor-pointer">
           <input
@@ -698,12 +1014,17 @@ function CreateDialog({
   const qc = useQueryClient();
   const [draft, setDraft] = useState<CreateExternalApiInput>({
     provider: "",
+    kind: "cloud",
+    iconRef: "",
     name: "",
     description: "",
     apiKey: "",
     apiUrl: "",
     model: "",
+    visionModel: "",
     rechargeUrl: "",
+    capabilities: "chat",
+    priority: 50,
     active: true,
   });
 
@@ -716,6 +1037,7 @@ function CreateDialog({
         apiKey: draft.apiKey || undefined,
         apiUrl: draft.apiUrl || undefined,
         model: draft.model || undefined,
+        iconRef: draft.iconRef || undefined,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["external-apis"] });
@@ -759,8 +1081,23 @@ function CreateDialog({
           onChange={(v) => patch("description", v)}
           multiline
         />
+        <KindToggle
+          value={draft.kind ?? "cloud"}
+          onChange={(v) => patch("kind", v)}
+        />
         <div>
-          <div className="text-[10px] font-medium text-[#6B7280] mb-1">API Key</div>
+          <span className="block text-[10px] font-medium text-[#6B7280] mb-1">
+            图标(卡片左上角头像;留空按品牌名自动)
+          </span>
+          <IconRefPicker
+            value={draft.iconRef ?? ""}
+            onChange={(v) => patch("iconRef", v)}
+          />
+        </div>
+        <div>
+          <div className="text-[10px] font-medium text-[#6B7280] mb-1">
+            API Key{draft.kind === "internal" ? "(内网可留空)" : ""}
+          </div>
           <input
             type="password"
             value={draft.apiKey ?? ""}
@@ -776,11 +1113,41 @@ function CreateDialog({
           mono
         />
         <LabeledInput
-          label="默认模型"
+          label="文本模型(对话/抽取用)"
           value={draft.model ?? ""}
           onChange={(v) => patch("model", v)}
+          placeholder="如 Qwen3-32B / deepseek-chat"
           mono
         />
+        <LabeledInput
+          label="视觉模型(多模态/图片识别用,可留空)"
+          value={draft.visionModel ?? ""}
+          onChange={(v) => patch("visionModel", v)}
+          placeholder="如 Qwen2.5-VL / doubao-vision / gpt-4o"
+          mono
+        />
+        <CapabilitiesPicker
+          value={draft.capabilities ?? "chat"}
+          onChange={(v) => patch("capabilities", v)}
+        />
+        <label className="block">
+          <span className="block text-[10px] font-medium text-[#6B7280] mb-1">
+            优先级 0-100(大者优先;仅"自动"路由时生效)
+          </span>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={draft.priority ?? 50}
+            onChange={(e) =>
+              patch(
+                "priority",
+                Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)),
+              )
+            }
+            className="w-full px-2 py-1.5 text-xs font-mono rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none"
+          />
+        </label>
         <LabeledInput
           label="充值/管理页 URL"
           value={draft.rechargeUrl ?? ""}
@@ -948,6 +1315,133 @@ function capColor(cap: string): string {
     default:
       return "bg-gray-100 text-gray-600";
   }
+}
+
+/**
+ * 大模型 / 平台头像。优先级:
+ *   1. 显式 iconRef(asset 自定义图 / brand 品牌 / lucide)
+ *   2. provider 名模糊匹配到品牌 → 品牌色简标
+ *   3. 内网自建 → 服务器图标
+ *   4. 其它 → 哈希字母标
+ * 品牌表 / 自定义图标都来自中央图标库(shared/components/AppIcon + 后端 IconAsset)。
+ */
+function ProviderAvatar({
+  provider,
+  kind,
+  iconRef,
+}: {
+  provider: string;
+  kind: string;
+  iconRef?: string | null;
+}) {
+  const box =
+    "w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden";
+  if (iconRef) {
+    if (iconRef.startsWith("asset:")) {
+      return (
+        <img
+          src={assetIconUrl(iconRef.slice(6))}
+          alt=""
+          title={provider}
+          className={`${box} object-contain bg-white border border-[#F0F0F0]`}
+        />
+      );
+    }
+    if (iconRef.startsWith("brand:")) {
+      return (
+        <BrandMonogram
+          brand={getBrand(iconRef.slice(6))}
+          fallback={iconRef.slice(6)}
+          size={36}
+        />
+      );
+    }
+    const name = iconRef.startsWith("lucide:") ? iconRef.slice(7) : iconRef;
+    return (
+      <div
+        className={box}
+        style={{
+          backgroundColor: "color-mix(in srgb, var(--party-primary) 10%, white)",
+        }}
+      >
+        <LucideIcon
+          name={name}
+          className="w-4 h-4"
+          style={{ color: "var(--party-primary)" }}
+        />
+      </div>
+    );
+  }
+  const brand = matchBrand(provider);
+  if (brand) return <BrandMonogram brand={brand} size={36} />;
+  if (kind === "internal") {
+    return (
+      <div className={box} style={{ backgroundColor: "#0D9488" }} title="内网自建模型">
+        <ServerIcon className="w-4 h-4 text-white" />
+      </div>
+    );
+  }
+  return (
+    <div
+      className={`${box} text-white font-bold text-[11px]`}
+      style={{ backgroundColor: providerColor(provider) }}
+      title={provider}
+    >
+      {provider.slice(0, 2).toUpperCase()}
+    </div>
+  );
+}
+
+/** 能力标签点选(多选 chip;value/onChange 用逗号分隔字符串,与后端契约一致) */
+const ALL_CAPS = ["chat", "vision", "reasoning", "embedding", "tts", "asr"];
+function CapabilitiesPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const set = new Set(
+    value
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  function toggle(cap: string) {
+    const next = new Set(set);
+    if (next.has(cap)) next.delete(cap);
+    else next.add(cap);
+    // 按固定顺序输出,避免顺序抖动
+    onChange(ALL_CAPS.filter((c) => next.has(c)).join(","));
+  }
+  return (
+    <div>
+      <span className="block text-[10px] font-medium text-[#6B7280] mb-1">
+        能力标签(点选,可多选 —— 决定该模型能被哪些功能调用)
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {ALL_CAPS.map((cap) => {
+          const on = set.has(cap);
+          return (
+            <button
+              key={cap}
+              type="button"
+              onClick={() => toggle(cap)}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] border transition-colors ${
+                on
+                  ? `${capColor(cap)} border-transparent font-medium`
+                  : "bg-white text-[#9CA3AF] border-[#E9E9E9] hover:border-[var(--party-primary)] hover:text-[#6B7280]"
+              }`}
+            >
+              {on && <CheckIcon className="w-3 h-3" />}
+              {capLabel(cap)}
+              <span className="opacity-50 font-mono text-[9px]">{cap}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 /** 简单按字符串 hash 给 provider 分配一个稳定主题色 — 仅装饰 */

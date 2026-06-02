@@ -4,6 +4,10 @@ import { api } from "@/shared/api/client";
 export interface ExternalApiDto {
   id: string;
   provider: string;
+  /** 'cloud'(云平台)| 'internal'(内网自建,可无 key) */
+  kind: string;
+  /** 图标引用:lucide:X / brand:X / asset:<id>;null=按 provider 名自动品牌头像 */
+  iconRef: string | null;
   name: string;
   description: string | null;
   /** 脱敏后的 key,如 sk-t************CDEF;未配置时 null */
@@ -50,6 +54,10 @@ export interface TestExternalApiInput {
 }
 
 export interface UpdateExternalApiInput {
+  /** 'cloud'(云平台)| 'internal'(内网自建) */
+  kind?: "cloud" | "internal";
+  /** 图标引用 lucide:X / brand:X / asset:<id>;"" 清空回默认 */
+  iconRef?: string;
   name?: string;
   description?: string;
   /** 传 "" 清空当前 key;不传保持原值 */
@@ -69,9 +77,61 @@ export interface CreateExternalApiInput extends UpdateExternalApiInput {
   name: string;
 }
 
+/* ─── 模型路由(按应用功能绑定 / 自动按优先级)─── */
+
+/** 某能力下的一个候选模型(备选链里的一项) */
+export interface RoutingCandidate {
+  provider: string;
+  name: string;
+  kind: string;
+  model: string;
+  priority: number;
+  active: boolean;
+  hasKey: boolean;
+  /** 当前是否可被选中(启用 + 有 key 或内网) */
+  eligible: boolean;
+  /** 不可用原因 */
+  reason?: string;
+}
+
+/** 一个 AI 消费功能(应用×功能)的路由解析结果 */
+export interface ResolvedConsumer {
+  consumerKey: string;
+  app: string;
+  label: string;
+  description?: string;
+  capability: "chat" | "vision" | "reasoning";
+  /** 'pinned'=已指定;'auto'=按优先级 */
+  mode: "pinned" | "auto";
+  /** 用户绑定的 provider(null=自动) */
+  pinnedProvider: string | null;
+  /** 当前实际命中(null=无可用) */
+  resolved: {
+    provider: string;
+    name: string;
+    kind: string;
+    model: string;
+  } | null;
+  /** pin 失效回退等告警 */
+  warning: string | null;
+  candidates: RoutingCandidate[];
+}
+
 export const externalApiApi = {
   list: () =>
     api.get<ExternalApiDto[]>("/external-apis").then((r) => r.data),
+
+  /** 模型路由总览:每个 AI 消费功能当前命中的模型 + 备选链 */
+  routing: () =>
+    api.get<ResolvedConsumer[]>("/external-apis/routing").then((r) => r.data),
+
+  /** 绑定/解绑某功能到某 provider(provider=null 即解绑回自动) */
+  bindRoute: (consumerKey: string, provider: string | null) =>
+    api
+      .patch<ResolvedConsumer>(`/external-apis/routing/${consumerKey}`, {
+        provider: provider ?? "",
+      })
+      .then((r) => r.data),
 
   get: (provider: string) =>
     api.get<ExternalApiDto>(`/external-apis/${provider}`).then((r) => r.data),

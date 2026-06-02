@@ -7,8 +7,8 @@ import {
   EyeIcon, ThumbsUpIcon, MessageSquareIcon,
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
   AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon,
-  KeyRoundIcon, PanelLeftCloseIcon, PanelLeftOpenIcon,
-  ChevronDownIcon, ChevronRightIcon,
+  PanelLeftCloseIcon, PanelLeftOpenIcon,
+  ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 
@@ -37,7 +37,8 @@ const CATEGORIES: Category[] = [
       { path: "/admin/custom-fields",  label: "用户自定义字段",   icon: SlidersHorizontalIcon },
       { path: "/admin/site-settings",  label: "站点设置",         icon: PaletteIcon  },
       { path: "/admin/navigation",     label: "首页导航",         icon: LayoutGridIcon },
-      { path: "/admin/external-apis",  label: "外部 API 接入",    icon: KeyRoundIcon },
+      { path: "/admin/external-apis",  label: "AI 接入管理",      icon: SparklesIcon },
+      { path: "/admin/icon-library",   label: "图标库",           icon: ImageIcon },
     ],
   },
   {
@@ -49,6 +50,7 @@ const CATEGORIES: Category[] = [
       { path: "/admin/certificates/issue",    label: "颁发证书",   icon: SendIcon,       group: "证书管理" },
       { path: "/admin/certificates/external", label: "外部证书录入", icon: UploadIcon,    group: "证书管理" },
       { path: "/admin/certificates",          label: "已发证书",   icon: ListChecksIcon, group: "证书管理" },
+      { path: "/admin/tasks",                 label: "任务派发",     icon: SendIcon,          group: "任务管理" },
     ],
   },
   {

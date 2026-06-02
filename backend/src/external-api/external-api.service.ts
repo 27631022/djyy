@@ -14,6 +14,12 @@ import {
   TestExternalApiDto,
   UpdateExternalApiDto,
 } from './dto/update-external-api.dto';
+import {
+  AI_CONSUMERS,
+  getConsumer,
+  type AiConsumer,
+  type AiCapability,
+} from './ai-consumers';
 
 interface AuditCtx {
   actorId?: string;
@@ -25,6 +31,10 @@ interface AuditCtx {
 export interface ExternalApiPublic {
   id: string;
   provider: string;
+  /** 'cloud'(云平台)| 'internal'(内网自建,可无 key) */
+  kind: string;
+  /** 图标引用:lucide:X / brand:X / asset:<id>;null=按 provider 名自动品牌头像 */
+  iconRef: string | null;
   name: string;
   description: string | null;
   /** 已脱敏:sk-1234***********abcd 或 ✓已配置(过短)或 null(未配置) */
@@ -48,10 +58,52 @@ export interface ExternalApiPublic {
 /** 选中的「活跃 LLM/Vision」配置 — 业务模块拿这个直接调外部 API */
 export interface ActiveProviderConfig {
   provider: string;
+  /** internal 内网可无 key,此处可能为空串;调用方有 key 才带 Authorization 头 */
   apiKey: string;
   apiUrl: string;
   model: string;
+  /** 'cloud' | 'internal' */
+  kind: string;
   source: 'db';
+}
+
+/** 路由备选链里的一个候选 provider(管理页展示) */
+export interface RoutingCandidate {
+  provider: string;
+  name: string;
+  kind: string;
+  model: string;
+  priority: number;
+  active: boolean;
+  hasKey: boolean;
+  /** 当前是否可被选中(启用 + 有 key 或内网) */
+  eligible: boolean;
+  /** 不可用时的原因(已禁用 / 未配置 Key 等) */
+  reason?: string;
+}
+
+/** 某消费功能(应用×功能)的路由解析结果 */
+export interface ResolvedConsumer {
+  consumerKey: string;
+  app: string;
+  label: string;
+  description?: string;
+  capability: AiCapability;
+  /** 'pinned'=已指定 provider;'auto'=按优先级自动 */
+  mode: 'pinned' | 'auto';
+  /** 用户指定绑定的 provider(null=未绑定/自动) */
+  pinnedProvider: string | null;
+  /** 当前实际命中(null=没有可用 provider) */
+  resolved: {
+    provider: string;
+    name: string;
+    kind: string;
+    model: string;
+  } | null;
+  /** pin 失效回退等告警 */
+  warning: string | null;
+  /** 该能力下的完整备选链(按优先级降序) */
+  candidates: RoutingCandidate[];
 }
 
 /** 测试连接响应 */
@@ -98,6 +150,8 @@ function toPublic(
   return {
     id: row.id,
     provider: row.provider,
+    kind: row.kind,
+    iconRef: row.iconRef,
     name: row.name,
     description: row.description,
     apiKeyMasked: masked,
@@ -114,6 +168,14 @@ function toPublic(
     updatedAt: row.updatedAt.toISOString(),
     envFallback: !hasKey && envHasFallback,
   };
+}
+
+/** 能力 tag → 中文(错误提示/告警里用) */
+function capabilityLabel(tag: string): string {
+  if (tag === 'chat') return '对话';
+  if (tag === 'vision') return '视觉';
+  if (tag === 'reasoning') return '推理';
+  return tag;
 }
 
 /** provider → .env 兜底变量名映射(用户没在 DB 配 key 时回退到这些) */
@@ -162,36 +224,11 @@ export class ExternalApiService {
    * 用户期望显式在 UI 管理)。如要支持 .env 兜底,加 fallback 参数即可。
    */
   async getActiveByCapability(
-    tag: 'chat' | 'vision' | 'reasoning',
+    tag: AiCapability,
   ): Promise<ActiveProviderConfig | null> {
-    // SQLite 没有 array contains,改用 LIKE %tag% 过滤
-    const candidates = await this.prisma.externalApi.findMany({
-      where: {
-        active: true,
-        apiKey: { not: null },
-        capabilities: { contains: tag },
-      },
-      orderBy: [{ priority: 'desc' }, { updatedAt: 'desc' }],
-    });
-    // capabilities 是逗号分隔,需要二次过滤防误中(比如 'reasoning' 不能命中 'chat')
-    const row = candidates.find((r) => {
-      const caps = (r.capabilities ?? '')
-        .split(',')
-        .map((s) => s.trim().toLowerCase());
-      return caps.includes(tag);
-    });
-    if (!row || !row.apiKey) return null;
-    const model =
-      (tag === 'vision' ? row.visionModel : row.model) ||
-      row.model ||
-      '';
-    return {
-      provider: row.provider,
-      apiKey: row.apiKey,
-      apiUrl: row.apiUrl ?? '',
-      model,
-      source: 'db',
-    };
+    const rows = await this.rowsForCapability(tag);
+    const row = rows.find((r) => this.isEligible(r));
+    return row ? this.toActiveConfig(row, tag) : null;
   }
 
   /** 业务层快捷:取主 LLM(chat tag,最高 priority) */
@@ -202,6 +239,204 @@ export class ExternalApiService {
   /** 业务层快捷:取主 Vision(vision tag,最高 priority) */
   async getActiveVision(): Promise<ActiveProviderConfig | null> {
     return this.getActiveByCapability('vision');
+  }
+
+  /**
+   * 业务层入口(推荐):按「消费功能 key」(ai-consumers.ts)解析该用哪个 provider。
+   * 先看 AiRoute 是否把该功能 pin 到某 provider;pin 有效用之,失效回退 auto。
+   * 返回 null = 当前没有可用 provider(业务层抛友好错)。
+   */
+  async getConfigForConsumer(
+    key: string,
+  ): Promise<ActiveProviderConfig | null> {
+    const consumer = getConsumer(key);
+    if (!consumer) return null;
+    const { row } = await this.pickForConsumer(consumer);
+    return row ? this.toActiveConfig(row, consumer.capability) : null;
+  }
+
+  /** 路由总览:每个消费功能解析出 当前命中 + 备选链 + 绑定/告警(管理页展示用) */
+  async listRouting(): Promise<ResolvedConsumer[]> {
+    return Promise.all(AI_CONSUMERS.map((c) => this.resolveConsumer(c.key)));
+  }
+
+  /** 解析单个消费功能的完整路由信息(命中 + 候选链 + pin 状态 + 失效告警) */
+  async resolveConsumer(key: string): Promise<ResolvedConsumer> {
+    const consumer = getConsumer(key);
+    if (!consumer) throw new NotFoundException(`未知消费功能:${key}`);
+    const route = await this.prisma.aiRoute.findUnique({
+      where: { consumerKey: key },
+    });
+    const pinnedProvider = route?.provider ?? null;
+    const { row, mode, warning, rows } = await this.pickForConsumer(consumer);
+    const candidates: RoutingCandidate[] = rows.map((r) => {
+      const hasKey = Boolean(r.apiKey && r.apiKey.trim());
+      const eligible = this.isEligible(r);
+      let reason: string | undefined;
+      if (!eligible) {
+        reason = !r.active
+          ? '已禁用'
+          : r.kind === 'internal'
+            ? '内网模型未启用'
+            : '未配置 Key';
+      }
+      return {
+        provider: r.provider,
+        name: r.name,
+        kind: r.kind,
+        model: this.modelForCapability(r, consumer.capability),
+        priority: r.priority,
+        active: r.active,
+        hasKey,
+        eligible,
+        reason,
+      };
+    });
+    return {
+      consumerKey: key,
+      app: consumer.app,
+      label: consumer.label,
+      description: consumer.description,
+      capability: consumer.capability,
+      mode,
+      pinnedProvider,
+      resolved: row
+        ? {
+            provider: row.provider,
+            name: row.name,
+            kind: row.kind,
+            model: this.modelForCapability(row, consumer.capability),
+          }
+        : null,
+      warning,
+      candidates,
+    };
+  }
+
+  /** 绑定/解绑某功能到某 provider(provider=null 即解绑回自动) */
+  async setRoute(
+    consumerKey: string,
+    provider: string | null,
+    ctx: AuditCtx,
+  ): Promise<ResolvedConsumer> {
+    const consumer = getConsumer(consumerKey);
+    if (!consumer) throw new NotFoundException(`未知消费功能:${consumerKey}`);
+    if (provider) {
+      const row = await this.prisma.externalApi.findUnique({
+        where: { provider },
+      });
+      if (!row) throw new BadRequestException(`provider=${provider} 不存在`);
+      const caps = (row.capabilities ?? '')
+        .split(',')
+        .map((s) => s.trim().toLowerCase());
+      if (!caps.includes(consumer.capability)) {
+        throw new BadRequestException(
+          `「${row.name}」未标注${capabilityLabel(consumer.capability)}(${consumer.capability})能力,不能绑定到「${consumer.label}」。请先在该平台「能力标签」里加上 ${consumer.capability}。`,
+        );
+      }
+    }
+    await this.prisma.aiRoute.upsert({
+      where: { consumerKey },
+      create: { consumerKey, provider, updatedById: ctx.actorId },
+      update: { provider, updatedById: ctx.actorId },
+    });
+    await this.audit.log({
+      action: 'api.route.set',
+      target: consumerKey,
+      ...ctx,
+      detail: JSON.stringify({ consumerKey, provider: provider ?? '(auto)' }),
+    });
+    return this.resolveConsumer(consumerKey);
+  }
+
+  /* ─── 路由内部 helpers ─── */
+
+  /** 取声明了某能力的所有行(不论是否可用),按优先级降序 */
+  private async rowsForCapability(tag: AiCapability): Promise<ExternalApi[]> {
+    // SQLite 无 array contains:先 LIKE 粗筛,再逗号精确二筛(防 'reasoning' 误命中 'chat')
+    const candidates = await this.prisma.externalApi.findMany({
+      where: { capabilities: { contains: tag } },
+      orderBy: [{ priority: 'desc' }, { updatedAt: 'desc' }],
+    });
+    return candidates.filter((r) => {
+      const caps = (r.capabilities ?? '')
+        .split(',')
+        .map((s) => s.trim().toLowerCase());
+      return caps.includes(tag);
+    });
+  }
+
+  /** 资格:启用 + (有 key 或 内网自建可无 key) */
+  private isEligible(r: ExternalApi): boolean {
+    if (!r.active) return false;
+    if (r.apiKey && r.apiKey.trim()) return true;
+    return r.kind === 'internal';
+  }
+
+  /** 某能力下实际会用的模型(vision 用 visionModel,空则兜底 model) */
+  private modelForCapability(r: ExternalApi, tag: AiCapability): string {
+    if (tag === 'vision') return r.visionModel || r.model || '';
+    return r.model || '';
+  }
+
+  private toActiveConfig(
+    r: ExternalApi,
+    tag: AiCapability,
+  ): ActiveProviderConfig {
+    return {
+      provider: r.provider,
+      apiKey: r.apiKey ?? '',
+      apiUrl: r.apiUrl ?? '',
+      model: this.modelForCapability(r, tag),
+      kind: r.kind,
+      source: 'db',
+    };
+  }
+
+  /**
+   * 解析某功能当前实际命中的 provider 行:
+   *   - 有 pin 且 pin 在能力池内且可用 → 用 pin(mode='pinned')
+   *   - 有 pin 但失效 → 回退 auto(mode='pinned' + warning 说明)
+   *   - 无 pin → auto(mode='auto')
+   */
+  private async pickForConsumer(consumer: AiConsumer): Promise<{
+    row: ExternalApi | null;
+    mode: 'pinned' | 'auto';
+    warning: string | null;
+    rows: ExternalApi[];
+  }> {
+    const rows = await this.rowsForCapability(consumer.capability);
+    const route = await this.prisma.aiRoute.findUnique({
+      where: { consumerKey: consumer.key },
+    });
+    const pinned = route?.provider ?? null;
+    const autoRow = rows.find((r) => this.isEligible(r)) ?? null;
+    if (!pinned) {
+      return { row: autoRow, mode: 'auto', warning: null, rows };
+    }
+    const inPool = rows.find((r) => r.provider === pinned);
+    if (inPool && this.isEligible(inPool)) {
+      return { row: inPool, mode: 'pinned', warning: null, rows };
+    }
+    // pin 失效 → 查清原因,回退 auto
+    const anyRow =
+      inPool ??
+      (await this.prisma.externalApi.findUnique({
+        where: { provider: pinned },
+      }));
+    const why = !anyRow
+      ? `指定的平台「${pinned}」已删除`
+      : !inPool
+        ? `指定的「${anyRow.name}」已不具备${capabilityLabel(consumer.capability)}能力`
+        : !anyRow.active
+          ? `指定的「${anyRow.name}」已禁用`
+          : `指定的「${anyRow.name}」未配置 Key`;
+    return {
+      row: autoRow,
+      mode: 'pinned',
+      warning: `${why},已临时回退到${autoRow ? `「${autoRow.name}」` : '——(无可用)'}`,
+      rows,
+    };
   }
 
   /**
@@ -253,6 +488,8 @@ export class ExternalApiService {
     const row = await this.prisma.externalApi.create({
       data: {
         provider: dto.provider,
+        kind: dto.kind ?? 'cloud',
+        iconRef: dto.iconRef ?? null,
         name: dto.name,
         description: dto.description,
         apiKey: dto.apiKey || null,
@@ -303,6 +540,9 @@ export class ExternalApiService {
     const updated = await this.prisma.externalApi.update({
       where: { provider },
       data: {
+        kind: dto.kind ?? undefined,
+        iconRef:
+          dto.iconRef === undefined ? undefined : dto.iconRef || null,
         name: dto.name ?? undefined,
         description: dto.description ?? undefined,
         apiKey: apiKeyUpdate,
@@ -347,8 +587,10 @@ export class ExternalApiService {
     const row = await this.prisma.externalApi.findUnique({ where: { provider } });
     if (!row) throw new NotFoundException(`未找到 provider=${provider}`);
 
-    const apiKey = dto.apiKey || row.apiKey || this.envFallback(provider);
-    if (!apiKey) {
+    const apiKey =
+      dto.apiKey || row.apiKey || this.envFallback(provider) || '';
+    // 内网自建模型允许无 key(内网直连);云平台仍要求有 key
+    if (!apiKey && row.kind !== 'internal') {
       return {
         ok: false,
         latencyMs: 0,
@@ -375,8 +617,9 @@ export class ExternalApiService {
         },
         {
           headers: {
-            Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
+            // 内网无 key 时不带 Authorization(否则空 Bearer 可能被网关拒)
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           },
           timeout: 15000,
         },

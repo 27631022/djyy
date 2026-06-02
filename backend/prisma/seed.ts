@@ -300,6 +300,11 @@ async function seedRolesAndPermissions() {
     // 文件存储(storage)— file:upload 发给能发证的角色(当前内置仅 platform_admin),file:delete 仅管理员
     { code: 'file:upload',               name: '上传文件',         category: 'operation' },
     { code: 'file:delete',               name: '删除文件',         category: 'operation' },
+    // 任务分派(task)— manage:建模板/派发/汇总;review:审核通过退回;reception:接收管理员分派+对口;fill:填报
+    { code: 'task:manage',               name: '任务管理(建模板/派发)',  category: 'operation' },
+    { code: 'task:review',               name: '任务审核(通过/退回)',    category: 'operation' },
+    { code: 'task:reception',            name: '任务接收管理(分派/对口)', category: 'operation' },
+    { code: 'task:fill',                 name: '任务填报',                category: 'operation' },
   ];
   for (const p of permissions) {
     await prisma.permission.upsert({
@@ -311,9 +316,9 @@ async function seedRolesAndPermissions() {
 
   const roles = [
     { code: 'platform_admin', name: '平台管理员',    perms: permissions.map((p) => p.code) },
-    { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read'] },
-    { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read'] },
-    { code: 'member',          name: '普通用户',     perms: ['portal:view'] },
+    { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
+    { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
+    { code: 'member',          name: '普通用户',     perms: ['portal:view', 'task:fill'] },
   ];
   for (const r of roles) {
     const role = await prisma.role.upsert({

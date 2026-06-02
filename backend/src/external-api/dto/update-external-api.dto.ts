@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -15,6 +16,17 @@ import {
  * apiKey 不传 = 保持原 key 不变
  */
 export class UpdateExternalApiDto {
+  /** 'cloud'(云平台)| 'internal'(内网自建) */
+  @IsOptional()
+  @IsIn(['cloud', 'internal'])
+  kind?: 'cloud' | 'internal';
+
+  /** 图标引用 lucide:X / brand:X / asset:<id>;'' 清空回默认品牌头像 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  iconRef?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(128)
@@ -99,6 +111,17 @@ export class CreateExternalApiDto {
   @MaxLength(64)
   provider!: string;
 
+  /** 'cloud'(云平台,默认)| 'internal'(内网自建,可无 key) */
+  @IsOptional()
+  @IsIn(['cloud', 'internal'])
+  kind?: 'cloud' | 'internal';
+
+  /** 图标引用 lucide:X / brand:X / asset:<id> */
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  iconRef?: string;
+
   @IsString()
   @MaxLength(128)
   name!: string;
@@ -151,4 +174,15 @@ export class CreateExternalApiDto {
   @IsOptional()
   @IsString()
   meta?: string;
+}
+
+/**
+ * 设置某消费功能(应用×功能)的模型绑定。
+ * provider 传具体值 = 绑定到该 provider;传空串 / 不传 = 解绑(回退按优先级自动)。
+ */
+export class SetAiRouteDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  provider?: string;
 }

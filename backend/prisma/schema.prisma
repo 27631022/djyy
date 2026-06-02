@@ -393,8 +393,12 @@ model ExternalApi {
   provider     String   @unique // 平台标识,如 'deepseek'
   name         String // 显示名,如 'DeepSeek 大模型'
   description  String?
-  apiKey       String? // 明文密钥
-  apiUrl       String? // 自定义 endpoint
+  // 'cloud' = 云平台(需 apiKey);'internal' = 内网自建(OpenAI 兼容,可无 key)
+  kind         String   @default("cloud")
+  // 图标引用(中央图标库):lucide:X / brand:X / asset:<id>;空 = 按 provider 名自动品牌头像
+  iconRef      String?
+  apiKey       String? // 明文密钥(internal 内网直连时可空)
+  apiUrl       String? // 自定义 endpoint(internal 必填内网地址,如 http://10.x:8000/v1)
   model        String? // 默认文本模型
   visionModel  String? // 多模态/视觉模型(OCR 用)。空 = 走 model 兜底
   rechargeUrl  String? // 平台充值/计费控制台 URL
@@ -407,6 +411,34 @@ model ExternalApi {
 
   @@index([active])
   @@index([priority])
+}
+
+// 「按应用路由」绑定:每个 AI 消费功能(ai-consumers.ts 的 consumerKey)→ 指定 provider。
+// 不存在对应行 = 自动(按该功能所需能力,取优先级最高的 active provider)。
+// provider 松引用 ExternalApi.provider(同模块,但故意不建 relation:绑定的 provider
+// 被删/禁用时优雅回退到自动,而非外键报错)。
+// @module: external-api
+model AiRoute {
+  id          String   @id @default(cuid())
+  consumerKey String   @unique // 对应 AI_CONSUMERS[].key,如 'certificate.extract.text'
+  provider    String? // 绑定到的 ExternalApi.provider;null/缺行 = 自动按优先级
+  updatedById String? // 最后修改人(审计冗余)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 中央图标库 —— 自定义上传的图标。内联存 dataUrl(图标小、公开页 <img> 直接用、零鉴权)。
+// 内置品牌图标(deepseek/豆包…)是前端 monogram 注册表,不进此表。
+// @module: icon
+model IconAsset {
+  id          String   @id @default(cuid())
+  name        String
+  mimeType    String
+  ext         String
+  size        Int
+  dataUrl     String // data:<mime>;base64,xxxx
+  createdById String?
+  createdAt   DateTime @default(now())
 }
 
 // ─────────────────────────────────────────────────────────
@@ -552,4 +584,136 @@ model StoredFile {
   @@index([folder])
   @@index([sha256])
   @@index([deletedAt])
+}
+
+// ─────────────────────────────────────────────────────────
+// 任务分派(下发 → 填报 → 汇总)
+// ─────────────────────────────────────────────────────────
+// 通用「下发-填报-汇总」底座:部门建模板(可复用表单 schema)→ 派发成一次 Task(fan-out 到多个
+// 单位/个人 TaskTarget)→ 接收方责任人(单人)+ 协同填报人(多人)共填一份 TaskSubmission →
+// 派发人汇总。接收单位用 UnitTaskRouting 配「上级部门 → 本单位责任人」实现任务自动划转。
+//
+// 跨模块一律 fileId / userId / orgId 松引用(普通 string,不建 relation),守「表归属单一模块 + DAG」
+// (同 storage 决策)。文件/图片字段的值存 storage 的 fileId;富文本存 HTML/JSON;在线文档存引用。
+// sqlite/postgres 兼容:仅用 String/Int/DateTime/Boolean。
+
+// 任务模板 — 可复用的表单 schema(通用性核心)。如「报送党员数据」。
+// fields 存 JSON:TaskField[](字段定义,支持分组 group/groupLabel + 多类型 + 约束),
+// 结构与 UserCustomField 一脉相承(见 src/task/dto)。
+// @module: task
+model TaskTemplate {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  category    String? // 数据报送 / 材料报送 / 通知回执 …
+  fields      String // JSON: TaskField[]
+  builtin     Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+  @@index([category])
+}
+
+// 任务 — 一次具体派发,汇总根。fields 是派发时对模板的快照(模板后续改动不影响已派任务)。
+// dispatchOrgId = 派发部门,接收方「对口路由」按此匹配 UnitTaskRouting.sourceOrgId。
+// @module: task
+model Task {
+  id             String    @id @default(cuid())
+  title          String
+  description    String? // 重点描述 / 填报口径
+  notes          String? // 注意事项(AI 可从通知文件抽取,单独高亮给填报人)
+  templateId     String? // 来源模板(可空 = 临时任务)
+  fields         String // JSON 快照:TaskField[]
+  dispatchUserId String // 派发人 user id
+  dispatchOrgId  String? // 派发部门 org id(对口路由匹配键)
+  dueAt          DateTime? // 截止时间(可空 = 不限)
+  noticeFileId   String? // 通知文件(storage fileId,可空)
+  noticeFileName String? // 通知文件原始名(展示用)
+  status         String    @default("open") // draft | open | closed | archived
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([dispatchUserId])
+  @@index([dispatchOrgId])
+  @@index([status])
+}
+
+// 派发对象 — fan-out:任务派给哪些单位/个人。一个 Task 多个 TaskTarget。
+// targetType=org:派给单位,责任人由对口路由/接受管理员确定;targetType=user:直派个人,该人即责任人。
+// ownerUserId = 责任人(唯一)。status 是该对象维度的进度。
+// @module: task
+model TaskTarget {
+  id           String    @id @default(cuid())
+  taskId       String
+  targetType   String // 'org' | 'user'
+  targetOrgId  String? // targetType=org
+  targetUserId String? // targetType=user(直派个人,即责任人)
+  ownerUserId  String? // 责任人(唯一):对口自动 / 管理员分派 / 直派个人
+  status       String    @default("pending") // pending | assigned | in_progress | submitted | returned | done
+  assignedById String? // 由谁分派(系统对口命中 = null;手动 = 接受管理员 id)
+  assignedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([taskId])
+  @@index([targetOrgId])
+  @@index([targetUserId])
+  @@index([ownerUserId])
+  @@index([status])
+}
+
+// 协同填报人 — 一个 target 可多人共填一份回执;责任人 = TaskTarget.ownerUserId(唯一),
+// 此表存额外加入的填报人。
+// @module: task
+model TaskCollaborator {
+  id        String   @id @default(cuid())
+  targetId  String
+  userId    String
+  addedById String?
+  addedAt   DateTime @default(now())
+
+  @@unique([targetId, userId])
+  @@index([userId])
+}
+
+// 填报回执 — 每个 target 一份(责任人唯一 → 一份,多人协同编辑同一份)。
+// formData JSON:{ [fieldCode]: value };file/image → storage fileId,richtext → HTML/JSON,doclink → {provider,ref}。
+// fileIds 冗余汇总该回执引用的所有 storage fileId,便于展示与孤儿回收。
+// @module: task
+model TaskSubmission {
+  id            String    @id @default(cuid())
+  taskId        String
+  targetId      String    @unique
+  formData      String    @default("{}") // JSON { [fieldCode]: value }
+  fileIds       String? // JSON string[]
+  status        String    @default("draft") // draft | submitted | returned | approved
+  submittedById String?
+  submittedAt   DateTime?
+  reviewNote    String? // 退回意见
+  reviewedById  String?
+  reviewedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([taskId])
+}
+
+// 对口配置 — 接收单位维护:某上级部门派来的任务,默认划转给本单位某人当责任人。
+// 派发时 task.service 查 (unitOrgId = 目标单位, sourceOrgId = Task.dispatchOrgId):命中即自动定责任人。
+// @module: task
+model UnitTaskRouting {
+  id            String   @id @default(cuid())
+  unitOrgId     String // 本单位 org id
+  sourceOrgId   String // 上级派发部门 org id(匹配 Task.dispatchOrgId)
+  handlerUserId String // 本单位对口责任人 user id
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([unitOrgId, sourceOrgId])
+  @@index([unitOrgId])
 }

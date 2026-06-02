@@ -15,7 +15,9 @@ import { SiteSettingModule } from './site-setting';
 import { NavCategoryModule } from './nav-category';
 import { ExternalApiModule } from './external-api';
 import { StorageModule } from './storage';
+import { IconModule } from './icon';
 import { CertificateModule } from './certificate';
+import { TaskModule } from './task';
 
 @Module({
   imports: [
@@ -35,7 +37,9 @@ import { CertificateModule } from './certificate';
     NavCategoryModule,
     ExternalApiModule,
     StorageModule,
+    IconModule,
     CertificateModule,
+    TaskModule,
   ],
   providers: [
     // 全局权限守卫:仅 @Permission() 装饰的接口实际校验,其他不影响

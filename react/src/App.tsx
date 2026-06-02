@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-quer
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useEffect, type ReactNode } from "react";
 import NavPage from "@/pages/NavPage";
+import WorkbenchPage from "@/pages/Workbench";
 import AdminLayout from "@/layouts/AdminLayout";
 import { OrganizationsPage } from "@/features/organization";
 import { UsersPage } from "@/features/user";
@@ -11,6 +12,12 @@ import { UserCustomFieldsPage } from "@/features/user-custom-field";
 import { SiteSettingsPage, siteSettingApi } from "@/features/site-setting";
 import { NavigationPage } from "@/features/nav-category";
 import { ExternalApisPage } from "@/features/external-api";
+import { IconLibraryPage } from "@/features/icon-library";
+import {
+  TaskCreatePage,
+  TaskListPage,
+  TaskDetailPage,
+} from "@/features/task";
 import {
   CertificateTemplatesPage,
   CertificateDesignerPage,
@@ -77,6 +84,15 @@ const App = () => (
           {/* 证书公开验证:完全公开,不走 AdminLayout/ProtectedRoute */}
           <Route path="/verify" element={<CertificateVerifyPage />} />
           <Route path="/verify/:token" element={<CertificateVerifyPage />} />
+          {/* 工作台:登录后业务应用启动台(原型,假数据)。定稿后接真实待办/权限过滤 + 改登录落地 */}
+          <Route
+            path="/workbench"
+            element={
+              <ProtectedRoute>
+                <WorkbenchPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/admin"
             element={
@@ -94,12 +110,16 @@ const App = () => (
             <Route path="site-settings" element={<SiteSettingsPage />} />
             <Route path="navigation" element={<NavigationPage />} />
             <Route path="external-apis" element={<ExternalApisPage />} />
+            <Route path="icon-library" element={<IconLibraryPage />} />
             <Route path="certificate-templates" element={<CertificateTemplatesPage />} />
             <Route path="certificate-templates/new" element={<CertificateDesignerPage />} />
             <Route path="certificate-templates/:id/edit" element={<CertificateDesignerPage />} />
             <Route path="certificates" element={<CertificateListPage />} />
             <Route path="certificates/issue" element={<CertificateIssuePage />} />
             <Route path="certificates/external" element={<CertificateExternalPage />} />
+            <Route path="tasks" element={<TaskListPage />} />
+            <Route path="tasks/new" element={<TaskCreatePage />} />
+            <Route path="tasks/:id" element={<TaskDetailPage />} />
           </Route>
         </Routes>
         <Toaster position="top-center" richColors closeButton />

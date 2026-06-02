@@ -14,6 +14,7 @@ import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { ExternalApiService } from './external-api.service';
 import {
   CreateExternalApiDto,
+  SetAiRouteDto,
   TestExternalApiDto,
   UpdateExternalApiDto,
 } from './dto/update-external-api.dto';
@@ -36,6 +37,12 @@ export class ExternalApiController {
     return this.svc.list();
   }
 
+  /** 模型路由总览:每个 AI 消费功能当前命中的 provider + 备选链。须声明在 :provider 之前 */
+  @Get('routing')
+  routing() {
+    return this.svc.listRouting();
+  }
+
   @Get(':provider')
   get(@Param('provider') provider: string) {
     return this.svc.get(provider);
@@ -48,6 +55,23 @@ export class ExternalApiController {
     @Req() req: Request,
   ) {
     return this.svc.create(dto, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
+  }
+
+  /** 绑定/解绑某功能到某 provider(provider 空=自动)。须声明在 :provider 之前 */
+  @Patch('routing/:consumerKey')
+  setRoute(
+    @Param('consumerKey') consumerKey: string,
+    @Body() dto: SetAiRouteDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    const provider =
+      dto.provider && dto.provider.trim() ? dto.provider.trim() : null;
+    return this.svc.setRoute(consumerKey, provider, {
       actorId: me.sub,
       actorName: me.name,
       ip: req.ip,
