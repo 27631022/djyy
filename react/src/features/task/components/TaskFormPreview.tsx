@@ -1,9 +1,10 @@
 import { groupTaskFields, type TaskField } from "../api";
-import { FIELD_TYPE_ICONS } from "./fieldTypeIcons";
+import { getFieldType } from "../fields";
 
 /**
  * 任务表单「只读预览」—— 按分组聚合,按字段类型渲染示意控件。
- * 派发人用它确认「这个任务要填什么」;实际可输入的填报控件在 P2(FieldRenderer)。
+ * 派发人用它确认「这个任务要填什么」;每个字段的样例控件由注册表的 Preview(variant="form")渲染。
+ * 实际可输入的填报控件在 P2(FillInput)。
  */
 export function TaskFormPreview({ fields }: { fields: TaskField[] }) {
   if (!fields.length) {
@@ -18,10 +19,10 @@ export function TaskFormPreview({ fields }: { fields: TaskField[] }) {
     <div className="space-y-3">
       {groups.map((g) => (
         <div key={g.key} className="border border-[#EDEDED] rounded-lg overflow-hidden">
-          <div className="px-3 py-1.5 bg-[#F7F8FA] text-[12px] font-semibold text-[#4B5563]">
+          <div className="px-3 py-2 bg-[#F7F8FA] text-[14px] font-semibold text-[#4B5563]">
             {g.label}
           </div>
-          <div className="p-3 space-y-2.5">
+          <div className="divide-y divide-[#F1F3F5]">
             {g.fields.map((f) => (
               <FieldPreview key={f.code} field={f} />
             ))}
@@ -32,63 +33,28 @@ export function TaskFormPreview({ fields }: { fields: TaskField[] }) {
   );
 }
 
+/** 一行 = 左:字段名(完整可见,长名换行)/ 中:填报控件(只读示意)/ 右:备注说明。紧凑表格式。 */
 function FieldPreview({ field: f }: { field: TaskField }) {
-  const Icon = FIELD_TYPE_ICONS[f.type];
+  const def = getFieldType(f.type);
+  const Icon = def.icon;
+  const Preview = def.Preview;
   return (
-    <div>
-      <div className="flex items-center gap-1.5 mb-1">
-        <Icon className="w-3 h-3 text-[#9CA3AF]" />
-        <span className="text-[12px] text-[#1A1A1A]">{f.label}</span>
-        {f.required && <span className="text-[var(--party-primary)] text-xs">*</span>}
-        {f.unit && <span className="text-[10px] text-[#9CA3AF]">({f.unit})</span>}
+    <div className="grid grid-cols-[150px_minmax(0,1fr)_140px] gap-3 items-start px-3 py-1.5">
+      {/* 左:字段名 */}
+      <div className="text-[14px] text-[#1A1A1A] leading-snug min-w-0 pt-1" title={f.label}>
+        <Icon className="inline w-4 h-4 text-[#9CA3AF] mr-1 -mt-0.5 align-middle" />
+        {f.label}
+        {f.required && <span className="text-[var(--party-primary)] ml-0.5">*</span>}
+        {f.unit && <span className="text-[12px] text-[#9CA3AF] ml-1">({f.unit})</span>}
       </div>
-      <SampleControl field={f} />
-      {f.description && <p className="text-[10px] text-[#9CA3AF] mt-0.5">{f.description}</p>}
+      {/* 中:填报控件(只读示意) */}
+      <div className="min-w-0">
+        <Preview field={f} variant="form" />
+      </div>
+      {/* 右:备注说明 */}
+      <div className="text-[13px] text-[#9CA3AF] leading-snug pt-1 truncate" title={f.description || ""}>
+        {f.description || <span className="text-[#D1D5DB]">—</span>}
+      </div>
     </div>
   );
-}
-
-const boxCls =
-  "w-full px-2.5 py-1.5 text-xs border border-[#E9E9E9] rounded-md bg-[#FCFCFC] text-[#9CA3AF]";
-
-function SampleControl({ field: f }: { field: TaskField }) {
-  switch (f.type) {
-    case "textarea":
-    case "richtext":
-      return (
-        <div className={`${boxCls} h-12`}>
-          {f.placeholder || (f.type === "richtext" ? "富文本编辑器…" : "多行文本…")}
-        </div>
-      );
-    case "select":
-      return (
-        <div className={`${boxCls} flex items-center justify-between`}>
-          <span>{f.placeholder || (f.options && f.options[0]) || "请选择"}</span>
-          <span className="text-[10px]">{f.options?.length ? `${f.options.length} 项` : ""} ▾</span>
-        </div>
-      );
-    case "file":
-    case "image":
-      return (
-        <div className="w-full py-3 border border-dashed border-[#E9E9E9] rounded-md text-center text-[11px] text-[#9CA3AF]">
-          点击上传{f.type === "image" ? "图片" : "文件"}
-          {f.maxFiles ? `(最多 ${f.maxFiles} 个)` : "(不限个数)"}
-        </div>
-      );
-    case "doclink":
-      return (
-        <div className="flex items-center gap-1.5">
-          <div className={`${boxCls} flex-1 truncate ${f.link ? "text-[#1A6BC8]" : ""}`}>
-            {f.link || "未设置链接"}
-          </div>
-          <span className="px-2 py-1.5 rounded-md text-[11px] bg-party-soft text-[var(--party-primary)] whitespace-nowrap">
-            填写
-          </span>
-        </div>
-      );
-    case "date":
-      return <div className={boxCls}>{f.placeholder || "YYYY-MM-DD"}</div>;
-    default:
-      return <div className={boxCls}>{f.placeholder || "请输入"}</div>;
-  }
 }

@@ -1,4 +1,5 @@
-import { TASK_FIELD_TYPE_LABEL, type TaskField, type TaskFieldType } from "../../api";
+import type { TaskField, TaskFieldType } from "../../api";
+import { getFieldType } from "../../fields";
 
 /** 下一个自动字段 code(field_N,用户不可见、不可填) */
 export function nextFieldCode(fields: TaskField[]): string {
@@ -10,25 +11,25 @@ export function nextFieldCode(fields: TaskField[]): string {
   return `field_${max + 1}`;
 }
 
-/** 文件字段默认接受类型 */
-export const DEFAULT_FILE_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx";
-
-/** 新建一个指定类型的字段(默认显示名 = 类型名,排末位;按类型给默认值) */
+/** 新建一个指定类型的字段(默认显示名 = 类型名,排末位;类型默认值由注册表给) */
 export function makeField(type: TaskFieldType, fields: TaskField[]): TaskField {
-  const f: TaskField = {
+  const def = getFieldType(type);
+  return {
     code: nextFieldCode(fields),
-    label: TASK_FIELD_TYPE_LABEL[type],
+    label: def.label,
     type,
     required: false,
     sortOrder: fields.length,
+    ...def.makeDefaults?.(),
   };
-  if (type === "select") f.options = ["选项一", "选项二"];
-  if (type === "file") f.accept = DEFAULT_FILE_ACCEPT;
-  return f;
 }
 
-/** 按类型裁掉无关属性(切换类型时「改不了的就清掉重来」) */
+/**
+ * 按类型裁掉无关属性(切换类型时「改不了的就清掉重来」)。
+ * 通用属性始终保留;类型「自有属性」由注册表 ownProps 声明,占位按 hasPlaceholder 决定去留。
+ */
 export function cleanForType(f: TaskField): TaskField {
+  const def = getFieldType(f.type);
   const base: TaskField = {
     code: f.code,
     label: f.label,
@@ -40,19 +41,11 @@ export function cleanForType(f: TaskField): TaskField {
     base.group = f.group;
     base.groupLabel = f.groupLabel;
   }
-  if (f.placeholder) base.placeholder = f.placeholder;
   if (f.description) base.description = f.description;
-  if (f.type === "select") base.options = f.options;
-  if (f.type === "doclink") base.link = f.link;
-  if (f.type === "number") {
-    base.min = f.min;
-    base.max = f.max;
-    base.unit = f.unit;
-    base.decimals = f.decimals;
-  }
-  if (f.type === "file" || f.type === "image") {
-    base.maxFiles = f.maxFiles;
-    base.accept = f.accept;
+  if (def.hasPlaceholder && f.placeholder) base.placeholder = f.placeholder;
+  for (const k of def.ownProps ?? []) {
+    const v = f[k];
+    if (v !== undefined) (base as unknown as Record<string, unknown>)[k] = v;
   }
   return base;
 }

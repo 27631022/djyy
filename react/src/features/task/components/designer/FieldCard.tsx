@@ -3,14 +3,12 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVerticalIcon, CopyIcon, Trash2Icon } from "lucide-react";
 import { Switch } from "@/shared/components/ui/switch";
 import { type TaskField } from "../../api";
-import { FIELD_TYPE_ICONS } from "../fieldTypeIcons";
-
-const ctl =
-  "w-full px-2.5 py-1.5 text-sm border border-[#E5E7EB] rounded-md bg-white text-[#374151]";
+import { getFieldType } from "../../fields";
 
 /**
  * 单个字段「所见即所得」卡片 —— 可拖拽(含跨分组)、点选高亮、就地改名、悬浮操作。
  * 深度属性已移到右栏 PropertiesPanel(点选本卡即在右栏编辑)。
+ * 控件预览委托给该类型在注册表里的 Preview。
  */
 export function FieldCard({
   field: f,
@@ -30,7 +28,9 @@ export function FieldCard({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: f.code,
   });
-  const Icon = FIELD_TYPE_ICONS[f.type];
+  const def = getFieldType(f.type);
+  const Icon = def.icon;
+  const Preview = def.Preview;
 
   return (
     <div
@@ -89,9 +89,9 @@ export function FieldCard({
         </div>
       </div>
 
-      {/* 所见即所得:真实控件预览(只读) */}
+      {/* 所见即所得:真实控件预览(只读)—— 由该类型注册表的 Preview 渲染 */}
       <div className="mt-2 pl-6">
-        <PreviewControl field={f} />
+        <Preview field={f} variant="designer" />
         {f.description && <p className="text-[11px] text-[#9CA3AF] mt-1">{f.description}</p>}
       </div>
     </div>
@@ -121,67 +121,4 @@ function IconBtn({
       {children}
     </button>
   );
-}
-
-/** 中栏所见即所得控件(只读预览,展示填报人看到的样子) */
-function PreviewControl({ field: f }: { field: TaskField }) {
-  switch (f.type) {
-    case "number":
-      return (
-        <div className="flex items-center gap-1.5">
-          <input disabled placeholder={f.placeholder || "请输入数字"} className={`${ctl} max-w-[200px]`} />
-          {f.unit && <span className="text-[13px] text-[#6B7280]">{f.unit}</span>}
-        </div>
-      );
-    case "date":
-      return <input disabled placeholder="yyyy / mm / dd" className={`${ctl} max-w-[200px]`} />;
-    case "textarea":
-      return <div className={`${ctl} h-14 text-[#9CA3AF]`}>{f.placeholder || "多行文本…"}</div>;
-    case "richtext":
-      return (
-        <div className="border border-[#E5E7EB] rounded-md overflow-hidden bg-white">
-          <div className="flex gap-1.5 px-2 py-1 border-b border-[#F0F0F0] text-[#C0C6D0] text-xs">
-            <b>B</b>
-            <i>I</i>
-            <span>•</span>
-            <span>≡</span>
-          </div>
-          <div className="px-2.5 py-2 h-12 text-[13px] text-[#9CA3AF]">{f.placeholder || "富文本内容…"}</div>
-        </div>
-      );
-    case "select": {
-      const opts = f.options ?? [];
-      return (
-        <div className={`${ctl} max-w-[260px] flex items-center justify-between text-[#9CA3AF]`}>
-          <span>{f.placeholder || opts[0] || "请选择"}</span>
-          <span className="text-[11px]">{opts.length ? `${opts.length} 项可选` : "未设选项"} ▾</span>
-        </div>
-      );
-    }
-    case "file":
-    case "image":
-      return (
-        <div className="border border-dashed border-[#D1D5DB] rounded-md py-3 text-center text-[13px] text-[#9CA3AF]">
-          点击上传{f.type === "image" ? "图片" : "文件"}
-          {f.maxFiles ? `(最多 ${f.maxFiles} 个)` : "(不限个数)"}
-          {f.type === "file" && f.accept ? ` · ${f.accept.replace(/\./g, "").replace(/,/g, " / ")}` : ""}
-        </div>
-      );
-    case "doclink":
-      return (
-        <div className="flex items-center gap-1.5 max-w-[360px]">
-          <div
-            className={`${ctl} flex-1 truncate ${f.link ? "text-[#1A6BC8]" : "text-[#9CA3AF]"}`}
-            title={f.link || ""}
-          >
-            {f.link || "未设置链接(在右侧填「链接地址」)"}
-          </div>
-          <span className="px-2.5 py-1.5 rounded-md text-[13px] bg-party-soft text-[var(--party-primary)] font-medium whitespace-nowrap">
-            填写
-          </span>
-        </div>
-      );
-    default:
-      return <input disabled placeholder={f.placeholder || "请输入"} className={ctl} />;
-  }
 }

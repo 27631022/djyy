@@ -39,6 +39,7 @@ import { TaskFormPreview } from "../components/TaskFormPreview";
 import { TargetPicker, type PickedTarget, type AiScope } from "../components/TargetPicker";
 import { TaskStep1Upload } from "../components/TaskStep1Upload";
 import { CopyTaskPicker } from "../components/CopyTaskPicker";
+import { findFieldIssue } from "../fields";
 
 const PARTY = "var(--party-primary)";
 const PAGE_BG =
@@ -490,15 +491,4 @@ function Block({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </div>
   );
-}
-
-/** 找出第一个会让派发失败的字段定义问题(空显示名 / 下拉缺字典);无则 null。 */
-function findFieldIssue(fields: TaskField[]): { label: string; hint: string } | null {
-  for (const f of fields) {
-    if (!f.label || !f.label.trim())
-      return { label: "未命名字段", hint: "点该字段卡片标题处输入字段名" };
-    if (f.type === "select" && !(f.options && f.options.some((o) => o.trim())))
-      return { label: f.label, hint: "是下拉字段,请在右侧「下拉选项」里至少填一个选项" };
-  }
-  return null;
 }

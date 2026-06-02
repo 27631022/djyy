@@ -39,18 +39,6 @@ export interface TaskField {
   accept?: string;
 }
 
-export const TASK_FIELD_TYPE_LABEL: Record<TaskFieldType, string> = {
-  text: "单行文本",
-  textarea: "多行文本",
-  number: "数字",
-  date: "日期",
-  select: "下拉选择",
-  file: "文件",
-  image: "图片",
-  richtext: "富文本",
-  doclink: "在线文档",
-};
-
 /* ─── 任务对象状态 ─── */
 export const TASK_TARGET_STATUS_LABEL: Record<string, string> = {
   pending: "待分派",

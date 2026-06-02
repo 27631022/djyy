@@ -224,6 +224,8 @@ export function TaskStep1Upload({
             <input
               type="datetime-local"
               value={dueAt}
+              min="2024-01-01T00:00"
+              max="2099-12-31T23:59"
               onChange={(e) => setDueAt(e.target.value)}
               className={inputCls}
             />

@@ -7,21 +7,21 @@ import { BadRequestException } from '@nestjs/common';
  *   - 文件 file / 图片 image / 富文本 richtext / 在线文档 doclink 字段类型
  *   - 数字约束 min/max/unit/decimals
  *
+ * 字段类型差异集中到下方 FIELD_SPECS 注册表(每种类型一条 normalize),
+ * 与前端 fields/ 注册表对称:加一个新字段类型 = 这里加一条 spec + api.ts 的 TaskFieldType 联合补一项
+ *   + 前端 fields/<type>.tsx 加实现并在 registry 注册。
  * 此处只校验字段「定义」;字段「值」的校验在 P2 填报时做(参考 user-custom-field 的 validateAndSanitize)。
  */
-export const TASK_FIELD_TYPES = [
-  'text',
-  'textarea',
-  'number',
-  'date',
-  'select',
-  'file',
-  'image',
-  'richtext',
-  'doclink',
-] as const;
-
-export type TaskFieldType = (typeof TASK_FIELD_TYPES)[number];
+export type TaskFieldType =
+  | 'text'
+  | 'textarea'
+  | 'number'
+  | 'date'
+  | 'select'
+  | 'file'
+  | 'image'
+  | 'richtext'
+  | 'doclink';
 
 export interface TaskField {
   code: string;
@@ -47,13 +47,73 @@ export interface TaskField {
   accept?: string;
 }
 
+/**
+ * 某字段类型的「专属属性」规范化 + 校验:从 raw 读、写到 field;非法抛 BadRequestException。
+ * 通用属性(code/label/type/group/placeholder/description/required/sortOrder)由 normalizeFieldDefs
+ * 统一处理,这里只管该类型独有的那几项。无专属属性的类型给空对象即可。
+ */
+interface FieldTypeSpec {
+  normalize?(raw: Record<string, unknown>, field: TaskField, code: string): void;
+}
+
+/** 字段类型注册表 —— 每种类型一条;加新类型在此加一条 spec。 */
+const FIELD_SPECS: Record<TaskFieldType, FieldTypeSpec> = {
+  text: {},
+  textarea: {},
+  number: {
+    normalize(raw, field, code) {
+      if (typeof raw.min === 'number') field.min = raw.min;
+      if (typeof raw.max === 'number') field.max = raw.max;
+      if (field.min !== undefined && field.max !== undefined && field.min > field.max)
+        throw new BadRequestException(`字段 "${code}" 的最小值大于最大值`);
+      if (typeof raw.unit === 'string' && raw.unit.trim()) field.unit = raw.unit.trim();
+      if (typeof raw.decimals === 'number' && raw.decimals >= 0)
+        field.decimals = Math.floor(raw.decimals);
+    },
+  },
+  date: {},
+  select: {
+    normalize(raw, field, code) {
+      const opts = Array.isArray(raw.options)
+        ? [...new Set(raw.options.map((o) => String(o).trim()).filter(Boolean))]
+        : [];
+      if (opts.length === 0)
+        throw new BadRequestException(`下拉字段 "${code}" 至少要有一个选项`);
+      field.options = opts;
+    },
+  },
+  file: {
+    normalize(raw, field) {
+      if (typeof raw.maxFiles === 'number' && raw.maxFiles > 0)
+        field.maxFiles = Math.floor(raw.maxFiles);
+      if (typeof raw.accept === 'string' && raw.accept.trim())
+        field.accept = raw.accept.trim();
+    },
+  },
+  image: {
+    normalize(raw, field) {
+      if (typeof raw.maxFiles === 'number' && raw.maxFiles > 0)
+        field.maxFiles = Math.floor(raw.maxFiles);
+    },
+  },
+  richtext: {},
+  doclink: {
+    normalize(raw, field) {
+      if (typeof raw.link === 'string' && raw.link.trim()) field.link = raw.link.trim();
+    },
+  },
+};
+
+/** 支持的字段类型(由注册表键派生;extraction 等处用 .includes 校验)。 */
+export const TASK_FIELD_TYPES = Object.keys(FIELD_SPECS) as TaskFieldType[];
+
 const CODE_RE = /^[a-z][a-z0-9_]*$/;
 
 /**
  * 校验并规整一组字段「定义」。返回干净的 TaskField[](按 sortOrder 升序、重排为 0..n)。
  * - code 必填、合法(小写字母开头,字母/数字/下划线)、组内唯一
  * - label 必填;type 合法
- * - select 必须有至少一个自定义选项(options,直接填内容,不关联字典)
+ * - 各类型专属属性 / 校验委托给 FIELD_SPECS[type].normalize(如下拉至少一个选项)
  * 不合法直接抛 BadRequestException。
  */
 export function normalizeFieldDefs(raw: unknown): TaskField[] {
@@ -107,35 +167,8 @@ export function normalizeFieldDefs(raw: unknown): TaskField[] {
     if (typeof f.description === 'string' && f.description.trim())
       field.description = f.description.trim();
 
-    if (type === 'select') {
-      const opts = Array.isArray(f.options)
-        ? [...new Set(f.options.map((o) => String(o).trim()).filter(Boolean))]
-        : [];
-      if (opts.length === 0)
-        throw new BadRequestException(`下拉字段 "${code}" 至少要有一个选项`);
-      field.options = opts;
-    }
-
-    if (type === 'number') {
-      if (typeof f.min === 'number') field.min = f.min;
-      if (typeof f.max === 'number') field.max = f.max;
-      if (field.min !== undefined && field.max !== undefined && field.min > field.max)
-        throw new BadRequestException(`字段 "${code}" 的最小值大于最大值`);
-      if (typeof f.unit === 'string' && f.unit.trim()) field.unit = f.unit.trim();
-      if (typeof f.decimals === 'number' && f.decimals >= 0)
-        field.decimals = Math.floor(f.decimals);
-    }
-
-    if (type === 'file' || type === 'image') {
-      if (typeof f.maxFiles === 'number' && f.maxFiles > 0)
-        field.maxFiles = Math.floor(f.maxFiles);
-      if (typeof f.accept === 'string' && f.accept.trim())
-        field.accept = f.accept.trim();
-    }
-
-    if (type === 'doclink') {
-      if (typeof f.link === 'string' && f.link.trim()) field.link = f.link.trim();
-    }
+    // 类型专属属性 / 校验
+    FIELD_SPECS[type].normalize?.(f, field, code);
 
     out.push(field);
   });
