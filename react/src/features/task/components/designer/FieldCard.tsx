@@ -5,8 +5,6 @@ import { Switch } from "@/shared/components/ui/switch";
 import { type TaskField } from "../../api";
 import { FIELD_TYPE_ICONS } from "../fieldTypeIcons";
 
-type DictLite = { id: string; code: string; name: string };
-
 const ctl =
   "w-full px-2.5 py-1.5 text-sm border border-[#E5E7EB] rounded-md bg-white text-[#374151]";
 
@@ -17,7 +15,6 @@ const ctl =
 export function FieldCard({
   field: f,
   selected,
-  dicts,
   onSelect,
   onPatch,
   onDuplicate,
@@ -25,7 +22,6 @@ export function FieldCard({
 }: {
   field: TaskField;
   selected: boolean;
-  dicts: DictLite[];
   onSelect: () => void;
   onPatch: (partial: Partial<TaskField>) => void;
   onDuplicate: () => void;
@@ -95,7 +91,7 @@ export function FieldCard({
 
       {/* 所见即所得:真实控件预览(只读) */}
       <div className="mt-2 pl-6">
-        <PreviewControl field={f} dicts={dicts} />
+        <PreviewControl field={f} />
         {f.description && <p className="text-[11px] text-[#9CA3AF] mt-1">{f.description}</p>}
       </div>
     </div>
@@ -128,7 +124,7 @@ function IconBtn({
 }
 
 /** 中栏所见即所得控件(只读预览,展示填报人看到的样子) */
-function PreviewControl({ field: f, dicts }: { field: TaskField; dicts: DictLite[] }) {
+function PreviewControl({ field: f }: { field: TaskField }) {
   switch (f.type) {
     case "number":
       return (
@@ -154,11 +150,11 @@ function PreviewControl({ field: f, dicts }: { field: TaskField; dicts: DictLite
         </div>
       );
     case "select": {
-      const dict = dicts.find((d) => d.code === f.dictCode);
+      const opts = f.options ?? [];
       return (
         <div className={`${ctl} max-w-[260px] flex items-center justify-between text-[#9CA3AF]`}>
-          <span>{f.placeholder || "请选择"}</span>
-          <span className="text-[11px]">{dict ? dict.name : f.dictCode ? `字典:${f.dictCode}` : "未选字典"} ▾</span>
+          <span>{f.placeholder || opts[0] || "请选择"}</span>
+          <span className="text-[11px]">{opts.length ? `${opts.length} 项可选` : "未设选项"} ▾</span>
         </div>
       );
     }
@@ -167,13 +163,22 @@ function PreviewControl({ field: f, dicts }: { field: TaskField; dicts: DictLite
       return (
         <div className="border border-dashed border-[#D1D5DB] rounded-md py-3 text-center text-[13px] text-[#9CA3AF]">
           点击上传{f.type === "image" ? "图片" : "文件"}
-          {f.maxFiles ? `(最多 ${f.maxFiles} 个)` : ""}
+          {f.maxFiles ? `(最多 ${f.maxFiles} 个)` : "(不限个数)"}
+          {f.type === "file" && f.accept ? ` · ${f.accept.replace(/\./g, "").replace(/,/g, " / ")}` : ""}
         </div>
       );
     case "doclink":
       return (
-        <div className="border border-dashed border-[#D1D5DB] rounded-md py-2.5 text-center text-[13px] text-[#9CA3AF]">
-          在线文档(群晖,后续接入)
+        <div className="flex items-center gap-1.5 max-w-[360px]">
+          <div
+            className={`${ctl} flex-1 truncate ${f.link ? "text-[#1A6BC8]" : "text-[#9CA3AF]"}`}
+            title={f.link || ""}
+          >
+            {f.link || "未设置链接(在右侧填「链接地址」)"}
+          </div>
+          <span className="px-2.5 py-1.5 rounded-md text-[13px] bg-party-soft text-[var(--party-primary)] font-medium whitespace-nowrap">
+            填写
+          </span>
         </div>
       );
     default:

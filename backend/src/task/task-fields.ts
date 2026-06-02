@@ -33,8 +33,10 @@ export interface TaskField {
   sortOrder: number;
   placeholder?: string;
   description?: string;
-  /** select:关联 Dictionary.code(值存 DictItem.code) */
-  dictCode?: string;
+  /** select:自定义下拉选项(直接填内容,不关联字典) */
+  options?: string[];
+  /** doclink:在线文档链接地址(填报时点「填写」打开) */
+  link?: string;
   /** number 约束 */
   min?: number;
   max?: number;
@@ -51,7 +53,7 @@ const CODE_RE = /^[a-z][a-z0-9_]*$/;
  * 校验并规整一组字段「定义」。返回干净的 TaskField[](按 sortOrder 升序、重排为 0..n)。
  * - code 必填、合法(小写字母开头,字母/数字/下划线)、组内唯一
  * - label 必填;type 合法
- * - select 必须有 dictCode(存在性由调用方用 DictionaryService 另行校验)
+ * - select 必须有至少一个自定义选项(options,直接填内容,不关联字典)
  * 不合法直接抛 BadRequestException。
  */
 export function normalizeFieldDefs(raw: unknown): TaskField[] {
@@ -106,10 +108,12 @@ export function normalizeFieldDefs(raw: unknown): TaskField[] {
       field.description = f.description.trim();
 
     if (type === 'select') {
-      const dictCode = typeof f.dictCode === 'string' ? f.dictCode.trim() : '';
-      if (!dictCode)
-        throw new BadRequestException(`下拉字段 "${code}" 必须指定字典(dictCode)`);
-      field.dictCode = dictCode;
+      const opts = Array.isArray(f.options)
+        ? [...new Set(f.options.map((o) => String(o).trim()).filter(Boolean))]
+        : [];
+      if (opts.length === 0)
+        throw new BadRequestException(`下拉字段 "${code}" 至少要有一个选项`);
+      field.options = opts;
     }
 
     if (type === 'number') {
@@ -129,23 +133,16 @@ export function normalizeFieldDefs(raw: unknown): TaskField[] {
         field.accept = f.accept.trim();
     }
 
+    if (type === 'doclink') {
+      if (typeof f.link === 'string' && f.link.trim()) field.link = f.link.trim();
+    }
+
     out.push(field);
   });
 
   out.sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code));
   out.forEach((f, i) => (f.sortOrder = i));
   return out;
-}
-
-/** 取出 select 字段引用的所有 dictCode(去重),供调用方批量校验存在性 */
-export function selectDictCodes(fields: TaskField[]): string[] {
-  return [
-    ...new Set(
-      fields
-        .filter((f) => f.type === 'select' && f.dictCode)
-        .map((f) => f.dictCode as string),
-    ),
-  ];
 }
 
 /** 安全解析存库的 fields JSON 串 → TaskField[] */

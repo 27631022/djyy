@@ -5,14 +5,11 @@ import type { TaskField } from "../../api";
 import { FieldCard } from "./FieldCard";
 import { UNGROUPED, type DesignerContainer } from "./fieldDesignerUtils";
 
-type DictLite = { id: string; code: string; name: string };
-
 /** 中:分组容器画布。每个分组是一个可拖入的容器;未分组在最上方。 */
 export function FieldCanvas({
   containers,
   activeGroup,
   selectedCode,
-  dicts,
   onActivateGroup,
   onSelect,
   onPatch,
@@ -24,7 +21,6 @@ export function FieldCanvas({
   containers: DesignerContainer[];
   activeGroup: string | null;
   selectedCode: string | null;
-  dicts: DictLite[];
   onActivateGroup: (id: string | null) => void;
   onSelect: (code: string) => void;
   onPatch: (code: string, partial: Partial<TaskField>) => void;
@@ -52,7 +48,6 @@ export function FieldCanvas({
           container={c}
           active={activeGroup === (c.id === UNGROUPED ? null : c.id)}
           selectedCode={selectedCode}
-          dicts={dicts}
           onActivate={onActivateGroup}
           onSelect={onSelect}
           onPatch={onPatch}
@@ -70,7 +65,6 @@ function GroupSection({
   container: c,
   active,
   selectedCode,
-  dicts,
   onActivate,
   onSelect,
   onPatch,
@@ -82,7 +76,6 @@ function GroupSection({
   container: DesignerContainer;
   active: boolean;
   selectedCode: string | null;
-  dicts: DictLite[];
   onActivate: (id: string | null) => void;
   onSelect: (code: string) => void;
   onPatch: (code: string, partial: Partial<TaskField>) => void;
@@ -150,7 +143,6 @@ function GroupSection({
               key={f.code}
               field={f}
               selected={selectedCode === f.code}
-              dicts={dicts}
               onSelect={() => onSelect(f.code)}
               onPatch={(p) => onPatch(f.code, p)}
               onDuplicate={() => onDuplicate(f.code)}

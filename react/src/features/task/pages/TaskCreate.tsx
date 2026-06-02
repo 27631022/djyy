@@ -154,7 +154,7 @@ export default function TaskCreatePage() {
   const fieldIssue = findFieldIssue(fields);
 
   const canNext =
-    (step === 0 && !!title.trim()) ||
+    (step === 0 && !!title.trim() && !!dueAt) ||
     (step === 1 && fields.length > 0 && !fieldIssue) ||
     (step === 2 && targets.length > 0) ||
     step === 3;
@@ -365,9 +365,11 @@ export default function TaskCreatePage() {
                 {fieldIssue
                   ? `「${fieldIssue.label}」待完善`
                   : step === 0
-                    ? title.trim()
-                      ? "基本信息已就绪"
-                      : "请填写任务名称"
+                    ? !title.trim()
+                      ? "请填写任务名称"
+                      : !dueAt
+                        ? "请选择报送截止日期"
+                        : "基本信息已就绪"
                     : step === 1
                       ? `${fields.length} 个填报字段`
                       : step === 2
@@ -495,8 +497,8 @@ function findFieldIssue(fields: TaskField[]): { label: string; hint: string } | 
   for (const f of fields) {
     if (!f.label || !f.label.trim())
       return { label: "未命名字段", hint: "点该字段卡片标题处输入字段名" };
-    if (f.type === "select" && !(f.dictCode && f.dictCode.trim()))
-      return { label: f.label, hint: "是下拉字段,点卡片右上「⚙」选择「字典」" };
+    if (f.type === "select" && !(f.options && f.options.some((o) => o.trim())))
+      return { label: f.label, hint: "是下拉字段,请在右侧「下拉选项」里至少填一个选项" };
   }
   return null;
 }

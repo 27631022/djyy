@@ -5,8 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
-import { DictionaryService } from '../dictionary';
-import { normalizeFieldDefs, parseFields, selectDictCodes, type TaskField } from './task-fields';
+import { normalizeFieldDefs, parseFields } from './task-fields';
 import { CreateTaskTemplateDto } from './dto/create-task-template.dto';
 import { UpdateTaskTemplateDto } from './dto/update-task-template.dto';
 
@@ -35,7 +34,6 @@ export class TaskTemplateService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly dictionary: DictionaryService,
   ) {}
 
   async list(includeInactive = true) {
@@ -56,7 +54,6 @@ export class TaskTemplateService {
     const dup = await this.prisma.taskTemplate.findUnique({ where: { code: dto.code } });
     if (dup) throw new ConflictException(`模板代码 "${dto.code}" 已存在`);
     const fields = normalizeFieldDefs(dto.fields);
-    await this.assertDictsExist(fields);
 
     const created = await this.prisma.taskTemplate.create({
       data: {
@@ -90,7 +87,6 @@ export class TaskTemplateService {
     };
     if (dto.fields !== undefined) {
       const fields = normalizeFieldDefs(dto.fields);
-      await this.assertDictsExist(fields);
       data.fields = JSON.stringify(fields);
     }
     await this.prisma.taskTemplate.update({ where: { id }, data });
@@ -115,13 +111,6 @@ export class TaskTemplateService {
       detail: { code: r.code, name: r.name },
     });
     return { id, deleted: true };
-  }
-
-  /** select 字段引用的字典必须存在(不存在 DictionaryService 抛 NotFound) */
-  private async assertDictsExist(fields: TaskField[]) {
-    for (const code of selectDictCodes(fields)) {
-      await this.dictionary.findByIdOrCode(code);
-    }
   }
 
   private toPublic(r: TaskTemplateRow) {

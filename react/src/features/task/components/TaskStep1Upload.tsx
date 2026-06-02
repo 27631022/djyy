@@ -220,7 +220,7 @@ export function TaskStep1Upload({
           />
         </Field>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="报送截止日期" hint="可选">
+          <Field label="报送截止日期" required hint="填报人需在此前提交">
             <input
               type="datetime-local"
               value={dueAt}

@@ -7,8 +7,7 @@ import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
 import { OrganizationService } from '../organization';
 import { UserService } from '../user';
-import { DictionaryService } from '../dictionary';
-import { normalizeFieldDefs, parseFields, selectDictCodes } from './task-fields';
+import { normalizeFieldDefs, parseFields } from './task-fields';
 import { DispatchTaskDto, type TaskTargetInput } from './dto/dispatch-task.dto';
 
 interface ActorContext {
@@ -35,7 +34,6 @@ export class TaskService {
     private readonly audit: AuditService,
     private readonly orgs: OrganizationService,
     private readonly users: UserService,
-    private readonly dictionary: DictionaryService,
   ) {}
 
   /**
@@ -46,10 +44,6 @@ export class TaskService {
   async dispatch(dto: DispatchTaskDto, actor: ActorContext) {
     if (!actor.actorId) throw new BadRequestException('缺少操作者身份');
     const fields = normalizeFieldDefs(dto.fields);
-    for (const code of selectDictCodes(fields)) {
-      await this.dictionary.findByIdOrCode(code);
-    }
-
     const targets = await this.resolveTargets(dto.targets);
     const dispatchOrgId = dto.dispatchOrgId?.trim() || null;
     if (dispatchOrgId) await this.orgs.findOne(dispatchOrgId); // 校验派发部门存在

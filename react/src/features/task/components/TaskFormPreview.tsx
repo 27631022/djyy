@@ -63,8 +63,8 @@ function SampleControl({ field: f }: { field: TaskField }) {
     case "select":
       return (
         <div className={`${boxCls} flex items-center justify-between`}>
-          <span>{f.placeholder || "请选择"}</span>
-          <span className="text-[10px]">字典:{f.dictCode}</span>
+          <span>{f.placeholder || (f.options && f.options[0]) || "请选择"}</span>
+          <span className="text-[10px]">{f.options?.length ? `${f.options.length} 项` : ""} ▾</span>
         </div>
       );
     case "file":
@@ -72,13 +72,18 @@ function SampleControl({ field: f }: { field: TaskField }) {
       return (
         <div className="w-full py-3 border border-dashed border-[#E9E9E9] rounded-md text-center text-[11px] text-[#9CA3AF]">
           点击上传{f.type === "image" ? "图片" : "文件"}
-          {f.maxFiles ? `(最多 ${f.maxFiles} 个)` : ""}
+          {f.maxFiles ? `(最多 ${f.maxFiles} 个)` : "(不限个数)"}
         </div>
       );
     case "doclink":
       return (
-        <div className="w-full py-2 border border-dashed border-[#E9E9E9] rounded-md text-center text-[11px] text-[#9CA3AF]">
-          在线文档(群晖,P4 接入)
+        <div className="flex items-center gap-1.5">
+          <div className={`${boxCls} flex-1 truncate ${f.link ? "text-[#1A6BC8]" : ""}`}>
+            {f.link || "未设置链接"}
+          </div>
+          <span className="px-2 py-1.5 rounded-md text-[11px] bg-party-soft text-[var(--party-primary)] whitespace-nowrap">
+            填写
+          </span>
         </div>
       );
     case "date":

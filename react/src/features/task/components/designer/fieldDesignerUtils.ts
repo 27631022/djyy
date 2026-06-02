@@ -10,15 +10,21 @@ export function nextFieldCode(fields: TaskField[]): string {
   return `field_${max + 1}`;
 }
 
-/** 新建一个指定类型的字段(默认显示名 = 类型名,排末位) */
+/** 文件字段默认接受类型 */
+export const DEFAULT_FILE_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx";
+
+/** 新建一个指定类型的字段(默认显示名 = 类型名,排末位;按类型给默认值) */
 export function makeField(type: TaskFieldType, fields: TaskField[]): TaskField {
-  return {
+  const f: TaskField = {
     code: nextFieldCode(fields),
     label: TASK_FIELD_TYPE_LABEL[type],
     type,
     required: false,
     sortOrder: fields.length,
   };
+  if (type === "select") f.options = ["选项一", "选项二"];
+  if (type === "file") f.accept = DEFAULT_FILE_ACCEPT;
+  return f;
 }
 
 /** 按类型裁掉无关属性(切换类型时「改不了的就清掉重来」) */
@@ -36,7 +42,8 @@ export function cleanForType(f: TaskField): TaskField {
   }
   if (f.placeholder) base.placeholder = f.placeholder;
   if (f.description) base.description = f.description;
-  if (f.type === "select") base.dictCode = f.dictCode;
+  if (f.type === "select") base.options = f.options;
+  if (f.type === "doclink") base.link = f.link;
   if (f.type === "number") {
     base.min = f.min;
     base.max = f.max;

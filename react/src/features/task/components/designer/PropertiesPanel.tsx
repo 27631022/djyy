@@ -1,7 +1,5 @@
-import { Settings2Icon } from "lucide-react";
+import { Settings2Icon, PlusIcon, XIcon } from "lucide-react";
 import { TASK_FIELD_TYPE_LABEL, type TaskField, type TaskFieldType } from "../../api";
-
-type DictLite = { id: string; code: string; name: string };
 
 const TYPE_ORDER: TaskFieldType[] = [
   "text",
@@ -15,20 +13,29 @@ const TYPE_ORDER: TaskFieldType[] = [
   "doclink",
 ];
 
+/** 文件类型多选预设(点选 chip);accept 存逗号分隔扩展名 */
+const FILE_ACCEPT_PRESETS: { label: string; exts: string[] }[] = [
+  { label: "PDF", exts: [".pdf"] },
+  { label: "Word", exts: [".doc", ".docx"] },
+  { label: "Excel", exts: [".xls", ".xlsx"] },
+  { label: "PPT", exts: [".ppt", ".pptx"] },
+  { label: "图片", exts: [".jpg", ".jpeg", ".png"] },
+  { label: "压缩包", exts: [".zip", ".rar"] },
+];
+
 const setInp =
   "w-full px-2.5 py-1.5 text-[13px] border border-[#dce4ef] rounded-md bg-white focus:outline-none focus:border-[var(--party-primary)]";
 
 /**
- * 右栏:选中字段的属性面板(替代原 ⚙ 弹窗)。
- * 不含「分组名」—— 分组已改为画布容器结构,不再按字段填名。
+ * 右栏:选中字段的属性面板。
+ * 不含「显示名 / 必填」—— 这两项已在画布卡片上(就地改名 + 必填开关),不重复。
+ * 不含「分组名」—— 分组由画布容器结构决定。下拉为自定义选项,不关联字典。
  */
 export function PropertiesPanel({
   field: f,
-  dicts,
   onPatch,
 }: {
   field: TaskField | null;
-  dicts: DictLite[];
   onPatch: (code: string, partial: Partial<TaskField>) => void;
 }) {
   if (!f) {
@@ -40,16 +47,14 @@ export function PropertiesPanel({
     );
   }
   const patch = (p: Partial<TaskField>) => onPatch(f.code, p);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1.5 text-[13px] font-bold text-[#172033]">
         <Settings2Icon className="w-4 h-4 text-[var(--party-primary)]" />
         字段属性
+        <span className="text-[11px] font-normal text-[#9CA3AF]">· {TASK_FIELD_TYPE_LABEL[f.type]}</span>
       </div>
-
-      <Row label="显示名">
-        <input value={f.label} onChange={(e) => patch({ label: e.target.value })} className={setInp} />
-      </Row>
 
       <Row label="类型">
         <select
@@ -65,22 +70,25 @@ export function PropertiesPanel({
         </select>
       </Row>
 
-      <label className="flex items-center gap-2 text-[13px] text-[#374151] cursor-pointer">
-        <input
-          type="checkbox"
-          checked={f.required}
-          onChange={(e) => patch({ required: e.target.checked })}
-        />
-        必填
-      </label>
+      {f.type === "doclink" ? (
+        <Row label="链接地址" hint="填报时点「填写」打开此链接">
+          <input
+            value={f.link ?? ""}
+            onChange={(e) => patch({ link: e.target.value })}
+            placeholder="https://…"
+            className={setInp}
+          />
+        </Row>
+      ) : f.type !== "file" && f.type !== "image" ? (
+        <Row label="提示 / 占位">
+          <input
+            value={f.placeholder ?? ""}
+            onChange={(e) => patch({ placeholder: e.target.value })}
+            className={setInp}
+          />
+        </Row>
+      ) : null}
 
-      <Row label="提示 / 占位">
-        <input
-          value={f.placeholder ?? ""}
-          onChange={(e) => patch({ placeholder: e.target.value })}
-          className={setInp}
-        />
-      </Row>
       <Row label="说明">
         <input
           value={f.description ?? ""}
@@ -90,19 +98,8 @@ export function PropertiesPanel({
       </Row>
 
       {f.type === "select" && (
-        <Row label="字典" hint="下拉选项来源,必选">
-          <select
-            value={f.dictCode ?? ""}
-            onChange={(e) => patch({ dictCode: e.target.value })}
-            className={`${setInp} ${!f.dictCode ? "border-amber-400" : ""}`}
-          >
-            <option value="">-- 选择字典 --</option>
-            {dicts.map((d) => (
-              <option key={d.id} value={d.code}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+        <Row label="下拉选项" hint="自定义内容,可增删">
+          <OptionsEditor options={f.options ?? []} onChange={(opts) => patch({ options: opts })} />
         </Row>
       )}
 
@@ -129,20 +126,97 @@ export function PropertiesPanel({
       )}
 
       {(f.type === "file" || f.type === "image") && (
-        <div className="grid grid-cols-2 gap-2">
-          <Row label="最多个数">
-            <NumIn value={f.maxFiles} onChange={(v) => patch({ maxFiles: v })} />
-          </Row>
-          <Row label="接受类型">
-            <input
-              value={f.accept ?? ""}
-              onChange={(e) => patch({ accept: e.target.value })}
-              placeholder=".pdf,.docx"
-              className={setInp}
-            />
-          </Row>
-        </div>
+        <Row label="最多个数" hint="留空 = 不限">
+          <NumIn value={f.maxFiles} onChange={(v) => patch({ maxFiles: v })} placeholder="不限" />
+        </Row>
       )}
+
+      {f.type === "file" && (
+        <Row label="允许的文件类型" hint="点选,可多选">
+          <AcceptChips accept={f.accept ?? ""} onChange={(a) => patch({ accept: a })} />
+        </Row>
+      )}
+    </div>
+  );
+}
+
+function OptionsEditor({
+  options,
+  onChange,
+}: {
+  options: string[];
+  onChange: (opts: string[]) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      {options.map((opt, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <input
+            value={opt}
+            onChange={(e) => {
+              const next = [...options];
+              next[i] = e.target.value;
+              onChange(next);
+            }}
+            placeholder={`选项 ${i + 1}`}
+            className={setInp}
+          />
+          <button
+            type="button"
+            title="删除选项"
+            onClick={() => onChange(options.filter((_, j) => j !== i))}
+            className="p-1 rounded text-[#9CA3AF] hover:text-red-600 hover:bg-red-50 flex-shrink-0"
+          >
+            <XIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...options, ""])}
+        className="w-full flex items-center justify-center gap-1 py-1.5 rounded-md border border-dashed border-[#dce4ef] text-[12px] text-[#667085] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+      >
+        <PlusIcon className="w-3.5 h-3.5" />
+        添加选项
+      </button>
+    </div>
+  );
+}
+
+function AcceptChips({ accept, onChange }: { accept: string; onChange: (a: string) => void }) {
+  const set = new Set(
+    accept
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  function toggle(exts: string[]) {
+    const all = exts.every((e) => set.has(e));
+    const next = new Set(set);
+    if (all) exts.forEach((e) => next.delete(e));
+    else exts.forEach((e) => next.add(e));
+    onChange([...next].join(","));
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {FILE_ACCEPT_PRESETS.map((p) => {
+        const on = p.exts.every((e) => set.has(e));
+        return (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() => toggle(p.exts)}
+            className={`px-2 py-1 rounded-full text-[12px] border transition-colors ${
+              on
+                ? "border-[var(--party-primary)] bg-party-soft text-[var(--party-primary)] font-bold"
+                : "border-[#dce4ef] bg-white text-[#475467] hover:border-[var(--party-primary)]"
+            }`}
+          >
+            {p.label}
+          </button>
+        );
+      })}
+      {set.size === 0 && <span className="text-[11px] text-[#9CA3AF] self-center">未选 = 任意类型</span>}
     </div>
   );
 }
@@ -162,14 +236,17 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 function NumIn({
   value,
   onChange,
+  placeholder,
 }: {
   value: number | undefined;
   onChange: (v: number | undefined) => void;
+  placeholder?: string;
 }) {
   return (
     <input
       type="number"
       value={value ?? ""}
+      placeholder={placeholder}
       onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
       className={setInp}
     />

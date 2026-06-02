@@ -25,8 +25,10 @@ export interface TaskField {
   sortOrder: number;
   placeholder?: string;
   description?: string;
-  /** select:关联 Dictionary.code */
-  dictCode?: string;
+  /** select:自定义下拉选项(直接填内容,不关联字典) */
+  options?: string[];
+  /** doclink:在线文档链接地址 */
+  link?: string;
   /** number 约束 */
   min?: number;
   max?: number;

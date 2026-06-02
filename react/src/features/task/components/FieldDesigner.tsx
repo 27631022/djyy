@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   DndContext,
   PointerSensor,
@@ -9,7 +8,6 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { Undo2Icon, Redo2Icon } from "lucide-react";
-import { dictionariesApi } from "@/features/dictionary";
 import type { TaskField, TaskFieldType } from "../api";
 import { FieldPalette } from "./designer/FieldPalette";
 import { FieldCanvas } from "./designer/FieldCanvas";
@@ -44,13 +42,6 @@ export function FieldDesigner({
   const [emptyGroups, setEmptyGroups] = useState<{ id: string; label: string }[]>([]);
   const { mutate, undo, redo, canUndo, canRedo } = useFieldHistory(value, onChange);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  const dictsQuery = useQuery({
-    queryKey: ["dictionaries"],
-    queryFn: () => dictionariesApi.list(),
-    staleTime: 60_000,
-  });
-  const dicts = (dictsQuery.data ?? []).map((d) => ({ id: d.id, code: d.code, name: d.name }));
 
   const containers = buildContainers(value, emptyGroups);
   const selectedField = value.find((f) => f.code === selectedCode) ?? null;
@@ -208,7 +199,6 @@ export function FieldDesigner({
             containers={containers}
             activeGroup={activeGroup}
             selectedCode={selectedCode}
-            dicts={dicts}
             onActivateGroup={setActiveGroup}
             onSelect={setSelectedCode}
             onPatch={patch}
@@ -219,7 +209,7 @@ export function FieldDesigner({
           />
         </DndContext>
         <div className="w-64 flex-shrink-0 border-l border-[#F0F0F0] bg-[#FBFBFC] p-3 overflow-auto">
-          <PropertiesPanel field={selectedField} dicts={dicts} onPatch={patch} />
+          <PropertiesPanel field={selectedField} onPatch={patch} />
         </div>
       </div>
     </div>
