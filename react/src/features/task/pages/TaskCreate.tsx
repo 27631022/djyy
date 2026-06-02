@@ -25,6 +25,7 @@ import {
   Loader2Icon,
   Wand2Icon,
   CopyIcon,
+  AlertTriangleIcon,
 } from "lucide-react";
 import { useAuth } from "@/stores/auth";
 import {
@@ -145,13 +146,19 @@ export default function TaskCreatePage() {
     },
     onError: (err: { response?: { data?: { message?: string | string[] } }; message?: string }) => {
       const msg = err.response?.data?.message;
-      toast.error(Array.isArray(msg) ? msg.join("; ") : (msg ?? err.message ?? "派发失败"));
+      // 派发失败的原因(多为字段/对象校验)要看清,延长展示时间
+      toast.error(Array.isArray(msg) ? msg.join("; ") : (msg ?? err.message ?? "派发失败"), {
+        duration: 10000,
+      });
     },
   });
 
+  // 字段定义问题(空显示名 / 下拉缺字典)会让后端派发 400。提前在第二步拦截 + 明确指引。
+  const fieldIssue = findFieldIssue(fields);
+
   const canNext =
     (step === 0 && !!title.trim()) ||
-    (step === 1 && fields.length > 0) ||
+    (step === 1 && fields.length > 0 && !fieldIssue) ||
     (step === 2 && targets.length > 0) ||
     step === 3;
 
@@ -300,6 +307,12 @@ export default function TaskCreatePage() {
                   <div className="flex-1" />
                   <span className="text-[12px] text-[#9CA3AF]">{fields.length} 个字段</span>
                 </div>
+                {fieldIssue && (
+                  <div className="flex-shrink-0 mb-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[13px] px-3 py-2 flex items-center gap-2">
+                    <AlertTriangleIcon className="w-4 h-4 flex-shrink-0" />
+                    「{fieldIssue.label}」{fieldIssue.hint}后再继续(否则派发会失败)。
+                  </div>
+                )}
                 <div className="flex-1 min-h-0">
                   <FieldDesigner value={fields} onChange={setFields} fill />
                 </div>
@@ -364,16 +377,18 @@ export default function TaskCreatePage() {
             </button>
 
             <div className="flex items-center gap-3">
-              <span className="text-[12px] text-[#9CA3AF]">
-                {step === 0
-                  ? title.trim()
-                    ? "基本信息已就绪"
-                    : "请填写任务名称"
-                  : step === 1
-                    ? `${fields.length} 个填报字段`
-                    : step === 2
-                      ? `已选 ${targets.length} 个对象`
-                      : `${targets.length} 个对象 · ${fields.length} 字段`}
+              <span className={`text-[12px] ${fieldIssue ? "text-amber-600 font-medium" : "text-[#9CA3AF]"}`}>
+                {fieldIssue
+                  ? `「${fieldIssue.label}」待完善`
+                  : step === 0
+                    ? title.trim()
+                      ? "基本信息已就绪"
+                      : "请填写任务名称"
+                    : step === 1
+                      ? `${fields.length} 个填报字段`
+                      : step === 2
+                        ? `已选 ${targets.length} 个对象`
+                        : `${targets.length} 个对象 · ${fields.length} 字段`}
               </span>
               {step < 3 ? (
                 <button
@@ -387,7 +402,7 @@ export default function TaskCreatePage() {
                 </button>
               ) : (
                 <button
-                  disabled={dispatch.isPending || targets.length === 0 || !title.trim()}
+                  disabled={dispatch.isPending || targets.length === 0 || !title.trim() || !!fieldIssue}
                   onClick={() => dispatch.mutate()}
                   className="flex items-center gap-1.5 px-6 py-2.5 text-[14px] font-bold text-white rounded-lg disabled:opacity-50"
                   style={{ backgroundColor: PARTY }}
@@ -489,4 +504,15 @@ function Block({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </div>
   );
+}
+
+/** 找出第一个会让派发失败的字段定义问题(空显示名 / 下拉缺字典);无则 null。 */
+function findFieldIssue(fields: TaskField[]): { label: string; hint: string } | null {
+  for (const f of fields) {
+    if (!f.label || !f.label.trim())
+      return { label: "未命名字段", hint: "点该字段卡片标题处输入字段名" };
+    if (f.type === "select" && !(f.dictCode && f.dictCode.trim()))
+      return { label: f.label, hint: "是下拉字段,点卡片右上「⚙」选择「字典」" };
+  }
+  return null;
 }
