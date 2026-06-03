@@ -1,5 +1,114 @@
-import { PlusIcon, XIcon } from "lucide-react";
+import { useRef, useState } from "react";
+import { PlusIcon, XIcon, UploadIcon, Loader2Icon, FileTextIcon, ImageIcon } from "lucide-react";
+import { toast } from "sonner";
+import { storageApi } from "@/features/storage";
+import type { TaskField } from "../api";
 import { PROP_INPUT, FILE_ACCEPT_PRESETS } from "./shared";
+
+/** 已上传文件项(存进 formData:{id,name}[]) */
+interface FilledFile {
+  id: string;
+  name: string;
+}
+
+/**
+ * 文件 / 图片填报控件:点选 → 走 storage 上传 → 存 {id,name}[]。
+ * 受 maxFiles / accept 约束;file/image 共用,image 只是默认 accept=image/*。
+ */
+export function FileFillInput({
+  field,
+  value,
+  onChange,
+  accept,
+  image,
+}: {
+  field: TaskField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  accept?: string;
+  image?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const files: FilledFile[] = Array.isArray(value) ? (value as FilledFile[]) : [];
+  const maxFiles = field.maxFiles;
+  const full = !!maxFiles && files.length >= maxFiles;
+
+  async function handle(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    setBusy(true);
+    try {
+      const uploaded: FilledFile[] = [];
+      for (const file of Array.from(list)) {
+        const meta = await storageApi.upload(file, {
+          ownerModule: "task",
+          folder: `填报-${field.label || field.code}`,
+        });
+        uploaded.push({ id: meta.id, name: meta.originalName });
+      }
+      let next = [...files, ...uploaded];
+      if (maxFiles && next.length > maxFiles) next = next.slice(0, maxFiles);
+      onChange(next);
+    } catch {
+      toast.error("上传失败,请重试");
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {files.map((fl, i) => (
+            <span
+              key={fl.id + i}
+              className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-md border border-[#dce4ef] bg-white text-xs max-w-[240px]"
+            >
+              {image ? (
+                <ImageIcon className="w-3.5 h-3.5 text-[#1A6BC8] flex-shrink-0" />
+              ) : (
+                <FileTextIcon className="w-3.5 h-3.5 text-[#1A6BC8] flex-shrink-0" />
+              )}
+              <span className="truncate text-[#172033]" title={fl.name}>
+                {fl.name}
+              </span>
+              <button
+                type="button"
+                title="移除"
+                onClick={() => onChange(files.filter((_, j) => j !== i))}
+                className="p-0.5 rounded text-[#9CA3AF] hover:text-red-600 hover:bg-red-50 flex-shrink-0"
+              >
+                <XIcon className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {!full && (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-[#dce4ef] text-[13px] text-[#475467] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] disabled:opacity-50"
+        >
+          {busy ? <Loader2Icon className="w-4 h-4 animate-spin" /> : <UploadIcon className="w-4 h-4" />}
+          {busy ? "上传中…" : image ? "上传图片" : "上传文件"}
+          {maxFiles ? <span className="text-[11px] text-[#9CA3AF]">{files.length}/{maxFiles}</span> : null}
+        </button>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        multiple={!maxFiles || maxFiles > 1}
+        className="hidden"
+        onChange={(e) => handle(e.target.files)}
+      />
+    </div>
+  );
+}
 
 /**
  * 字段属性编辑器之间共享的 React 控件。

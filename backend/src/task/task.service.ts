@@ -10,6 +10,7 @@ import { OrganizationService } from '../organization';
 import { UserService } from '../user';
 import { normalizeFieldDefs, parseFields } from './task-fields';
 import { DispatchTaskDto, type TaskTargetInput } from './dto/dispatch-task.dto';
+import { SaveFillDto } from './dto/save-fill.dto';
 
 interface ActorContext {
   actorId?: string;
@@ -27,6 +28,13 @@ interface TaskTargetRow {
   handlerOrgId: string | null;
   status: string;
   assignedAt: Date | null;
+}
+
+/** 行政机构索引(父子 + meta),供「对口实时解析」复用 */
+interface OrgIndex {
+  childrenOf: Map<string, string[]>;
+  metaById: Map<string, string | null>;
+  parentOf: Map<string, string | null>;
 }
 
 @Injectable()
@@ -57,41 +65,8 @@ export class TaskService {
       dueAt = d;
     }
 
-    // 对口解析(派发对接「组织对口上级」属性):目标单位子树里,谁的「对口上级」含派发部门 → 责任部门
-    const orgRows = dispatchOrgId
-      ? await this.orgs.findAll({ kind: 'admin', includeInactive: true })
-      : [];
-    const childrenOf = new Map<string, string[]>();
-    const metaById = new Map<string, string | null>();
-    for (const o of orgRows) {
-      metaById.set(o.id, o.meta ?? null);
-      if (o.parentId) {
-        const arr = childrenOf.get(o.parentId) ?? [];
-        arr.push(o.id);
-        childrenOf.set(o.parentId, arr);
-      }
-    }
-    const findHandlerDept = (unitId: string, sourceId: string): string | null => {
-      const stack = [unitId];
-      const seen = new Set<string>();
-      while (stack.length) {
-        const id = stack.pop() as string;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        const meta = metaById.get(id);
-        if (meta) {
-          try {
-            const cp = (JSON.parse(meta) as { counterpartParentOrgIds?: unknown })
-              .counterpartParentOrgIds;
-            if (Array.isArray(cp) && cp.includes(sourceId)) return id;
-          } catch {
-            /* 忽略坏 meta */
-          }
-        }
-        for (const c of childrenOf.get(id) ?? []) stack.push(c);
-      }
-      return null;
-    };
+    // 对口实时解析:加载行政机构索引(责任部门按「组织对口上级」属性现算;派发时存一份快照,读取时仍会实时重算)
+    const orgIndex = dispatchOrgId ? await this.loadAdminOrgIndex() : null;
 
     const task = await this.prisma.$transaction(async (tx) => {
       const t = await tx.task.create({
@@ -118,9 +93,9 @@ export class TaskService {
           // 直派个人:该人即责任人
           ownerUserId = tg.targetUserId ?? null;
           status = 'assigned';
-        } else if (dispatchOrgId && tg.targetOrgId) {
-          // 单位派发:按「组织对口上级」属性定责任部门(命中则待该部门成员接收认领,不预设责任人)
-          handlerOrgId = findHandlerDept(tg.targetOrgId, dispatchOrgId);
+        } else if (dispatchOrgId && tg.targetOrgId && orgIndex) {
+          // 单位派发:按「组织对口上级」属性定责任部门(存一份快照;读取时实时重算)
+          handlerOrgId = this.findHandlerDept(orgIndex, tg.targetOrgId, dispatchOrgId);
         }
         await tx.taskTarget.create({
           data: {
@@ -153,6 +128,58 @@ export class TaskService {
     });
 
     return this.get(task.id);
+  }
+
+  /** 加载行政机构索引(父子 + meta),供「对口实时解析」复用。 */
+  private async loadAdminOrgIndex(): Promise<OrgIndex> {
+    const orgRows = await this.orgs.findAll({ kind: 'admin', includeInactive: true });
+    const childrenOf = new Map<string, string[]>();
+    const metaById = new Map<string, string | null>();
+    const parentOf = new Map<string, string | null>();
+    for (const o of orgRows) {
+      metaById.set(o.id, o.meta ?? null);
+      parentOf.set(o.id, o.parentId ?? null);
+      if (o.parentId) {
+        const arr = childrenOf.get(o.parentId) ?? [];
+        arr.push(o.id);
+        childrenOf.set(o.parentId, arr);
+      }
+    }
+    return { childrenOf, metaById, parentOf };
+  }
+
+  /** 目标单位子树里「对口上级」含 sourceId 的部门 = 责任部门;无 = null(未配置对口 → 谁都不可见)。 */
+  private findHandlerDept(index: OrgIndex, unitId: string, sourceId: string): string | null {
+    const stack = [unitId];
+    const seen = new Set<string>();
+    while (stack.length) {
+      const id = stack.pop() as string;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const meta = index.metaById.get(id);
+      if (meta) {
+        try {
+          const cp = (JSON.parse(meta) as { counterpartParentOrgIds?: unknown })
+            .counterpartParentOrgIds;
+          if (Array.isArray(cp) && cp.includes(sourceId)) return id;
+        } catch {
+          /* 忽略坏 meta */
+        }
+      }
+      for (const c of index.childrenOf.get(id) ?? []) stack.push(c);
+    }
+    return null;
+  }
+
+  /** 某机构的所有祖先 id(自下而上)。 */
+  private ancestorsOf(index: OrgIndex, id: string): string[] {
+    const out: string[] = [];
+    let cur = index.parentOf.get(id) ?? null;
+    while (cur) {
+      out.push(cur);
+      cur = index.parentOf.get(cur) ?? null;
+    }
+    return out;
   }
 
   /** 我派发的任务列表(含派发对象状态汇总) */
@@ -190,11 +217,23 @@ export class TaskService {
       orderBy: { createdAt: 'asc' },
     });
 
+    // 责任部门实时解析(组织对口属性是唯一真相;派发后改对口也即时生效)
+    const orgIndex = await this.loadAdminOrgIndex();
+    const liveHandler = new Map<string, string | null>();
+    for (const t of targets) {
+      liveHandler.set(
+        t.id,
+        t.targetType === 'org' && t.targetOrgId && task.dispatchOrgId
+          ? this.findHandlerDept(orgIndex, t.targetOrgId, task.dispatchOrgId)
+          : null,
+      );
+    }
+
     const orgIds = [
       ...targets
         .filter((t) => t.targetType === 'org' && t.targetOrgId)
         .map((t) => t.targetOrgId as string),
-      ...targets.filter((t) => t.handlerOrgId).map((t) => t.handlerOrgId as string),
+      ...[...liveHandler.values()].filter((x): x is string => !!x),
     ];
     const userIds = [
       ...targets.filter((t) => t.targetUserId).map((t) => t.targetUserId as string),
@@ -205,27 +244,30 @@ export class TaskService {
       this.infoForUsers(userIds),
     ]);
 
-    const enriched = targets.map((t) => ({
-      id: t.id,
-      targetType: t.targetType,
-      targetOrgId: t.targetOrgId,
-      targetUserId: t.targetUserId,
-      targetName:
-        t.targetType === 'org'
-          ? t.targetOrgId
-            ? orgNames[t.targetOrgId]
-            : ''
-          : t.targetUserId
-            ? userInfo[t.targetUserId]?.name ?? ''
-            : '',
-      ownerUserId: t.ownerUserId,
-      ownerName: t.ownerUserId ? userInfo[t.ownerUserId]?.name ?? null : null,
-      ownerPhone: t.ownerUserId ? userInfo[t.ownerUserId]?.phone ?? null : null,
-      handlerOrgId: t.handlerOrgId,
-      handlerOrgName: t.handlerOrgId ? orgNames[t.handlerOrgId] : null,
-      status: t.status,
-      assignedAt: t.assignedAt,
-    }));
+    const enriched = targets.map((t) => {
+      const h = liveHandler.get(t.id) ?? null;
+      return {
+        id: t.id,
+        targetType: t.targetType,
+        targetOrgId: t.targetOrgId,
+        targetUserId: t.targetUserId,
+        targetName:
+          t.targetType === 'org'
+            ? t.targetOrgId
+              ? orgNames[t.targetOrgId]
+              : ''
+            : t.targetUserId
+              ? userInfo[t.targetUserId]?.name ?? ''
+              : '',
+        ownerUserId: t.ownerUserId,
+        ownerName: t.ownerUserId ? userInfo[t.ownerUserId]?.name ?? null : null,
+        ownerPhone: t.ownerUserId ? userInfo[t.ownerUserId]?.phone ?? null : null,
+        handlerOrgId: h,
+        handlerOrgName: h ? orgNames[h] : null,
+        status: t.status,
+        assignedAt: t.assignedAt,
+      };
+    });
 
     return {
       id: task.id,
@@ -256,51 +298,69 @@ export class TaskService {
     if (!actorId) throw new BadRequestException('缺少操作者身份');
     const me = await this.users.findOne(actorId);
     const myOrgIds = me.memberships.admin.map((m) => m.orgId);
+    const myOrgSet = new Set(myOrgIds);
+    const index = await this.loadAdminOrgIndex();
+    // 我可能成为责任部门的单位 = 我所在部门 + 它们的所有祖先(任务派到这些单位时,我的部门可能是其下责任部门)
+    const myUnits = new Set<string>(myOrgIds);
+    for (const d of myOrgIds) for (const a of this.ancestorsOf(index, d)) myUnits.add(a);
 
-    const targets = await this.prisma.taskTarget.findMany({
+    const candidates = await this.prisma.taskTarget.findMany({
       where: {
         OR: [
           { ownerUserId: actorId },
-          { ownerUserId: null, handlerOrgId: { in: myOrgIds } },
-          { ownerUserId: null, handlerOrgId: null, targetOrgId: { in: myOrgIds } },
+          { ownerUserId: null, targetOrgId: { in: [...myUnits] } },
         ],
       },
       orderBy: { createdAt: 'desc' },
     });
-    if (targets.length === 0) return [];
+    if (candidates.length === 0) return [];
 
-    const taskById = new Map(
-      (
-        await this.prisma.task.findMany({
-          where: { id: { in: [...new Set(targets.map((t) => t.taskId))] } },
-        })
-      ).map((t) => [t.id, t]),
-    );
-    const orgNames = await this.namesForOrgs([
-      ...targets.flatMap((t) => [t.targetOrgId, t.handlerOrgId]),
-      ...[...taskById.values()].map((t) => t.dispatchOrgId),
-    ].filter((x): x is string => !!x));
-
-    return targets.flatMap((t) => {
-      const task = taskById.get(t.taskId);
-      if (!task) return [];
-      return [
-        {
-          targetId: t.id,
-          taskId: task.id,
-          title: task.title,
-          dueAt: task.dueAt,
-          status: t.status,
-          isOwner: t.ownerUserId === actorId,
-          claimable: !t.ownerUserId && t.status !== 'done',
-          dispatchOrgName: task.dispatchOrgId ? orgNames[task.dispatchOrgId] ?? null : null,
-          targetOrgName: t.targetOrgId ? orgNames[t.targetOrgId] ?? null : null,
-          handlerOrgName: t.handlerOrgId ? orgNames[t.handlerOrgId] ?? null : null,
-          fieldCount: parseFields(task.fields).length,
-          createdAt: task.createdAt,
-        },
-      ];
+    const tasksList = await this.prisma.task.findMany({
+      where: { id: { in: [...new Set(candidates.map((t) => t.taskId))] } },
     });
+    const taskById = new Map(tasksList.map((t) => [t.id, t]));
+
+    // 实时解析每个候选的责任部门;待接收的只有「责任部门是我所在部门」才可见(未配置对口=谁都不可见)
+    const rows: {
+      t: (typeof candidates)[number];
+      task: (typeof tasksList)[number];
+      handlerOrgId: string | null;
+    }[] = [];
+    for (const t of candidates) {
+      const task = taskById.get(t.taskId);
+      if (!task) continue;
+      const handlerOrgId =
+        t.targetType === 'org' && t.targetOrgId && task.dispatchOrgId
+          ? this.findHandlerDept(index, t.targetOrgId, task.dispatchOrgId)
+          : null;
+      if (t.ownerUserId !== actorId && (!handlerOrgId || !myOrgSet.has(handlerOrgId))) {
+        continue; // 待接收但责任部门不是我 / 未配置对口 → 不可见
+      }
+      rows.push({ t, task, handlerOrgId });
+    }
+    if (rows.length === 0) return [];
+
+    const orgNames = await this.namesForOrgs(
+      [
+        ...rows.flatMap((r) => [r.t.targetOrgId, r.handlerOrgId]),
+        ...rows.map((r) => r.task.dispatchOrgId),
+      ].filter((x): x is string => !!x),
+    );
+
+    return rows.map(({ t, task, handlerOrgId }) => ({
+      targetId: t.id,
+      taskId: task.id,
+      title: task.title,
+      dueAt: task.dueAt,
+      status: t.status,
+      isOwner: t.ownerUserId === actorId,
+      claimable: !t.ownerUserId && t.status !== 'done',
+      dispatchOrgName: task.dispatchOrgId ? orgNames[task.dispatchOrgId] ?? null : null,
+      targetOrgName: t.targetOrgId ? orgNames[t.targetOrgId] ?? null : null,
+      handlerOrgName: handlerOrgId ? orgNames[handlerOrgId] ?? null : null,
+      fieldCount: parseFields(task.fields).length,
+      createdAt: task.createdAt,
+    }));
   }
 
   /** 接收(认领):未被接收 + 我是责任部门成员 → 成为责任人(转填报中)。 */
@@ -313,17 +373,22 @@ export class TaskService {
 
     const me = await this.users.findOne(actorId);
     const myOrgIds = new Set(me.memberships.admin.map((m) => m.orgId));
-    const inScope = target.handlerOrgId
-      ? myOrgIds.has(target.handlerOrgId)
-      : target.targetOrgId
-        ? myOrgIds.has(target.targetOrgId)
-        : false;
-    if (!inScope) throw new ForbiddenException('你不在该任务的责任部门,无法接收');
+    // 实时解析责任部门:未配置对口 / 我不在该部门 → 不能接收
+    const task = await this.prisma.task.findUnique({ where: { id: target.taskId } });
+    const index = await this.loadAdminOrgIndex();
+    const handlerOrgId =
+      task?.dispatchOrgId && target.targetOrgId
+        ? this.findHandlerDept(index, target.targetOrgId, task.dispatchOrgId)
+        : null;
+    if (!handlerOrgId || !myOrgIds.has(handlerOrgId)) {
+      throw new ForbiddenException('你不在该任务的责任部门(或该单位尚未配置对口),无法接收');
+    }
 
     const updated = await this.prisma.taskTarget.update({
       where: { id: targetId },
       data: {
         ownerUserId: actorId,
+        handlerOrgId,
         status: 'in_progress',
         assignedById: actorId,
         assignedAt: new Date(),
@@ -336,6 +401,87 @@ export class TaskService {
       detail: { taskId: target.taskId },
     });
     return { ok: true, status: updated.status };
+  }
+
+  /** 填报页数据:任务字段 + 我(责任人)的回执(草稿/已提交)。 */
+  async getFill(targetId: string, actor: ActorContext) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const target = await this.prisma.taskTarget.findUnique({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('派发对象不存在');
+    if (target.ownerUserId !== actorId) {
+      throw new ForbiddenException('只有该任务的责任人可以填报(请先在「我的待办」接收)');
+    }
+    const task = await this.prisma.task.findUnique({ where: { id: target.taskId } });
+    if (!task) throw new NotFoundException('任务不存在');
+    const submission = await this.prisma.taskSubmission.findUnique({ where: { targetId } });
+    return {
+      targetId,
+      taskId: task.id,
+      taskTitle: task.title,
+      notes: task.notes,
+      dueAt: task.dueAt,
+      fields: parseFields(task.fields),
+      targetStatus: target.status,
+      submission: {
+        formData: submission ? safeJson(submission.formData) : {},
+        status: submission?.status ?? 'draft',
+        reviewNote: submission?.reviewNote ?? null,
+        submittedAt: submission?.submittedAt ?? null,
+      },
+    };
+  }
+
+  /** 保存填报:草稿 / 提交(提交时校验必填 + 转「已提交」)。 */
+  async saveFill(targetId: string, dto: SaveFillDto, actor: ActorContext) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const target = await this.prisma.taskTarget.findUnique({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('派发对象不存在');
+    if (target.ownerUserId !== actorId) {
+      throw new ForbiddenException('只有该任务的责任人可以填报');
+    }
+    const task = await this.prisma.task.findUnique({ where: { id: target.taskId } });
+    if (!task) throw new NotFoundException('任务不存在');
+    const fields = parseFields(task.fields);
+    const formData = (dto.formData ?? {}) as Record<string, unknown>;
+
+    if (dto.submit) {
+      const missing = fields.filter((f) => f.required && isEmptyValue(formData[f.code]));
+      if (missing.length) {
+        throw new BadRequestException(
+          `请先填写必填项:${missing.map((m) => m.label).join('、')}`,
+        );
+      }
+    }
+
+    const fileIds = collectFileIds(fields, formData);
+    const status = dto.submit ? 'submitted' : 'draft';
+    const data = {
+      formData: JSON.stringify(formData),
+      fileIds: JSON.stringify(fileIds),
+      status,
+      submittedById: dto.submit ? actorId : null,
+      submittedAt: dto.submit ? new Date() : null,
+    };
+    await this.prisma.taskSubmission.upsert({
+      where: { targetId },
+      create: { taskId: target.taskId, targetId, ...data },
+      update: data,
+    });
+    if (dto.submit) {
+      await this.prisma.taskTarget.update({
+        where: { id: targetId },
+        data: { status: 'submitted' },
+      });
+    }
+    await this.audit.log({
+      ...actor,
+      action: dto.submit ? 'task.submit' : 'task.fill.draft',
+      target: targetId,
+      detail: { taskId: target.taskId, fileCount: fileIds.length },
+    });
+    return { ok: true, status };
   }
 
   /** 规整 + 校验派发对象(去重、存在性) */
@@ -394,6 +540,45 @@ export class TaskService {
     }
     return map;
   }
+}
+
+/** 安全解析 formData JSON → 对象 */
+function safeJson(s: string): Record<string, unknown> {
+  try {
+    const v: unknown = JSON.parse(s);
+    return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 填报值是否为空(必填校验用):null/空串/空数组 = 空 */
+function isEmptyValue(v: unknown): boolean {
+  if (v === null || v === undefined) return true;
+  if (typeof v === 'string') return v.trim() === '';
+  if (Array.isArray(v)) return v.length === 0;
+  return false;
+}
+
+/** 从 formData 收集所有 file/image 字段引用的 storage fileId(冗余存 TaskSubmission.fileIds,便于汇总/下载/回收) */
+function collectFileIds(
+  fields: { code: string; type: string }[],
+  formData: Record<string, unknown>,
+): string[] {
+  const ids: string[] = [];
+  for (const f of fields) {
+    if (f.type !== 'file' && f.type !== 'image') continue;
+    const v = formData[f.code];
+    if (!Array.isArray(v)) continue;
+    for (const item of v) {
+      if (item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string') {
+        ids.push((item as { id: string }).id);
+      } else if (typeof item === 'string') {
+        ids.push(item);
+      }
+    }
+  }
+  return ids;
 }
 
 function countByStatus(targets: { status: string }[]): Record<string, number> {

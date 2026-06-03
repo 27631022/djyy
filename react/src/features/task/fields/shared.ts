@@ -7,6 +7,10 @@
 export const PROP_INPUT =
   "w-full px-2.5 py-1.5 text-[13px] border border-[#dce4ef] rounded-md bg-white focus:outline-none focus:border-[var(--party-primary)]";
 
+/** 填报控件外观(可输入,比属性控件大一些) */
+export const FILL_INPUT =
+  "w-full px-3 py-2 text-sm text-[#172033] border border-[#dce4ef] rounded-md bg-white focus:outline-none focus:border-[var(--party-primary)] focus:ring-2 focus:ring-party-primary-10 placeholder:text-[#9CA3AF]";
+
 /** 设计器卡内的只读控件外观 */
 export const DESIGNER_CTL =
   "w-full px-2.5 py-1.5 text-sm border border-[#E5E7EB] rounded-md bg-white text-[#374151]";

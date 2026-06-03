@@ -265,6 +265,24 @@ export interface TaskInboxItem {
   createdAt: string;
 }
 
+/* ─── 填报(P2.2)─── */
+export interface TaskFillDetail {
+  targetId: string;
+  taskId: string;
+  taskTitle: string;
+  notes: string | null;
+  dueAt: string | null;
+  fields: TaskField[];
+  targetStatus: string;
+  submission: {
+    /** { [fieldCode]: value };file/image 值为 {id,name}[] */
+    formData: Record<string, unknown>;
+    status: string;
+    reviewNote: string | null;
+    submittedAt: string | null;
+  };
+}
+
 export const taskApi = {
   dispatch: (input: DispatchTaskInput) =>
     api.post<TaskDetail>("/tasks", input).then((r) => r.data),
@@ -302,6 +320,19 @@ export const taskApi = {
   claim: (targetId: string) =>
     api
       .post<{ ok: boolean; status: string }>(`/tasks/targets/${targetId}/claim`, {})
+      .then((r) => r.data),
+
+  /** 填报页数据(责任人):任务字段 + 我的回执 */
+  getFill: (targetId: string) =>
+    api.get<TaskFillDetail>(`/tasks/targets/${targetId}/fill`).then((r) => r.data),
+
+  /** 保存填报:submit=false 存草稿 / true 提交(后端校验必填) */
+  saveFill: (targetId: string, formData: Record<string, unknown>, submit: boolean) =>
+    api
+      .post<{ ok: boolean; status: string }>(`/tasks/targets/${targetId}/fill`, {
+        formData,
+        submit,
+      })
       .then((r) => r.data),
 };
 

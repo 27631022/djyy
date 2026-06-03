@@ -1,6 +1,11 @@
 import { ListIcon } from "lucide-react";
-import type { FieldTypeDef, FieldPreviewProps, FieldPropsEditorProps } from "./types";
-import { DESIGNER_CTL, FORM_BOX } from "./shared";
+import type {
+  FieldTypeDef,
+  FieldPreviewProps,
+  FieldPropsEditorProps,
+  FieldFillProps,
+} from "./types";
+import { DESIGNER_CTL, FORM_BOX, FILL_INPUT } from "./shared";
 import { PropRow, OptionsEditor } from "./widgets";
 
 /** 下拉选择(自定义选项,不关联字典) */
@@ -29,6 +34,24 @@ function Properties({ field: f, patch }: FieldPropsEditorProps) {
   );
 }
 
+function FillInput({ field: f, value, onChange }: FieldFillProps) {
+  const opts = f.options ?? [];
+  return (
+    <select
+      value={typeof value === "string" ? value : ""}
+      onChange={(e) => onChange(e.target.value)}
+      className={`${FILL_INPUT} max-w-[280px]`}
+    >
+      <option value="">请选择</option>
+      {opts.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export const selectField: FieldTypeDef = {
   type: "select",
   label: "下拉选择",
@@ -39,6 +62,7 @@ export const selectField: FieldTypeDef = {
   makeDefaults: () => ({ options: ["选项一", "选项二"] }),
   Preview,
   Properties,
+  FillInput,
   validate: (f) =>
     f.options && f.options.some((o) => o.trim())
       ? null

@@ -22,6 +22,13 @@ export interface FieldPropsEditorProps {
   patch: (partial: Partial<TaskField>) => void;
 }
 
+export interface FieldFillProps {
+  field: TaskField;
+  /** 当前填报值(formData[code]):按类型为 string / number / {id,name}[] / boolean */
+  value: unknown;
+  onChange: (v: unknown) => void;
+}
+
 export interface FieldTypeDef {
   type: TaskFieldType;
   /** 显示名(palette / 卡片 / 类型下拉) */
@@ -40,6 +47,8 @@ export interface FieldTypeDef {
   Preview: (props: FieldPreviewProps) => ReactNode;
   /** 右栏:该类型「专属」属性编辑器;通用的 显示名/必填/占位/说明 不在此(返回 null = 无专属属性) */
   Properties?: (props: FieldPropsEditorProps) => ReactNode;
+  /** P2 填报控件(可输入)。返回值写进 TaskSubmission.formData[code];file/image 内部走 storage 上传。 */
+  FillInput?: (props: FieldFillProps) => ReactNode;
   /**
    * 设计期校验该字段「定义」是否完整(如下拉缺选项)。返回一句提示文案(用于派发前拦截 + 指引),
    * 完整则返回 null。注意:这里校验「定义」,填报「值」的校验在 P2 做。

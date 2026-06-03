@@ -1,6 +1,11 @@
 import { HashIcon } from "lucide-react";
-import type { FieldTypeDef, FieldPreviewProps, FieldPropsEditorProps } from "./types";
-import { DESIGNER_CTL, FORM_BOX, PROP_INPUT } from "./shared";
+import type {
+  FieldTypeDef,
+  FieldPreviewProps,
+  FieldPropsEditorProps,
+  FieldFillProps,
+} from "./types";
+import { DESIGNER_CTL, FORM_BOX, PROP_INPUT, FILL_INPUT } from "./shared";
 import { PropRow, NumberInput } from "./widgets";
 
 /** 数字(可设 最小/最大/单位/小数位) */
@@ -42,6 +47,23 @@ function Properties({ field: f, patch }: FieldPropsEditorProps) {
   );
 }
 
+function FillInput({ field: f, value, onChange }: FieldFillProps) {
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="number"
+        value={value === "" || value === null || value === undefined ? "" : String(value)}
+        min={f.min}
+        max={f.max}
+        onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
+        placeholder={f.placeholder || "请输入数字"}
+        className={`${FILL_INPUT} max-w-[220px]`}
+      />
+      {f.unit && <span className="text-sm text-[#6B7280]">{f.unit}</span>}
+    </div>
+  );
+}
+
 export const numberField: FieldTypeDef = {
   type: "number",
   label: "数字",
@@ -51,4 +73,5 @@ export const numberField: FieldTypeDef = {
   ownProps: ["min", "max", "unit", "decimals"],
   Preview,
   Properties,
+  FillInput,
 };

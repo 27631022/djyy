@@ -1,12 +1,17 @@
 import { PaperclipIcon } from "lucide-react";
-import type { FieldTypeDef, FieldPreviewProps, FieldPropsEditorProps } from "./types";
+import type {
+  FieldTypeDef,
+  FieldPreviewProps,
+  FieldPropsEditorProps,
+  FieldFillProps,
+} from "./types";
 import {
   DEFAULT_FILE_ACCEPT,
   acceptLabel,
   maxFilesLabel,
   uploadBoxCls,
 } from "./shared";
-import { PropRow, NumberInput, AcceptChips } from "./widgets";
+import { PropRow, NumberInput, AcceptChips, FileFillInput } from "./widgets";
 
 /** 文件上传(可设 最多个数 + 允许类型) */
 function Preview({ field: f, variant = "designer" }: FieldPreviewProps) {
@@ -32,6 +37,10 @@ function Properties({ field: f, patch }: FieldPropsEditorProps) {
   );
 }
 
+function FillInput({ field: f, value, onChange }: FieldFillProps) {
+  return <FileFillInput field={f} value={value} onChange={onChange} accept={f.accept} />;
+}
+
 export const fileField: FieldTypeDef = {
   type: "file",
   label: "文件",
@@ -41,4 +50,5 @@ export const fileField: FieldTypeDef = {
   makeDefaults: () => ({ accept: DEFAULT_FILE_ACCEPT }),
   Preview,
   Properties,
+  FillInput,
 };

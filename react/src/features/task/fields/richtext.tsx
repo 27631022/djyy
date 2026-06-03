@@ -1,6 +1,6 @@
 import { FileTextIcon } from "lucide-react";
-import type { FieldTypeDef, FieldPreviewProps } from "./types";
-import { FORM_BOX } from "./shared";
+import type { FieldTypeDef, FieldPreviewProps, FieldFillProps } from "./types";
+import { FORM_BOX, FILL_INPUT } from "./shared";
 
 /** 富文本(P4 接内置编辑器,这里只示意) */
 function Preview({ field: f, variant = "designer" }: FieldPreviewProps) {
@@ -19,6 +19,18 @@ function Preview({ field: f, variant = "designer" }: FieldPreviewProps) {
   );
 }
 
+function FillInput({ field: f, value, onChange }: FieldFillProps) {
+  return (
+    <textarea
+      rows={5}
+      value={typeof value === "string" ? value : ""}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={f.placeholder || "请输入(内置富文本编辑器 P4 接,暂用多行文本)"}
+      className={FILL_INPUT}
+    />
+  );
+}
+
 export const richtextField: FieldTypeDef = {
   type: "richtext",
   label: "富文本",
@@ -26,4 +38,5 @@ export const richtextField: FieldTypeDef = {
   order: 8,
   hasPlaceholder: true,
   Preview,
+  FillInput,
 };

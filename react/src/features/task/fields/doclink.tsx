@@ -1,5 +1,10 @@
 import { Link2Icon } from "lucide-react";
-import type { FieldTypeDef, FieldPreviewProps, FieldPropsEditorProps } from "./types";
+import type {
+  FieldTypeDef,
+  FieldPreviewProps,
+  FieldPropsEditorProps,
+  FieldFillProps,
+} from "./types";
 import { DESIGNER_CTL, FORM_BOX, PROP_INPUT } from "./shared";
 import { PropRow } from "./widgets";
 
@@ -44,6 +49,30 @@ function Properties({ field: f, patch }: FieldPropsEditorProps) {
   );
 }
 
+function FillInput({ field: f, value, onChange }: FieldFillProps) {
+  const done = value === true;
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      {f.link ? (
+        <a
+          href={f.link}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-party-soft text-[var(--party-primary)] text-[13px] font-medium hover:underline"
+        >
+          打开在线文档填写 ↗
+        </a>
+      ) : (
+        <span className="text-[13px] text-[#9CA3AF]">未设置链接</span>
+      )}
+      <label className="inline-flex items-center gap-1.5 text-[13px] cursor-pointer">
+        <input type="checkbox" checked={done} onChange={(e) => onChange(e.target.checked)} />
+        已完成在线填写
+      </label>
+    </div>
+  );
+}
+
 export const doclinkField: FieldTypeDef = {
   type: "doclink",
   label: "在线文档",
@@ -52,4 +81,5 @@ export const doclinkField: FieldTypeDef = {
   ownProps: ["link"],
   Preview,
   Properties,
+  FillInput,
 };

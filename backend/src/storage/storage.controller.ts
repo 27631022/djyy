@@ -45,7 +45,7 @@ function decodeMulterFilename(name: string): string {
 /**
  * 通用文件存储 API(鉴权)。
  *
- *   POST   /files       @Permission('file:upload')  multipart 上传,返回 { id, ... }
+ *   POST   /files       仅登录                       multipart 上传,返回 { id, ... }
  *   GET    /files/:id    仅登录                       流式下载/预览(StreamableFile)
  *   DELETE /files/:id   @Permission('file:delete')   软删 + 删字节
  *
@@ -59,7 +59,8 @@ export class StorageController {
   constructor(private readonly svc: StorageService) {}
 
   @Post()
-  @Permission('file:upload')
+  // 仅登录即可上传(无 @Permission)—— 接收/填报路径对全员开放,其依赖的文件上传也必须开放,
+  // 否则花名册账号等「无角色」用户传不了填报附件(与 inbox/claim/fill 一致;整体权限收敛留后续)。
   @UseInterceptors(FileInterceptor('file'))
   async upload(
     @UploadedFile() file: UploadedFileShape | undefined,

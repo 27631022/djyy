@@ -1,6 +1,6 @@
 /**
  * 我的待办(接收侧)—— 我负责的 + 我所在责任部门「待接收」的任务。
- * 待接收 → 点「接收」认领,成为该任务责任人(status→填报中);填报表单在下一步(P2.2)开放。
+ * 待接收 → 点「接收」认领,成为该任务责任人(status→填报中)→ 进入填报页;我负责的 → 点「填报」继续。
  */
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -10,7 +10,7 @@ import {
   Building2Icon,
   ClockIcon,
   HandIcon,
-  FileTextIcon,
+  PencilLineIcon,
   Loader2Icon,
 } from "lucide-react";
 import {
@@ -32,9 +32,10 @@ export default function TaskInboxPage() {
 
   const claim = useMutation({
     mutationFn: (targetId: string) => taskApi.claim(targetId),
-    onSuccess: () => {
+    onSuccess: (_r, targetId) => {
       qc.invalidateQueries({ queryKey: ["task-inbox"] });
-      toast.success("已接收,你已成为该任务责任人(填报功能即将开放)");
+      toast.success("已接收,开始填报");
+      navigate(`/admin/tasks/fill/${targetId}`);
     },
     onError: (e) => toast.error(taskApiErrorMessage(e, "接收失败"), { duration: 8000 }),
   });
@@ -98,11 +99,12 @@ export default function TaskInboxPage() {
                     action={
                       <button
                         type="button"
-                        onClick={() => navigate(`/admin/tasks/${it.taskId}`)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-bold border border-[#dce4ef] bg-white text-[#475467] hover:border-[var(--party-primary)]"
+                        onClick={() => navigate(`/admin/tasks/fill/${it.targetId}`)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-bold text-white"
+                        style={{ backgroundColor: PARTY }}
                       >
-                        <FileTextIcon className="w-4 h-4" />
-                        查看
+                        <PencilLineIcon className="w-4 h-4" />
+                        {it.status === "submitted" ? "查看填报" : "填报"}
                       </button>
                     }
                   />

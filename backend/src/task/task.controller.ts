@@ -18,6 +18,7 @@ import { TaskService } from './task.service';
 import { TaskExtractionService } from './task-extraction.service';
 import { DispatchTaskDto } from './dto/dispatch-task.dto';
 import { SuggestFieldsDto } from './dto/suggest-fields.dto';
+import { SaveFillDto } from './dto/save-fill.dto';
 
 interface UploadedFileShape {
   originalname: string;
@@ -113,6 +114,23 @@ export class TaskController {
   @Post('targets/:id/claim')
   claim(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.svc.claim(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 填报页数据(责任人):任务字段 + 我的回执 */
+  @Get('targets/:id/fill')
+  getFill(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.getFill(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 保存填报(草稿 / 提交) */
+  @Post('targets/:id/fill')
+  saveFill(
+    @Param('id') id: string,
+    @Body() dto: SaveFillDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.saveFill(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
   @Get(':id')

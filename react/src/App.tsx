@@ -18,6 +18,7 @@ import {
   TaskListPage,
   TaskDetailPage,
   TaskInboxPage,
+  TaskFillPage,
 } from "@/features/task";
 import {
   CertificateTemplatesPage,
@@ -120,6 +121,7 @@ const App = () => (
             <Route path="certificates/external" element={<CertificateExternalPage />} />
             <Route path="tasks" element={<TaskListPage />} />
             <Route path="tasks/inbox" element={<TaskInboxPage />} />
+            <Route path="tasks/fill/:targetId" element={<TaskFillPage />} />
             <Route path="tasks/new" element={<TaskCreatePage />} />
             <Route path="tasks/:id" element={<TaskDetailPage />} />
           </Route>

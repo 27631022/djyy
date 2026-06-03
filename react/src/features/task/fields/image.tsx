@@ -1,7 +1,12 @@
 import { ImageIcon } from "lucide-react";
-import type { FieldTypeDef, FieldPreviewProps, FieldPropsEditorProps } from "./types";
+import type {
+  FieldTypeDef,
+  FieldPreviewProps,
+  FieldPropsEditorProps,
+  FieldFillProps,
+} from "./types";
 import { maxFilesLabel, uploadBoxCls } from "./shared";
-import { PropRow, NumberInput } from "./widgets";
+import { PropRow, NumberInput, FileFillInput } from "./widgets";
 
 /** 图片上传(可设 最多个数) */
 function Preview({ field: f, variant = "designer" }: FieldPreviewProps) {
@@ -20,6 +25,10 @@ function Properties({ field: f, patch }: FieldPropsEditorProps) {
   );
 }
 
+function FillInput({ field: f, value, onChange }: FieldFillProps) {
+  return <FileFillInput field={f} value={value} onChange={onChange} accept="image/*" image />;
+}
+
 export const imageField: FieldTypeDef = {
   type: "image",
   label: "图片",
@@ -28,4 +37,5 @@ export const imageField: FieldTypeDef = {
   ownProps: ["maxFiles"],
   Preview,
   Properties,
+  FillInput,
 };

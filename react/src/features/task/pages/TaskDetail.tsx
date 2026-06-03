@@ -135,8 +135,9 @@ export default function TaskDetailPage() {
                   点「责任部门」展开该部门人员(便于提醒未接收 / 对接)
                 </span>
               </div>
+              <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-sm">
-                <thead className="bg-[#F7F8FA]">
+                <thead className="bg-[#F7F8FA] sticky top-0 z-10">
                   <tr className="text-left text-[11px] text-[#6B7280] uppercase tracking-wider">
                     <th className="px-4 py-2 font-medium">单位 / 对象</th>
                     <th className="px-4 py-2 font-medium">责任部门</th>
@@ -146,9 +147,6 @@ export default function TaskDetailPage() {
                 </thead>
                 <tbody>
                   {task.targets.map((t) => {
-                    const expandOrgId =
-                      t.targetType === "org" ? t.handlerOrgId ?? t.targetOrgId : null;
-                    const expandOrgName = t.handlerOrgName ?? t.targetName;
                     const isOpen = expanded?.targetId === t.id;
                     return (
                       <Fragment key={t.id}>
@@ -164,28 +162,39 @@ export default function TaskDetailPage() {
                             </span>
                           </td>
                           <td className="px-4 py-2.5">
-                            {t.targetType === "org" ? (
+                            {t.targetType !== "org" ? (
+                              <span className="text-[12px] text-[#C0C6D0]">—</span>
+                            ) : t.handlerOrgId ? (
                               <button
                                 type="button"
-                                disabled={!expandOrgId}
                                 onClick={() =>
                                   setExpanded(
                                     isOpen
                                       ? null
-                                      : { targetId: t.id, orgId: expandOrgId as string, orgName: expandOrgName },
+                                      : {
+                                          targetId: t.id,
+                                          orgId: t.handlerOrgId as string,
+                                          orgName: t.handlerOrgName ?? "",
+                                        },
                                   )
                                 }
-                                className="inline-flex items-center gap-1 text-[12px] text-[#1A6BC8] hover:underline disabled:text-[#9CA3AF] disabled:no-underline disabled:cursor-default"
+                                className="inline-flex items-center gap-1 text-[12px] text-[#1A6BC8] hover:underline"
                               >
                                 {isOpen ? (
                                   <ChevronDownIcon className="w-3.5 h-3.5" />
                                 ) : (
                                   <ChevronRightIcon className="w-3.5 h-3.5" />
                                 )}
-                                {t.handlerOrgName ?? <span className="text-[#9CA3AF]">整单位可见</span>}
+                                {t.handlerOrgName}
                               </button>
                             ) : (
-                              <span className="text-[12px] text-[#C0C6D0]">—</span>
+                              <span
+                                className="inline-flex items-center gap-1 text-[12px] text-amber-600"
+                                title="该单位下没有部门把「对口上级」指向本任务的派发机关部门 —— 未配置对口前谁都看不到此任务"
+                              >
+                                <InfoIcon className="w-3.5 h-3.5" />
+                                未配置对口
+                              </span>
                             )}
                           </td>
                           <td className="px-4 py-2.5 text-[12px]">
@@ -223,7 +232,7 @@ export default function TaskDetailPage() {
                             <td colSpan={4} className="px-4 py-2.5">
                               <div className="text-[11px] text-[#6B7280] mb-1.5 flex items-center gap-1">
                                 <UsersIcon className="w-3 h-3" />
-                                {expandOrgName} · 可承揽人员
+                                {t.handlerOrgName} · 可承揽人员
                               </div>
                               {membersQuery.isLoading ? (
                                 <div className="text-[12px] text-[#9CA3AF]">加载人员…</div>
@@ -259,9 +268,10 @@ export default function TaskDetailPage() {
                   })}
                 </tbody>
               </table>
+              </div>
               <div className="px-4 py-2 bg-[#FBFBFC] border-t border-[#F0F0F0] text-[11px] text-[#9CA3AF] flex items-center gap-1.5">
                 <InfoIcon className="w-3 h-3" />
-                待接收=该责任部门成员可在「我的待办」接收;已接收→显示责任人 + 电话便于上级对接。
+                待接收=该责任部门成员可在「我的待办」接收;未配置对口前谁都看不到;已接收→显示责任人 + 电话便于上级对接。
               </div>
             </div>
 
