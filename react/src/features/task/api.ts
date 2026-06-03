@@ -158,6 +158,11 @@ export interface TaskTargetView {
   targetName: string;
   ownerUserId: string | null;
   ownerName: string | null;
+  /** 责任人电话(已接收时,从员工信息抽取,便于上级对接) */
+  ownerPhone: string | null;
+  /** 对口责任部门(承揽部门) */
+  handlerOrgId: string | null;
+  handlerOrgName: string | null;
   status: string;
   assignedAt: string | null;
 }
@@ -242,6 +247,24 @@ export const taskTemplateApi = {
     api.delete<{ id: string; deleted: boolean }>(`/task-templates/${id}`).then((r) => r.data),
 };
 
+/* ─── 我的待办(接收侧)─── */
+export interface TaskInboxItem {
+  targetId: string;
+  taskId: string;
+  title: string;
+  dueAt: string | null;
+  status: string;
+  /** 我是否已是责任人 */
+  isOwner: boolean;
+  /** 是否可接收(未被认领) */
+  claimable: boolean;
+  dispatchOrgName: string | null;
+  targetOrgName: string | null;
+  handlerOrgName: string | null;
+  fieldCount: number;
+  createdAt: string;
+}
+
 export const taskApi = {
   dispatch: (input: DispatchTaskInput) =>
     api.post<TaskDetail>("/tasks", input).then((r) => r.data),
@@ -270,6 +293,15 @@ export const taskApi = {
         { requirements, title },
         { timeout: 120_000 },
       )
+      .then((r) => r.data),
+
+  /** 我的待办(接收侧) */
+  inbox: () => api.get<TaskInboxItem[]>("/tasks/inbox").then((r) => r.data),
+
+  /** 接收(认领)一个派发对象 → 成为责任人 */
+  claim: (targetId: string) =>
+    api
+      .post<{ ok: boolean; status: string }>(`/tasks/targets/${targetId}/claim`, {})
       .then((r) => r.data),
 };
 

@@ -79,8 +79,11 @@ export default function TaskCreatePage() {
     () => me?.memberships.admin.find((m) => m.isPrimary) ?? me?.memberships.admin[0],
     [me],
   );
-  const dispatchOrgId = primaryAdmin?.org.id;
+  const defaultDispatchOrgId = primaryAdmin?.org.id;
   const dispatchOrgName = primaryAdmin?.org.name;
+  // 派发部门(机关部门)可在第一步改选;默认=派发人主行政归属。接收单位按此匹配对口责任部门。
+  const [dispatchOrgId, setDispatchOrgId] = useState("");
+  const effectiveDispatchOrgId = dispatchOrgId || defaultDispatchOrgId;
 
   // 往期任务(复制字段用)
   const pastTasksQuery = useQuery({
@@ -132,7 +135,7 @@ export default function TaskCreatePage() {
       return taskApi.dispatch({
         title: title.trim(),
         notes: requirements.trim() || undefined,
-        dispatchOrgId,
+        dispatchOrgId: effectiveDispatchOrgId,
         dueAt: dueAt || undefined,
         noticeFileId: noticeFileId || undefined,
         noticeFileName: noticeFileName || undefined,
@@ -330,7 +333,9 @@ export default function TaskCreatePage() {
                       setNoticeFileId(null);
                       setNoticeFileName(null);
                     }}
-                    dispatchOrgName={dispatchOrgName}
+                    dispatchOrgId={effectiveDispatchOrgId ?? ""}
+                    setDispatchOrgId={setDispatchOrgId}
+                    defaultOrgName={dispatchOrgName}
                     onExtracted={onExtracted}
                   />
                 )}

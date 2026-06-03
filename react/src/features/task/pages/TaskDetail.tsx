@@ -1,3 +1,4 @@
+import { Fragment, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -9,8 +10,13 @@ import {
   InfoIcon,
   FileTextIcon,
   DownloadIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  PhoneIcon,
+  UsersIcon,
 } from "lucide-react";
 import { storageApi } from "@/features/storage";
+import { organizationsApi } from "@/features/organization";
 import {
   taskApi,
   TASK_STATUS_LABEL,
@@ -34,6 +40,16 @@ export default function TaskDetailPage() {
     enabled: !!id,
   });
   const task = taskQuery.data;
+
+  // 展开某派发对象的「责任部门人员」(便于提醒未接收 / 对接)
+  const [expanded, setExpanded] = useState<{ targetId: string; orgId: string; orgName: string } | null>(
+    null,
+  );
+  const membersQuery = useQuery({
+    queryKey: ["org-members", expanded?.orgId],
+    queryFn: () => organizationsApi.members(expanded!.orgId, true),
+    enabled: !!expanded?.orgId,
+  });
 
   const downloadNotice = useMutation({
     mutationFn: async () => {
@@ -115,50 +131,137 @@ export default function TaskDetailPage() {
             <div className="bg-white rounded-lg border border-[#E9E9E9] overflow-hidden">
               <div className="px-4 py-2.5 border-b border-[#F0F0F0] text-sm font-semibold text-[#1A1A1A]">
                 派发对象 ({task.targets.length})
+                <span className="ml-2 text-[11px] font-normal text-[#9CA3AF]">
+                  点「责任部门」展开该部门人员(便于提醒未接收 / 对接)
+                </span>
               </div>
               <table className="w-full text-sm">
                 <thead className="bg-[#F7F8FA]">
                   <tr className="text-left text-[11px] text-[#6B7280] uppercase tracking-wider">
-                    <th className="px-4 py-2 font-medium">对象</th>
-                    <th className="px-4 py-2 font-medium w-24">类型</th>
-                    <th className="px-4 py-2 font-medium w-40">责任人</th>
-                    <th className="px-4 py-2 font-medium w-24">状态</th>
+                    <th className="px-4 py-2 font-medium">单位 / 对象</th>
+                    <th className="px-4 py-2 font-medium">责任部门</th>
+                    <th className="px-4 py-2 font-medium w-52">责任人 / 电话</th>
+                    <th className="px-4 py-2 font-medium w-20">状态</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {task.targets.map((t) => (
-                    <tr key={t.id} className="border-b border-[#F4F4F4] last:border-0">
-                      <td className="px-4 py-2.5">
-                        <span className="inline-flex items-center gap-1.5 text-[13px] text-[#1A1A1A]">
-                          {t.targetType === "org" ? (
-                            <Building2Icon className="w-3.5 h-3.5 text-[#1A6BC8]" />
-                          ) : (
-                            <UserIcon className="w-3.5 h-3.5 text-[var(--party-primary)]" />
-                          )}
-                          {t.targetName}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-[11px] text-[#6B7280]">
-                        {t.targetType === "org" ? "单位" : "个人"}
-                      </td>
-                      <td className="px-4 py-2.5 text-[12px] text-[#4B5563]">
-                        {t.ownerName ?? <span className="text-[#C0C6D0]">待分派</span>}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span
-                          className="text-[11px] px-1.5 py-0.5 rounded"
-                          style={taskStatusChip(t.status)}
-                        >
-                          {TASK_TARGET_STATUS_LABEL[t.status] ?? t.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {task.targets.map((t) => {
+                    const expandOrgId =
+                      t.targetType === "org" ? t.handlerOrgId ?? t.targetOrgId : null;
+                    const expandOrgName = t.handlerOrgName ?? t.targetName;
+                    const isOpen = expanded?.targetId === t.id;
+                    return (
+                      <Fragment key={t.id}>
+                        <tr className="border-b border-[#F4F4F4]">
+                          <td className="px-4 py-2.5">
+                            <span className="inline-flex items-center gap-1.5 text-[13px] text-[#1A1A1A]">
+                              {t.targetType === "org" ? (
+                                <Building2Icon className="w-3.5 h-3.5 text-[#1A6BC8]" />
+                              ) : (
+                                <UserIcon className="w-3.5 h-3.5 text-[var(--party-primary)]" />
+                              )}
+                              {t.targetName}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            {t.targetType === "org" ? (
+                              <button
+                                type="button"
+                                disabled={!expandOrgId}
+                                onClick={() =>
+                                  setExpanded(
+                                    isOpen
+                                      ? null
+                                      : { targetId: t.id, orgId: expandOrgId as string, orgName: expandOrgName },
+                                  )
+                                }
+                                className="inline-flex items-center gap-1 text-[12px] text-[#1A6BC8] hover:underline disabled:text-[#9CA3AF] disabled:no-underline disabled:cursor-default"
+                              >
+                                {isOpen ? (
+                                  <ChevronDownIcon className="w-3.5 h-3.5" />
+                                ) : (
+                                  <ChevronRightIcon className="w-3.5 h-3.5" />
+                                )}
+                                {t.handlerOrgName ?? <span className="text-[#9CA3AF]">整单位可见</span>}
+                              </button>
+                            ) : (
+                              <span className="text-[12px] text-[#C0C6D0]">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 text-[12px]">
+                            {t.ownerName ? (
+                              <span className="inline-flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-flex items-center gap-1 text-[#1A1A1A]">
+                                  <UserIcon className="w-3 h-3 text-[#6B7280]" />
+                                  {t.ownerName}
+                                </span>
+                                {t.ownerPhone && (
+                                  <a
+                                    href={`tel:${t.ownerPhone}`}
+                                    className="inline-flex items-center gap-0.5 text-[#1A6BC8] hover:underline"
+                                  >
+                                    <PhoneIcon className="w-3 h-3" />
+                                    {t.ownerPhone}
+                                  </a>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-[#C0C6D0]">待接收</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span
+                              className="text-[11px] px-1.5 py-0.5 rounded"
+                              style={taskStatusChip(t.status)}
+                            >
+                              {TASK_TARGET_STATUS_LABEL[t.status] ?? t.status}
+                            </span>
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="bg-[#FBFCFE]">
+                            <td colSpan={4} className="px-4 py-2.5">
+                              <div className="text-[11px] text-[#6B7280] mb-1.5 flex items-center gap-1">
+                                <UsersIcon className="w-3 h-3" />
+                                {expandOrgName} · 可承揽人员
+                              </div>
+                              {membersQuery.isLoading ? (
+                                <div className="text-[12px] text-[#9CA3AF]">加载人员…</div>
+                              ) : (membersQuery.data ?? []).length === 0 ? (
+                                <div className="text-[12px] text-[#9CA3AF]">该部门暂无人员</div>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {(membersQuery.data ?? []).map((m) => (
+                                    <span
+                                      key={m.userId}
+                                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-[#E9E9E9] bg-white text-[12px]"
+                                    >
+                                      <span className="text-[#1A1A1A]">{m.name}</span>
+                                      {m.position && <span className="text-[#9CA3AF]">{m.position}</span>}
+                                      {m.phone && (
+                                        <a
+                                          href={`tel:${m.phone}`}
+                                          className="inline-flex items-center gap-0.5 text-[#1A6BC8] hover:underline"
+                                        >
+                                          <PhoneIcon className="w-3 h-3" />
+                                          {m.phone}
+                                        </a>
+                                      )}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
               <div className="px-4 py-2 bg-[#FBFBFC] border-t border-[#F0F0F0] text-[11px] text-[#9CA3AF] flex items-center gap-1.5">
                 <InfoIcon className="w-3 h-3" />
-                接收方填报、退回、数据汇总将在后续阶段开放(P2 填报 · P3 汇总)
+                待接收=该责任部门成员可在「我的待办」接收;已接收→显示责任人 + 电话便于上级对接。
               </div>
             </div>
 

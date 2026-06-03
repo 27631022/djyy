@@ -21,6 +21,7 @@ export interface OrgMember {
   userId: string;
   username: string;
   name: string;
+  phone: string | null;
   /** 通过哪个组织进入名单 (直接=本组织id;传递=某后代org的id) */
   viaOrgId: string;
   viaOrgName: string;
@@ -130,7 +131,7 @@ export class OrganizationService {
     const rows = await this.prisma.userOrganization.findMany({
       where: { orgId: { in: orgIds } },
       include: {
-        user: { select: { id: true, username: true, name: true } },
+        user: { select: { id: true, username: true, name: true, phone: true } },
         org:  { select: { id: true, name: true } },
       },
     });
@@ -144,6 +145,7 @@ export class OrganizationService {
         userId: r.userId,
         username: r.user.username,
         name: r.user.name,
+        phone: r.user.phone,
         viaOrgId: r.org.id,
         viaOrgName: r.org.name,
         position: r.position,
@@ -190,14 +192,7 @@ export class OrganizationService {
     const codeDup = await this.prisma.organization.findUnique({ where: { code: dto.code } });
     if (codeDup) throw new ConflictException(`组织编码 ${dto.code} 已被占用`);
 
-    // 同 kind 内 (含已禁用) 名称不重复
-    const nameDup = await this.prisma.organization.findFirst({
-      where: { name: dto.name, kind: dto.kind },
-    });
-    if (nameDup) {
-      const kindLabel = dto.kind === 'party' ? '党组织' : '行政机构';
-      throw new ConflictException(`${kindLabel}内已存在名称 "${dto.name}"`);
-    }
+    // 名称允许重复:每个二级单位下的部门(如「综合办公室」「安全部」)同名很正常,唯一性靠 code 保证。
 
     return this.prisma.organization.create({ data: { ...dto, parentId: dto.parentId ?? null } });
   }
@@ -316,15 +311,7 @@ export class OrganizationService {
       if (dup) throw new ConflictException(`组织编码 ${dto.code} 已被占用`);
     }
 
-    if (dto.name && dto.name !== current.name) {
-      const nameDup = await this.prisma.organization.findFirst({
-        where: { name: dto.name, kind: nextKind, NOT: { id } },
-      });
-      if (nameDup) {
-        const kindLabel = nextKind === 'party' ? '党组织' : '行政机构';
-        throw new ConflictException(`${kindLabel}内已存在名称 "${dto.name}"`);
-      }
-    }
+    // 名称允许重复(各单位同名部门),不再校验重名。
 
     return this.prisma.organization.update({ where: { id }, data: dto });
   }

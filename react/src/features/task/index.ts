@@ -4,3 +4,4 @@ export { default as TaskTemplatesPage } from "./pages/TaskTemplates";
 export { default as TaskCreatePage } from "./pages/TaskCreate";
 export { default as TaskListPage } from "./pages/TaskList";
 export { default as TaskDetailPage } from "./pages/TaskDetail";
+export { default as TaskInboxPage } from "./pages/TaskInbox";

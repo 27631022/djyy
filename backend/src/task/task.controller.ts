@@ -100,6 +100,21 @@ export class TaskController {
     return this.svc.list({ actorId: me.sub, actorName: me.name });
   }
 
+  /**
+   * 我的待办(接收侧):我负责的 + 我所在责任部门待接收的。
+   * 不加权限点 —— 只展示「本人 / 本部门」的任务,范围由组织归属天然限定,任何登录员工都能看自己的待办。
+   */
+  @Get('inbox')
+  inbox(@CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.inbox({ actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 接收(认领)一个派发对象 → 成为责任人(service 内校验「只能认领自己责任部门的」)。 */
+  @Post('targets/:id/claim')
+  claim(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.claim(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
   @Get(':id')
   get(@Param('id') id: string) {
     return this.svc.get(id);

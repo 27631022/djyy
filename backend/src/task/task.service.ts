@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -23,6 +24,7 @@ interface TaskTargetRow {
   targetOrgId: string | null;
   targetUserId: string | null;
   ownerUserId: string | null;
+  handlerOrgId: string | null;
   status: string;
   assignedAt: Date | null;
 }
@@ -55,6 +57,42 @@ export class TaskService {
       dueAt = d;
     }
 
+    // 对口解析(派发对接「组织对口上级」属性):目标单位子树里,谁的「对口上级」含派发部门 → 责任部门
+    const orgRows = dispatchOrgId
+      ? await this.orgs.findAll({ kind: 'admin', includeInactive: true })
+      : [];
+    const childrenOf = new Map<string, string[]>();
+    const metaById = new Map<string, string | null>();
+    for (const o of orgRows) {
+      metaById.set(o.id, o.meta ?? null);
+      if (o.parentId) {
+        const arr = childrenOf.get(o.parentId) ?? [];
+        arr.push(o.id);
+        childrenOf.set(o.parentId, arr);
+      }
+    }
+    const findHandlerDept = (unitId: string, sourceId: string): string | null => {
+      const stack = [unitId];
+      const seen = new Set<string>();
+      while (stack.length) {
+        const id = stack.pop() as string;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const meta = metaById.get(id);
+        if (meta) {
+          try {
+            const cp = (JSON.parse(meta) as { counterpartParentOrgIds?: unknown })
+              .counterpartParentOrgIds;
+            if (Array.isArray(cp) && cp.includes(sourceId)) return id;
+          } catch {
+            /* 忽略坏 meta */
+          }
+        }
+        for (const c of childrenOf.get(id) ?? []) stack.push(c);
+      }
+      return null;
+    };
+
     const task = await this.prisma.$transaction(async (tx) => {
       const t = await tx.task.create({
         data: {
@@ -74,23 +112,15 @@ export class TaskService {
 
       for (const tg of targets) {
         let ownerUserId: string | null = null;
+        let handlerOrgId: string | null = null;
         let status = 'pending';
         if (tg.targetType === 'user') {
+          // 直派个人:该人即责任人
           ownerUserId = tg.targetUserId ?? null;
           status = 'assigned';
         } else if (dispatchOrgId && tg.targetOrgId) {
-          const route = await tx.unitTaskRouting.findUnique({
-            where: {
-              unitOrgId_sourceOrgId: {
-                unitOrgId: tg.targetOrgId,
-                sourceOrgId: dispatchOrgId,
-              },
-            },
-          });
-          if (route) {
-            ownerUserId = route.handlerUserId; // 对口命中:系统自动划转
-            status = 'assigned';
-          }
+          // 单位派发:按「组织对口上级」属性定责任部门(命中则待该部门成员接收认领,不预设责任人)
+          handlerOrgId = findHandlerDept(tg.targetOrgId, dispatchOrgId);
         }
         await tx.taskTarget.create({
           data: {
@@ -99,8 +129,9 @@ export class TaskService {
             targetOrgId: tg.targetOrgId ?? null,
             targetUserId: tg.targetUserId ?? null,
             ownerUserId,
+            handlerOrgId,
             status,
-            assignedById: null, // null = 系统对口自动 / 个人直派;手动分派(P2)才写分派人
+            assignedById: null, // null = 个人直派;手动分派(P2)才写分派人
             assignedAt: ownerUserId ? new Date() : null,
           },
         });
@@ -159,16 +190,19 @@ export class TaskService {
       orderBy: { createdAt: 'asc' },
     });
 
-    const orgIds = targets
-      .filter((t) => t.targetType === 'org' && t.targetOrgId)
-      .map((t) => t.targetOrgId as string);
+    const orgIds = [
+      ...targets
+        .filter((t) => t.targetType === 'org' && t.targetOrgId)
+        .map((t) => t.targetOrgId as string),
+      ...targets.filter((t) => t.handlerOrgId).map((t) => t.handlerOrgId as string),
+    ];
     const userIds = [
       ...targets.filter((t) => t.targetUserId).map((t) => t.targetUserId as string),
       ...targets.filter((t) => t.ownerUserId).map((t) => t.ownerUserId as string),
     ];
-    const [orgNames, userNames] = await Promise.all([
+    const [orgNames, userInfo] = await Promise.all([
       this.namesForOrgs(orgIds),
-      this.namesForUsers(userIds),
+      this.infoForUsers(userIds),
     ]);
 
     const enriched = targets.map((t) => ({
@@ -182,10 +216,13 @@ export class TaskService {
             ? orgNames[t.targetOrgId]
             : ''
           : t.targetUserId
-            ? userNames[t.targetUserId]
+            ? userInfo[t.targetUserId]?.name ?? ''
             : '',
       ownerUserId: t.ownerUserId,
-      ownerName: t.ownerUserId ? userNames[t.ownerUserId] : null,
+      ownerName: t.ownerUserId ? userInfo[t.ownerUserId]?.name ?? null : null,
+      ownerPhone: t.ownerUserId ? userInfo[t.ownerUserId]?.phone ?? null : null,
+      handlerOrgId: t.handlerOrgId,
+      handlerOrgName: t.handlerOrgId ? orgNames[t.handlerOrgId] : null,
       status: t.status,
       assignedAt: t.assignedAt,
     }));
@@ -208,6 +245,97 @@ export class TaskService {
       targets: enriched,
       statusCounts: countByStatus(targets),
     };
+  }
+
+  /**
+   * 我的待办(接收侧)：我负责的(ownerUserId==我)+ 我所在责任部门「待接收」的
+   * (handlerOrgId∈我的行政归属;或未配对口 handlerOrgId 空但 targetOrgId∈我的行政归属=整单位可见)。
+   */
+  async inbox(actor: ActorContext) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const me = await this.users.findOne(actorId);
+    const myOrgIds = me.memberships.admin.map((m) => m.orgId);
+
+    const targets = await this.prisma.taskTarget.findMany({
+      where: {
+        OR: [
+          { ownerUserId: actorId },
+          { ownerUserId: null, handlerOrgId: { in: myOrgIds } },
+          { ownerUserId: null, handlerOrgId: null, targetOrgId: { in: myOrgIds } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (targets.length === 0) return [];
+
+    const taskById = new Map(
+      (
+        await this.prisma.task.findMany({
+          where: { id: { in: [...new Set(targets.map((t) => t.taskId))] } },
+        })
+      ).map((t) => [t.id, t]),
+    );
+    const orgNames = await this.namesForOrgs([
+      ...targets.flatMap((t) => [t.targetOrgId, t.handlerOrgId]),
+      ...[...taskById.values()].map((t) => t.dispatchOrgId),
+    ].filter((x): x is string => !!x));
+
+    return targets.flatMap((t) => {
+      const task = taskById.get(t.taskId);
+      if (!task) return [];
+      return [
+        {
+          targetId: t.id,
+          taskId: task.id,
+          title: task.title,
+          dueAt: task.dueAt,
+          status: t.status,
+          isOwner: t.ownerUserId === actorId,
+          claimable: !t.ownerUserId && t.status !== 'done',
+          dispatchOrgName: task.dispatchOrgId ? orgNames[task.dispatchOrgId] ?? null : null,
+          targetOrgName: t.targetOrgId ? orgNames[t.targetOrgId] ?? null : null,
+          handlerOrgName: t.handlerOrgId ? orgNames[t.handlerOrgId] ?? null : null,
+          fieldCount: parseFields(task.fields).length,
+          createdAt: task.createdAt,
+        },
+      ];
+    });
+  }
+
+  /** 接收(认领):未被接收 + 我是责任部门成员 → 成为责任人(转填报中)。 */
+  async claim(targetId: string, actor: ActorContext) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const target = await this.prisma.taskTarget.findUnique({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('派发对象不存在');
+    if (target.ownerUserId) throw new BadRequestException('该任务已被接收');
+
+    const me = await this.users.findOne(actorId);
+    const myOrgIds = new Set(me.memberships.admin.map((m) => m.orgId));
+    const inScope = target.handlerOrgId
+      ? myOrgIds.has(target.handlerOrgId)
+      : target.targetOrgId
+        ? myOrgIds.has(target.targetOrgId)
+        : false;
+    if (!inScope) throw new ForbiddenException('你不在该任务的责任部门,无法接收');
+
+    const updated = await this.prisma.taskTarget.update({
+      where: { id: targetId },
+      data: {
+        ownerUserId: actorId,
+        status: 'in_progress',
+        assignedById: actorId,
+        assignedAt: new Date(),
+      },
+    });
+    await this.audit.log({
+      ...actor,
+      action: 'task.claim',
+      target: targetId,
+      detail: { taskId: target.taskId },
+    });
+    return { ok: true, status: updated.status };
   }
 
   /** 规整 + 校验派发对象(去重、存在性) */
@@ -252,14 +380,16 @@ export class TaskService {
     return map;
   }
 
-  private async namesForUsers(ids: string[]): Promise<Record<string, string>> {
-    const map: Record<string, string> = {};
+  private async infoForUsers(
+    ids: string[],
+  ): Promise<Record<string, { name: string; phone: string | null }>> {
+    const map: Record<string, { name: string; phone: string | null }> = {};
     for (const id of [...new Set(ids)]) {
       try {
-        const u = await this.users.findOne(id);
-        map[id] = (u as { name?: string }).name ?? id;
+        const u = (await this.users.findOne(id)) as { name?: string; phone?: string | null };
+        map[id] = { name: u.name ?? id, phone: u.phone ?? null };
       } catch {
-        map[id] = '(已删除用户)';
+        map[id] = { name: '(已删除用户)', phone: null };
       }
     }
     return map;

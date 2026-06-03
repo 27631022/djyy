@@ -643,8 +643,8 @@ model Task {
 }
 
 // 派发对象 — fan-out:任务派给哪些单位/个人。一个 Task 多个 TaskTarget。
-// targetType=org:派给单位,责任人由对口路由/接受管理员确定;targetType=user:直派个人,该人即责任人。
-// ownerUserId = 责任人(唯一)。status 是该对象维度的进度。
+// targetType=org:派给单位,命中对口则记责任部门 handlerOrgId(待该部门认领);targetType=user:直派个人,该人即责任人。
+// ownerUserId = 责任人(唯一,认领后才有)。handlerOrgId = 对口责任部门(认领前的可见域)。status 是该对象维度的进度。
 // @module: task
 model TaskTarget {
   id           String    @id @default(cuid())
@@ -652,7 +652,8 @@ model TaskTarget {
   targetType   String // 'org' | 'user'
   targetOrgId  String? // targetType=org
   targetUserId String? // targetType=user(直派个人,即责任人)
-  ownerUserId  String? // 责任人(唯一):对口自动 / 管理员分派 / 直派个人
+  ownerUserId  String? // 责任人(唯一):接收认领 / 管理员分派 / 直派个人(认领前为空)
+  handlerOrgId String? // 对口责任部门(命中对口路由时写;认领前供该部门成员可见待办)
   status       String    @default("pending") // pending | assigned | in_progress | submitted | returned | done
   assignedById String? // 由谁分派(系统对口命中 = null;手动 = 接受管理员 id)
   assignedAt   DateTime?
@@ -663,6 +664,7 @@ model TaskTarget {
   @@index([targetOrgId])
   @@index([targetUserId])
   @@index([ownerUserId])
+  @@index([handlerOrgId])
   @@index([status])
 }
 
@@ -702,17 +704,18 @@ model TaskSubmission {
   @@index([taskId])
 }
 
-// 对口配置 — 接收单位维护:某上级部门派来的任务,默认划转给本单位某人当责任人。
-// 派发时 task.service 查 (unitOrgId = 目标单位, sourceOrgId = Task.dispatchOrgId):命中即自动定责任人。
+// 对口配置 — 「部门对口」:某机关部门(sourceOrgId)派来的任务,在本单位(unitOrgId)默认由「责任部门」(handlerOrgId)承接。
+// 该责任部门成员都能看到,直到有人「接收」认领为责任人(认领前 TaskTarget.ownerUserId 为空)。
+// 派发时 task.service 查 (unitOrgId = 目标单位, sourceOrgId = Task.dispatchOrgId):命中即把责任部门写进 TaskTarget.handlerOrgId。
 // @module: task
 model UnitTaskRouting {
-  id            String   @id @default(cuid())
-  unitOrgId     String // 本单位 org id
-  sourceOrgId   String // 上级派发部门 org id(匹配 Task.dispatchOrgId)
-  handlerUserId String // 本单位对口责任人 user id
-  createdById   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(cuid())
+  unitOrgId    String // 本单位(二级单位)org id
+  sourceOrgId  String // 机关部门 org id(匹配 Task.dispatchOrgId)
+  handlerOrgId String // 本单位对口「责任部门」org id(认领前该部门成员可见)
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([unitOrgId, sourceOrgId])
   @@index([unitOrgId])

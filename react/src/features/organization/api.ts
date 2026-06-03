@@ -85,6 +85,7 @@ export interface OrgMember {
   userId: string;
   username: string;
   name: string;
+  phone: string | null;
   viaOrgId: string;
   viaOrgName: string;
   position: string | null;
@@ -101,6 +102,8 @@ export interface CreateOrgInput {
   isVirtual?: boolean;
   parentId?: string | null;
   sortOrder?: number;
+  /** 自定义属性 JSON 串(含「对口上级机构」counterpartParentOrgId 等) */
+  meta?: string;
 }
 
 export interface UpdateOrgInput extends Partial<CreateOrgInput> {

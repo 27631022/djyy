@@ -412,6 +412,7 @@ export default function OrganizationsPage() {
       {editing && (
         <OrgFormModal
           editing={editing}
+          tree={tree}
           onCancel={() => setEditing(null)}
           onSave={handleSave}
         />
@@ -521,7 +522,9 @@ function TreeNode({
 
         {/* 名称 (含搜索高亮) */}
         <span
-          className={`text-sm flex-1 min-w-0 truncate ${node.active ? "text-[#1A1A1A]" : "text-[#9CA3AF] line-through"} ${isMatch ? "font-semibold" : ""}`}
+          onClick={() => node.active && onEdit(node)}
+          title={node.active ? "点击编辑属性 / 设置对口" : undefined}
+          className={`text-sm flex-1 min-w-0 truncate ${node.active ? "text-[#1A1A1A] cursor-pointer hover:text-[var(--party-primary)] hover:underline decoration-dotted underline-offset-2" : "text-[#9CA3AF] line-through"} ${isMatch ? "font-semibold" : ""}`}
         >
           {nameSegments.map((seg, i) =>
             seg.highlight ? (
@@ -627,9 +630,10 @@ function TreeNode({
 
 /* ─── Form modal ─── */
 function OrgFormModal({
-  editing, onCancel, onSave,
+  editing, tree, onCancel, onSave,
 }: {
   editing: EditingState;
+  tree: OrgTreeNode[];
   onCancel: () => void;
   onSave: (input: any) => void;
 }) {
@@ -637,6 +641,7 @@ function OrgFormModal({
   const init = editing.target;
   const kindMeta = KIND_META[editing.kind];
   const isParty = editing.kind === "party";
+  const isAdmin = editing.kind === "admin";
   const TYPE_OPTIONS = isParty ? PARTY_TYPE_OPTIONS : ADMIN_TYPE_OPTIONS;
   const defaultType: OrgType = isParty ? "branch" : "level2";
 
@@ -647,11 +652,20 @@ function OrgFormModal({
     isVirtual: init?.isVirtual ?? false,
     active: init?.active ?? true,
   });
+  // 对口上级机构(行政机构属性,多对多 / 专业线,存 meta.counterpartParentOrgIds)
+  const [counterparts, setCounterparts] = useState<string[]>(readCounterparts(init?.meta));
+
+  // 对下 = 把「对口上级」指向本机构的下级机构
+  const flat = flattenOrgs(tree);
+  const downstream = init ? flat.filter((o) => readCounterparts(o.meta).includes(init.id)) : [];
 
   const valid = form.name.trim().length > 0 && form.code.trim().length > 0;
 
   function handleSubmit() {
-    if (valid) onSave(form);
+    if (!valid) return;
+    const payload: Record<string, unknown> = { ...form };
+    if (isAdmin) payload.meta = buildMeta(init?.meta, counterparts); // 仅行政机构带对口属性
+    onSave(payload);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -665,14 +679,14 @@ function OrgFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onCancel}>
       <div
-        className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[90vw]"
+        className="bg-white shadow-2xl w-[460px] max-w-[92vw] h-screen flex flex-col"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
         <div
-          className="flex items-center justify-between px-5 py-3.5 border-b border-[#E9E9E9]"
+          className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-[#E9E9E9]"
           style={{ borderTopColor: kindMeta.color, borderTopWidth: 3, borderTopStyle: "solid" }}
         >
           <div className="flex items-center gap-2">
@@ -686,7 +700,7 @@ function OrgFormModal({
           </button>
         </div>
 
-        <div className="p-5 flex flex-col gap-3.5">
+        <div className="flex-1 overflow-auto p-5 flex flex-col gap-3.5">
           {editing.mode === "create" && (
             <p className="text-xs text-[#6B7280] bg-[#F7F8FA] px-3 py-2 rounded">
               {editing.parentId
@@ -763,9 +777,42 @@ function OrgFormModal({
               </label>
             </Field>
           )}
+
+          {isAdmin && (
+            <Field label="对口上级机构">
+              <OrgCounterpartField
+                tree={tree}
+                value={counterparts}
+                onChange={setCounterparts}
+                excludeId={init?.id}
+              />
+              <p className="text-[10px] text-[#9CA3AF] mt-1 leading-snug">
+                可多选(专业线):本部门对口承接这些机关部门派来的任务。点「选择」搜索点选,可设多个上级(接收认领下一步开放)。
+              </p>
+            </Field>
+          )}
+
+          {isAdmin && isEdit && downstream.length > 0 && (
+            <Field label={`对下关联(${downstream.length})`}>
+              <div className="flex flex-wrap gap-1.5">
+                {downstream.map((o) => (
+                  <span
+                    key={o.id}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#eef4ff] text-[#1d4ed8] text-xs"
+                  >
+                    <BuildingIcon className="w-3 h-3" />
+                    {o.name}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[10px] text-[#9CA3AF] mt-1">
+                这些下级机构把「对口上级」指向了本机构(只读,在各自机构里改)。
+              </p>
+            </Field>
+          )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[#E9E9E9]">
+        <div className="flex-shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[#E9E9E9]">
           <button
             onClick={onCancel}
             className="px-4 py-1.5 text-sm text-[#6B7280] hover:text-[#1A1A1A] rounded-md"
@@ -797,6 +844,299 @@ function Field({ label, required, children }: { label: string; required?: boolea
       </label>
       {children}
     </div>
+  );
+}
+
+/* ─── 对口属性(存组织 meta.counterpartParentOrgIds —— 多对多 / 专业线)─── */
+/** 读 meta 里的「对口上级机构」id 列表(兼容早期单值 counterpartParentOrgId) */
+function readCounterparts(metaStr: string | null | undefined): string[] {
+  if (!metaStr) return [];
+  try {
+    const o = JSON.parse(metaStr) as Record<string, unknown>;
+    const arr = o?.counterpartParentOrgIds;
+    if (Array.isArray(arr)) return arr.filter((x): x is string => typeof x === "string");
+    if (typeof o?.counterpartParentOrgId === "string") return [o.counterpartParentOrgId];
+    return [];
+  } catch {
+    return [];
+  }
+}
+/** 合并 meta:写入 / 清除 counterpartParentOrgIds(并清掉早期单值键),保留其它键 */
+function buildMeta(existing: string | null | undefined, ids: string[]): string {
+  let obj: Record<string, unknown> = {};
+  if (existing) {
+    try {
+      obj = (JSON.parse(existing) as Record<string, unknown>) || {};
+    } catch {
+      obj = {};
+    }
+  }
+  delete obj.counterpartParentOrgId; // 早期单值键统一迁到数组
+  if (ids.length) obj.counterpartParentOrgIds = ids;
+  else delete obj.counterpartParentOrgIds;
+  return JSON.stringify(obj);
+}
+interface FlatOrgLite {
+  id: string;
+  name: string;
+  meta: string | null;
+}
+function flattenOrgs(nodes: OrgTreeNode[]): FlatOrgLite[] {
+  const out: FlatOrgLite[] = [];
+  const walk = (n: OrgTreeNode) => {
+    out.push({ id: n.id, name: n.name, meta: n.meta });
+    n.children.forEach(walk);
+  };
+  nodes.forEach(walk);
+  return out;
+}
+
+/* ─── 对口上级机构多选(职务设置式弹窗:左分类 / 右点选卡片 / 顶部拼音搜索)─── */
+interface OrgPickItem {
+  id: string;
+  name: string;
+}
+interface OrgPickCat {
+  id: string;
+  label: string;
+  items: OrgPickItem[];
+}
+/** 把组织树按「虚拟机构(公司机关 / 基层单位…)」分组,每组列其下全部非虚拟机构(供点选);无虚拟壳则兜底一组「全部机构」 */
+function buildOrgCategories(tree: OrgTreeNode[]): OrgPickCat[] {
+  const cats: OrgPickCat[] = [];
+  const desc = (n: OrgTreeNode): OrgPickItem[] => {
+    const out: OrgPickItem[] = [];
+    const w = (x: OrgTreeNode) => {
+      if (!x.isVirtual) out.push({ id: x.id, name: x.name });
+      x.children.forEach(w);
+    };
+    n.children.forEach(w);
+    return out;
+  };
+  const walk = (n: OrgTreeNode) => {
+    if (n.isVirtual && n.children.length > 0) {
+      const items = desc(n);
+      if (items.length) cats.push({ id: n.id, label: n.name, items });
+    }
+    n.children.forEach(walk);
+  };
+  tree.forEach(walk);
+  if (cats.length === 0) {
+    const all: OrgPickItem[] = [];
+    const w = (x: OrgTreeNode) => {
+      if (!x.isVirtual) all.push({ id: x.id, name: x.name });
+      x.children.forEach(w);
+    };
+    tree.forEach(w);
+    cats.push({ id: "__all__", label: "全部机构", items: all });
+  }
+  return cats;
+}
+
+/** 字段:已选 chips + 「选择」按钮 → 打开多选弹窗 */
+function OrgCounterpartField({
+  tree, value, onChange, excludeId,
+}: {
+  tree: OrgTreeNode[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+  excludeId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const flat = flattenOrgs(tree);
+  const nameOf = (id: string) => flat.find((o) => o.id === id)?.name ?? "(已删除)";
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {value.map((id) => (
+          <span
+            key={id}
+            className="inline-flex items-center gap-1 pl-2 pr-1 py-1 rounded-md bg-party-soft text-[var(--party-primary)] text-xs"
+          >
+            {nameOf(id)}
+            <button
+              type="button"
+              title="移除"
+              onClick={() => onChange(value.filter((x) => x !== id))}
+              className="rounded hover:bg-white/60"
+            >
+              <XIcon className="w-3 h-3" />
+            </button>
+          </span>
+        ))}
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-[#dce4ef] text-xs text-[#667085] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+        >
+          <PlusIcon className="w-3 h-3" />
+          {value.length ? "增减" : "选择对口上级机构"}
+        </button>
+      </div>
+      {open && (
+        <OrgCounterpartDialog
+          tree={tree}
+          selectedIds={value}
+          excludeId={excludeId}
+          onChange={onChange}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** 多选弹窗:左分类 / 右点选卡片(可多选,选中打勾)/ 顶部拼音搜索 / 底部完成 */
+function OrgCounterpartDialog({
+  tree, selectedIds, excludeId, onChange, onClose,
+}: {
+  tree: OrgTreeNode[];
+  selectedIds: string[];
+  excludeId?: string;
+  onChange: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  const cats = buildOrgCategories(tree);
+  const allItems = cats.flatMap((c) => c.items);
+  const [catId, setCatId] = useState<string | null>(cats[0]?.id ?? null);
+  const [search, setSearch] = useState("");
+  const searchActive = search.trim().length > 0;
+  const curCat = cats.find((c) => c.id === catId);
+  const base = searchActive ? allItems : curCat?.items ?? [];
+  const seen = new Set<string>();
+  const visible = base.filter((it) => {
+    if (it.id === excludeId || seen.has(it.id)) return false;
+    if (searchActive && !matchesPinyin(it.name, search)) return false;
+    seen.add(it.id);
+    return true;
+  });
+  const selSet = new Set(selectedIds);
+  const toggle = (id: string) =>
+    onChange(selSet.has(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id]);
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/30 z-[60]" onClick={onClose} />
+      <div className="fixed inset-0 z-[61] flex items-center justify-center p-4 pointer-events-none">
+        <div
+          className="w-full max-w-2xl h-[480px] bg-white rounded-xl shadow-2xl pointer-events-auto flex flex-col"
+          onKeyDown={(e) => e.key === "Escape" && onClose()}
+          tabIndex={-1}
+        >
+          {/* Header */}
+          <div className="flex-shrink-0 px-5 py-3 border-b border-[#E9E9E9] flex items-center gap-3">
+            <h2 className="text-sm font-bold text-[#1A1A1A]">选择对口上级机构</h2>
+            <span className="text-[10px] text-[#9CA3AF]">可多选 · 已选 {selectedIds.length}</span>
+            <div className="flex-1" />
+            <div className="relative">
+              <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
+              <input
+                autoFocus
+                placeholder="搜索 (中文 / 拼音)"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-7 pr-2 py-1.5 text-xs rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[var(--party-primary)] w-48"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-[#F7F8FA]"
+                >
+                  <XIcon className="w-3 h-3 text-[#9CA3AF]" />
+                </button>
+              )}
+            </div>
+            <button onClick={onClose} className="p-1 rounded hover:bg-[#F7F8FA]">
+              <XIcon className="w-4 h-4 text-[#9CA3AF]" />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 min-h-0 flex">
+            {!searchActive && cats.length > 1 && (
+              <aside className="w-40 flex-shrink-0 border-r border-[#E9E9E9] overflow-auto py-1.5">
+                {cats.map((c) => {
+                  const active = c.id === catId;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setCatId(c.id)}
+                      className={`w-full text-left px-3 py-2 flex items-center gap-1.5 transition-colors ${
+                        active ? "bg-party-soft text-[var(--party-primary)]" : "text-[#4B5563] hover:bg-[#F7F8FA]"
+                      }`}
+                    >
+                      <div
+                        className={`w-0.5 h-5 rounded-full ${active ? "bg-[var(--party-primary)]" : "bg-transparent"}`}
+                      />
+                      <span className="flex-1 min-w-0 text-xs font-medium truncate">{c.label}</span>
+                      <span className="text-[10px] text-[#9CA3AF]">{c.items.length}</span>
+                    </button>
+                  );
+                })}
+              </aside>
+            )}
+            <div className="flex-1 min-w-0 overflow-auto p-4">
+              {visible.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-[#9CA3AF]">
+                  {searchActive ? "无匹配机构" : "此分类下没有可选项"}
+                </div>
+              ) : (
+                <>
+                  {searchActive && (
+                    <div className="text-[10px] text-[#9CA3AF] mb-2">跨分类搜索 · 命中 {visible.length} 项</div>
+                  )}
+                  <div className="grid grid-cols-3 gap-2">
+                    {visible.map((it) => {
+                      const sel = selSet.has(it.id);
+                      return (
+                        <button
+                          key={it.id}
+                          onClick={() => toggle(it.id)}
+                          className={`text-left px-3 py-2 rounded-md border transition-all hover:shadow-sm flex items-center gap-1.5 ${
+                            sel ? "border-[var(--party-primary)] bg-party-soft" : "border-[#E9E9E9] bg-white"
+                          }`}
+                        >
+                          <span
+                            className={`w-3.5 h-3.5 rounded grid place-items-center flex-shrink-0 border ${
+                              sel ? "border-[var(--party-primary)] bg-[var(--party-primary)]" : "border-[#D1D5DB] bg-white"
+                            }`}
+                          >
+                            {sel && <CheckIcon className="w-2.5 h-2.5 text-white" />}
+                          </span>
+                          <span
+                            className={`text-xs font-medium truncate ${sel ? "text-[var(--party-primary)]" : "text-[#1A1A1A]"}`}
+                          >
+                            {it.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex-shrink-0 px-5 py-3 border-t border-[#E9E9E9] flex items-center gap-2">
+            <span className="text-[10px] text-[#9CA3AF] flex-1">已选 {selectedIds.length} 个对口上级机构</span>
+            <button
+              onClick={() => onChange([])}
+              className="px-3 py-1.5 text-xs rounded-md border border-[#E9E9E9] hover:bg-[#F7F8FA]"
+            >
+              清空
+            </button>
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 text-xs rounded-md text-white"
+              style={{ backgroundColor: "var(--party-primary)" }}
+            >
+              完成
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 

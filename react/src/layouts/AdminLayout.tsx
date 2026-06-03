@@ -6,7 +6,7 @@ import {
   BuildingIcon, ShieldIcon, UserIcon, BookTextIcon,
   EyeIcon, ThumbsUpIcon, MessageSquareIcon,
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
-  AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon,
+  AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon,
   PanelLeftCloseIcon, PanelLeftOpenIcon,
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon,
 } from "lucide-react";
@@ -51,6 +51,7 @@ const CATEGORIES: Category[] = [
       { path: "/admin/certificates/external", label: "外部证书录入", icon: UploadIcon,    group: "证书管理" },
       { path: "/admin/certificates",          label: "已发证书",   icon: ListChecksIcon, group: "证书管理" },
       { path: "/admin/tasks",                 label: "任务派发",     icon: SendIcon,          group: "任务管理" },
+      { path: "/admin/tasks/inbox",           label: "我的待办",     icon: InboxIcon,         group: "任务管理" },
     ],
   },
   {
