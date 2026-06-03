@@ -349,6 +349,7 @@ export interface TaskSummaryRow {
   targetType: "org" | "user";
   targetName: string;
   ownerName: string | null;
+  ownerPhone: string | null;
   /** 派发对象状态(pending/…/done) */
   status: string;
   /** 回执状态(draft/submitted/returned/approved)或 null(无回执) */
@@ -457,10 +458,10 @@ export const taskApi = {
   setDispatchOrg: (taskId: string, dispatchOrgId: string) =>
     api.post<TaskDetail>(`/tasks/${taskId}/dispatch-org`, { dispatchOrgId }).then((r) => r.data),
 
-  /** 附件批量打包下载(ZIP,按单位分文件夹);返回 Blob */
+  /** 附件批量打包下载(ZIP,按单位分文件夹);用 POST 避免被下载管理器拦截,返回 Blob */
   attachmentsZip: (taskId: string) =>
     api
-      .get<Blob>(`/tasks/${taskId}/attachments-zip`, {
+      .post<Blob>(`/tasks/${taskId}/attachments-zip`, null, {
         responseType: "blob",
         timeout: 120_000,
       })

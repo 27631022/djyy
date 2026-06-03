@@ -160,22 +160,27 @@ export class TaskController {
     return this.svc.getSummary(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
-  /** 附件批量打包下载(派发人侧):按单位分文件夹的 ZIP。 */
-  @Get(':id/attachments-zip')
+  /**
+   * 附件批量打包下载(派发人侧):按单位分文件夹的 ZIP。
+   * 用 POST 而非 GET —— 下载管理器(迅雷高级集成等)只拦截 GET 式下载,POST 响应不被当下载抢走;
+   * 配合无 Content-Disposition + octet-stream,避免被拦成假 CORS 错误(同证书 bulk-download)。
+   */
+  @Post(':id/attachments-zip')
   async attachmentsZip(
     @Param('id') id: string,
     @CurrentUser() me: AuthPayload,
     @Req() req: Request,
   ): Promise<StreamableFile> {
-    const { buffer, filename } = await this.svc.getAttachmentsZip(id, {
+    const { buffer } = await this.svc.getAttachmentsZip(id, {
       actorId: me.sub,
       actorName: me.name,
       ip: req.ip,
     });
-    return new StreamableFile(buffer, {
-      type: 'application/zip',
-      disposition: `attachment; filename="task-attachments.zip"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-    });
+    // 故意不发 Content-Disposition: attachment、也不用 application/zip ——
+    // 前端走 axios 取 Blob、用 blob: URL 本地命名下载,服务端无需声明下载意图。
+    // 带 attachment / zip 头会被「迅雷高级集成」等下载管理器在网络层拦截(返回 204、丢 CORS 头,
+    // 浏览器误报成 CORS 错误)。用 octet-stream + 无 disposition 让它当普通接口响应放行。
+    return new StreamableFile(buffer, { type: 'application/octet-stream' });
   }
 
   /** 发起新一期(周期报表):克隆为新一期 + 上期值预填 + 同责任人接力。派发人侧。 */

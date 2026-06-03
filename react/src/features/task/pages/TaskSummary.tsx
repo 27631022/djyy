@@ -171,15 +171,17 @@ export default function TaskSummaryPage() {
 
   function exportCsv(s: TaskSummary) {
     const flat = groupTaskFields(s.fields).flatMap((g) => g.fields);
-    const header = ["单位 / 对象", "责任人", "状态", ...flat.map((f) => f.label)];
+    const header = ["单位 / 对象", "填报人", "电话", "状态", ...flat.map((f) => f.label)];
     const body = s.rows.map((r) => [
       r.targetName,
       r.ownerName ?? "",
+      r.ownerPhone ?? "",
       TASK_TARGET_STATUS_LABEL[r.status] ?? r.status,
       ...flat.map((f) => valueToText(f, r.values[f.code])),
     ]);
     const totalRow = [
       "合计",
+      "",
       "",
       `${s.counts.filled}/${s.counts.total} 已填报`,
       ...flat.map((f) => {
@@ -287,7 +289,13 @@ export default function TaskSummaryPage() {
                       rowSpan={2}
                       className="px-3 py-2 text-left font-medium border-b border-[#EAECEF] whitespace-nowrap"
                     >
-                      责任人
+                      填报人
+                    </th>
+                    <th
+                      rowSpan={2}
+                      className="px-3 py-2 text-left font-medium border-b border-[#EAECEF] whitespace-nowrap"
+                    >
+                      电话
                     </th>
                     <th
                       rowSpan={2}
@@ -326,7 +334,7 @@ export default function TaskSummaryPage() {
                   {data.rows.length === 0 && (
                     <tr>
                       <td
-                        colSpan={3 + flatFields.length}
+                        colSpan={4 + flatFields.length}
                         className="px-3 py-8 text-center text-[#9CA3AF]"
                       >
                         暂无派发对象
@@ -340,6 +348,7 @@ export default function TaskSummaryPage() {
                     <td className="sticky left-0 z-10 bg-[#FBFCFE] px-3 py-2 border-t border-r border-[#EAECEF]">
                       合计
                     </td>
+                    <td className="px-3 py-2 border-t border-[#EAECEF]" />
                     <td className="px-3 py-2 border-t border-[#EAECEF]" />
                     <td className="px-3 py-2 border-t border-r border-[#EAECEF] text-[11px] text-[#6B7280]">
                       {data.counts.filled}/{data.counts.total} 已填报
@@ -386,6 +395,15 @@ function SummaryRow({ row, fields }: { row: TaskSummaryRow; fields: TaskField[] 
         {row.targetName}
       </td>
       <td className="px-3 py-2 text-[#475467] whitespace-nowrap">{row.ownerName ?? "—"}</td>
+      <td className="px-3 py-2 whitespace-nowrap">
+        {row.ownerPhone ? (
+          <a href={`tel:${row.ownerPhone}`} className="text-[#1A6BC8] hover:underline">
+            {row.ownerPhone}
+          </a>
+        ) : (
+          <span className="text-[#D1D5DB]">—</span>
+        )}
+      </td>
       <td className="px-3 py-2 border-r border-[#EAECEF] whitespace-nowrap">
         <span className="text-[11px] px-1.5 py-0.5 rounded" style={taskStatusChip(row.status)}>
           {TASK_TARGET_STATUS_LABEL[row.status] ?? row.status}

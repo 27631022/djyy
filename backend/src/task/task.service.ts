@@ -746,6 +746,7 @@ export class TaskService {
               ? userInfo[t.targetUserId]?.name ?? ''
               : '',
         ownerName: t.ownerUserId ? userInfo[t.ownerUserId]?.name ?? null : null,
+        ownerPhone: t.ownerUserId ? userInfo[t.ownerUserId]?.phone ?? null : null,
         status: t.status,
         submissionStatus: sub?.status ?? null,
         submittedAt: sub?.submittedAt ?? null,

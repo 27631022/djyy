@@ -25,7 +25,8 @@ export const PARTY_TYPES = ['committee', 'general', 'branch', 'temp_branch', 'gr
 //   level2   二级企业 (子公司 / 总部职能部门)
 //   level3   三级企业 (分公司 / 二级公司部门)
 //   level4   四级企业 (项目部 / 班组 / 一线作业单元)
-export const ADMIN_TYPES = ['level1', 'level2', 'level3', 'level4'] as const;
+//   dept     部门 —— 单位内部的职能科室/部门(非层级单位);对口责任部门只能选 type=dept 的节点
+export const ADMIN_TYPES = ['level1', 'level2', 'level3', 'level4', 'dept'] as const;
 
 export const ALL_ORG_TYPES = [...PARTY_TYPES, ...ADMIN_TYPES] as const;
 export type OrgType = (typeof ALL_ORG_TYPES)[number];

@@ -9,7 +9,13 @@ import {
   CheckIcon,
   InfoIcon,
 } from "lucide-react";
-import { organizationsApi, type OrgTreeNode } from "@/features/organization";
+import {
+  organizationsApi,
+  ORG_TYPE_LABELS,
+  ORG_TYPE_COLORS,
+  type OrgTreeNode,
+  type OrgType,
+} from "@/features/organization";
 import { taskApi, taskApiErrorMessage } from "../api";
 
 interface FlatOrg {
@@ -17,14 +23,39 @@ interface FlatOrg {
   name: string;
   depth: number;
   isVirtual: boolean;
+  type: string;
+  /** 有「非虚拟」下级 = 容器单位(如配送中心):未标记部门时作可下钻分组,本身不可选 */
+  hasRealChildren: boolean;
 }
 
 function flatten(nodes: OrgTreeNode[], depth = 0, out: FlatOrg[] = []): FlatOrg[] {
   for (const n of nodes) {
-    out.push({ id: n.id, name: n.name, depth, isVirtual: n.isVirtual });
+    const realChildren = (n.children ?? []).filter((c) => !c.isVirtual);
+    out.push({
+      id: n.id,
+      name: n.name,
+      depth,
+      isVirtual: n.isVirtual,
+      type: n.type,
+      hasRealChildren: realChildren.length > 0,
+    });
     if (n.children?.length) flatten(n.children, depth + 1, out);
   }
   return out;
+}
+
+/** 机构类型小标(部门=青绿,单位层级=蓝) */
+function TypeTag({ type }: { type: string }) {
+  const color = ORG_TYPE_COLORS[type as OrgType] ?? "#9CA3AF";
+  const label = ORG_TYPE_LABELS[type as OrgType] ?? type;
+  return (
+    <span
+      className="text-[10px] px-1 py-px rounded flex-shrink-0"
+      style={{ backgroundColor: `${color}15`, color }}
+    >
+      {label}
+    </span>
+  );
 }
 function findNode(nodes: OrgTreeNode[], id: string): OrgTreeNode | null {
   for (const n of nodes) {
@@ -35,13 +66,20 @@ function findNode(nodes: OrgTreeNode[], id: string): OrgTreeNode | null {
   return null;
 }
 
-/** 行政机构单选列表(可限定子树 rootId);受控 selected/onSelect。 */
+/**
+ * 行政机构单选列表。
+ * - mode="counterpart"(对口责任部门):从「根单位的下级」开始(不显示根单位本身);
+ *   有非虚拟下级的「容器单位(如配送中心)」只作下钻分组、不可选;只有末级部门可选。
+ * - mode="dispatch"(派发部门):整棵树,排除虚拟机构。
+ */
 function OrgPicker({
   rootId,
+  mode,
   selected,
   onSelect,
 }: {
   rootId?: string;
+  mode: "counterpart" | "dispatch";
   selected: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -51,9 +89,29 @@ function OrgPicker({
   });
   const [kw, setKw] = useState("");
   const tree = treeQuery.data ?? [];
-  const scope = rootId ? (findNode(tree, rootId) ? [findNode(tree, rootId)!] : []) : tree;
+  const rootNode = rootId ? findNode(tree, rootId) : null;
+  // 对口:根单位的下级(根本身不显示);派发:整棵树
+  const scope =
+    mode === "counterpart"
+      ? rootNode?.children ?? []
+      : rootId
+        ? rootNode
+          ? [rootNode]
+          : []
+        : tree;
   const q = kw.trim();
-  const list = flatten(scope).filter((o) => !q || o.name.includes(q));
+  let scoped = flatten(scope);
+  if (mode === "counterpart") scoped = scoped.filter((o) => !o.isVirtual); // 隐去虚拟专班/壳
+  // 该单位下已标记「部门」→ 只这些可选;否则回退「末级节点可选」(兼容尚未标记的数据)
+  const hasAnyDept = mode === "counterpart" && scoped.some((o) => o.type === "dept");
+  const list = scoped.filter((o) => !q || o.name.includes(q));
+
+  const selectableOf = (o: FlatOrg) =>
+    mode === "counterpart"
+      ? hasAnyDept
+        ? o.type === "dept"
+        : !o.hasRealChildren
+      : !o.isVirtual;
 
   return (
     <div className="space-y-2">
@@ -70,10 +128,31 @@ function OrgPicker({
         {treeQuery.isLoading ? (
           <div className="p-4 text-center text-[12px] text-[#9CA3AF]">加载机构树…</div>
         ) : list.length === 0 ? (
-          <div className="p-4 text-center text-[12px] text-[#9CA3AF]">没有匹配的部门</div>
+          <div className="p-4 text-center text-[12px] text-[#9CA3AF]">
+            {mode === "counterpart"
+              ? "该单位下还没有部门 —— 请先去「组织机构」给它建承办部门"
+              : "没有匹配的部门"}
+          </div>
         ) : (
           list.map((o) => {
+            const selectable = selectableOf(o);
             const active = selected === o.id;
+            if (!selectable) {
+              // 容器单位(配送中心等)/ 虚拟:只下钻、不可选
+              return (
+                <div
+                  key={o.id}
+                  className="flex items-center gap-2 px-3 py-2 text-[13px] text-[#9CA3AF] bg-[#FAFBFC]"
+                  style={{ paddingLeft: 12 + o.depth * 16 }}
+                  title="单位(含下级)—— 请展开选它下面的部门"
+                >
+                  <Building2Icon className="w-3.5 h-3.5 flex-shrink-0 text-[#C0C6D0]" />
+                  <span>{o.name}</span>
+                  <TypeTag type={o.type} />
+                  <span className="text-[10px] text-[#C0C6D0] ml-auto">选其部门</span>
+                </div>
+              );
+            }
             return (
               <button
                 key={o.id}
@@ -90,7 +169,7 @@ function OrgPicker({
                 <span className={active ? "text-[var(--party-primary)] font-medium" : "text-[#172033]"}>
                   {o.name}
                 </span>
-                {o.isVirtual && <span className="text-[10px] text-[#9CA3AF]">(虚拟)</span>}
+                <TypeTag type={o.type} />
                 {active && <CheckIcon className="w-3.5 h-3.5 text-[var(--party-primary)] ml-auto" />}
               </button>
             );
@@ -190,7 +269,7 @@ export function ConfigureCounterpartDialog({
           。配置后该部门成员即可在「我的待办」接收;同派发部门的后续任务也会自动路由到它。
         </span>
       </div>
-      <OrgPicker rootId={unitOrgId} selected={selected} onSelect={setSelected} />
+      <OrgPicker rootId={unitOrgId} mode="counterpart" selected={selected} onSelect={setSelected} />
     </Shell>
   );
 }
@@ -246,7 +325,7 @@ export function SetDispatchOrgDialog({
           选择本任务的<b>派发部门(机关部门)</b>,接收单位据此匹配对口责任部门。设置后即可逐个单位配置对口。
         </span>
       </div>
-      <OrgPicker selected={selected} onSelect={setSelected} />
+      <OrgPicker mode="dispatch" selected={selected} onSelect={setSelected} />
     </Shell>
   );
 }
