@@ -634,12 +634,17 @@ model Task {
   noticeFileId   String? // 通知文件(storage fileId,可空)
   noticeFileName String? // 通知文件原始名(展示用)
   status         String    @default("open") // draft | open | closed | archived
+  // 周期报表:同一报表的各期用 seriesId 串联(= 首期任务 id);periodLabel 如「2026年6月」。
+  // 一次性任务 seriesId/periodLabel 为空。每期仍是独立 Task(锁定/审核/汇总全复用)。
+  seriesId       String? // 系列 id(= 首期任务 id);null = 非周期任务
+  periodLabel    String? // 期次标签(如「2026年6月」)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   @@index([dispatchUserId])
   @@index([dispatchOrgId])
   @@index([status])
+  @@index([seriesId])
 }
 
 // 派发对象 — fan-out:任务派给哪些单位/个人。一个 Task 多个 TaskTarget。
@@ -698,6 +703,7 @@ model TaskSubmission {
   reviewNote    String? // 退回意见
   reviewedById  String?
   reviewedAt    DateTime?
+  returnCount   Int       @default(0) // 累计被退回次数(每退回一次 +1,画像考核用)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

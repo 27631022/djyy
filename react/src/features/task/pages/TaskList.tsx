@@ -1,8 +1,9 @@
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { SendIcon, PlusIcon, RefreshCwIcon, ClockIcon, LayersIcon } from "lucide-react";
+import { SendIcon, PlusIcon, RefreshCwIcon, LayersIcon } from "lucide-react";
 import { taskApi, TASK_STATUS_LABEL } from "../api";
-import { ProgressBadges } from "../components/ProgressBadges";
+import { TaskProgressBar } from "../components/TaskProgressBar";
+import { DueBadge } from "../components/DueBadge";
 
 const PARTY = "var(--party-primary)";
 
@@ -55,8 +56,8 @@ export default function TaskListPage() {
               <tr className="text-left text-[11px] text-[#6B7280] uppercase tracking-wider">
                 <th className="px-4 py-2 font-medium">任务</th>
                 <th className="px-4 py-2 font-medium w-24">状态</th>
-                <th className="px-4 py-2 font-medium w-64">派发进度</th>
-                <th className="px-4 py-2 font-medium w-40">截止</th>
+                <th className="px-4 py-2 font-medium w-72">派发进度</th>
+                <th className="px-4 py-2 font-medium w-44">截止</th>
                 <th className="px-4 py-2 font-medium w-40">创建</th>
               </tr>
             </thead>
@@ -68,7 +69,14 @@ export default function TaskListPage() {
                   className="border-b border-[#F0F0F0] hover:bg-[#FAFBFC] cursor-pointer"
                 >
                   <td className="px-4 py-2.5">
-                    <div className="text-[13px] font-medium text-[#1A1A1A]">{t.title}</div>
+                    <div className="text-[13px] font-medium text-[#1A1A1A] flex items-center gap-1.5 flex-wrap">
+                      {t.title}
+                      {t.periodLabel && (
+                        <span className="text-[10px] px-1.5 py-px rounded bg-[#FFF7ED] text-[#C2410C] font-normal">
+                          {t.periodLabel}
+                        </span>
+                      )}
+                    </div>
                     <div className="text-[10px] text-[#9CA3AF] mt-0.5 flex items-center gap-2">
                       <span className="inline-flex items-center gap-1">
                         <LayersIcon className="w-3 h-3" />
@@ -82,17 +90,10 @@ export default function TaskListPage() {
                     </span>
                   </td>
                   <td className="px-4 py-2.5">
-                    <ProgressBadges counts={t.statusCounts} total={t.targetCount} />
+                    <TaskProgressBar counts={t.statusCounts} total={t.targetCount} />
                   </td>
-                  <td className="px-4 py-2.5 text-[11px] text-[#6B7280]">
-                    {t.dueAt ? (
-                      <span className="inline-flex items-center gap-1">
-                        <ClockIcon className="w-3 h-3" />
-                        {fmt(t.dueAt)}
-                      </span>
-                    ) : (
-                      <span className="text-[#D1D5DB]">不限</span>
-                    )}
+                  <td className="px-4 py-2.5">
+                    <DueBadge dueAt={t.dueAt} showDate />
                   </td>
                   <td className="px-4 py-2.5 text-[11px] text-[#9CA3AF]">{fmt(t.createdAt)}</td>
                 </tr>

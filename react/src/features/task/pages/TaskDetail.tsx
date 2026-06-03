@@ -16,6 +16,10 @@ import {
   UsersIcon,
   ClipboardCheckIcon,
   EyeIcon,
+  BarChart3Icon,
+  CalendarPlusIcon,
+  CalendarClockIcon,
+  Settings2Icon,
 } from "lucide-react";
 import { storageApi } from "@/features/storage";
 import { organizationsApi } from "@/features/organization";
@@ -29,14 +33,15 @@ import {
 } from "../api";
 import { TaskFormPreview } from "../components/TaskFormPreview";
 import { ReviewDrawer } from "../components/ReviewDrawer";
+import { DueBadge } from "../components/DueBadge";
+import { NewPeriodDialog } from "../components/NewPeriodDialog";
+import {
+  ConfigureCounterpartDialog,
+  SetDispatchOrgDialog,
+} from "../components/CounterpartConfig";
 
 /** 有回执可看的状态(可点开审核抽屉) */
 const REVIEWABLE = new Set(["submitted", "returned", "done"]);
-
-function fmt(s: string | null): string {
-  if (!s) return "—";
-  return s.slice(0, 16).replace("T", " ");
-}
 
 /* ─── 派发对象「阶段」分桶 —— 比原始 status 更贴近实际流程 ─────────────────
    原始 status 里 pending 既可能是「没配对口(谁都看不到)」也可能是「配了对口等认领」,
@@ -102,6 +107,7 @@ const BUCKET_META: {
 export default function TaskDetailPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const [newPeriodOpen, setNewPeriodOpen] = useState(false);
   const taskQuery = useQuery({
     queryKey: ["task", id],
     queryFn: () => taskApi.get(id),
@@ -111,20 +117,71 @@ export default function TaskDetailPage() {
 
   return (
     <div className="h-full flex flex-col bg-[#F7F8FA]">
-      <div className="flex-shrink-0 px-4 py-3 bg-white border-b border-[#E9E9E9] flex items-center gap-3">
+      <div className="flex-shrink-0 px-4 py-3 bg-white border-b border-[#E9E9E9] flex items-center gap-3 flex-wrap">
         <button
           onClick={() => navigate("/admin/tasks")}
           className="p-1.5 rounded hover:bg-[#F7F8FA] text-[#6B7280]"
         >
           <ArrowLeftIcon className="w-4 h-4" />
         </button>
-        <h1 className="text-base font-bold text-[#1A1A1A] truncate">{task?.title ?? "任务详情"}</h1>
+        <h1 className="text-base font-bold text-[#1A1A1A] truncate max-w-[40vw]">
+          {task?.title ?? "任务详情"}
+        </h1>
         {task && (
           <span className="text-[11px] px-1.5 py-0.5 rounded bg-[#EEF4FF] text-[#1A6BC8] flex-shrink-0">
             {TASK_STATUS_LABEL[task.status] ?? task.status}
           </span>
         )}
+        {task?.periodLabel && (
+          <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[#FFF7ED] text-[#C2410C] flex-shrink-0">
+            <CalendarClockIcon className="w-3 h-3" />
+            {task.periodLabel}
+          </span>
+        )}
+        {/* 期次切换(同系列多期时) */}
+        {task && task.siblings.length > 1 && (
+          <select
+            value={task.id}
+            onChange={(e) => navigate(`/admin/tasks/${e.target.value}`)}
+            title="切换期次"
+            className="text-[12px] rounded-md border border-[#dce4ef] bg-white px-2 py-1 text-[#475467] focus:outline-none focus:ring-2 focus:ring-party-primary-20"
+          >
+            {task.siblings.map((s) => (
+              <option key={s.id} value={s.id}>
+                {(s.periodLabel ?? s.createdAt.slice(0, 10)) + (s.current ? "(本期)" : "")}
+              </option>
+            ))}
+          </select>
+        )}
+        {task && (
+          <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setNewPeriodOpen(true)}
+              title="按本任务发起新一期(周期报表:上期值预填、同责任人接力)"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium border border-[#dce4ef] bg-white text-[#475467] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+            >
+              <CalendarPlusIcon className="w-4 h-4" />
+              发起新一期
+            </button>
+            <button
+              onClick={() => navigate(`/admin/tasks/${id}/summary`)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium text-white"
+              style={{ backgroundColor: "var(--party-primary)" }}
+            >
+              <BarChart3Icon className="w-4 h-4" />
+              填报汇总
+            </button>
+          </div>
+        )}
       </div>
+
+      {newPeriodOpen && task && (
+        <NewPeriodDialog
+          taskId={task.id}
+          taskTitle={task.title}
+          onClose={() => setNewPeriodOpen(false)}
+        />
+      )}
 
       <div className="flex-1 min-h-0 overflow-auto p-4">
         {taskQuery.isLoading ? (
@@ -147,6 +204,8 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
   } | null>(null);
   const [filter, setFilter] = useState<Bucket | null>(null);
   const [reviewTargetId, setReviewTargetId] = useState<string | null>(null);
+  const [configUnit, setConfigUnit] = useState<{ orgId: string; orgName: string } | null>(null);
+  const [setDispatchOpen, setSetDispatchOpen] = useState(false);
 
   const membersQuery = useQuery({
     queryKey: ["org-members", expanded?.orgId],
@@ -222,8 +281,9 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
             进度总览
             <span className="ml-2 text-[12px] font-normal text-[#9CA3AF]">点数字查看对应对象</span>
           </div>
-          <span className="inline-flex items-center gap-1 text-[12px] text-[#6B7280]">
-            <ClockIcon className="w-3.5 h-3.5" /> 截止 {fmt(task.dueAt)}
+          <span className="inline-flex items-center gap-1.5 text-[12px] text-[#6B7280]">
+            <ClockIcon className="w-3.5 h-3.5" /> 截止
+            <DueBadge dueAt={task.dueAt} showDate />
           </span>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -252,12 +312,29 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
             );
           })}
         </div>
-        {counts.unconfigured > 0 && (
+        {!task.dispatchOrgId && task.targets.some((t) => t.targetType === "org") && (
+          <div className="mt-3 flex items-start gap-1.5 text-[12px] text-[#B91C1C] bg-[#FEF2F2] border border-[#FECACA] rounded-md px-3 py-2">
+            <InfoIcon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <span>
+              本任务<b>未指定派发部门</b>,接收单位无法匹配对口责任部门。
+              <button
+                type="button"
+                onClick={() => setSetDispatchOpen(true)}
+                className="underline font-medium text-[#B91C1C]"
+              >
+                设置派发部门
+              </button>
+              {" "}后即可逐个单位配置对口。
+            </span>
+          </div>
+        )}
+        {task.dispatchOrgId && counts.unconfigured > 0 && (
           <div className="mt-3 flex items-start gap-1.5 text-[12px] text-[#C2410C] bg-[#FFF7ED] border border-[#FED7AA] rounded-md px-3 py-2">
             <InfoIcon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
             <span>
-              有 <b>{counts.unconfigured}</b> 个单位未配置对口部门 —— 到「组织机构」给这些单位的承办部门设「对口上级
-              = 派发机关部门」后,任务才会进对应人员的待办。点上方「未配置对口」可看是哪些单位。
+              有 <b>{counts.unconfigured}</b> 个单位未配置对口 —— 在下方该单位行点
+              <b className="text-[var(--party-primary)]">「配置对口」</b>
+              选一个责任部门即可(即时生效);点上方「未配置对口」可只看这些单位。
             </span>
           </div>
         )}
@@ -335,13 +412,25 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
                             )}
                             {t.handlerOrgName}
                           </button>
+                        ) : task.dispatchOrgId ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfigUnit({ orgId: t.targetOrgId as string, orgName: t.targetName })
+                            }
+                            className="inline-flex items-center gap-1 text-[12px] text-[var(--party-primary)] hover:underline"
+                            title="为该单位指定责任部门(设其「对口上级」=本任务派发部门),即时生效"
+                          >
+                            <Settings2Icon className="w-3.5 h-3.5" />
+                            配置对口
+                          </button>
                         ) : (
                           <span
                             className="inline-flex items-center gap-1 text-[12px] text-amber-600"
-                            title="该单位下没有部门把「对口上级」指向本任务的派发机关部门 —— 未配置对口前谁都看不到此任务"
+                            title="本任务未指定派发部门,无法匹配对口 —— 请先在上方设置派发部门"
                           >
                             <InfoIcon className="w-3.5 h-3.5" />
-                            未配置对口
+                            待设派发部门
                           </span>
                         )}
                       </td>
@@ -458,6 +547,18 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
 
       {reviewTargetId && (
         <ReviewDrawer targetId={reviewTargetId} onClose={() => setReviewTargetId(null)} />
+      )}
+      {configUnit && task.dispatchOrgId && (
+        <ConfigureCounterpartDialog
+          taskId={task.id}
+          unitOrgId={configUnit.orgId}
+          unitName={configUnit.orgName}
+          dispatchOrgName={task.dispatchOrgName}
+          onClose={() => setConfigUnit(null)}
+        />
+      )}
+      {setDispatchOpen && (
+        <SetDispatchOrgDialog taskId={task.id} onClose={() => setSetDispatchOpen(false)} />
       )}
     </div>
   );

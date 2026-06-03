@@ -316,6 +316,31 @@ export class OrganizationService {
     return this.prisma.organization.update({ where: { id }, data: dto });
   }
 
+  /**
+   * 给某机构的「对口上级机构」追加一个上级 org id —— 合并进 meta.counterpartParentOrgIds(去重),
+   * 并把早期单值键 counterpartParentOrgId 一并迁入数组。供「任务详情里直接配置对口」复用。
+   */
+  async addCounterpartParent(orgId: string, parentOrgId: string): Promise<Organization> {
+    const org = await this.findOne(orgId);
+    let obj: Record<string, unknown> = {};
+    if (org.meta) {
+      try {
+        const parsed: unknown = JSON.parse(org.meta);
+        if (parsed && typeof parsed === 'object') obj = parsed as Record<string, unknown>;
+      } catch {
+        /* 坏 meta:直接重建 */
+      }
+    }
+    const set = new Set<string>();
+    const arr = obj.counterpartParentOrgIds;
+    if (Array.isArray(arr)) for (const x of arr) if (typeof x === 'string') set.add(x);
+    if (typeof obj.counterpartParentOrgId === 'string') set.add(obj.counterpartParentOrgId);
+    set.add(parentOrgId);
+    delete obj.counterpartParentOrgId;
+    obj.counterpartParentOrgIds = [...set];
+    return this.update(orgId, { meta: JSON.stringify(obj) });
+  }
+
   /** 软删除:置 active=false。如果想硬删,在前端二次确认后调 hardDelete */
   async softDelete(id: string): Promise<Organization> {
     await this.findOne(id);

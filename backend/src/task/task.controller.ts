@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Req,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -20,6 +21,8 @@ import { DispatchTaskDto } from './dto/dispatch-task.dto';
 import { SuggestFieldsDto } from './dto/suggest-fields.dto';
 import { SaveFillDto } from './dto/save-fill.dto';
 import { ReviewSubmissionDto } from './dto/review-submission.dto';
+import { NewPeriodDto } from './dto/new-period.dto';
+import { ConfigureCounterpartDto, SetDispatchOrgDto } from './dto/counterpart.dto';
 
 interface UploadedFileShape {
   originalname: string;
@@ -149,6 +152,74 @@ export class TaskController {
     @Req() req: Request,
   ) {
     return this.svc.review(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 汇总(派发人侧):一行一对象 + 数字合计 + 附件引用。 */
+  @Get(':id/summary')
+  summary(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.getSummary(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 附件批量打包下载(派发人侧):按单位分文件夹的 ZIP。 */
+  @Get(':id/attachments-zip')
+  async attachmentsZip(
+    @Param('id') id: string,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.svc.getAttachmentsZip(id, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
+    return new StreamableFile(buffer, {
+      type: 'application/zip',
+      disposition: `attachment; filename="task-attachments.zip"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    });
+  }
+
+  /** 发起新一期(周期报表):克隆为新一期 + 上期值预填 + 同责任人接力。派发人侧。 */
+  @Post(':id/new-period')
+  @Permission('task:manage')
+  newPeriod(
+    @Param('id') id: string,
+    @Body() dto: NewPeriodDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.startNewPeriod(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 配置对口(派发人侧):把某责任部门的「对口上级」设为本任务派发部门,实时生效。 */
+  @Post(':id/configure-counterpart')
+  @Permission('task:manage')
+  configureCounterpart(
+    @Param('id') id: string,
+    @Body() dto: ConfigureCounterpartDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.configureCounterpart(id, dto.handlerOrgId, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
+  }
+
+  /** 设置 / 补「派发部门」(派发人侧):历史任务没派发部门时补上。 */
+  @Post(':id/dispatch-org')
+  @Permission('task:manage')
+  setDispatchOrg(
+    @Param('id') id: string,
+    @Body() dto: SetDispatchOrgDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.setDispatchOrg(id, dto.dispatchOrgId, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
   }
 
   @Get(':id')

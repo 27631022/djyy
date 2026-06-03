@@ -144,10 +144,23 @@ export interface TaskListItem {
   templateId: string | null;
   dueAt: string | null;
   status: string;
+  /** 周期系列 id(null = 一次性任务) */
+  seriesId: string | null;
+  /** 期次标签(如「2026年6月」) */
+  periodLabel: string | null;
   createdAt: string;
   targetCount: number;
   statusCounts: TaskStatusCounts;
   fieldCount: number;
+}
+
+/** 周期系列里的一期(期次切换用) */
+export interface TaskSeriesSibling {
+  id: string;
+  periodLabel: string | null;
+  createdAt: string;
+  dueAt: string | null;
+  current: boolean;
 }
 
 export interface TaskTargetView {
@@ -176,10 +189,16 @@ export interface TaskDetail {
   fields: TaskField[];
   dispatchUserId: string;
   dispatchOrgId: string | null;
+  /** 派发部门名(配置对口弹窗展示用) */
+  dispatchOrgName: string | null;
   dueAt: string | null;
   noticeFileId: string | null;
   noticeFileName: string | null;
   status: string;
+  seriesId: string | null;
+  periodLabel: string | null;
+  /** 同系列各期(含本期,createdAt 倒序),供期次切换 */
+  siblings: TaskSeriesSibling[];
   createdAt: string;
   updatedAt: string;
   targets: TaskTargetView[];
@@ -266,21 +285,38 @@ export interface TaskInboxItem {
 }
 
 /* ─── 填报(P2.2)─── */
+/** 往期填报(同系列同单位的一期历史,只读回看) */
+export interface TaskFillHistoryEntry {
+  taskId: string;
+  periodLabel: string | null;
+  submittedAt: string | null;
+  formData: Record<string, unknown>;
+}
+
 export interface TaskFillDetail {
   targetId: string;
   taskId: string;
   taskTitle: string;
   notes: string | null;
   dueAt: string | null;
+  /** 期次标签(周期任务) */
+  periodLabel: string | null;
+  seriesId: string | null;
   fields: TaskField[];
   targetStatus: string;
+  /** 是否可编辑(已提交 / 已通过 = false,锁定;退回后恢复 true) */
+  editable: boolean;
   submission: {
     /** { [fieldCode]: value };file/image 值为 {id,name}[] */
     formData: Record<string, unknown>;
     status: string;
     reviewNote: string | null;
     submittedAt: string | null;
+    /** 累计被退回次数 */
+    returnCount: number;
   };
+  /** 往期填报(近 6 期,最近在前) */
+  history: TaskFillHistoryEntry[];
 }
 
 /* ─── 审核(P2.3:派发人看回执 + 通过/退回)─── */
@@ -303,7 +339,39 @@ export interface TaskSubmissionDetail {
     reviewNote: string | null;
     submittedAt: string | null;
     reviewedAt: string | null;
+    returnCount: number;
   } | null;
+}
+
+/* ─── 汇总(P3:一行一对象 + 数字合计 + 附件)─── */
+export interface TaskSummaryRow {
+  targetId: string;
+  targetType: "org" | "user";
+  targetName: string;
+  ownerName: string | null;
+  /** 派发对象状态(pending/…/done) */
+  status: string;
+  /** 回执状态(draft/submitted/returned/approved)或 null(无回执) */
+  submissionStatus: string | null;
+  submittedAt: string | null;
+  /** { [fieldCode]: value };file/image 值为 {id,name}[] */
+  values: Record<string, unknown>;
+}
+
+export interface TaskSummary {
+  taskId: string;
+  title: string;
+  dueAt: string | null;
+  periodLabel: string | null;
+  seriesId: string | null;
+  fields: TaskField[];
+  rows: TaskSummaryRow[];
+  /** number 字段合计(只统计已提交/已通过) */
+  numberTotals: Record<
+    string,
+    { sum: number; count: number; decimals: number; unit: string | null }
+  >;
+  counts: { total: number; filled: number; unfilled: number };
 }
 
 export const taskApi = {
@@ -370,6 +438,33 @@ export const taskApi = {
         note,
       })
       .then((r) => r.data),
+
+  /** 汇总(派发人侧):一行一对象 + 数字合计 + 附件 */
+  summary: (taskId: string) =>
+    api.get<TaskSummary>(`/tasks/${taskId}/summary`).then((r) => r.data),
+
+  /** 发起新一期(周期报表):克隆 + 上期值预填 + 同责任人接力,返回新一期任务 */
+  startNewPeriod: (taskId: string, input: { periodLabel?: string; dueAt?: string }) =>
+    api.post<TaskDetail>(`/tasks/${taskId}/new-period`, input).then((r) => r.data),
+
+  /** 配置对口:把某责任部门的「对口上级」设为本任务派发部门(实时生效) */
+  configureCounterpart: (taskId: string, handlerOrgId: string) =>
+    api
+      .post<TaskDetail>(`/tasks/${taskId}/configure-counterpart`, { handlerOrgId })
+      .then((r) => r.data),
+
+  /** 设置 / 补派发部门(历史任务没派发部门时) */
+  setDispatchOrg: (taskId: string, dispatchOrgId: string) =>
+    api.post<TaskDetail>(`/tasks/${taskId}/dispatch-org`, { dispatchOrgId }).then((r) => r.data),
+
+  /** 附件批量打包下载(ZIP,按单位分文件夹);返回 Blob */
+  attachmentsZip: (taskId: string) =>
+    api
+      .get<Blob>(`/tasks/${taskId}/attachments-zip`, {
+        responseType: "blob",
+        timeout: 120_000,
+      })
+      .then((r) => r.data),
 };
 
 /* ─── 状态展示(任务级 + 对象级) ─── */
@@ -379,6 +474,76 @@ export const TASK_STATUS_LABEL: Record<string, string> = {
   closed: "已结束",
   archived: "已归档",
 };
+
+/* ─── 截止提醒 / 完成时效(画像考核)─── */
+export type DueTone = "normal" | "soon" | "overdue" | "doneOnTime" | "doneLate";
+export interface DueInfo {
+  text: string;
+  tone: DueTone;
+  /** 未提交:剩余天数(负=逾期);已提交:负=提前/按期、正=逾期天数 */
+  days: number;
+  /** 是否完成态(用 submittedAt 判定按期/逾期) */
+  done: boolean;
+}
+
+const MS_DAY = 86_400_000;
+/** 逾期超过这个天数(约 2 年)就只显示「逾期很久」,不再报具体天数(避开坏数据如 1111 年的天文数字) */
+const LONG_OVERDUE_DAYS = 730;
+/** 按本地「日历日」取整的差值(到 / 从,忽略时分,更符合「还有几天」的直觉) */
+function calendarDayDiff(from: Date, to: Date): number {
+  const a = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime();
+  const b = new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime();
+  return Math.round((b - a) / MS_DAY);
+}
+
+/**
+ * 截止信息:
+ * - 传 submittedAt(已提交/已通过)→ 判「按期完成 / 逾期 N 天完成」(画像考核)
+ * - 否则按当前时间算「还有 N 天 / 今天截止 / 已逾期 N 天」(≤3 天或逾期为醒目态)
+ * 逾期 / 逾期完成超过 2 年只显示「逾期很久」,不报天文数字(坏数据兜底)。
+ * 返回 null = 无截止日期。
+ */
+export function dueInfo(dueAt: string | null, submittedAt?: string | null): DueInfo | null {
+  if (!dueAt) return null;
+  const due = new Date(dueAt);
+  if (Number.isNaN(due.getTime())) return null;
+
+  if (submittedAt) {
+    const sub = new Date(submittedAt);
+    const over = calendarDayDiff(due, sub); // 正 = 逾期天数
+    if (over <= 0) return { text: "按期完成", tone: "doneOnTime", days: over, done: true };
+    if (over > LONG_OVERDUE_DAYS)
+      return { text: "逾期很久完成", tone: "doneLate", days: over, done: true };
+    return { text: `逾期 ${over} 天完成`, tone: "doneLate", days: over, done: true };
+  }
+
+  const left = calendarDayDiff(new Date(), due); // 正 = 还剩天数
+  if (left < 0) {
+    const over = -left;
+    if (over > LONG_OVERDUE_DAYS)
+      return { text: "逾期很久了", tone: "overdue", days: left, done: false };
+    return { text: `已逾期 ${over} 天`, tone: "overdue", days: left, done: false };
+  }
+  if (left === 0) return { text: "今天截止", tone: "soon", days: 0, done: false };
+  if (left <= 3) return { text: `还有 ${left} 天`, tone: "soon", days: left, done: false };
+  return { text: `还有 ${left} 天`, tone: "normal", days: left, done: false };
+}
+
+/** DueTone → chip 配色 */
+export function dueToneStyle(tone: DueTone): CSSProperties {
+  switch (tone) {
+    case "overdue":
+      return { backgroundColor: "#FEF2F2", color: "#DC2626", borderColor: "#FECACA" };
+    case "soon":
+      return { backgroundColor: "#FFF7ED", color: "#C2410C", borderColor: "#FED7AA" };
+    case "doneOnTime":
+      return { backgroundColor: "#ECFDF5", color: "#047857", borderColor: "#A7F3D0" };
+    case "doneLate":
+      return { backgroundColor: "#FFF7ED", color: "#B45309", borderColor: "#FED7AA" };
+    default:
+      return { backgroundColor: "#F3F4F6", color: "#4B5563", borderColor: "#E5E7EB" };
+  }
+}
 
 /** 对象状态(pending/assigned/…)对应的小标配色 */
 export function taskStatusChip(st: string): CSSProperties {

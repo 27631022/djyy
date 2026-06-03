@@ -231,6 +231,11 @@ export function ReviewDrawer({
                     <ClockIcon className="w-3 h-3" />
                     提交于 {fmt(data.submission?.submittedAt ?? null)}
                   </span>
+                  {(data.submission?.returnCount ?? 0) > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[#B45309] font-medium">
+                      已退回 {data.submission?.returnCount} 次
+                    </span>
+                  )}
                 </div>
               </div>
 

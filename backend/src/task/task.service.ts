@@ -4,10 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import JSZip from 'jszip';
 import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
 import { OrganizationService } from '../organization';
 import { UserService } from '../user';
+import { StorageService } from '../storage';
 import { normalizeFieldDefs, parseFields } from './task-fields';
 import { DispatchTaskDto, type TaskTargetInput } from './dto/dispatch-task.dto';
 import { SaveFillDto } from './dto/save-fill.dto';
@@ -44,6 +46,7 @@ export class TaskService {
     private readonly audit: AuditService,
     private readonly orgs: OrganizationService,
     private readonly users: UserService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -159,9 +162,19 @@ export class TaskService {
       const meta = index.metaById.get(id);
       if (meta) {
         try {
-          const cp = (JSON.parse(meta) as { counterpartParentOrgIds?: unknown })
-            .counterpartParentOrgIds;
+          const parsed = JSON.parse(meta) as {
+            counterpartParentOrgIds?: unknown;
+            counterpartParentOrgId?: unknown;
+          };
+          const cp = parsed.counterpartParentOrgIds;
           if (Array.isArray(cp) && cp.includes(sourceId)) return id;
+          // 兼容早期单值键 counterpartParentOrgId(前端已迁数组,但老数据可能还在)
+          if (
+            typeof parsed.counterpartParentOrgId === 'string' &&
+            parsed.counterpartParentOrgId === sourceId
+          ) {
+            return id;
+          }
         } catch {
           /* 忽略坏 meta */
         }
@@ -200,6 +213,8 @@ export class TaskService {
         templateId: t.templateId,
         dueAt: t.dueAt,
         status: t.status,
+        seriesId: t.seriesId,
+        periodLabel: t.periodLabel,
         createdAt: t.createdAt,
         targetCount: ts.length,
         statusCounts: countByStatus(ts),
@@ -234,6 +249,7 @@ export class TaskService {
         .filter((t) => t.targetType === 'org' && t.targetOrgId)
         .map((t) => t.targetOrgId as string),
       ...[...liveHandler.values()].filter((x): x is string => !!x),
+      ...(task.dispatchOrgId ? [task.dispatchOrgId] : []),
     ];
     const userIds = [
       ...targets.filter((t) => t.targetUserId).map((t) => t.targetUserId as string),
@@ -269,6 +285,23 @@ export class TaskService {
       };
     });
 
+    // 周期系列:同系列各期(供期次切换);非周期任务为空
+    const siblings = task.seriesId
+      ? (
+          await this.prisma.task.findMany({
+            where: { seriesId: task.seriesId },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, periodLabel: true, createdAt: true, dueAt: true },
+          })
+        ).map((s) => ({
+          id: s.id,
+          periodLabel: s.periodLabel,
+          createdAt: s.createdAt,
+          dueAt: s.dueAt,
+          current: s.id === task.id,
+        }))
+      : [];
+
     return {
       id: task.id,
       title: task.title,
@@ -282,6 +315,10 @@ export class TaskService {
       noticeFileId: task.noticeFileId,
       noticeFileName: task.noticeFileName,
       status: task.status,
+      dispatchOrgName: task.dispatchOrgId ? orgNames[task.dispatchOrgId] ?? null : null,
+      seriesId: task.seriesId,
+      periodLabel: task.periodLabel,
+      siblings,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
       targets: enriched,
@@ -415,20 +452,75 @@ export class TaskService {
     const task = await this.prisma.task.findUnique({ where: { id: target.taskId } });
     if (!task) throw new NotFoundException('任务不存在');
     const submission = await this.prisma.taskSubmission.findUnique({ where: { targetId } });
+    const subStatus = submission?.status ?? 'draft';
+    // 提交即锁定:已提交 / 已通过不可编辑(退回后回到可编辑)
+    const editable = subStatus !== 'submitted' && subStatus !== 'approved';
+
+    // 往期填报(同系列、同单位的历史回看,只读;最多近 6 期)
+    let history: {
+      taskId: string;
+      periodLabel: string | null;
+      submittedAt: Date | null;
+      formData: Record<string, unknown>;
+    }[] = [];
+    if (task.seriesId) {
+      const siblings = await this.prisma.task.findMany({
+        where: { seriesId: task.seriesId, id: { not: task.id } },
+        orderBy: { createdAt: 'desc' },
+        take: 6,
+      });
+      if (siblings.length) {
+        const unitWhere =
+          target.targetType === 'org'
+            ? { targetOrgId: target.targetOrgId }
+            : { targetUserId: target.targetUserId };
+        const sibTargets = await this.prisma.taskTarget.findMany({
+          where: { taskId: { in: siblings.map((s) => s.id) }, ...unitWhere },
+        });
+        const tgtByTask = new Map(sibTargets.map((t) => [t.taskId, t]));
+        const sibSubs = await this.prisma.taskSubmission.findMany({
+          where: {
+            targetId: { in: sibTargets.map((t) => t.id) },
+            status: { in: ['submitted', 'approved'] },
+          },
+        });
+        const subByTgt = new Map(sibSubs.map((s) => [s.targetId, s]));
+        history = siblings
+          .map((s) => {
+            const tg = tgtByTask.get(s.id);
+            const sub = tg ? subByTgt.get(tg.id) : undefined;
+            return sub
+              ? {
+                  taskId: s.id,
+                  periodLabel: s.periodLabel,
+                  submittedAt: sub.submittedAt,
+                  formData: safeJson(sub.formData),
+                }
+              : null;
+          })
+          .filter((x): x is NonNullable<typeof x> => !!x);
+      }
+    }
+
     return {
       targetId,
       taskId: task.id,
       taskTitle: task.title,
       notes: task.notes,
       dueAt: task.dueAt,
+      periodLabel: task.periodLabel,
+      seriesId: task.seriesId,
       fields: parseFields(task.fields),
       targetStatus: target.status,
+      editable,
       submission: {
         formData: submission ? safeJson(submission.formData) : {},
-        status: submission?.status ?? 'draft',
+        status: subStatus,
         reviewNote: submission?.reviewNote ?? null,
         submittedAt: submission?.submittedAt ?? null,
+        returnCount: submission?.returnCount ?? 0,
       },
+      history,
     };
   }
 
@@ -443,6 +535,15 @@ export class TaskService {
     }
     const task = await this.prisma.task.findUnique({ where: { id: target.taskId } });
     if (!task) throw new NotFoundException('任务不存在');
+
+    // 提交即锁定:已提交 / 已通过的回执不可再改,必须派发人退回后才能编辑
+    const existing = await this.prisma.taskSubmission.findUnique({ where: { targetId } });
+    if (existing && (existing.status === 'submitted' || existing.status === 'approved')) {
+      throw new BadRequestException(
+        '该任务已提交,正在等待审核;如需修改请联系派发人退回后再改',
+      );
+    }
+
     const fields = parseFields(task.fields);
     const formData = (dto.formData ?? {}) as Record<string, unknown>;
 
@@ -536,6 +637,7 @@ export class TaskService {
             reviewNote: submission.reviewNote,
             submittedAt: submission.submittedAt,
             reviewedAt: submission.reviewedAt,
+            returnCount: submission.returnCount,
           }
         : null,
     };
@@ -578,6 +680,8 @@ export class TaskService {
           reviewNote: note,
           reviewedById: actorId,
           reviewedAt: now,
+          // 退回累计 +1(画像考核用);通过不动计数
+          ...(isReturn ? { returnCount: { increment: 1 } } : {}),
         },
       }),
       this.prisma.taskTarget.update({
@@ -593,6 +697,369 @@ export class TaskService {
       detail: { taskId: target.taskId, note },
     });
     return { ok: true, status: isReturn ? 'returned' : 'done' };
+  }
+
+  /**
+   * 汇总(派发人侧):按 taskId 捞全部派发对象 + 回执,一行一对象。
+   * 数字字段程序内求和(只统计「已提交 / 已通过」的回执),file/image 收集附件引用。
+   * 只有任务派发人可看。org 量级几十~几百,直接内存聚合(非 SQL,见 CLAUDE.md 汇总备忘)。
+   */
+  async getSummary(taskId: string, actor: ActorContext) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const task = await this.prisma.task.findUnique({ where: { id: taskId } });
+    if (!task) throw new NotFoundException('任务不存在');
+    if (task.dispatchUserId !== actorId) {
+      throw new ForbiddenException('只有任务派发人可以查看汇总');
+    }
+    const fields = parseFields(task.fields);
+    const targets = await this.prisma.taskTarget.findMany({
+      where: { taskId },
+      orderBy: { createdAt: 'asc' },
+    });
+    const submissions = await this.prisma.taskSubmission.findMany({ where: { taskId } });
+    const subByTarget = new Map(submissions.map((s) => [s.targetId, s]));
+
+    const orgIds = targets
+      .filter((t) => t.targetType === 'org' && t.targetOrgId)
+      .map((t) => t.targetOrgId as string);
+    const userIds = [
+      ...targets.filter((t) => t.targetUserId).map((t) => t.targetUserId as string),
+      ...targets.filter((t) => t.ownerUserId).map((t) => t.ownerUserId as string),
+    ];
+    const [orgNames, userInfo] = await Promise.all([
+      this.namesForOrgs(orgIds),
+      this.infoForUsers(userIds),
+    ]);
+
+    const rows = targets.map((t) => {
+      const sub = subByTarget.get(t.id);
+      return {
+        targetId: t.id,
+        targetType: t.targetType,
+        targetName:
+          t.targetType === 'org'
+            ? t.targetOrgId
+              ? orgNames[t.targetOrgId]
+              : ''
+            : t.targetUserId
+              ? userInfo[t.targetUserId]?.name ?? ''
+              : '',
+        ownerName: t.ownerUserId ? userInfo[t.ownerUserId]?.name ?? null : null,
+        status: t.status,
+        submissionStatus: sub?.status ?? null,
+        submittedAt: sub?.submittedAt ?? null,
+        values: sub ? safeJson(sub.formData) : {},
+      };
+    });
+
+    const isFilled = (s: string | null) => s === 'submitted' || s === 'approved';
+
+    // 数字字段合计(只算已提交 / 已通过的回执)
+    const numberTotals: Record<
+      string,
+      { sum: number; count: number; decimals: number; unit: string | null }
+    > = {};
+    for (const f of fields) {
+      if (f.type !== 'number') continue;
+      let sum = 0;
+      let count = 0;
+      for (const r of rows) {
+        if (!isFilled(r.submissionStatus)) continue;
+        const raw = r.values[f.code];
+        const n =
+          typeof raw === 'number'
+            ? raw
+            : typeof raw === 'string' && raw.trim() !== ''
+              ? Number(raw)
+              : NaN;
+        if (!Number.isNaN(n)) {
+          sum += n;
+          count++;
+        }
+      }
+      numberTotals[f.code] = { sum, count, decimals: f.decimals ?? 0, unit: f.unit ?? null };
+    }
+
+    const filledCount = rows.filter((r) => isFilled(r.submissionStatus)).length;
+    return {
+      taskId: task.id,
+      title: task.title,
+      dueAt: task.dueAt,
+      periodLabel: task.periodLabel,
+      seriesId: task.seriesId,
+      fields,
+      rows,
+      numberTotals,
+      counts: { total: rows.length, filled: filledCount, unfilled: rows.length - filledCount },
+    };
+  }
+
+  /**
+   * 附件批量打包(派发人侧):把所有 file/image 字段的附件按单位收进 ZIP,
+   * 结构 = 「{单位名}/{字段名}-{原文件名}」(同单位同名加 -2),按单位名排序;
+   * 只收「已提交 / 已通过」的回执。读不到的文件跳过不阻断整包。
+   */
+  async getAttachmentsZip(
+    taskId: string,
+    actor: ActorContext,
+  ): Promise<{ buffer: Buffer; filename: string; count: number }> {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const task = await this.prisma.task.findUnique({ where: { id: taskId } });
+    if (!task) throw new NotFoundException('任务不存在');
+    if (task.dispatchUserId !== actorId) {
+      throw new ForbiddenException('只有任务派发人可以下载附件');
+    }
+    const fields = parseFields(task.fields);
+    const fileFields = fields.filter((f) => f.type === 'file' || f.type === 'image');
+    if (fileFields.length === 0) throw new BadRequestException('该任务没有附件类字段');
+
+    const targets = await this.prisma.taskTarget.findMany({
+      where: { taskId },
+      orderBy: { createdAt: 'asc' },
+    });
+    const submissions = await this.prisma.taskSubmission.findMany({ where: { taskId } });
+    const subByTarget = new Map(submissions.map((s) => [s.targetId, s]));
+
+    const orgIds = targets
+      .filter((t) => t.targetType === 'org' && t.targetOrgId)
+      .map((t) => t.targetOrgId as string);
+    const userIds = targets
+      .filter((t) => t.targetUserId)
+      .map((t) => t.targetUserId as string);
+    const [orgNames, userInfo] = await Promise.all([
+      this.namesForOrgs(orgIds),
+      this.infoForUsers(userIds),
+    ]);
+
+    // 收集 {单位, 字段, fileId, 原文件名},只取已提交 / 已通过
+    const items: { unit: string; field: string; fileId: string; fileName: string }[] = [];
+    for (const t of targets) {
+      const sub = subByTarget.get(t.id);
+      if (!sub || (sub.status !== 'submitted' && sub.status !== 'approved')) continue;
+      const data = safeJson(sub.formData);
+      const unit =
+        (t.targetType === 'org'
+          ? t.targetOrgId
+            ? orgNames[t.targetOrgId]
+            : ''
+          : t.targetUserId
+            ? userInfo[t.targetUserId]?.name ?? ''
+            : '') || '未命名单位';
+      for (const f of fileFields) {
+        const v = data[f.code];
+        if (!Array.isArray(v)) continue;
+        for (const it of v) {
+          const id =
+            it && typeof it === 'object' ? (it as { id?: unknown }).id : it;
+          const nm =
+            it && typeof it === 'object' ? (it as { name?: unknown }).name : undefined;
+          if (typeof id === 'string') {
+            items.push({
+              unit,
+              field: f.label,
+              fileId: id,
+              fileName: typeof nm === 'string' && nm ? nm : '文件',
+            });
+          }
+        }
+      }
+    }
+    if (items.length === 0) throw new BadRequestException('暂无已提交的附件可下载');
+
+    // 按单位名排序(中文),同单位内按字段
+    items.sort(
+      (a, b) => a.unit.localeCompare(b.unit, 'zh-Hans-CN') || a.field.localeCompare(b.field),
+    );
+
+    const zip = new JSZip();
+    const usedPerFolder = new Map<string, Set<string>>();
+    let count = 0;
+    for (const it of items) {
+      let buf: Buffer;
+      try {
+        buf = (await this.storage.getBuffer(it.fileId)).buffer;
+      } catch {
+        continue; // 文件缺失/读失败:跳过不阻断整包
+      }
+      const folder = sanitizeZipName(it.unit);
+      const used = usedPerFolder.get(folder) ?? new Set<string>();
+      const dot = it.fileName.lastIndexOf('.');
+      const stem = dot > 0 ? it.fileName.slice(0, dot) : it.fileName;
+      const ext = dot > 0 ? it.fileName.slice(dot) : '';
+      const baseName = sanitizeZipName(`${it.field}-${stem}`);
+      let name = `${baseName}${ext}`;
+      let k = 1;
+      while (used.has(name)) {
+        k += 1;
+        name = `${baseName}-${k}${ext}`;
+      }
+      used.add(name);
+      usedPerFolder.set(folder, used);
+      zip.file(`${folder}/${name}`, buf);
+      count += 1;
+    }
+    if (count === 0) throw new BadRequestException('附件文件读取失败,暂无可下载内容');
+
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    await this.audit.log({
+      ...actor,
+      action: 'task.attachments.download',
+      target: taskId,
+      detail: { count, title: task.title },
+    });
+    return { buffer, filename: `${sanitizeZipName(task.title)}-附件.zip`, count };
+  }
+
+  /**
+   * 发起新一期(周期报表):把当前任务克隆为新一期。
+   * - seriesId 串联(首次发起时源任务也并入系列,seriesId = 源任务 id)
+   * - 上期「已提交 / 已通过」内容 → 本期 draft 预填(看得到上月、改增量)
+   * - 同责任人 / 责任部门接力(有责任人 → in_progress 直接进其待办,无需重新认领)
+   * - 老记录原样留存(快照),不被覆盖。只有派发人可发起。
+   */
+  async startNewPeriod(
+    taskId: string,
+    dto: { periodLabel?: string; dueAt?: string },
+    actor: ActorContext,
+  ) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const src = await this.prisma.task.findUnique({ where: { id: taskId } });
+    if (!src) throw new NotFoundException('任务不存在');
+    if (src.dispatchUserId !== actorId) {
+      throw new ForbiddenException('只有任务派发人可以发起新一期');
+    }
+
+    let dueAt: Date | null = null;
+    if (dto.dueAt) {
+      const d = new Date(dto.dueAt);
+      if (Number.isNaN(d.getTime())) throw new BadRequestException('截止时间格式不正确');
+      dueAt = d;
+    }
+    const seriesId = src.seriesId ?? src.id;
+
+    const srcTargets = await this.prisma.taskTarget.findMany({ where: { taskId: src.id } });
+    const srcSubs = await this.prisma.taskSubmission.findMany({ where: { taskId: src.id } });
+    const subByTarget = new Map(srcSubs.map((s) => [s.targetId, s]));
+
+    const newTask = await this.prisma.$transaction(async (tx) => {
+      // 首次发起:把源任务并入系列(seriesId = 自身 id)
+      if (!src.seriesId) {
+        await tx.task.update({ where: { id: src.id }, data: { seriesId } });
+      }
+      const t = await tx.task.create({
+        data: {
+          title: src.title,
+          description: src.description,
+          notes: src.notes,
+          templateId: src.templateId,
+          fields: src.fields,
+          dispatchUserId: src.dispatchUserId,
+          dispatchOrgId: src.dispatchOrgId,
+          dueAt,
+          noticeFileId: src.noticeFileId,
+          noticeFileName: src.noticeFileName,
+          status: 'open',
+          seriesId,
+          periodLabel: dto.periodLabel?.trim() || null,
+        },
+      });
+      for (const tg of srcTargets) {
+        const hadOwner = !!tg.ownerUserId;
+        const newTarget = await tx.taskTarget.create({
+          data: {
+            taskId: t.id,
+            targetType: tg.targetType,
+            targetOrgId: tg.targetOrgId,
+            targetUserId: tg.targetUserId,
+            ownerUserId: tg.ownerUserId, // 同责任人接力
+            handlerOrgId: tg.handlerOrgId,
+            status: hadOwner ? 'in_progress' : 'pending',
+            assignedById: hadOwner ? actorId : null,
+            assignedAt: hadOwner ? new Date() : null,
+          },
+        });
+        // 上期已提交/已通过 → 本期草稿预填(快照搬运)
+        const sub = subByTarget.get(tg.id);
+        if (sub && (sub.status === 'submitted' || sub.status === 'approved')) {
+          await tx.taskSubmission.create({
+            data: {
+              taskId: t.id,
+              targetId: newTarget.id,
+              formData: sub.formData,
+              fileIds: sub.fileIds,
+              status: 'draft',
+            },
+          });
+        }
+      }
+      return t;
+    });
+
+    await this.audit.log({
+      ...actor,
+      action: 'task.new-period',
+      target: newTask.id,
+      detail: {
+        seriesId,
+        fromTaskId: src.id,
+        periodLabel: newTask.periodLabel,
+        targetCount: srcTargets.length,
+      },
+    });
+    return this.get(newTask.id);
+  }
+
+  /**
+   * 配置对口(任务详情侧):把某责任部门的「对口上级」设为本任务派发部门。
+   * 写的是组织属性(走 OrganizationService),所以一次配置、之后该派发部门的任务都自动路由;
+   * 因责任部门实时解析,配完本任务即时生效。只有派发人可配。
+   */
+  async configureCounterpart(taskId: string, handlerOrgId: string, actor: ActorContext) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const task = await this.prisma.task.findUnique({ where: { id: taskId } });
+    if (!task) throw new NotFoundException('任务不存在');
+    if (task.dispatchUserId !== actorId) {
+      throw new ForbiddenException('只有任务派发人可以配置对口');
+    }
+    if (!task.dispatchOrgId) {
+      throw new BadRequestException('本任务未指定派发部门,请先设置派发部门再配置对口');
+    }
+    await this.orgs.findOne(handlerOrgId); // 校验存在
+    await this.orgs.addCounterpartParent(handlerOrgId, task.dispatchOrgId);
+    await this.audit.log({
+      ...actor,
+      action: 'task.counterpart.config',
+      target: taskId,
+      detail: { handlerOrgId, dispatchOrgId: task.dispatchOrgId },
+    });
+    return this.get(taskId);
+  }
+
+  /** 设置 / 补「派发部门」(任务详情侧):历史任务没派发部门时补上,对口才能匹配。只有派发人可设。 */
+  async setDispatchOrg(taskId: string, dispatchOrgId: string, actor: ActorContext) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const task = await this.prisma.task.findUnique({ where: { id: taskId } });
+    if (!task) throw new NotFoundException('任务不存在');
+    if (task.dispatchUserId !== actorId) {
+      throw new ForbiddenException('只有任务派发人可以设置派发部门');
+    }
+    const org = (await this.orgs.findOne(dispatchOrgId)) as { kind?: string };
+    if (org.kind !== 'admin') {
+      throw new BadRequestException('派发部门必须是行政机构');
+    }
+    await this.prisma.task.update({ where: { id: taskId }, data: { dispatchOrgId } });
+    await this.audit.log({
+      ...actor,
+      action: 'task.dispatch-org.set',
+      target: taskId,
+      detail: { dispatchOrgId },
+    });
+    return this.get(taskId);
   }
 
   /** 规整 + 校验派发对象(去重、存在性) */
@@ -696,4 +1163,14 @@ function countByStatus(targets: { status: string }[]): Record<string, number> {
   const c: Record<string, number> = {};
   for (const t of targets) c[t.status] = (c[t.status] ?? 0) + 1;
   return c;
+}
+
+/** ZIP 内文件夹 / 文件名净化:去掉路径非法字符,空 → 占位 */
+function sanitizeZipName(s: string): string {
+  const cleaned = (s || '')
+    .replace(/[/\\:*?"<>|]/g, '_') // 路径非法字符
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+  return cleaned || '未命名';
 }
