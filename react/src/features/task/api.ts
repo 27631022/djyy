@@ -283,6 +283,29 @@ export interface TaskFillDetail {
   };
 }
 
+/* ─── 审核(P2.3:派发人看回执 + 通过/退回)─── */
+export interface TaskSubmissionDetail {
+  targetId: string;
+  taskId: string;
+  taskTitle: string;
+  fields: TaskField[];
+  targetType: string;
+  targetName: string;
+  ownerName: string | null;
+  ownerPhone: string | null;
+  handlerOrgName: string | null;
+  /** 派发对象状态:submitted=待审 / returned=已退回 / done=已通过 */
+  targetStatus: string;
+  submission: {
+    /** { [fieldCode]: value };file/image 值为 {id,name}[] */
+    formData: Record<string, unknown>;
+    status: string;
+    reviewNote: string | null;
+    submittedAt: string | null;
+    reviewedAt: string | null;
+  } | null;
+}
+
 export const taskApi = {
   dispatch: (input: DispatchTaskInput) =>
     api.post<TaskDetail>("/tasks", input).then((r) => r.data),
@@ -332,6 +355,19 @@ export const taskApi = {
       .post<{ ok: boolean; status: string }>(`/tasks/targets/${targetId}/fill`, {
         formData,
         submit,
+      })
+      .then((r) => r.data),
+
+  /** 审核:查看某派发对象的回执(派发人侧) */
+  getSubmission: (targetId: string) =>
+    api.get<TaskSubmissionDetail>(`/tasks/targets/${targetId}/submission`).then((r) => r.data),
+
+  /** 审核:通过(approve)/ 退回重填(return,note 必填) */
+  review: (targetId: string, decision: "approve" | "return", note?: string) =>
+    api
+      .post<{ ok: boolean; status: string }>(`/tasks/targets/${targetId}/review`, {
+        decision,
+        note,
       })
       .then((r) => r.data),
 };

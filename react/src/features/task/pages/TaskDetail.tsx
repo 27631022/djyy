@@ -14,6 +14,8 @@ import {
   ChevronRightIcon,
   PhoneIcon,
   UsersIcon,
+  ClipboardCheckIcon,
+  EyeIcon,
 } from "lucide-react";
 import { storageApi } from "@/features/storage";
 import { organizationsApi } from "@/features/organization";
@@ -26,6 +28,10 @@ import {
   type TaskTargetView,
 } from "../api";
 import { TaskFormPreview } from "../components/TaskFormPreview";
+import { ReviewDrawer } from "../components/ReviewDrawer";
+
+/** 有回执可看的状态(可点开审核抽屉) */
+const REVIEWABLE = new Set(["submitted", "returned", "done"]);
 
 function fmt(s: string | null): string {
   if (!s) return "—";
@@ -140,6 +146,7 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
     orgName: string;
   } | null>(null);
   const [filter, setFilter] = useState<Bucket | null>(null);
+  const [reviewTargetId, setReviewTargetId] = useState<string | null>(null);
 
   const membersQuery = useQuery({
     queryKey: ["org-members", expanded?.orgId],
@@ -360,12 +367,29 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
                         )}
                       </td>
                       <td className="px-4 py-2.5">
-                        <span
-                          className="text-[11px] px-1.5 py-0.5 rounded"
-                          style={taskStatusChip(t.status)}
-                        >
-                          {TASK_TARGET_STATUS_LABEL[t.status] ?? t.status}
-                        </span>
+                        {REVIEWABLE.has(t.status) ? (
+                          <button
+                            type="button"
+                            onClick={() => setReviewTargetId(t.id)}
+                            title="查看回执 / 审核"
+                            className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded hover:brightness-95 transition"
+                            style={taskStatusChip(t.status)}
+                          >
+                            {TASK_TARGET_STATUS_LABEL[t.status] ?? t.status}
+                            {t.status === "submitted" ? (
+                              <ClipboardCheckIcon className="w-3 h-3" />
+                            ) : (
+                              <EyeIcon className="w-3 h-3" />
+                            )}
+                          </button>
+                        ) : (
+                          <span
+                            className="text-[11px] px-1.5 py-0.5 rounded"
+                            style={taskStatusChip(t.status)}
+                          >
+                            {TASK_TARGET_STATUS_LABEL[t.status] ?? t.status}
+                          </span>
+                        )}
                       </td>
                     </tr>
                     {isOpen && (
@@ -419,15 +443,22 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
         </div>
         <div className="px-4 py-2 bg-[#FBFBFC] border-t border-[#F0F0F0] text-[11px] text-[#9CA3AF] flex items-center gap-1.5">
           <InfoIcon className="w-3 h-3" />
-          待接收=该责任部门成员可在「我的待办」接收;未配置对口前谁都看不到;已接收→显示责任人 + 电话便于上级对接。
+          待接收=该责任部门成员可在「我的待办」接收;未配置对口前谁都看不到;已接收→显示责任人 + 电话;「已填报」点状态可审核(通过 / 退回重填)。
         </div>
       </div>
 
-      {/* 填报内容 */}
+      {/* 填报表单(空白预览 —— 各单位实际填报内容点上方「已填报/已退回/已完成」状态查看) */}
       <div className="bg-white rounded-lg border border-[#E9E9E9] p-4">
-        <div className="text-sm font-semibold text-[#1A1A1A] mb-3">填报内容</div>
+        <div className="text-sm font-semibold text-[#1A1A1A] mb-1">填报表单</div>
+        <div className="text-[12px] text-[#9CA3AF] mb-3">
+          下方为空白表单结构;各单位提交的实际内容,点派发对象里「已填报」状态即可审核。
+        </div>
         <TaskFormPreview fields={task.fields} />
       </div>
+
+      {reviewTargetId && (
+        <ReviewDrawer targetId={reviewTargetId} onClose={() => setReviewTargetId(null)} />
+      )}
     </div>
   );
 }

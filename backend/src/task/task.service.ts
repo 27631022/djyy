@@ -484,6 +484,117 @@ export class TaskService {
     return { ok: true, status };
   }
 
+  /**
+   * 审核:派发人查看某派发对象的回执(填报内容 + 责任人 + 字段元数据)。
+   * 只有任务派发人可看(回执含部门上报数据,不对无关人开放)。
+   */
+  async getSubmission(targetId: string, actor: ActorContext) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const target = await this.prisma.taskTarget.findUnique({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('派发对象不存在');
+    const task = await this.prisma.task.findUnique({ where: { id: target.taskId } });
+    if (!task) throw new NotFoundException('任务不存在');
+    if (task.dispatchUserId !== actorId) {
+      throw new ForbiddenException('只有任务派发人可以查看回执');
+    }
+    const submission = await this.prisma.taskSubmission.findUnique({ where: { targetId } });
+
+    const orgIds = [target.targetOrgId, target.handlerOrgId].filter(
+      (x): x is string => !!x,
+    );
+    const userIds = [target.ownerUserId, target.targetUserId].filter(
+      (x): x is string => !!x,
+    );
+    const [orgNames, userInfo] = await Promise.all([
+      this.namesForOrgs(orgIds),
+      this.infoForUsers(userIds),
+    ]);
+
+    return {
+      targetId,
+      taskId: task.id,
+      taskTitle: task.title,
+      fields: parseFields(task.fields),
+      targetType: target.targetType,
+      targetName:
+        target.targetType === 'org'
+          ? target.targetOrgId
+            ? orgNames[target.targetOrgId]
+            : ''
+          : target.targetUserId
+            ? userInfo[target.targetUserId]?.name ?? ''
+            : '',
+      ownerName: target.ownerUserId ? userInfo[target.ownerUserId]?.name ?? null : null,
+      ownerPhone: target.ownerUserId ? userInfo[target.ownerUserId]?.phone ?? null : null,
+      handlerOrgName: target.handlerOrgId ? orgNames[target.handlerOrgId] ?? null : null,
+      targetStatus: target.status,
+      submission: submission
+        ? {
+            formData: safeJson(submission.formData),
+            status: submission.status,
+            reviewNote: submission.reviewNote,
+            submittedAt: submission.submittedAt,
+            reviewedAt: submission.reviewedAt,
+          }
+        : null,
+    };
+  }
+
+  /**
+   * 审核:通过(approve → done)/ 退回重填(return → returned + 退回原因)。
+   * 只有任务派发人可审;只能审「已提交」的回执。退回后责任人填报页显示退回原因、可改后再交。
+   */
+  async review(
+    targetId: string,
+    dto: { decision: 'approve' | 'return'; note?: string },
+    actor: ActorContext,
+  ) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const target = await this.prisma.taskTarget.findUnique({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('派发对象不存在');
+    const task = await this.prisma.task.findUnique({ where: { id: target.taskId } });
+    if (!task) throw new NotFoundException('任务不存在');
+    if (task.dispatchUserId !== actorId) {
+      throw new ForbiddenException('只有任务派发人可以审核');
+    }
+    if (target.status !== 'submitted') {
+      throw new BadRequestException('只有「已提交」的回执可以审核');
+    }
+    const submission = await this.prisma.taskSubmission.findUnique({ where: { targetId } });
+    if (!submission) throw new BadRequestException('该派发对象尚无回执');
+
+    const isReturn = dto.decision === 'return';
+    const note = dto.note?.trim() || null;
+    if (isReturn && !note) throw new BadRequestException('退回必须填写退回原因');
+
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.taskSubmission.update({
+        where: { targetId },
+        data: {
+          status: isReturn ? 'returned' : 'approved',
+          reviewNote: note,
+          reviewedById: actorId,
+          reviewedAt: now,
+        },
+      }),
+      this.prisma.taskTarget.update({
+        where: { id: targetId },
+        data: { status: isReturn ? 'returned' : 'done' },
+      }),
+    ]);
+
+    await this.audit.log({
+      ...actor,
+      action: isReturn ? 'task.return' : 'task.approve',
+      target: targetId,
+      detail: { taskId: target.taskId, note },
+    });
+    return { ok: true, status: isReturn ? 'returned' : 'done' };
+  }
+
   /** 规整 + 校验派发对象(去重、存在性) */
   private async resolveTargets(raw: TaskTargetInput[]): Promise<TaskTargetInput[]> {
     if (!Array.isArray(raw) || raw.length === 0)

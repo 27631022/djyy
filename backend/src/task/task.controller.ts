@@ -19,6 +19,7 @@ import { TaskExtractionService } from './task-extraction.service';
 import { DispatchTaskDto } from './dto/dispatch-task.dto';
 import { SuggestFieldsDto } from './dto/suggest-fields.dto';
 import { SaveFillDto } from './dto/save-fill.dto';
+import { ReviewSubmissionDto } from './dto/review-submission.dto';
 
 interface UploadedFileShape {
   originalname: string;
@@ -34,7 +35,7 @@ const EXTRACT_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
  *   POST /tasks            @Permission('task:manage')  建任务 + 派发(fan-out + 对口路由)
  *   GET  /tasks            登录                          我派发的任务列表
  *   GET  /tasks/:id        登录                          任务详情 + 派发对象状态
- * 接收/填报/审核/汇总(inbox / review / summary)在 P2、P3 加。
+ * 接收/填报/审核(inbox / claim / fill / review)在 P2 已落地;汇总(summary)在 P3 加。
  */
 @Controller('tasks')
 @UseGuards(AuthGuard)
@@ -131,6 +132,23 @@ export class TaskController {
     @Req() req: Request,
   ) {
     return this.svc.saveFill(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 审核:派发人查看某派发对象的回执(填报内容 + 责任人)。 */
+  @Get('targets/:id/submission')
+  getSubmission(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.getSubmission(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 审核:通过(done)/ 退回重填(returned + 退回原因)。派发人侧。 */
+  @Post('targets/:id/review')
+  review(
+    @Param('id') id: string,
+    @Body() dto: ReviewSubmissionDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.review(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
   @Get(':id')
