@@ -25,8 +25,8 @@ export const PARTY_TYPES = ['committee', 'general', 'branch', 'temp_branch', 'gr
 //   level2   二级企业 (子公司 / 总部职能部门)
 //   level3   三级企业 (分公司 / 二级公司部门)
 //   level4   四级企业 (项目部 / 班组 / 一线作业单元)
-//   dept     部门 —— 单位内部的职能科室/部门(非层级单位);对口责任部门只能选 type=dept 的节点
-export const ADMIN_TYPES = ['level1', 'level2', 'level3', 'level4', 'dept'] as const;
+// 注:「是不是部门」与层级正交,用 Organization.isDept 布尔标记,不并入 type。
+export const ADMIN_TYPES = ['level1', 'level2', 'level3', 'level4'] as const;
 
 export const ALL_ORG_TYPES = [...PARTY_TYPES, ...ADMIN_TYPES] as const;
 export type OrgType = (typeof ALL_ORG_TYPES)[number];
@@ -69,6 +69,11 @@ export class CreateOrganizationDto {
   @IsOptional()
   @IsBoolean()
   isVirtual?: boolean;
+
+  /** 部门标记:勾上 = 单位内部职能部门(与层级 type 正交) */
+  @IsOptional()
+  @IsBoolean()
+  isDept?: boolean;
 
   @IsOptional()
   @IsString()

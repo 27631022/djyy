@@ -37,8 +37,9 @@ model Organization {
   fullName  String? // 全称 — 证书 / 公文 / 印章等正式场合需要(可空兼容老数据)
   code      String         @unique
   kind      String // party | admin
-  type      String // 见上方注释
+  type      String // 见上方注释(层级:level1~4 单位 / 党组织类型)—— 与 isDept 正交
   isVirtual Boolean        @default(false) // 虚拟组织标记
+  isDept    Boolean        @default(false) // 部门标记:勾上 = 单位内部职能部门(非层级单位);与 type 层级正交,对口责任部门只能选 isDept=true
   parentId  String?
   parent    Organization?  @relation("OrgTree", fields: [parentId], references: [id])
   children  Organization[] @relation("OrgTree")

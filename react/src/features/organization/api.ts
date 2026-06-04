@@ -10,8 +10,8 @@ export const ORG_KIND_LABELS: Record<OrgKind, string> = {
 
 /* 党组织内部类型 */
 export type PartyType = "committee" | "general" | "branch" | "temp_branch" | "group";
-/* 行政机构单位层级分类(level1~4 = 层级单位;dept = 单位内部职能部门) */
-export type AdminType = "level1" | "level2" | "level3" | "level4" | "dept";
+/* 行政机构单位层级分类(层级与「是否部门」正交:部门用 isDept 布尔标记) */
+export type AdminType = "level1" | "level2" | "level3" | "level4";
 export type OrgType = PartyType | AdminType;
 
 export const ORG_TYPE_LABELS: Record<OrgType, string> = {
@@ -26,7 +26,6 @@ export const ORG_TYPE_LABELS: Record<OrgType, string> = {
   level2: "二级单位",
   level3: "三级单位",
   level4: "四级单位",
-  dept:   "部门",
 };
 
 export const ORG_TYPE_COLORS: Record<OrgType, string> = {
@@ -40,8 +39,6 @@ export const ORG_TYPE_COLORS: Record<OrgType, string> = {
   level2: "rgb(26, 107, 200)",
   level3: "rgb(56, 142, 231)",
   level4: "rgb(106, 167, 232)",
-  // 部门:青绿色,与层级单位的蓝色明显区分
-  dept:   "rgb(13, 148, 136)",
 };
 
 export const PARTY_TYPE_OPTIONS: { value: PartyType; label: string }[] = [
@@ -57,7 +54,6 @@ export const ADMIN_TYPE_OPTIONS: { value: AdminType; label: string }[] = [
   { value: "level2", label: "二级单位" },
   { value: "level3", label: "三级单位" },
   { value: "level4", label: "四级单位" },
-  { value: "dept", label: "部门" },
 ];
 
 export interface Organization {
@@ -69,6 +65,8 @@ export interface Organization {
   kind: OrgKind;
   type: OrgType;
   isVirtual: boolean;
+  /** 部门标记:true = 单位内部职能部门(与层级 type 正交;对口责任部门只能选它) */
+  isDept: boolean;
   parentId: string | null;
   sortOrder: number;
   active: boolean;
@@ -104,6 +102,7 @@ export interface CreateOrgInput {
   kind: OrgKind;
   type: OrgType;
   isVirtual?: boolean;
+  isDept?: boolean;
   parentId?: string | null;
   sortOrder?: number;
   /** 自定义属性 JSON 串(含「对口上级机构」counterpartParentOrgId 等) */

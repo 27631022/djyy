@@ -44,6 +44,11 @@ export class UpdateOrganizationDto {
   @IsBoolean()
   isVirtual?: boolean;
 
+  /** 部门标记(与层级 type 正交) */
+  @IsOptional()
+  @IsBoolean()
+  isDept?: boolean;
+
   @IsOptional()
   @IsString()
   meta?: string;

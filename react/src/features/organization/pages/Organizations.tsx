@@ -519,6 +519,13 @@ function TreeNode({
             虚拟
           </span>
         )}
+        {/* 部门徽标 */}
+        {node.isDept && (
+          <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700 flex-shrink-0">
+            <BuildingIcon className="w-2.5 h-2.5" />
+            部门
+          </span>
+        )}
 
         {/* 名称 (含搜索高亮) */}
         <span
@@ -650,14 +657,43 @@ function OrgFormModal({
     code: init?.code ?? "",
     type: (init?.type ?? defaultType) as OrgType,
     isVirtual: init?.isVirtual ?? false,
+    isDept: init?.isDept ?? false,
     active: init?.active ?? true,
   });
   // 对口上级机构(行政机构属性,多对多 / 专业线,存 meta.counterpartParentOrgIds)
   const [counterparts, setCounterparts] = useState<string[]>(readCounterparts(init?.meta));
+  // 「下级承接部门」默认折叠(可能几十个);点击展开 + 多时可筛选
+  const [showDownstream, setShowDownstream] = useState(false);
+  const [dsFilter, setDsFilter] = useState("");
 
-  // 对下 = 把「对口上级」指向本机构的下级机构
+  // 对下 = 把「对口上级」指向本机构的下级机构(带上所属单位,区分同名部门)
   const flat = flattenOrgs(tree);
-  const downstream = init ? flat.filter((o) => readCounterparts(o.meta).includes(init.id)) : [];
+  const parentByChild = new Map<string, OrgTreeNode>();
+  const indexParents = (n: OrgTreeNode) =>
+    n.children.forEach((c) => {
+      parentByChild.set(c.id, n);
+      indexParents(c);
+    });
+  tree.forEach(indexParents);
+  /** 某机构所属「单位」名(最近的非虚拟、非部门祖先;兜底取直接父级) */
+  const unitNameOf = (id: string): string => {
+    let cur = parentByChild.get(id);
+    const direct = cur;
+    while (cur) {
+      if (!cur.isVirtual && !cur.isDept) return cur.name;
+      cur = parentByChild.get(cur.id);
+    }
+    return direct?.name ?? "";
+  };
+  // 按组织树顺序排(flat 即树的前序遍历,已按各级 sortOrder),便于对照机构树筛查
+  const orderIndex = new Map(flat.map((o, i) => [o.id, i]));
+  const downstream = (init ? flat.filter((o) => readCounterparts(o.meta).includes(init.id)) : [])
+    .map((o) => ({ ...o, unit: unitNameOf(o.id) }))
+    .sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0));
+  const dsq = dsFilter.trim();
+  const filteredDownstream = dsq
+    ? downstream.filter((o) => o.name.includes(dsq) || o.unit.includes(dsq))
+    : downstream;
 
   const valid = form.name.trim().length > 0 && form.code.trim().length > 0;
 
@@ -763,6 +799,25 @@ function OrgFormModal({
                 </p>
               </div>
             </label>
+            {isAdmin && (
+              <label className="flex items-start gap-2 px-3 py-2.5 mt-2 rounded-md border border-[#E9E9E9] hover:border-teal-300 transition-colors cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.isDept}
+                  onChange={(e) => setForm({ ...form, isDept: e.target.checked })}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <BuildingIcon className="w-3.5 h-3.5" style={{ color: "rgb(13,148,136)" }} />
+                    <span className="font-medium text-[#1A1A1A]">部门</span>
+                  </div>
+                  <p className="text-[11px] text-[#9CA3AF] mt-0.5">
+                    勾上 = 单位内部职能部门(综合办公室 / 科室等),与「几级单位」正交。配对口责任部门时只能选「部门」。
+                  </p>
+                </div>
+              </label>
+            )}
           </Field>
 
           {isEdit && (
@@ -793,22 +848,63 @@ function OrgFormModal({
           )}
 
           {isAdmin && isEdit && downstream.length > 0 && (
-            <Field label={`对下关联(${downstream.length})`}>
-              <div className="flex flex-wrap gap-1.5">
-                {downstream.map((o) => (
-                  <span
-                    key={o.id}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#eef4ff] text-[#1d4ed8] text-xs"
-                  >
-                    <BuildingIcon className="w-3 h-3" />
-                    {o.name}
-                  </span>
-                ))}
-              </div>
-              <p className="text-[10px] text-[#9CA3AF] mt-1">
-                这些下级机构把「对口上级」指向了本机构(只读,在各自机构里改)。
-              </p>
-            </Field>
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => setShowDownstream((v) => !v)}
+                className="flex items-center gap-1.5 w-full text-[13px] font-medium text-[#374151] hover:text-[#1d4ed8]"
+              >
+                {showDownstream ? (
+                  <ChevronDownIcon className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronRightIcon className="w-3.5 h-3.5" />
+                )}
+                下级承接部门
+                <span className="text-[11px] px-1.5 py-px rounded-full bg-[#eef4ff] text-[#1d4ed8]">
+                  {downstream.length}
+                </span>
+                {!showDownstream && (
+                  <span className="text-[11px] text-[#9CA3AF] font-normal ml-auto">点击展开</span>
+                )}
+              </button>
+              {showDownstream && (
+                <div className="space-y-1.5">
+                  {downstream.length > 12 && (
+                    <input
+                      value={dsFilter}
+                      onChange={(e) => setDsFilter(e.target.value)}
+                      placeholder="筛选单位 / 部门"
+                      className="w-full text-[12px] rounded-md border border-[#dce4ef] px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-party-primary-20"
+                    />
+                  )}
+                  <div className="flex flex-wrap gap-1.5 max-h-44 overflow-auto p-0.5">
+                    {filteredDownstream.map((o) => (
+                      <span
+                        key={o.id}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#eef4ff] text-[#1d4ed8] text-xs"
+                        title={`${o.unit ? o.unit + " / " : ""}${o.name}`}
+                      >
+                        <BuildingIcon className="w-3 h-3 flex-shrink-0" />
+                        {o.unit ? (
+                          <>
+                            <span className="font-semibold">{o.unit}</span>
+                            <span className="opacity-60">·{o.name}</span>
+                          </>
+                        ) : (
+                          <span className="font-semibold">{o.name}</span>
+                        )}
+                      </span>
+                    ))}
+                    {filteredDownstream.length === 0 && (
+                      <span className="text-[12px] text-[#9CA3AF] px-1">无匹配</span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-[#9CA3AF]">
+                    你派给这些单位的任务,由对应部门接收办理。只读,改在各部门自己的「对口上级」。
+                  </p>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

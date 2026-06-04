@@ -24,6 +24,8 @@ interface FlatOrg {
   depth: number;
   isVirtual: boolean;
   type: string;
+  /** 部门标记(单位内部职能部门;对口责任部门只能选它) */
+  isDept: boolean;
   /** 有「非虚拟」下级 = 容器单位(如配送中心):未标记部门时作可下钻分组,本身不可选 */
   hasRealChildren: boolean;
 }
@@ -37,6 +39,7 @@ function flatten(nodes: OrgTreeNode[], depth = 0, out: FlatOrg[] = []): FlatOrg[
       depth,
       isVirtual: n.isVirtual,
       type: n.type,
+      isDept: n.isDept,
       hasRealChildren: realChildren.length > 0,
     });
     if (n.children?.length) flatten(n.children, depth + 1, out);
@@ -44,16 +47,16 @@ function flatten(nodes: OrgTreeNode[], depth = 0, out: FlatOrg[] = []): FlatOrg[
   return out;
 }
 
-/** 机构类型小标(部门=青绿,单位层级=蓝) */
-function TypeTag({ type }: { type: string }) {
+/** 机构小标:层级(蓝)+ 部门徽标(青绿,若已标记部门) */
+function TypeTag({ type, isDept }: { type: string; isDept: boolean }) {
   const color = ORG_TYPE_COLORS[type as OrgType] ?? "#9CA3AF";
   const label = ORG_TYPE_LABELS[type as OrgType] ?? type;
   return (
-    <span
-      className="text-[10px] px-1 py-px rounded flex-shrink-0"
-      style={{ backgroundColor: `${color}15`, color }}
-    >
-      {label}
+    <span className="inline-flex items-center gap-1 flex-shrink-0">
+      <span className="text-[10px] px-1 py-px rounded" style={{ backgroundColor: `${color}15`, color }}>
+        {label}
+      </span>
+      {isDept && <span className="text-[10px] px-1 py-px rounded bg-teal-50 text-teal-700">部门</span>}
     </span>
   );
 }
@@ -103,13 +106,13 @@ function OrgPicker({
   let scoped = flatten(scope);
   if (mode === "counterpart") scoped = scoped.filter((o) => !o.isVirtual); // 隐去虚拟专班/壳
   // 该单位下已标记「部门」→ 只这些可选;否则回退「末级节点可选」(兼容尚未标记的数据)
-  const hasAnyDept = mode === "counterpart" && scoped.some((o) => o.type === "dept");
+  const hasAnyDept = mode === "counterpart" && scoped.some((o) => o.isDept);
   const list = scoped.filter((o) => !q || o.name.includes(q));
 
   const selectableOf = (o: FlatOrg) =>
     mode === "counterpart"
       ? hasAnyDept
-        ? o.type === "dept"
+        ? o.isDept
         : !o.hasRealChildren
       : !o.isVirtual;
 
@@ -148,7 +151,7 @@ function OrgPicker({
                 >
                   <Building2Icon className="w-3.5 h-3.5 flex-shrink-0 text-[#C0C6D0]" />
                   <span>{o.name}</span>
-                  <TypeTag type={o.type} />
+                  <TypeTag type={o.type} isDept={o.isDept} />
                   <span className="text-[10px] text-[#C0C6D0] ml-auto">选其部门</span>
                 </div>
               );
@@ -169,7 +172,7 @@ function OrgPicker({
                 <span className={active ? "text-[var(--party-primary)] font-medium" : "text-[#172033]"}>
                   {o.name}
                 </span>
-                <TypeTag type={o.type} />
+                <TypeTag type={o.type} isDept={o.isDept} />
                 {active && <CheckIcon className="w-3.5 h-3.5 text-[var(--party-primary)] ml-auto" />}
               </button>
             );
