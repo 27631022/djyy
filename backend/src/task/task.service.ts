@@ -33,11 +33,13 @@ interface TaskTargetRow {
   assignedAt: Date | null;
 }
 
-/** 行政机构索引(父子 + meta),供「对口实时解析」复用 */
+/** 行政机构索引(父子 + meta + 部门/虚拟标记),供「对口实时解析」「范围锚定」复用 */
 interface OrgIndex {
   childrenOf: Map<string, string[]>;
   metaById: Map<string, string | null>;
   parentOf: Map<string, string | null>;
+  isDeptById: Map<string, boolean>;
+  isVirtualById: Map<string, boolean>;
 }
 
 @Injectable()
@@ -166,22 +168,45 @@ export class TaskService {
     const childrenOf = new Map<string, string[]>();
     const metaById = new Map<string, string | null>();
     const parentOf = new Map<string, string | null>();
+    const isDeptById = new Map<string, boolean>();
+    const isVirtualById = new Map<string, boolean>();
     for (const o of orgRows) {
       metaById.set(o.id, o.meta ?? null);
       parentOf.set(o.id, o.parentId ?? null);
+      isDeptById.set(o.id, !!o.isDept);
+      isVirtualById.set(o.id, !!o.isVirtual);
       if (o.parentId) {
         const arr = childrenOf.get(o.parentId) ?? [];
         arr.push(o.id);
         childrenOf.set(o.parentId, arr);
       }
     }
-    return { childrenOf, metaById, parentOf };
+    return { childrenOf, metaById, parentOf, isDeptById, isVirtualById };
+  }
+
+  /**
+   * 从某机构往上找它的「所在单位」= 最近的「非部门、非虚拟」祖先(含自身)。
+   * 用于 subtree/own 范围锚定:派发人即便挂在部门(如「综合办公室」)上,也自动按其所属
+   * 真实单位(如「塔运司」)的子树授权 —— 单位本身则锚自己。找不到真实单位则兜底用自身。
+   */
+  private owningUnitOf(index: OrgIndex, orgId: string): string {
+    let cur: string | null = orgId;
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const isDept = index.isDeptById.get(cur) ?? false;
+      const isVirtual = index.isVirtualById.get(cur) ?? false;
+      if (!isDept && !isVirtual) return cur; // 命中真实单位
+      cur = index.parentOf.get(cur) ?? null;
+    }
+    return orgId;
   }
 
   /**
    * 解析派发人的「可派发范围」(单位 id 集合)。
    * platform_admin 或 任一含 task:manage 的角色 scope=all → 不限范围;
-   * 否则按各角色范围取并集:custom→其锚点单位的子树;subtree/own→派发人行政归属单位的子树;self→无。
+   * 否则按各角色范围取并集:custom→其锚点单位的子树;subtree/own→派发人「所在单位」的子树
+   * (挂在部门上时自动上提到所属单位);self→无。
    */
   private async resolveDispatchScope(
     actorId: string,
@@ -193,6 +218,7 @@ export class TaskService {
     if (isPlatformAdmin || entries.some((e) => e.scope === 'all')) {
       return { unrestricted: true, orgIds: new Set() };
     }
+    const index = await this.loadAdminOrgIndex();
     const anchors = new Set<string>();
     let needMemberships = false;
     for (const e of entries) {
@@ -201,10 +227,10 @@ export class TaskService {
     }
     if (needMemberships) {
       const me = await this.users.findOne(actorId);
-      for (const m of me.memberships.admin) anchors.add(m.orgId);
+      // subtree/own:锚定到派发人「所在单位」(部门 → 上提到所属真实单位),而非部门本身
+      for (const m of me.memberships.admin) anchors.add(this.owningUnitOf(index, m.orgId));
     }
     // 锚点 → 子树展开(行政机构索引)
-    const index = await this.loadAdminOrgIndex();
     const orgIds = new Set<string>();
     const stack = [...anchors];
     while (stack.length) {
@@ -400,7 +426,7 @@ export class TaskService {
   /**
    * 我的待办(接收侧)：我负责的(ownerUserId==我)+ 我可接收的「待接收」的:
    * - 配了对口 → handlerOrgId∈我的行政归属(只有责任部门成员可见)
-   * - 未配对口 → handlerOrgId 空 + targetOrgId∈我所在单位子树 = 整单位全员可见可认领
+   * - 未配对口 → handlerOrgId 空 + targetOrgId == 我「所属单位」= 本单位全员可见可认领(不含上级/全公司)
    */
   async inbox(actor: ActorContext) {
     const actorId = actor.actorId;
@@ -409,9 +435,14 @@ export class TaskService {
     const myOrgIds = me.memberships.admin.map((m) => m.orgId);
     const myOrgSet = new Set(myOrgIds);
     const index = await this.loadAdminOrgIndex();
-    // 我可能成为责任部门的单位 = 我所在部门 + 它们的所有祖先(任务派到这些单位时,我的部门可能是其下责任部门)
+    // 候选范围:我所在部门 + 它们的所有祖先(任务派到这些上级单位时,我可能是其下「对口责任部门」,要捞到)
     const myUnits = new Set<string>(myOrgIds);
     for (const d of myOrgIds) for (const a of this.ancestorsOf(index, d)) myUnits.add(a);
+    // 「我所属单位」= 我所在节点 + 各自上提到的所属单位(部门→所属真实单位)。
+    // 未配对口的「全单位可认领」只在任务派到「我所属单位」时可见 —— 不含更上级/全公司单位,
+    // 否则深层成员(如特车运输大队的人)会被塔运司/基层单位/全公司的任务淹没。
+    const myOwnUnits = new Set<string>(myOrgIds);
+    for (const d of myOrgIds) myOwnUnits.add(this.owningUnitOf(index, d));
 
     const candidates = await this.prisma.taskTarget.findMany({
       where: {
@@ -442,10 +473,13 @@ export class TaskService {
         t.targetType === 'org' && t.targetOrgId && task.dispatchOrgId
           ? this.findHandlerDept(index, t.targetOrgId, task.dispatchOrgId)
           : null;
-      if (t.ownerUserId !== actorId && handlerOrgId && !myOrgSet.has(handlerOrgId)) {
-        continue; // 配了对口、但责任部门不是我 → 不可见
+      if (t.ownerUserId !== actorId) {
+        if (handlerOrgId) {
+          if (!myOrgSet.has(handlerOrgId)) continue; // 配了对口、但责任部门不是我 → 不可见
+        } else if (!t.targetOrgId || !myOwnUnits.has(t.targetOrgId)) {
+          continue; // 未配对口:只有派到「我所属单位」才可见(不含上级/全公司单位)
+        }
       }
-      // 未配对口(handlerOrgId 空)→ 整单位成员可见可认领(targetOrgId∈myUnits 已由候选 where 保证)
       rows.push({ t, task, handlerOrgId });
     }
     if (rows.length === 0) return [];
@@ -490,10 +524,6 @@ export class TaskService {
       task?.dispatchOrgId && target.targetOrgId
         ? this.findHandlerDept(index, target.targetOrgId, task.dispatchOrgId)
         : null;
-    const inTargetSubtree = (orgId: string) =>
-      !!target.targetOrgId &&
-      (orgId === target.targetOrgId ||
-        this.ancestorsOf(index, orgId).includes(target.targetOrgId));
     let handlerOrgId: string | null;
     if (deptHandler) {
       if (!myOrgIds.has(deptHandler)) {
@@ -501,12 +531,17 @@ export class TaskService {
       }
       handlerOrgId = deptHandler;
     } else {
-      // 未配对口:校验我在目标单位子树内(目标单位是我归属部门的「自身或祖先」)
-      if (!target.targetOrgId || ![...myOrgIds].some(inTargetSubtree)) {
-        throw new ForbiddenException('你不在该任务派发的单位范围内,无法接收');
+      // 未配对口:只能认领「派到我所属单位」的任务(我所在节点,或其上提到的所属单位),不含上级单位
+      const myOwnUnits = new Set<string>([...myOrgIds]);
+      for (const d of myOrgIds) myOwnUnits.add(this.owningUnitOf(index, d));
+      if (!target.targetOrgId || !myOwnUnits.has(target.targetOrgId)) {
+        throw new ForbiddenException('该任务不是派给你所属单位的,无法接收');
       }
-      // 责任部门记为我在该单位子树内的归属部门(便于显示;取首个匹配)
-      handlerOrgId = [...myOrgIds].find(inTargetSubtree) ?? null;
+      // 责任部门记为我「所属单位 == 目标单位」的那个归属部门(便于显示;取首个匹配)
+      handlerOrgId =
+        [...myOrgIds].find(
+          (d) => d === target.targetOrgId || this.owningUnitOf(index, d) === target.targetOrgId,
+        ) ?? null;
     }
 
     const updated = await this.prisma.taskTarget.update({
