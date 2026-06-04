@@ -22,20 +22,42 @@ import { storageApi } from "@/features/storage";
 import { organizationsApi, type OrgTreeNode } from "@/features/organization";
 import { taskApi, taskApiErrorMessage, type TaskExtractResponse } from "../api";
 
-/** 机关部门候选(公司机关虚拟机构下的部门);确保当前选中值始终在列表里。 */
+/**
+ * 派发部门候选:
+ *  - 受限派发人(scopeSet)→ 只列「我范围内的部门」(isDept;若范围内还没标记部门则回退到范围内的非虚拟单位)
+ *  - 不限范围(平台管理员)→ 沿用「机关虚拟机构下的部门」(公司机关 HQ 部门)
+ * 始终把当前选中值塞进列表,保证 select 能显示当前值。
+ */
 function buildDeptOptions(
   tree: OrgTreeNode[],
   currentId: string,
   currentName?: string,
+  scopeSet?: Set<string> | null,
 ): { id: string; name: string }[] {
   const out: { id: string; name: string }[] = [];
-  const walk = (n: OrgTreeNode) => {
-    if (n.isVirtual && /机关/.test(n.name)) {
-      n.children.filter((c) => !c.isVirtual).forEach((c) => out.push({ id: c.id, name: c.name }));
+  if (scopeSet) {
+    const walk = (n: OrgTreeNode) => {
+      if (n.isDept && !n.isVirtual && scopeSet.has(n.id)) out.push({ id: n.id, name: n.name });
+      n.children.forEach(walk);
+    };
+    tree.forEach(walk);
+    if (out.length === 0) {
+      // 范围内还没标记任何「部门」→ 回退列范围内的非虚拟单位,至少能选
+      const walk2 = (n: OrgTreeNode) => {
+        if (!n.isVirtual && scopeSet.has(n.id)) out.push({ id: n.id, name: n.name });
+        n.children.forEach(walk2);
+      };
+      tree.forEach(walk2);
     }
-    n.children.forEach(walk);
-  };
-  tree.forEach(walk);
+  } else {
+    const walk = (n: OrgTreeNode) => {
+      if (n.isVirtual && /机关/.test(n.name)) {
+        n.children.filter((c) => !c.isVirtual).forEach((c) => out.push({ id: c.id, name: c.name }));
+      }
+      n.children.forEach(walk);
+    };
+    tree.forEach(walk);
+  }
   if (currentId && !out.some((o) => o.id === currentId)) {
     out.unshift({ id: currentId, name: currentName || "(当前部门)" });
   }
@@ -58,6 +80,7 @@ export function TaskStep1Upload({
   dispatchOrgId,
   setDispatchOrgId,
   defaultOrgName,
+  scope,
   onExtracted,
 }: {
   title: string;
@@ -73,6 +96,8 @@ export function TaskStep1Upload({
   dispatchOrgId: string;
   setDispatchOrgId: (id: string) => void;
   defaultOrgName?: string;
+  /** 派发范围(限制「派发部门」可选项);unrestricted=true 或不传 = 不限 */
+  scope?: { unrestricted: boolean; orgIds: string[] };
   /** AI 识别完成 → 父组件据此载入建议字段(第二步)+ 建议范围(第三步) */
   onExtracted: (r: TaskExtractResponse) => void;
 }) {
@@ -86,7 +111,8 @@ export function TaskStep1Upload({
     queryKey: ["org-tree", "admin"],
     queryFn: () => organizationsApi.tree("admin"),
   });
-  const deptOptions = buildDeptOptions(treeQuery.data ?? [], dispatchOrgId, defaultOrgName);
+  const scopeSet = scope && !scope.unrestricted ? new Set(scope.orgIds) : null;
+  const deptOptions = buildDeptOptions(treeQuery.data ?? [], dispatchOrgId, defaultOrgName, scopeSet);
 
   async function handleFile(f: File) {
     if (!/\.(docx|pdf)$/i.test(f.name)) {

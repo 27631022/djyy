@@ -344,6 +344,7 @@ export default function TaskCreatePage() {
                     dispatchOrgId={effectiveDispatchOrgId ?? ""}
                     setDispatchOrgId={setDispatchOrgId}
                     defaultOrgName={dispatchOrgName}
+                    scope={dispatchScopeQuery.data}
                     onExtracted={onExtracted}
                   />
                 )}
