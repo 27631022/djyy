@@ -55,7 +55,11 @@ export class UserService {
     }
     if (query.active === 'true') where.active = true;
     if (query.active === 'false') where.active = false;
-    if (query.adminOrgId) {
+    if (query.adminOrgIds?.length) {
+      where.memberships = {
+        some: { orgId: { in: query.adminOrgIds }, org: { kind: 'admin' } },
+      };
+    } else if (query.adminOrgId) {
       where.memberships = { some: { orgId: query.adminOrgId, org: { kind: 'admin' } } };
     }
     if (query.partyOrgId) {

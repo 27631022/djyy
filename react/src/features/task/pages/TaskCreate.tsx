@@ -75,15 +75,14 @@ export default function TaskCreatePage() {
   const [targets, setTargets] = useState<PickedTarget[]>([]);
   const [aiScope, setAiScope] = useState<AiScope | undefined>(undefined);
 
-  const primaryAdmin = useMemo(
-    () => me?.memberships.admin.find((m) => m.isPrimary) ?? me?.memberships.admin[0],
-    [me],
-  );
-  const defaultDispatchOrgId = primaryAdmin?.org.id;
-  const dispatchOrgName = primaryAdmin?.org.name;
-  // 派发部门(机关部门)可在第一步改选;默认=派发人主行政归属。接收单位按此匹配对口责任部门。
-  const [dispatchOrgId, setDispatchOrgId] = useState("");
-  const effectiveDispatchOrgId = dispatchOrgId || defaultDispatchOrgId;
+  // 派发部门 = 派发人「自己所在的机构」(部门或单位均可);没挂任何机构 → 不能派发任务。
+  const myOrg = useMemo(() => {
+    const orgs = me?.memberships.admin ?? [];
+    return orgs.find((m) => m.isPrimary) ?? orgs[0];
+  }, [me]);
+  const dispatchOrgId = myOrg?.org.id;
+  const dispatchOrgName = myOrg?.org.name;
+  const hasOrg = !!myOrg;
 
   // 往期任务(复制字段用)
   const pastTasksQuery = useQuery({
@@ -142,7 +141,7 @@ export default function TaskCreatePage() {
       return taskApi.dispatch({
         title: title.trim(),
         notes: requirements.trim() || undefined,
-        dispatchOrgId: effectiveDispatchOrgId,
+        dispatchOrgId,
         dueAt: dueAt || undefined,
         noticeFileId: noticeFileId || undefined,
         noticeFileName: noticeFileName || undefined,
@@ -165,7 +164,7 @@ export default function TaskCreatePage() {
   const fieldIssue = findFieldIssue(fields);
 
   const canNext =
-    (step === 0 && !!title.trim() && !!dueAt) ||
+    (step === 0 && !!title.trim() && !!dueAt && hasOrg) ||
     (step === 1 && fields.length > 0 && !fieldIssue) ||
     (step === 2 && targets.length > 0) ||
     step === 3;
@@ -341,10 +340,7 @@ export default function TaskCreatePage() {
                       setNoticeFileId(null);
                       setNoticeFileName(null);
                     }}
-                    dispatchOrgId={effectiveDispatchOrgId ?? ""}
-                    setDispatchOrgId={setDispatchOrgId}
                     defaultOrgName={dispatchOrgName}
-                    scope={dispatchScopeQuery.data}
                     onExtracted={onExtracted}
                   />
                 )}

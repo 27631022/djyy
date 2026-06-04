@@ -117,8 +117,8 @@ export function TargetPicker({
   onChange: (v: PickedTarget[]) => void;
   aiScope?: AiScope;
   uid?: string;
-  /** 派发范围(限制可派单位);unrestricted=true 或不传 = 不限 */
-  scope?: { unrestricted: boolean; orgIds: string[] };
+  /** 派发范围(限制可派单位);unrestricted=true 或不传 = 不限。selfOrgIds=本单位子树(个人 tab 过滤) */
+  scope?: { unrestricted: boolean; orgIds: string[]; selfOrgIds: string[] };
 }) {
   const [tab, setTab] = useState<"org" | "user">("org");
   const [kind, setKind] = useState<OrgKind>("admin");
@@ -130,6 +130,8 @@ export function TargetPicker({
     () => (scope && !scope.unrestricted ? new Set(scope.orgIds) : null),
     [scope],
   );
+  // 「个人」tab 可选人员范围 = 本单位/部门子树;null = 不限(全部用户)
+  const personOrgIds = scope && !scope.unrestricted ? scope.selfOrgIds : null;
 
   // 当前展示用树(随 kind 切)
   const treeQuery = useQuery({
@@ -402,7 +404,7 @@ export function TargetPicker({
               scopeSet={scopeSet}
             />
           ) : (
-            <UserTab selectedKeys={selectedKeys} onToggle={toggle} />
+            <UserTab selectedKeys={selectedKeys} onToggle={toggle} personOrgIds={personOrgIds} />
           )}
         </div>
 
@@ -521,7 +523,9 @@ function OrgRow({
   onToggle: (t: PickedTarget) => void;
   scopeSet: Set<string> | null;
 }) {
-  const [open, setOpen] = useState(depth < 2);
+  // 受限派发人:范围内子树很小,默认全展开,免得本单位的下级单位(如特车运输大队)被折叠藏住;
+  // 不限范围账号:整棵树很大,沿用「前两层展开」。
+  const [open, setOpen] = useState(scopeSet ? true : depth < 2);
   // 受限时只展示有范围内后代的子节点
   const kids = scopeSet ? node.children.filter((c) => subtreeInScope(c, scopeSet)) : node.children;
   const hasChildren = kids.length > 0;
@@ -598,17 +602,29 @@ function OrgRow({
 function UserTab({
   selectedKeys,
   onToggle,
+  personOrgIds,
 }: {
   selectedKeys: Set<string>;
   onToggle: (t: PickedTarget) => void;
+  /** 可选人员范围 = 本单位/部门子树;null = 不限(全部用户);[] = 受限但无本单位 → 无人 */
+  personOrgIds: string[] | null;
 }) {
   const [search, setSearch] = useState("");
+  const restricted = personOrgIds !== null;
+  const noArea = restricted && personOrgIds.length === 0;
   const usersQuery = useQuery({
-    queryKey: ["task-target-users", search],
-    queryFn: () => usersApi.list({ search: search || undefined, active: true, take: 25 }),
+    queryKey: ["task-target-users", search, personOrgIds],
+    queryFn: () =>
+      usersApi.list({
+        search: search || undefined,
+        active: true,
+        take: 25,
+        adminOrgIds: personOrgIds ?? undefined,
+      }),
+    enabled: !noArea,
     staleTime: 30_000,
   });
-  const items = usersQuery.data?.items ?? [];
+  const items = noArea ? [] : usersQuery.data?.items ?? [];
 
   return (
     <div>
@@ -621,10 +637,17 @@ function UserTab({
           className="w-full pl-8 pr-2 py-2 text-[13px] border border-[#dce4ef] rounded-lg focus:outline-none focus:border-[var(--party-primary)]"
         />
       </div>
-      {usersQuery.isLoading ? (
+      {restricted && (
+        <div className="mb-2 text-[11px] text-[#9CA3AF] leading-relaxed">
+          只显示你本单位 / 本部门的人员;要派给其他单位的人,请改在「单位」tab 里选单位。
+        </div>
+      )}
+      {!noArea && usersQuery.isLoading ? (
         <div className="text-[13px] text-[#9CA3AF] py-6 text-center">加载中…</div>
       ) : items.length === 0 ? (
-        <div className="text-[13px] text-[#9CA3AF] py-6 text-center">无匹配用户</div>
+        <div className="text-[13px] text-[#9CA3AF] py-6 text-center">
+          {noArea ? "你还没挂到任何单位,无可选人员" : "无匹配用户"}
+        </div>
       ) : (
         <div className="space-y-0.5">
           {items.map((u) => {

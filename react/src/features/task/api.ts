@@ -410,10 +410,10 @@ export const taskApi = {
   /** 我的待办(接收侧) */
   inbox: () => api.get<TaskInboxItem[]>("/tasks/inbox").then((r) => r.data),
 
-  /** 我的派发范围(对象选择器过滤用;unrestricted=true 不限) */
+  /** 我的派发范围(对象选择器过滤用;unrestricted=true 不限)。selfOrgIds=本单位子树(个人 tab 过滤用) */
   dispatchScope: () =>
     api
-      .get<{ unrestricted: boolean; orgIds: string[] }>("/tasks/dispatch-scope")
+      .get<{ unrestricted: boolean; orgIds: string[]; selfOrgIds: string[] }>("/tasks/dispatch-scope")
       .then((r) => r.data),
 
   /** 接收(认领)一个派发对象 → 成为责任人 */

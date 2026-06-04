@@ -90,15 +90,24 @@ export class TaskService {
     const dispatchOrgId = dto.dispatchOrgId?.trim() || null;
     if (dispatchOrgId) await this.orgs.findOne(dispatchOrgId); // 校验派发部门存在
 
+    // 派发部门 = 派发人「自己所在的机构」(部门或单位均可):没挂任何机构不能派发;派发部门只能是自己所在的机构。
+    // orgIndex 顺带供下方「对口实时解析」复用。
+    const orgIndex = await this.loadAdminOrgIndex();
+    const actorUser = await this.users.findOne(actor.actorId);
+    const myOrgIds = new Set(actorUser.memberships.admin.map((m) => m.orgId));
+    if (myOrgIds.size === 0) {
+      throw new ForbiddenException('你还没有被挂到任何机构,无法派发任务');
+    }
+    if (dispatchOrgId && !myOrgIds.has(dispatchOrgId)) {
+      throw new ForbiddenException('派发部门只能是你自己所在的机构');
+    }
+
     let dueAt: Date | null = null;
     if (dto.dueAt) {
       const d = new Date(dto.dueAt);
       if (Number.isNaN(d.getTime())) throw new BadRequestException('截止时间格式不正确');
       dueAt = d;
     }
-
-    // 对口实时解析:加载行政机构索引(责任部门按「组织对口上级」属性现算;派发时存一份快照,读取时仍会实时重算)
-    const orgIndex = dispatchOrgId ? await this.loadAdminOrgIndex() : null;
 
     const task = await this.prisma.$transaction(async (tx) => {
       const t = await tx.task.create({
@@ -202,11 +211,50 @@ export class TaskService {
     return orgId;
   }
 
+  /* ─── 组织树「结构层级」判定(不依赖不可靠的 type 字段)──────────────
+     虚拟壳(公司机关/基层单位)= L1;壳的直接下级 = L2(isDept→机关部门 / 否→基层单位);
+     基层单位的下级 = L3;再下/人员 = L4。 */
+
+  /** 顶层虚拟壳(公司机关/基层单位):虚拟 + 父非虚拟(直接挂在公司根下)。 */
+  private isWrapper(index: OrgIndex, id: string): boolean {
+    if (!index.isVirtualById.get(id)) return false;
+    const p = index.parentOf.get(id) ?? null;
+    return p === null || !index.isVirtualById.get(p);
+  }
+
+  /** L2 节点(机关部门 / 基层单位):非虚拟 + 父是虚拟壳。 */
+  private isL2(index: OrgIndex, id: string): boolean {
+    if (index.isVirtualById.get(id)) return false;
+    const p = index.parentOf.get(id) ?? null;
+    return !!p && this.isWrapper(index, p);
+  }
+
+  /** 所有 L2 单位(机关部门 + 基层单位)。 */
+  private allL2(index: OrgIndex): string[] {
+    const out: string[] = [];
+    for (const id of index.parentOf.keys()) if (this.isL2(index, id)) out.push(id);
+    return out;
+  }
+
+  /** 从某节点往上找它的 L2 祖先(含自身);无则 null。 */
+  private l2AncestorOf(index: OrgIndex, id: string): string | null {
+    let cur: string | null = id;
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      if (this.isL2(index, cur)) return cur;
+      cur = index.parentOf.get(cur) ?? null;
+    }
+    return null;
+  }
+
   /**
-   * 解析派发人的「可派发范围」(单位 id 集合)。
-   * platform_admin 或 任一含 task:manage 的角色 scope=all → 不限范围;
-   * 否则按各角色范围取并集:custom→其锚点单位的子树;subtree/own→派发人「所在单位」的子树
-   * (挂在部门上时自动上提到所属单位);self→无。
+   * 解析派发人的「可派发范围」(单位 id 集合),按组织树「结构层级」算(不依赖 type 字段):
+   *   - platform_admin / scope=all → 不限范围
+   *   - L2 派发人(机关部门 / 基层单位)→ 规则A:所有其他 L2 单位(机关部门 + 基层单位),不含 L3
+   *   - L3 及更深派发人 → 规则B:本「二级单位」下的其他直接下级(同级 L3)
+   *   - custom → 显式锚点单位可选;self → 无范围
+   * 末了排除派发人自己所在的节点(只发给「其他」单位/部门)。
    */
   private async resolveDispatchScope(
     actorId: string,
@@ -219,33 +267,59 @@ export class TaskService {
       return { unrestricted: true, orgIds: new Set() };
     }
     const index = await this.loadAdminOrgIndex();
-    const anchors = new Set<string>();
-    let needMemberships = false;
-    for (const e of entries) {
-      if (e.scope === 'custom') for (const id of e.orgIds) anchors.add(id);
-      else if (e.scope === 'subtree' || e.scope === 'own') needMemberships = true;
-    }
-    if (needMemberships) {
-      const me = await this.users.findOne(actorId);
-      // subtree/own:锚定到派发人「所在单位」(部门 → 上提到所属真实单位),而非部门本身
-      for (const m of me.memberships.admin) anchors.add(this.owningUnitOf(index, m.orgId));
-    }
-    // 锚点 → 子树展开(行政机构索引)
     const orgIds = new Set<string>();
-    const stack = [...anchors];
-    while (stack.length) {
-      const id = stack.pop() as string;
-      if (orgIds.has(id)) continue;
-      orgIds.add(id);
-      for (const c of index.childrenOf.get(id) ?? []) stack.push(c);
+    // custom:显式锚点单位直接可选
+    for (const e of entries) {
+      if (e.scope === 'custom') for (const id of e.orgIds) orgIds.add(id);
+    }
+    // own/subtree:按派发人所在节点的「结构层级」给可见范围(规则 A / B)
+    if (entries.some((e) => e.scope === 'own' || e.scope === 'subtree')) {
+      const me = await this.users.findOne(actorId);
+      const homes = me.memberships.admin.map((m) => m.orgId);
+      for (const home of homes) {
+        if (this.isL2(index, home)) {
+          // 规则A:L2 派发人 → 所有 L2 单位(机关部门 + 基层单位)
+          for (const id of this.allL2(index)) orgIds.add(id);
+        } else {
+          // 规则B:L3/更深派发人 → 本「二级单位」下的其他直接下级(同级 L3)
+          const l2 = this.l2AncestorOf(index, home);
+          if (l2) {
+            for (const c of index.childrenOf.get(l2) ?? []) {
+              if (!index.isVirtualById.get(c)) orgIds.add(c);
+            }
+          }
+        }
+      }
+      // 只发给「其他」单位/部门 → 排除派发人自己所在的节点
+      for (const home of homes) orgIds.delete(home);
     }
     return { unrestricted: false, orgIds };
   }
 
-  /** 派发范围(给前端「派发对象」选择器过滤用)。 */
+  /**
+   * 派发范围(给前端「派发对象」选择器过滤用):
+   *  - orgIds:可派发的「单位」(规则 A/B);
+   *  - selfOrgIds:派发人「本单位/本部门」子树(给「个人」tab 过滤 = 规则 C:只能选本单位的人)。
+   */
   async getDispatchScope(actorId: string) {
     const s = await this.resolveDispatchScope(actorId);
-    return { unrestricted: s.unrestricted, orgIds: [...s.orgIds] };
+    let selfOrgIds: string[] = [];
+    if (!s.unrestricted) {
+      const me = await this.users.findOne(actorId);
+      const index = await this.loadAdminOrgIndex();
+      const area = new Set<string>();
+      for (const m of me.memberships.admin) {
+        const stack = [m.orgId];
+        while (stack.length) {
+          const id = stack.pop() as string;
+          if (area.has(id)) continue;
+          area.add(id);
+          for (const c of index.childrenOf.get(id) ?? []) stack.push(c);
+        }
+      }
+      selfOrgIds = [...area];
+    }
+    return { unrestricted: s.unrestricted, orgIds: [...s.orgIds], selfOrgIds };
   }
 
   /** 目标单位子树里「对口上级」含 sourceId 的部门 = 责任部门;无 = null(未配置对口 → 谁都不可见)。 */

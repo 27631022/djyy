@@ -1,5 +1,14 @@
 import { Transform } from 'class-transformer';
-import { IsBooleanString, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsArray,
+  IsBooleanString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class ListUsersQuery {
   @IsOptional()
@@ -10,6 +19,15 @@ export class ListUsersQuery {
   @IsOptional()
   @IsString()
   adminOrgId?: string;
+
+  /** 行政机构 id 列表(逗号分隔;任一命中即匹配)—— 给「派发对象·个人」按本单位子树过滤用 */
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.split(',').filter(Boolean) : value,
+  )
+  @IsArray()
+  @IsString({ each: true })
+  adminOrgIds?: string[];
 
   /** 党组织 id 精确匹配 */
   @IsOptional()

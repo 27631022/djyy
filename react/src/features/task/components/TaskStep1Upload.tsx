@@ -8,7 +8,6 @@
  * 受控:字段值与 noticeFile 由父组件(TaskCreate)持有。
  */
 import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   FileTextIcon,
@@ -19,50 +18,7 @@ import {
   Building2Icon,
 } from "lucide-react";
 import { storageApi } from "@/features/storage";
-import { organizationsApi, type OrgTreeNode } from "@/features/organization";
 import { taskApi, taskApiErrorMessage, type TaskExtractResponse } from "../api";
-
-/**
- * 派发部门候选:
- *  - 受限派发人(scopeSet)→ 只列「我范围内的部门」(isDept;若范围内还没标记部门则回退到范围内的非虚拟单位)
- *  - 不限范围(平台管理员)→ 沿用「机关虚拟机构下的部门」(公司机关 HQ 部门)
- * 始终把当前选中值塞进列表,保证 select 能显示当前值。
- */
-function buildDeptOptions(
-  tree: OrgTreeNode[],
-  currentId: string,
-  currentName?: string,
-  scopeSet?: Set<string> | null,
-): { id: string; name: string }[] {
-  const out: { id: string; name: string }[] = [];
-  if (scopeSet) {
-    const walk = (n: OrgTreeNode) => {
-      if (n.isDept && !n.isVirtual && scopeSet.has(n.id)) out.push({ id: n.id, name: n.name });
-      n.children.forEach(walk);
-    };
-    tree.forEach(walk);
-    if (out.length === 0) {
-      // 范围内还没标记任何「部门」→ 回退列范围内的非虚拟单位,至少能选
-      const walk2 = (n: OrgTreeNode) => {
-        if (!n.isVirtual && scopeSet.has(n.id)) out.push({ id: n.id, name: n.name });
-        n.children.forEach(walk2);
-      };
-      tree.forEach(walk2);
-    }
-  } else {
-    const walk = (n: OrgTreeNode) => {
-      if (n.isVirtual && /机关/.test(n.name)) {
-        n.children.filter((c) => !c.isVirtual).forEach((c) => out.push({ id: c.id, name: c.name }));
-      }
-      n.children.forEach(walk);
-    };
-    tree.forEach(walk);
-  }
-  if (currentId && !out.some((o) => o.id === currentId)) {
-    out.unshift({ id: currentId, name: currentName || "(当前部门)" });
-  }
-  return out;
-}
 
 const inputCls =
   "w-full px-3.5 py-2.5 text-[14px] text-[#172033] border border-[#dce4ef] rounded-lg bg-white focus:outline-none focus:border-[var(--party-primary)] focus:ring-2 focus:ring-party-primary-10 placeholder:text-[#9CA3AF]";
@@ -77,10 +33,7 @@ export function TaskStep1Upload({
   noticeFileName,
   setNoticeFile,
   clearNoticeFile,
-  dispatchOrgId,
-  setDispatchOrgId,
   defaultOrgName,
-  scope,
   onExtracted,
 }: {
   title: string;
@@ -92,12 +45,8 @@ export function TaskStep1Upload({
   noticeFileName: string | null;
   setNoticeFile: (id: string, name: string) => void;
   clearNoticeFile: () => void;
-  /** 派发部门(机关部门)—— 可改选,接收单位按此匹配对口责任部门 */
-  dispatchOrgId: string;
-  setDispatchOrgId: (id: string) => void;
+  /** 派发部门 = 派发人自己所在的机构(部门或单位,固定只读显示);接收单位按此匹配对口责任部门 */
   defaultOrgName?: string;
-  /** 派发范围(限制「派发部门」可选项);unrestricted=true 或不传 = 不限 */
-  scope?: { unrestricted: boolean; orgIds: string[] };
   /** AI 识别完成 → 父组件据此载入建议字段(第二步)+ 建议范围(第三步) */
   onExtracted: (r: TaskExtractResponse) => void;
 }) {
@@ -107,12 +56,6 @@ export function TaskStep1Upload({
   const [fileBusy, setFileBusy] = useState(false);
   const [source, setSource] = useState<TaskExtractResponse["source"] | null>(null);
   const busy = aiBusy || fileBusy;
-  const treeQuery = useQuery({
-    queryKey: ["org-tree", "admin"],
-    queryFn: () => organizationsApi.tree("admin"),
-  });
-  const scopeSet = scope && !scope.unrestricted ? new Set(scope.orgIds) : null;
-  const deptOptions = buildDeptOptions(treeQuery.data ?? [], dispatchOrgId, defaultOrgName, scopeSet);
 
   async function handleFile(f: File) {
     if (!/\.(docx|pdf)$/i.test(f.name)) {
@@ -288,21 +231,14 @@ export function TaskStep1Upload({
               className={inputCls}
             />
           </Field>
-          <Field label="派发部门" hint="机关部门 —— 接收单位按此匹配对口责任部门">
-            <div className="relative">
-              <Building2Icon className="w-4 h-4 text-[#246BFE] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
-              <select
-                value={dispatchOrgId}
-                onChange={(e) => setDispatchOrgId(e.target.value)}
-                className={`${inputCls} pl-9 appearance-none cursor-pointer`}
-              >
-                {deptOptions.length === 0 && <option value="">(无可选机关部门)</option>}
-                {deptOptions.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
+          <Field label="派发部门" hint="你所在的机构(部门或单位,固定)—— 接收单位按此匹配对口责任部门">
+            <div className={`${inputCls} pl-9 relative flex items-center bg-[#f7f9fc] cursor-default`}>
+              <Building2Icon className="w-4 h-4 text-[#246BFE] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              {defaultOrgName ? (
+                <span className="text-[#172033]">{defaultOrgName}</span>
+              ) : (
+                <span className="text-red-600">你还没被挂到任何机构,无法派发任务</span>
+              )}
             </div>
           </Field>
         </div>

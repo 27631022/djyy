@@ -78,6 +78,8 @@ export interface UserDetail {
 export interface ListUsersQuery {
   search?: string;
   adminOrgId?: string;
+  /** 行政机构 id 列表(任一命中即匹配);用于「派发对象·个人」按本单位子树过滤 */
+  adminOrgIds?: string[];
   partyOrgId?: string;
   active?: boolean;
   hasParty?: boolean;
@@ -148,6 +150,7 @@ export const usersApi = {
         params: {
           ...(q.search ? { search: q.search } : {}),
           ...(q.adminOrgId ? { adminOrgId: q.adminOrgId } : {}),
+          ...(q.adminOrgIds && q.adminOrgIds.length ? { adminOrgIds: q.adminOrgIds.join(",") } : {}),
           ...(q.partyOrgId ? { partyOrgId: q.partyOrgId } : {}),
           ...(q.active !== undefined ? { active: String(q.active) } : {}),
           ...(q.hasParty !== undefined ? { hasParty: String(q.hasParty) } : {}),
