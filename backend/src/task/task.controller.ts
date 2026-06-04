@@ -23,6 +23,7 @@ import { SaveFillDto } from './dto/save-fill.dto';
 import { ReviewSubmissionDto } from './dto/review-submission.dto';
 import { NewPeriodDto } from './dto/new-period.dto';
 import { ConfigureCounterpartDto, SetDispatchOrgDto } from './dto/counterpart.dto';
+import { ConfirmTargetDto } from './dto/confirm-target.dto';
 
 interface UploadedFileShape {
   originalname: string;
@@ -118,6 +119,33 @@ export class TaskController {
   @Get('dispatch-scope')
   dispatchScope(@CurrentUser() me: AuthPayload) {
     return this.svc.getDispatchScope(me.sub);
+  }
+
+  /**
+   * 平级确认队列(部门负责人侧):待我确认的跨机关部门派发对象。
+   * 不加权限点 —— 是否能确认由「我是否相关部门负责人」在 service 内判定(组织归属天然限定)。
+   */
+  @Get('confirm-queue')
+  confirmQueue(@CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.confirmQueue({ actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 平级确认决定:approve / reject(service 校验我是相关部门负责人)。 */
+  @Post('targets/:id/confirm')
+  confirmTarget(
+    @Param('id') id: string,
+    @Body() dto: ConfirmTargetDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.confirmTarget(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 重新发起(派发人侧):把被驳回的跨部门派发对象重置回「待确认」,再走一遍双方确认。 */
+  @Post('targets/:id/reinitiate')
+  @Permission('task:manage')
+  reinitiateConfirm(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.reinitiateConfirm(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
   /** 接收(认领)一个派发对象 → 成为责任人(service 内校验「只能认领自己责任部门的」)。 */

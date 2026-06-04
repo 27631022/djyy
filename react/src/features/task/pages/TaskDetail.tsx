@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ArrowLeftIcon,
@@ -20,14 +20,19 @@ import {
   CalendarPlusIcon,
   CalendarClockIcon,
   Settings2Icon,
+  ShieldAlertIcon,
+  RotateCcwIcon,
 } from "lucide-react";
 import { storageApi } from "@/features/storage";
 import { organizationsApi } from "@/features/organization";
 import {
   taskApi,
+  taskApiErrorMessage,
   TASK_STATUS_LABEL,
   TASK_TARGET_STATUS_LABEL,
   taskStatusChip,
+  CONFIRM_STATUS_LABEL,
+  confirmStatusChip,
   type TaskDetail,
   type TaskTargetView,
 } from "../api";
@@ -207,10 +212,22 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
   const [configUnit, setConfigUnit] = useState<{ orgId: string; orgName: string } | null>(null);
   const [setDispatchOpen, setSetDispatchOpen] = useState(false);
 
+  const qc = useQueryClient();
+
   const membersQuery = useQuery({
     queryKey: ["org-members", expanded?.orgId],
     queryFn: () => organizationsApi.members(expanded!.orgId, true),
     enabled: !!expanded?.orgId,
+  });
+
+  // 重新发起被驳回的跨部门派发对象 → 重置回待确认
+  const reinitiate = useMutation({
+    mutationFn: (targetId: string) => taskApi.reinitiateConfirm(targetId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["task", task.id] });
+      toast.success("已重新发起,等待对方部门负责人确认");
+    },
+    onError: (e) => toast.error(taskApiErrorMessage(e, "重新发起失败")),
   });
 
   const downloadNotice = useMutation({
@@ -435,7 +452,13 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-[12px]">
-                        {t.ownerName ? (
+                        {t.confirmStatus === "pending" || t.confirmStatus === "rejected" ? (
+                          <ConfirmCell
+                            t={t}
+                            onReinitiate={() => reinitiate.mutate(t.id)}
+                            reinitiating={reinitiate.isPending}
+                          />
+                        ) : t.ownerName ? (
                           <span className="inline-flex items-center gap-1.5 flex-wrap">
                             <span className="inline-flex items-center gap-1 text-[#1A1A1A]">
                               <UserIcon className="w-3 h-3 text-[#6B7280]" />
@@ -456,7 +479,14 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
                         )}
                       </td>
                       <td className="px-4 py-2.5">
-                        {REVIEWABLE.has(t.status) ? (
+                        {t.confirmStatus === "pending" || t.confirmStatus === "rejected" ? (
+                          <span
+                            className="text-[11px] px-1.5 py-0.5 rounded border"
+                            style={confirmStatusChip(t.confirmStatus)}
+                          >
+                            {CONFIRM_STATUS_LABEL[t.confirmStatus] ?? t.confirmStatus}
+                          </span>
+                        ) : REVIEWABLE.has(t.status) ? (
                           <button
                             type="button"
                             onClick={() => setReviewTargetId(t.id)}
@@ -599,5 +629,57 @@ function StatCard({
         {label}
       </div>
     </button>
+  );
+}
+
+/** 平级确认状态单元格(机关↔机关互派):显示「待谁确认」或「被谁驳回 + 原因」+ 重新发起。 */
+function ConfirmCell({
+  t,
+  onReinitiate,
+  reinitiating,
+}: {
+  t: TaskTargetView;
+  onReinitiate?: () => void;
+  reinitiating?: boolean;
+}) {
+  if (t.confirmStatus === "rejected") {
+    const who = t.senderConfirm === "rejected" ? t.senderOwnerName : t.receiverOwnerName;
+    return (
+      <span className="inline-flex flex-col items-start gap-1 text-[#DC2626]">
+        <span className="inline-flex items-center gap-1">
+          <ShieldAlertIcon className="w-3 h-3" />
+          {who ? `${who} 驳回` : "已驳回"}
+        </span>
+        {t.confirmNote && (
+          <span className="text-[11px] text-[#9CA3AF]">原因:{t.confirmNote}</span>
+        )}
+        {onReinitiate && (
+          <button
+            type="button"
+            onClick={onReinitiate}
+            disabled={reinitiating}
+            title="重置回待确认,再走一遍双方确认"
+            className="inline-flex items-center gap-1 text-[12px] px-2 py-0.5 rounded border border-[#dce4ef] bg-white text-[#1A6BC8] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] disabled:opacity-50"
+          >
+            <RotateCcwIcon className="w-3 h-3" />
+            重新发起
+          </button>
+        )}
+      </span>
+    );
+  }
+  const senderOk = t.senderConfirm === "approved";
+  const receiverOk = t.receiverConfirm === "approved";
+  const text =
+    senderOk && !receiverOk
+      ? `待收方负责人${t.receiverOwnerName ? ` ${t.receiverOwnerName}` : "(未设)"}确认`
+      : !senderOk && receiverOk
+        ? `待发方负责人${t.senderOwnerName ? ` ${t.senderOwnerName}` : "(未设)"}确认`
+        : "待双方部门负责人确认";
+  return (
+    <span className="inline-flex items-center gap-1 text-[#C2410C]">
+      <ShieldAlertIcon className="w-3 h-3" />
+      {text}
+    </span>
   );
 }

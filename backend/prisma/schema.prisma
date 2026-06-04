@@ -663,6 +663,16 @@ model TaskTarget {
   status       String    @default("pending") // pending | assigned | in_progress | submitted | returned | done
   assignedById String? // 由谁分派(系统对口命中 = null;手动 = 接受管理员 id)
   assignedAt   DateTime?
+  // 平级确认(P2):跨机关部门互派(机关↔机关)需「双方部门负责人」确认后才生效。
+  // confirmStatus: none(无需确认,默认直生效) | pending(待双方确认) | approved(双方通过,激活) | rejected(被驳回,作废)
+  // senderConfirm/receiverConfirm: null=未决 | approved | rejected。派发人本人即发方负责人(或发方部门未设负责人)→ 发方派发时自动通过。
+  confirmStatus       String    @default("none")
+  senderConfirm       String? // 发方(派发部门)负责人决定
+  senderConfirmById   String?
+  receiverConfirm     String? // 收方(目标部门)负责人决定
+  receiverConfirmById String?
+  confirmNote         String? // 驳回原因(任一方驳回时写)
+  confirmActedAt      DateTime? // 最后一次确认/驳回时间
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -672,6 +682,7 @@ model TaskTarget {
   @@index([ownerUserId])
   @@index([handlerOrgId])
   @@index([status])
+  @@index([confirmStatus])
 }
 
 // 协同填报人 — 一个 target 可多人共填一份回执;责任人 = TaskTarget.ownerUserId(唯一),

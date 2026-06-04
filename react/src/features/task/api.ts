@@ -178,6 +178,18 @@ export interface TaskTargetView {
   handlerOrgName: string | null;
   status: string;
   assignedAt: string | null;
+  /** 平级确认(机关↔机关互派):none=无需 | pending=待双方确认 | approved=已通过 | rejected=被驳回 */
+  confirmStatus: string;
+  /** 发方(派发部门)负责人决定:null=未决 | approved | rejected */
+  senderConfirm: string | null;
+  /** 收方(目标部门)负责人决定:null=未决 | approved | rejected */
+  receiverConfirm: string | null;
+  /** 驳回原因 */
+  confirmNote: string | null;
+  /** 发方部门负责人姓名 */
+  senderOwnerName: string | null;
+  /** 收方部门负责人姓名 */
+  receiverOwnerName: string | null;
 }
 
 export interface TaskDetail {
@@ -284,6 +296,48 @@ export interface TaskInboxItem {
   handlerOrgName: string | null;
   fieldCount: number;
   createdAt: string;
+}
+
+/* ─── 平级确认(机关↔机关互派,部门负责人侧)─── */
+export interface TaskConfirmQueueItem {
+  targetId: string;
+  taskId: string;
+  title: string;
+  dueAt: string | null;
+  /** 派发人姓名 */
+  dispatchUserName: string | null;
+  /** 发方部门名 */
+  dispatchOrgName: string | null;
+  /** 收方(目标)部门名 */
+  targetOrgName: string | null;
+  /** 我以哪一方身份待确认(receiver 优先显示) */
+  side: "sender" | "receiver";
+  asSender: boolean;
+  asReceiver: boolean;
+  /** 对方进度(null=未决 | approved | rejected) */
+  senderConfirm: string | null;
+  receiverConfirm: string | null;
+  fieldCount: number;
+  createdAt: string;
+}
+
+/** 平级确认状态 → 文案 + 配色(用于派发详情对象行) */
+export const CONFIRM_STATUS_LABEL: Record<string, string> = {
+  pending: "待平级确认",
+  approved: "确认通过",
+  rejected: "已驳回",
+};
+export function confirmStatusChip(st: string): CSSProperties {
+  switch (st) {
+    case "pending":
+      return { backgroundColor: "#FFF7ED", color: "#C2410C", borderColor: "#FED7AA" };
+    case "approved":
+      return { backgroundColor: "#ECFDF5", color: "#047857", borderColor: "#A7F3D0" };
+    case "rejected":
+      return { backgroundColor: "#FEF2F2", color: "#DC2626", borderColor: "#FECACA" };
+    default:
+      return { backgroundColor: "#F3F4F6", color: "#4B5563", borderColor: "#E5E7EB" };
+  }
 }
 
 /* ─── 填报(P2.2)─── */
@@ -421,6 +475,23 @@ export const taskApi = {
     api
       .post<{ ok: boolean; status: string }>(`/tasks/targets/${targetId}/claim`, {})
       .then((r) => r.data),
+
+  /** 平级确认队列(部门负责人侧):待我确认的跨机关部门派发对象 */
+  confirmQueue: () =>
+    api.get<TaskConfirmQueueItem[]>("/tasks/confirm-queue").then((r) => r.data),
+
+  /** 平级确认决定:approve / reject(note 在 reject 时必填) */
+  confirmTarget: (targetId: string, decision: "approve" | "reject", note?: string) =>
+    api
+      .post<{ ok: boolean; confirmStatus: string }>(`/tasks/targets/${targetId}/confirm`, {
+        decision,
+        note,
+      })
+      .then((r) => r.data),
+
+  /** 重新发起(派发人侧):被驳回的跨部门对象重置回「待确认」,返回更新后的任务详情 */
+  reinitiateConfirm: (targetId: string) =>
+    api.post<TaskDetail>(`/tasks/targets/${targetId}/reinitiate`, {}).then((r) => r.data),
 
   /** 填报页数据(责任人):任务字段 + 我的回执 */
   getFill: (targetId: string) =>

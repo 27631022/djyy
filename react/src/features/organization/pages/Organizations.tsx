@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ChevronRightIcon,
   ChevronDownIcon,
@@ -662,6 +663,13 @@ function OrgFormModal({
   });
   // 对口上级机构(行政机构属性,多对多 / 专业线,存 meta.counterpartParentOrgIds)
   const [counterparts, setCounterparts] = useState<string[]>(readCounterparts(init?.meta));
+  // 部门负责人(平级确认用,存 meta.ownerUserId);候选 = 本部门成员
+  const [ownerUserId, setOwnerUserId] = useState<string>(readOwner(init?.meta));
+  const ownerCandidatesQuery = useQuery({
+    queryKey: ["org-members", init?.id],
+    queryFn: () => organizationsApi.members(init?.id as string, true),
+    enabled: !!init?.id && isAdmin && form.isDept,
+  });
   // 「下级承接部门」默认折叠(可能几十个);点击展开 + 多时可筛选
   const [showDownstream, setShowDownstream] = useState(false);
   const [dsFilter, setDsFilter] = useState("");
@@ -700,7 +708,7 @@ function OrgFormModal({
   function handleSubmit() {
     if (!valid) return;
     const payload: Record<string, unknown> = { ...form };
-    if (isAdmin) payload.meta = buildMeta(init?.meta, counterparts); // 仅行政机构带对口属性
+    if (isAdmin) payload.meta = buildMeta(init?.meta, counterparts, form.isDept ? ownerUserId : ""); // 行政机构带对口 + 部门负责人
     onSave(payload);
   }
 
@@ -847,6 +855,26 @@ function OrgFormModal({
             </Field>
           )}
 
+          {isAdmin && isEdit && form.isDept && (
+            <Field label="负责人">
+              <select
+                value={ownerUserId}
+                onChange={(e) => setOwnerUserId(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-[#dce4ef] rounded-md bg-white focus:outline-none focus:border-[var(--party-primary)]"
+              >
+                <option value="">(未指定)</option>
+                {(ownerCandidatesQuery.data ?? []).map((m) => (
+                  <option key={m.userId} value={m.userId}>
+                    {m.name}（{m.username}）
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-[#9CA3AF] mt-1 leading-snug">
+                部门负责人 —— 跨部门(机关↔机关)互派任务时,需<b>双方负责人</b>确认同意才生效(平级确认)。
+              </p>
+            </Field>
+          )}
+
           {isAdmin && isEdit && downstream.length > 0 && (
             <div className="space-y-1.5">
               <button
@@ -957,8 +985,22 @@ function readCounterparts(metaStr: string | null | undefined): string[] {
     return [];
   }
 }
-/** 合并 meta:写入 / 清除 counterpartParentOrgIds(并清掉早期单值键),保留其它键 */
-function buildMeta(existing: string | null | undefined, ids: string[]): string {
+/** 读 meta 里的「部门负责人」用户 id(平级确认用;空串=未指定) */
+function readOwner(metaStr: string | null | undefined): string {
+  if (!metaStr) return "";
+  try {
+    const o = JSON.parse(metaStr) as Record<string, unknown>;
+    return typeof o?.ownerUserId === "string" ? o.ownerUserId : "";
+  } catch {
+    return "";
+  }
+}
+/** 合并 meta:写入 / 清除 counterpartParentOrgIds + ownerUserId(并清掉早期单值键),保留其它键 */
+function buildMeta(
+  existing: string | null | undefined,
+  ids: string[],
+  ownerUserId?: string,
+): string {
   let obj: Record<string, unknown> = {};
   if (existing) {
     try {
@@ -970,6 +1012,8 @@ function buildMeta(existing: string | null | undefined, ids: string[]): string {
   delete obj.counterpartParentOrgId; // 早期单值键统一迁到数组
   if (ids.length) obj.counterpartParentOrgIds = ids;
   else delete obj.counterpartParentOrgIds;
+  if (ownerUserId) obj.ownerUserId = ownerUserId;
+  else delete obj.ownerUserId;
   return JSON.stringify(obj);
 }
 interface FlatOrgLite {

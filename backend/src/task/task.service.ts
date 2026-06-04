@@ -31,6 +31,10 @@ interface TaskTargetRow {
   handlerOrgId: string | null;
   status: string;
   assignedAt: Date | null;
+  confirmStatus: string;
+  senderConfirm: string | null;
+  receiverConfirm: string | null;
+  confirmNote: string | null;
 }
 
 /** 行政机构索引(父子 + meta + 部门/虚拟标记),供「对口实时解析」「范围锚定」复用 */
@@ -102,6 +106,12 @@ export class TaskService {
       throw new ForbiddenException('派发部门只能是你自己所在的机构');
     }
 
+    // 平级确认触发判定:发方是「L2 机关部门」时,派给「其他 L2 机关部门」需双方负责人确认(机关↔机关)。
+    // 发给基层单位 / L3 / 个人不触发。发方负责人 = 派发部门 owner;派发人本人即负责人(或部门未设负责人)→ 发方自动通过。
+    const senderIsL2Dept = this.isL2Dept(orgIndex, dispatchOrgId);
+    const senderOwner = this.ownerOf(orgIndex, dispatchOrgId);
+    const senderAutoApprove = !senderOwner || senderOwner === actor.actorId;
+
     let dueAt: Date | null = null;
     if (dto.dueAt) {
       const d = new Date(dto.dueAt);
@@ -130,13 +140,24 @@ export class TaskService {
         let ownerUserId: string | null = null;
         let handlerOrgId: string | null = null;
         let status = 'pending';
+        let confirmStatus = 'none';
+        let senderConfirm: string | null = null;
+        let senderConfirmById: string | null = null;
         if (tg.targetType === 'user') {
           // 直派个人:该人即责任人
           ownerUserId = tg.targetUserId ?? null;
           status = 'assigned';
-        } else if (dispatchOrgId && tg.targetOrgId && orgIndex) {
+        } else if (dispatchOrgId && tg.targetOrgId) {
           // 单位派发:按「组织对口上级」属性定责任部门(存一份快照;读取时实时重算)
           handlerOrgId = this.findHandlerDept(orgIndex, tg.targetOrgId, dispatchOrgId);
+          // 机关↔机关:派给「其他 L2 机关部门」→ 挂起待双方负责人确认(发方可自动通过)
+          if (senderIsL2Dept && this.isL2Dept(orgIndex, tg.targetOrgId) && tg.targetOrgId !== dispatchOrgId) {
+            confirmStatus = 'pending';
+            if (senderAutoApprove) {
+              senderConfirm = 'approved';
+              senderConfirmById = actor.actorId ?? null;
+            }
+          }
         }
         await tx.taskTarget.create({
           data: {
@@ -149,6 +170,10 @@ export class TaskService {
             status,
             assignedById: null, // null = 个人直派;手动分派(P2)才写分派人
             assignedAt: ownerUserId ? new Date() : null,
+            confirmStatus,
+            senderConfirm,
+            senderConfirmById,
+            ...(senderConfirm ? { confirmActedAt: new Date() } : {}),
           },
         });
       }
@@ -355,6 +380,27 @@ export class TaskService {
     return null;
   }
 
+  /** 读某机构在 meta 里登记的「部门负责人」userId(平级确认用);无则 null。 */
+  private ownerOf(index: OrgIndex, orgId: string | null | undefined): string | null {
+    if (!orgId) return null;
+    const meta = index.metaById.get(orgId);
+    if (!meta) return null;
+    try {
+      const parsed = JSON.parse(meta) as { ownerUserId?: unknown };
+      return typeof parsed.ownerUserId === 'string' && parsed.ownerUserId
+        ? parsed.ownerUserId
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** 是否「L2 机关部门」(平级确认触发判定:机关↔机关 互派才需确认)。 */
+  private isL2Dept(index: OrgIndex, id: string | null | undefined): boolean {
+    if (!id) return false;
+    return this.isL2(index, id) && (index.isDeptById.get(id) ?? false);
+  }
+
   /** 某机构的所有祖先 id(自下而上)。 */
   private ancestorsOf(index: OrgIndex, id: string): string[] {
     const out: string[] = [];
@@ -415,6 +461,16 @@ export class TaskService {
       );
     }
 
+    // 平级确认的双方负责人(发方 = 派发部门 owner,收方 = 各目标部门 owner)—— 供详情显示「待谁确认」
+    const senderOwnerId = this.ownerOf(orgIndex, task.dispatchOrgId);
+    const receiverOwnerByTarget = new Map<string, string | null>();
+    for (const t of targets) {
+      receiverOwnerByTarget.set(
+        t.id,
+        t.targetType === 'org' ? this.ownerOf(orgIndex, t.targetOrgId) : null,
+      );
+    }
+
     const orgIds = [
       ...targets
         .filter((t) => t.targetType === 'org' && t.targetOrgId)
@@ -425,6 +481,8 @@ export class TaskService {
     const userIds = [
       ...targets.filter((t) => t.targetUserId).map((t) => t.targetUserId as string),
       ...targets.filter((t) => t.ownerUserId).map((t) => t.ownerUserId as string),
+      ...(senderOwnerId ? [senderOwnerId] : []),
+      ...[...receiverOwnerByTarget.values()].filter((x): x is string => !!x),
     ];
     const [orgNames, userInfo] = await Promise.all([
       this.namesForOrgs(orgIds),
@@ -453,6 +511,16 @@ export class TaskService {
         handlerOrgName: h ? orgNames[h] : null,
         status: t.status,
         assignedAt: t.assignedAt,
+        // 平级确认(P2):confirmStatus + 双方负责人决定 + 负责人姓名(供详情显示「待 xx 确认」)
+        confirmStatus: t.confirmStatus,
+        senderConfirm: t.senderConfirm,
+        receiverConfirm: t.receiverConfirm,
+        confirmNote: t.confirmNote,
+        senderOwnerName: senderOwnerId ? userInfo[senderOwnerId]?.name ?? null : null,
+        receiverOwnerName: (() => {
+          const rid = receiverOwnerByTarget.get(t.id) ?? null;
+          return rid ? userInfo[rid]?.name ?? null : null;
+        })(),
       };
     });
 
@@ -543,6 +611,8 @@ export class TaskService {
     for (const t of candidates) {
       const task = taskById.get(t.taskId);
       if (!task) continue;
+      // 平级确认未通过(待双方确认 / 被驳回)→ 不进任何人的待办,直到双方负责人通过
+      if (t.confirmStatus === 'pending' || t.confirmStatus === 'rejected') continue;
       const handlerOrgId =
         t.targetType === 'org' && t.targetOrgId && task.dispatchOrgId
           ? this.findHandlerDept(index, t.targetOrgId, task.dispatchOrgId)
@@ -588,6 +658,12 @@ export class TaskService {
     const target = await this.prisma.taskTarget.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('派发对象不存在');
     if (target.ownerUserId) throw new BadRequestException('该任务已被接收');
+    if (target.confirmStatus === 'pending') {
+      throw new BadRequestException('该派发对象正在等待双方部门负责人确认,暂不能接收');
+    }
+    if (target.confirmStatus === 'rejected') {
+      throw new BadRequestException('该派发对象已被驳回,无法接收');
+    }
 
     const me = await this.users.findOne(actorId);
     const myOrgIds = new Set(me.memberships.admin.map((m) => m.orgId));
@@ -635,6 +711,187 @@ export class TaskService {
       detail: { taskId: target.taskId },
     });
     return { ok: true, status: updated.status };
+  }
+
+  /**
+   * 平级确认队列(部门负责人侧):列出「待我确认」的跨部门(机关↔机关)派发对象。
+   * 我是发方部门负责人且发方未决,或我是收方部门负责人且收方未决 → 进队列。
+   */
+  async confirmQueue(actor: ActorContext) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const pend = await this.prisma.taskTarget.findMany({
+      where: { confirmStatus: 'pending' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (pend.length === 0) return [];
+    const index = await this.loadAdminOrgIndex();
+    const tasksList = await this.prisma.task.findMany({
+      where: { id: { in: [...new Set(pend.map((t) => t.taskId))] } },
+    });
+    const taskById = new Map(tasksList.map((t) => [t.id, t]));
+
+    const rows: {
+      t: (typeof pend)[number];
+      task: (typeof tasksList)[number];
+      asSender: boolean;
+      asReceiver: boolean;
+    }[] = [];
+    for (const t of pend) {
+      const task = taskById.get(t.taskId);
+      if (!task) continue;
+      const senderOwner = this.ownerOf(index, task.dispatchOrgId);
+      const receiverOwner = this.ownerOf(index, t.targetOrgId);
+      const asSender = senderOwner === actorId && !t.senderConfirm;
+      const asReceiver = receiverOwner === actorId && !t.receiverConfirm;
+      if (!asSender && !asReceiver) continue;
+      rows.push({ t, task, asSender, asReceiver });
+    }
+    if (rows.length === 0) return [];
+
+    const orgNames = await this.namesForOrgs(
+      rows.flatMap((r) => [r.task.dispatchOrgId, r.t.targetOrgId]).filter((x): x is string => !!x),
+    );
+    const userInfo = await this.infoForUsers(
+      rows.map((r) => r.task.dispatchUserId).filter((x): x is string => !!x),
+    );
+
+    return rows.map(({ t, task, asSender, asReceiver }) => ({
+      targetId: t.id,
+      taskId: task.id,
+      title: task.title,
+      dueAt: task.dueAt,
+      dispatchUserName: userInfo[task.dispatchUserId]?.name ?? null,
+      dispatchOrgName: task.dispatchOrgId ? orgNames[task.dispatchOrgId] ?? null : null,
+      targetOrgName: t.targetOrgId ? orgNames[t.targetOrgId] ?? null : null,
+      // 我以哪一方身份确认(同时是两方时极少,以 receiver 优先显示)
+      side: asReceiver ? 'receiver' : 'sender',
+      asSender,
+      asReceiver,
+      // 对方进度(让我知道另一方是否已同意)
+      senderConfirm: t.senderConfirm,
+      receiverConfirm: t.receiverConfirm,
+      fieldCount: parseFields(task.fields).length,
+      createdAt: task.createdAt,
+    }));
+  }
+
+  /**
+   * 平级确认决定(部门负责人侧):approve / reject。
+   * 我对「我作为负责人且未决」的一方做出决定;双方都 approved → confirmStatus=approved(激活,进收方待办);
+   * 任一方 reject → confirmStatus=rejected(该对象作废,不影响同任务其他对象)。
+   * platform_admin 可代任一未决方推动(避免负责人未设导致死锁)。
+   */
+  async confirmTarget(
+    targetId: string,
+    dto: { decision: 'approve' | 'reject'; note?: string },
+    actor: ActorContext,
+  ) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const target = await this.prisma.taskTarget.findUnique({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('派发对象不存在');
+    if (target.confirmStatus !== 'pending') {
+      throw new BadRequestException('该派发对象无需确认或已处理');
+    }
+    const task = await this.prisma.task.findUnique({ where: { id: target.taskId } });
+    if (!task) throw new NotFoundException('任务不存在');
+
+    const index = await this.loadAdminOrgIndex();
+    const senderOwner = this.ownerOf(index, task.dispatchOrgId);
+    const receiverOwner = this.ownerOf(index, target.targetOrgId);
+    const { isPlatformAdmin } = await this.roles.getScopesForPermission(actorId, 'task:manage');
+
+    const isReject = dto.decision === 'reject';
+    const note = dto.note?.trim() || null;
+    if (isReject && !note) throw new BadRequestException('驳回必须填写原因');
+    const decision = isReject ? 'rejected' : 'approved';
+
+    const data: {
+      senderConfirm?: string;
+      senderConfirmById?: string;
+      receiverConfirm?: string;
+      receiverConfirmById?: string;
+      confirmStatus?: string;
+      confirmNote?: string | null;
+      confirmActedAt?: Date;
+    } = {};
+    let acted = false;
+    if ((actorId === senderOwner || isPlatformAdmin) && !target.senderConfirm) {
+      data.senderConfirm = decision;
+      data.senderConfirmById = actorId;
+      acted = true;
+    }
+    if ((actorId === receiverOwner || isPlatformAdmin) && !target.receiverConfirm) {
+      data.receiverConfirm = decision;
+      data.receiverConfirmById = actorId;
+      acted = true;
+    }
+    if (!acted) {
+      throw new ForbiddenException('你不是该任务相关部门的负责人,无法确认');
+    }
+
+    const sc = data.senderConfirm ?? target.senderConfirm;
+    const rc = data.receiverConfirm ?? target.receiverConfirm;
+    let confirmStatus = 'pending';
+    if (sc === 'rejected' || rc === 'rejected') confirmStatus = 'rejected';
+    else if (sc === 'approved' && rc === 'approved') confirmStatus = 'approved';
+    data.confirmStatus = confirmStatus;
+    data.confirmActedAt = new Date();
+    if (isReject) data.confirmNote = note;
+
+    await this.prisma.taskTarget.update({ where: { id: targetId }, data });
+    await this.audit.log({
+      ...actor,
+      action: isReject ? 'task.peer-confirm.reject' : 'task.peer-confirm.approve',
+      target: targetId,
+      detail: { taskId: target.taskId, confirmStatus, note },
+    });
+    return { ok: true, confirmStatus };
+  }
+
+  /**
+   * 重新发起(派发人侧):被驳回的跨部门派发对象重置回「待确认」,再走一遍双方确认。
+   * 发方按规则自动通过(派发人即发方负责人 / 发方部门未设负责人),收方重新待确认;清掉上次驳回原因。
+   * 只有任务派发人可重新发起;只能对「已驳回」的对象操作。
+   */
+  async reinitiateConfirm(targetId: string, actor: ActorContext) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const target = await this.prisma.taskTarget.findUnique({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('派发对象不存在');
+    const task = await this.prisma.task.findUnique({ where: { id: target.taskId } });
+    if (!task) throw new NotFoundException('任务不存在');
+    if (task.dispatchUserId !== actorId) {
+      throw new ForbiddenException('只有任务派发人可以重新发起');
+    }
+    if (target.confirmStatus !== 'rejected') {
+      throw new BadRequestException('只有「已驳回」的派发对象可以重新发起');
+    }
+
+    const index = await this.loadAdminOrgIndex();
+    const senderOwner = this.ownerOf(index, task.dispatchOrgId);
+    const senderAutoApprove = !senderOwner || senderOwner === actorId;
+
+    await this.prisma.taskTarget.update({
+      where: { id: targetId },
+      data: {
+        confirmStatus: 'pending',
+        senderConfirm: senderAutoApprove ? 'approved' : null,
+        senderConfirmById: senderAutoApprove ? actorId : null,
+        receiverConfirm: null,
+        receiverConfirmById: null,
+        confirmNote: null,
+        confirmActedAt: senderAutoApprove ? new Date() : null,
+      },
+    });
+    await this.audit.log({
+      ...actor,
+      action: 'task.peer-confirm.reinitiate',
+      target: targetId,
+      detail: { taskId: target.taskId },
+    });
+    return this.get(target.taskId);
   }
 
   /** 填报页数据:任务字段 + 我(责任人)的回执(草稿/已提交)。 */
