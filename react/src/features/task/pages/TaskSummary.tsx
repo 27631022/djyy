@@ -12,6 +12,7 @@ import {
   Loader2Icon,
 } from "lucide-react";
 import { storageApi } from "@/features/storage";
+import { downloadBlob } from "@/shared/lib/download";
 import {
   taskApi,
   groupTaskFields,
@@ -50,14 +51,7 @@ function asFiles(v: unknown): FilledFile[] {
 async function downloadFile(file: FilledFile) {
   try {
     const blob = await storageApi.fetchBlob(file.id);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, file.name);
   } catch {
     toast.error("下载失败");
   }
@@ -156,14 +150,7 @@ export default function TaskSummaryPage() {
   const zipMut = useMutation({
     mutationFn: () => taskApi.attachmentsZip(id),
     onSuccess: (blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${data?.title ?? "任务"}-附件.zip`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `${data?.title ?? "任务"}-附件.zip`);
       toast.success("附件已按单位打包下载");
     },
     onError: async (e) => toast.error(await blobErrorMessage(e, "附件打包失败")),
@@ -191,14 +178,7 @@ export default function TaskSummaryPage() {
     ];
     const csv = toCsv([header, ...body, totalRow]);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${s.title}-汇总.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `${s.title}-汇总.csv`);
     toast.success("已导出 CSV");
   }
 

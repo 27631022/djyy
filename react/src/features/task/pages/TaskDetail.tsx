@@ -24,6 +24,7 @@ import {
   RotateCcwIcon,
 } from "lucide-react";
 import { storageApi } from "@/features/storage";
+import { downloadBlob } from "@/shared/lib/download";
 import { organizationsApi } from "@/features/organization";
 import {
   taskApi,
@@ -235,14 +236,7 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
       const fid = task.noticeFileId;
       if (!fid) return;
       const blob = await storageApi.fetchBlob(fid);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = task.noticeFileName ?? "通知文件";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, task.noticeFileName ?? "通知文件");
     },
     onError: () => toast.error("下载失败"),
   });

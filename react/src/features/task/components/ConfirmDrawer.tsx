@@ -12,6 +12,7 @@ import {
   Loader2Icon,
 } from "lucide-react";
 import { storageApi } from "@/features/storage";
+import { downloadBlob } from "@/shared/lib/download";
 import { taskApi, type TaskConfirmQueueItem } from "../api";
 import { TaskFormPreview } from "./TaskFormPreview";
 import { DueBadge } from "./DueBadge";
@@ -47,14 +48,7 @@ export function ConfirmDrawer({
     if (!task?.noticeFileId) return;
     try {
       const blob = await storageApi.fetchBlob(task.noticeFileId);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = task.noticeFileName ?? "通知文件";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, task.noticeFileName ?? "通知文件");
     } catch {
       toast.error("下载失败");
     }

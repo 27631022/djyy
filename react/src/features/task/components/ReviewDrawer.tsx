@@ -16,6 +16,7 @@ import {
   ExternalLinkIcon,
 } from "lucide-react";
 import { storageApi } from "@/features/storage";
+import { downloadBlob } from "@/shared/lib/download";
 import {
   taskApi,
   groupTaskFields,
@@ -48,14 +49,7 @@ function asFiles(v: unknown): FilledFile[] {
 async function downloadFile(file: FilledFile) {
   try {
     const blob = await storageApi.fetchBlob(file.id);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, file.name);
   } catch {
     toast.error("下载失败");
   }
