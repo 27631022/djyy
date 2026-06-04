@@ -1061,6 +1061,12 @@ export class TaskService {
       }
     }
 
+    // 派发部门 + 派发人(姓名/电话)—— 填报页标题下展示,便于基层向上咨询
+    const [dispatchOrgNameMap, dispatchUserInfo] = await Promise.all([
+      task.dispatchOrgId ? this.namesForOrgs([task.dispatchOrgId]) : Promise.resolve({}),
+      this.infoForUsers([task.dispatchUserId]),
+    ]);
+
     return {
       targetId,
       taskId: task.id,
@@ -1072,6 +1078,10 @@ export class TaskService {
       fields: parseFields(task.fields),
       targetStatus: target.status,
       editable,
+      // 派发来源(便于基层咨询)
+      dispatchOrgName: task.dispatchOrgId ? dispatchOrgNameMap[task.dispatchOrgId] ?? null : null,
+      dispatchUserName: dispatchUserInfo[task.dispatchUserId]?.name ?? null,
+      dispatchUserPhone: dispatchUserInfo[task.dispatchUserId]?.phone ?? null,
       submission: {
         formData: submission ? safeJson(submission.formData) : {},
         status: subStatus,
@@ -1356,9 +1366,10 @@ export class TaskService {
   }
 
   /**
-   * 附件批量打包(派发人侧):把所有 file/image 字段的附件按单位收进 ZIP,
-   * 结构 = 「{单位名}/{字段名}-{原文件名}」(同单位同名加 -2),按单位名排序;
-   * 只收「已提交 / 已通过」的回执。读不到的文件跳过不阻断整包。
+   * 附件批量打包(派发人侧):把所有 file/image 字段的附件收进一个 ZIP(扁平,不分文件夹)。
+   * 命名 = 「{单位序号}-{单位(部门)名称}-{字段名}({同字段多文件时跟序号}).扩展名」,按单位序号排序;
+   * 单位序号 = 各单位按中文名排序后的位次(补零,保证按文件名排序即单位顺序)。
+   * 只收「已提交 / 已通过」的回执;读不到的文件跳过不阻断整包。
    */
   async getAttachmentsZip(
     taskId: string,
@@ -1428,13 +1439,28 @@ export class TaskService {
     }
     if (items.length === 0) throw new BadRequestException('暂无已提交的附件可下载');
 
-    // 按单位名排序(中文),同单位内按字段
+    // 单位按名排序(中文)→ 每个单位编序号(补零);同「单位+字段」多文件时文件名末尾再跟序号
+    const units = [...new Set(items.map((i) => i.unit))].sort((a, b) =>
+      a.localeCompare(b, 'zh-Hans-CN'),
+    );
+    const unitNo = new Map(units.map((u, i) => [u, i + 1]));
+    const unitPad = String(units.length).length;
+    const groupKey = (it: { unit: string; field: string }) => `${it.unit} ${it.field}`;
+    const groupTotal = new Map<string, number>();
+    for (const it of items) {
+      groupTotal.set(groupKey(it), (groupTotal.get(groupKey(it)) ?? 0) + 1);
+    }
+    // 排序:先单位序号,再字段名(同组文件保持原顺序)
     items.sort(
-      (a, b) => a.unit.localeCompare(b.unit, 'zh-Hans-CN') || a.field.localeCompare(b.field),
+      (a, b) =>
+        (unitNo.get(a.unit) ?? 0) - (unitNo.get(b.unit) ?? 0) ||
+        a.field.localeCompare(b.field, 'zh-Hans-CN'),
     );
 
+    // 扁平命名:「序号-单位(部门)名称-字段名(多文件跟序号).扩展名」
     const zip = new JSZip();
-    const usedPerFolder = new Map<string, Set<string>>();
+    const used = new Set<string>(); // 整包扁平,全局去重
+    const groupSeq = new Map<string, number>();
     let count = 0;
     for (const it of items) {
       let buf: Buffer;
@@ -1443,21 +1469,23 @@ export class TaskService {
       } catch {
         continue; // 文件缺失/读失败:跳过不阻断整包
       }
-      const folder = sanitizeZipName(it.unit);
-      const used = usedPerFolder.get(folder) ?? new Set<string>();
+      const gk = groupKey(it);
+      const total = groupTotal.get(gk) ?? 1;
+      const seq = (groupSeq.get(gk) ?? 0) + 1;
+      groupSeq.set(gk, seq);
       const dot = it.fileName.lastIndexOf('.');
-      const stem = dot > 0 ? it.fileName.slice(0, dot) : it.fileName;
       const ext = dot > 0 ? it.fileName.slice(dot) : '';
-      const baseName = sanitizeZipName(`${it.field}-${stem}`);
+      const no = String(unitNo.get(it.unit) ?? 0).padStart(unitPad, '0');
+      const suffix = total > 1 ? `-${String(seq).padStart(String(total).length, '0')}` : '';
+      const baseName = sanitizeZipName(`${no}-${it.unit}-${it.field}${suffix}`);
       let name = `${baseName}${ext}`;
       let k = 1;
       while (used.has(name)) {
         k += 1;
-        name = `${baseName}-${k}${ext}`;
+        name = `${baseName}(${k})${ext}`;
       }
       used.add(name);
-      usedPerFolder.set(folder, used);
-      zip.file(`${folder}/${name}`, buf);
+      zip.file(name, buf);
       count += 1;
     }
     if (count === 0) throw new BadRequestException('附件文件读取失败,暂无可下载内容');

@@ -368,6 +368,10 @@ export interface TaskFillDetail {
   targetStatus: string;
   /** 是否可编辑(已提交 / 已通过 = false,锁定;退回后恢复 true) */
   editable: boolean;
+  /** 派发来源(标题下展示,便于基层咨询):派发部门 / 派发人 / 派发人电话 */
+  dispatchOrgName: string | null;
+  dispatchUserName: string | null;
+  dispatchUserPhone: string | null;
   submission: {
     /** { [fieldCode]: value };file/image 值为 {id,name}[] */
     formData: Record<string, unknown>;

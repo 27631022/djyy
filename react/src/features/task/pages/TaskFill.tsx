@@ -19,6 +19,9 @@ import {
   HistoryIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  Building2Icon,
+  UserIcon,
+  PhoneIcon,
 } from "lucide-react";
 import {
   taskApi,
@@ -120,6 +123,33 @@ export default function TaskFillPage() {
                   showDate
                 />
               </div>
+              {/* 派发来源:派发部门 · 派发人 · 电话 —— 便于基层咨询 */}
+              {(fill.dispatchOrgName || fill.dispatchUserName || fill.dispatchUserPhone) && (
+                <div className="flex items-center gap-x-3 gap-y-0.5 mt-1 flex-wrap text-[12px] text-[#667085]">
+                  {fill.dispatchOrgName && (
+                    <span className="inline-flex items-center gap-1">
+                      <Building2Icon className="w-3.5 h-3.5" />
+                      派发部门:{fill.dispatchOrgName}
+                    </span>
+                  )}
+                  {fill.dispatchUserName && (
+                    <span className="inline-flex items-center gap-1">
+                      <UserIcon className="w-3.5 h-3.5" />
+                      派发人:{fill.dispatchUserName}
+                    </span>
+                  )}
+                  {fill.dispatchUserPhone && (
+                    <a
+                      href={`tel:${fill.dispatchUserPhone}`}
+                      className="inline-flex items-center gap-1 text-[#1A6BC8] hover:underline"
+                      title="拨打派发人电话咨询"
+                    >
+                      <PhoneIcon className="w-3.5 h-3.5" />
+                      {fill.dispatchUserPhone}
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

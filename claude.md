@@ -267,6 +267,13 @@ npm run db:seed
   - **前端**:`AssignPicker.tsx`(Popover 搜索本部门成员,`usersApi.list({adminOrgIds})`);「我的待办·待接收」行有指派权限时多「指派」按钮(与「接收」并列)。api.ts `TaskInboxItem` 加 canAssign/assignOrgId/assignOrgName + `taskApi.assign`。门禁双绿 + API+浏览器冒烟全过(有 reception 本部门可指派、无 reception 看不到/403、跨部门指派 403 区域、指派后进承办人「我负责的」)。
   - ⚠ **dev 库补授**:给 `dept_manager`/`party_secretary`/`enterprise_admin` 手工授了 `task:reception`(dev 库陈旧漏授;seed 本就有此授权)。非 git,reseed 后自动恢复(seed 已含)。
   - ⚠ dev 库测试数据(非 git,reseed 需重设):确认负责人 王金雨=党委组织部、张明=党群工作部、孙彩霞=综合办公室;指派权限靠上面补授的 reception(朱海君=党群工作部经理 dept_manager 即可指派)。要让某机关部门能互派确认,先在组织页给它设负责人。
+- **(2026-06-04 续 · 派发/填报打磨)** 一批用户实测后的交互/正确性打磨:
+  - **派发向导第一步**:报送截止日期回到**单个 `datetime-local` 控件**(默认「今天+10 天 15:00」,日期、时间都可改;TaskCreate 初始化 dueAt),与「派发部门」同一行。
+  - **派发对象 `TargetPicker`**:① 删掉默认「快捷选单位」壳按钮(全选公司机关/基层单位),只留用户自存快捷组(localStorage),并去掉误导的「加载单位中」;② 去掉「党组织」tab —— **只派行政机构**;③ 节点/已选/AI 范围标签按 `isDept` 显示「**部门**」,不再把部门误显成「二级单位」(`orgTypeLabel`)。
+  - **下载修复**:抽 `shared/lib/download.ts` 的 `downloadBlob`(**延迟 revoke** + `rel=noopener`,对齐证书 `triggerDownload`)。修了汇总(CSV/附件ZIP/单附件)+ 审核/确认抽屉 + 详情通知文件共 6 处「`click()` 后**立即** `revokeObjectURL` 抢跑 → HTTP 局域网下报 `loaded over an insecure connection` + 下载失败」。
+  - **附件打包命名**:从「{单位}/{字段}-{原名}」分文件夹改为**扁平**「`{单位序号}-{单位(部门)名}-{字段名}({同字段多文件跟序号}).扩展名`」,单位按中文名排序编号(补零)。
+  - **填报页**:标题下显示**派发部门 · 派发人 · 电话**(`tel:` 可拨),便于基层咨询;`getFill` 补返回 `dispatchOrgName`/`dispatchUserName`/`dispatchUserPhone`。
+  - ⚠ dev 库补授:**孙彩霞 加 `dept_manager` 角色**(从而有 task:reception,可指派本部门;原只有 member+task_dispatcher)。非 git,reseed 自动恢复(她的角色不在 seed,reseed 后需按需重设)。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
