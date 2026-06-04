@@ -27,6 +27,7 @@ import {
   type TaskConfirmQueueItem,
 } from "../api";
 import { ConfirmDrawer } from "../components/ConfirmDrawer";
+import { AssignPicker } from "../components/AssignPicker";
 
 const PARTY = "var(--party-primary)";
 const PAGE_BG = "linear-gradient(120deg, rgba(200,0,30,0.05), transparent 30%), #eef2f7";
@@ -54,6 +55,16 @@ export default function TaskInboxPage() {
       navigate(`/admin/tasks/fill/${targetId}`);
     },
     onError: (e) => toast.error(taskApiErrorMessage(e, "接收失败"), { duration: 8000 }),
+  });
+
+  // 指派(部门负责人把待接收任务指定给本部门成员)
+  const assign = useMutation({
+    mutationFn: (v: { targetId: string; userId: string }) => taskApi.assign(v.targetId, v.userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["task-inbox"] });
+      toast.success("已指派,任务进入承办人待办");
+    },
+    onError: (e) => toast.error(taskApiErrorMessage(e, "指派失败"), { duration: 8000 }),
   });
 
   const confirm = useMutation({
@@ -140,22 +151,37 @@ export default function TaskInboxPage() {
               </section>
             )}
             {pending.length > 0 && (
-              <Section title={`待接收(${pending.length})`} hint="接收后由你负责填报(本单位/部门任务)">
+              <Section
+                title={`待接收(${pending.length})`}
+                hint="「接收」=自己填报;「指派」=有指派权限者把任务交给本部门成员承办"
+              >
                 {pending.map((it) => (
                   <InboxRow
                     key={it.targetId}
                     item={it}
                     action={
-                      <button
-                        type="button"
-                        onClick={() => claim.mutate(it.targetId)}
-                        disabled={claim.isPending}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-bold text-white disabled:opacity-50"
-                        style={{ backgroundColor: PARTY }}
-                      >
-                        <HandIcon className="w-4 h-4" />
-                        接收
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {it.canAssign && it.assignOrgId && (
+                          <AssignPicker
+                            orgId={it.assignOrgId}
+                            orgName={it.assignOrgName}
+                            busy={assign.isPending}
+                            onPick={(userId) =>
+                              assign.mutate({ targetId: it.targetId, userId })
+                            }
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => claim.mutate(it.targetId)}
+                          disabled={claim.isPending}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-bold text-white disabled:opacity-50"
+                          style={{ backgroundColor: PARTY }}
+                        >
+                          <HandIcon className="w-4 h-4" />
+                          接收
+                        </button>
+                      </div>
                     }
                   />
                 ))}

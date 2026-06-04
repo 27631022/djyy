@@ -24,6 +24,7 @@ import { ReviewSubmissionDto } from './dto/review-submission.dto';
 import { NewPeriodDto } from './dto/new-period.dto';
 import { ConfigureCounterpartDto, SetDispatchOrgDto } from './dto/counterpart.dto';
 import { ConfirmTargetDto } from './dto/confirm-target.dto';
+import { AssignTargetDto } from './dto/assign-target.dto';
 
 interface UploadedFileShape {
   originalname: string;
@@ -152,6 +153,17 @@ export class TaskController {
   @Post('targets/:id/claim')
   claim(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.svc.claim(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 指派承办人(承办部门负责人侧):把待接收对象指定给本部门成员承办(service 校验我是负责人 + 承办人是本部门成员)。 */
+  @Post('targets/:id/assign')
+  assign(
+    @Param('id') id: string,
+    @Body() dto: AssignTargetDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.assign(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
   /** 填报页数据(责任人):任务字段 + 我的回执 */

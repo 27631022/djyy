@@ -401,6 +401,23 @@ export class TaskService {
     return this.isL2(index, id) && (index.isDeptById.get(id) ?? false);
   }
 
+  /** orgId 是否落在 actor 所在机构(任一 membership)的子树内(含自身)= 「所在部门及其下级」。 */
+  private orgInActorArea(
+    index: OrgIndex,
+    membershipOrgIds: Iterable<string>,
+    orgId: string,
+  ): boolean {
+    const roots = new Set(membershipOrgIds);
+    let cur: string | null = orgId;
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      if (roots.has(cur)) return true;
+      cur = index.parentOf.get(cur) ?? null;
+    }
+    return false;
+  }
+
   /** 某机构的所有祖先 id(自下而上)。 */
   private ancestorsOf(index: OrgIndex, id: string): string[] {
     const out: string[] = [];
@@ -577,6 +594,10 @@ export class TaskService {
     const myOrgIds = me.memberships.admin.map((m) => m.orgId);
     const myOrgSet = new Set(myOrgIds);
     const index = await this.loadAdminOrgIndex();
+    // 指派权限(task:reception):有此权限者可对「所在部门(及其下级)」的待接收任务做指派
+    const reception = await this.roles.getScopesForPermission(actorId, 'task:reception');
+    const hasReception = reception.isPlatformAdmin || reception.entries.length > 0;
+    const assignAnywhere = reception.isPlatformAdmin;
     // 候选范围:我所在部门 + 它们的所有祖先(任务派到这些上级单位时,我可能是其下「对口责任部门」,要捞到)
     const myUnits = new Set<string>(myOrgIds);
     for (const d of myOrgIds) for (const a of this.ancestorsOf(index, d)) myUnits.add(a);
@@ -635,20 +656,33 @@ export class TaskService {
       ].filter((x): x is string => !!x),
     );
 
-    return rows.map(({ t, task, handlerOrgId }) => ({
-      targetId: t.id,
-      taskId: task.id,
-      title: task.title,
-      dueAt: task.dueAt,
-      status: t.status,
-      isOwner: t.ownerUserId === actorId,
-      claimable: !t.ownerUserId && t.status !== 'done',
-      dispatchOrgName: task.dispatchOrgId ? orgNames[task.dispatchOrgId] ?? null : null,
-      targetOrgName: t.targetOrgId ? orgNames[t.targetOrgId] ?? null : null,
-      handlerOrgName: handlerOrgId ? orgNames[handlerOrgId] ?? null : null,
-      fieldCount: parseFields(task.fields).length,
-      createdAt: task.createdAt,
-    }));
+    return rows.map(({ t, task, handlerOrgId }) => {
+      const claimable = !t.ownerUserId && t.status !== 'done';
+      // 承办部门 = 对口责任部门 / 否则目标单位本身;有 task:reception 权限 + 该部门在我所在区域 → 可「指派」
+      const responsibleDept = handlerOrgId ?? t.targetOrgId ?? null;
+      const canAssign =
+        claimable &&
+        !!responsibleDept &&
+        hasReception &&
+        (assignAnywhere || this.orgInActorArea(index, myOrgIds, responsibleDept));
+      return {
+        targetId: t.id,
+        taskId: task.id,
+        title: task.title,
+        dueAt: task.dueAt,
+        status: t.status,
+        isOwner: t.ownerUserId === actorId,
+        claimable,
+        dispatchOrgName: task.dispatchOrgId ? orgNames[task.dispatchOrgId] ?? null : null,
+        targetOrgName: t.targetOrgId ? orgNames[t.targetOrgId] ?? null : null,
+        handlerOrgName: handlerOrgId ? orgNames[handlerOrgId] ?? null : null,
+        canAssign,
+        assignOrgId: canAssign ? responsibleDept : null,
+        assignOrgName: canAssign && responsibleDept ? orgNames[responsibleDept] ?? null : null,
+        fieldCount: parseFields(task.fields).length,
+        createdAt: task.createdAt,
+      };
+    });
   }
 
   /** 接收(认领):未被接收 + 我是责任部门成员 → 成为责任人(转填报中)。 */
@@ -709,6 +743,77 @@ export class TaskService {
       action: 'task.claim',
       target: targetId,
       detail: { taskId: target.taskId },
+    });
+    return { ok: true, status: updated.status };
+  }
+
+  /**
+   * 指派承办人(承办部门负责人侧):把某「待接收」对象直接指定给本部门成员承办。
+   * 授权 = 我是该承办部门负责人(meta.ownerUserId)或 platform_admin;承办人必须是该部门成员。
+   * 指派后该成员即责任人(in_progress)。与成员自助认领二选一。
+   */
+  async assign(targetId: string, dto: { userId: string }, actor: ActorContext) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const userId = dto.userId?.trim();
+    if (!userId) throw new BadRequestException('请选择承办人');
+    const target = await this.prisma.taskTarget.findUnique({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('派发对象不存在');
+    if (target.ownerUserId) throw new BadRequestException('该任务已被接收或指派');
+    if (target.confirmStatus === 'pending') {
+      throw new BadRequestException('该派发对象正在等待双方部门负责人确认,暂不能指派');
+    }
+    if (target.confirmStatus === 'rejected') {
+      throw new BadRequestException('该派发对象已被驳回,无法指派');
+    }
+
+    const task = await this.prisma.task.findUnique({ where: { id: target.taskId } });
+    const index = await this.loadAdminOrgIndex();
+    // 承办部门 = 对口责任部门(配了对口)/ 否则目标单位本身(机关↔机关即收方部门)
+    const handler =
+      task?.dispatchOrgId && target.targetOrgId
+        ? this.findHandlerDept(index, target.targetOrgId, task.dispatchOrgId)
+        : null;
+    const responsibleDept = handler ?? target.targetOrgId ?? null;
+    if (!responsibleDept) throw new BadRequestException('该任务无法定位承办部门');
+
+    // 指派权限 = task:reception(原计划「任务接收管理(分派/对口)」);有此权限者可对
+    // 「自己所在部门(及其下级)」的任务做指派。platform_admin 直通。
+    const { isPlatformAdmin, entries } = await this.roles.getScopesForPermission(
+      actorId,
+      'task:reception',
+    );
+    if (!isPlatformAdmin && entries.length === 0) {
+      throw new ForbiddenException('你没有「任务接收管理(指派)」权限,无法指派承办人');
+    }
+    if (!isPlatformAdmin) {
+      const actor2 = await this.users.findOne(actorId);
+      const myOrgIds = actor2.memberships.admin.map((m) => m.orgId);
+      if (!this.orgInActorArea(index, myOrgIds, responsibleDept)) {
+        throw new ForbiddenException('只能指派你所在部门(及其下级)的任务');
+      }
+    }
+    // 承办人必须是承办部门成员(前端选择器也只列该部门成员)
+    const assignee = await this.users.findOne(userId);
+    if (!assignee.memberships.admin.some((m) => m.orgId === responsibleDept)) {
+      throw new BadRequestException('承办人必须是该承办部门的成员');
+    }
+
+    const updated = await this.prisma.taskTarget.update({
+      where: { id: targetId },
+      data: {
+        ownerUserId: userId,
+        handlerOrgId: responsibleDept,
+        status: 'in_progress',
+        assignedById: actorId,
+        assignedAt: new Date(),
+      },
+    });
+    await this.audit.log({
+      ...actor,
+      action: 'task.assign',
+      target: targetId,
+      detail: { taskId: target.taskId, assigneeId: userId, responsibleDept },
     });
     return { ok: true, status: updated.status };
   }

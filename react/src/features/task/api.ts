@@ -294,6 +294,12 @@ export interface TaskInboxItem {
   dispatchOrgName: string | null;
   targetOrgName: string | null;
   handlerOrgName: string | null;
+  /** 我是否是该任务承办部门的负责人(可「指派」给本部门成员) */
+  canAssign: boolean;
+  /** 可指派的承办部门 id(canAssign=true 时;给成员选择器拉人用) */
+  assignOrgId: string | null;
+  /** 承办部门名 */
+  assignOrgName: string | null;
   fieldCount: number;
   createdAt: string;
 }
@@ -474,6 +480,12 @@ export const taskApi = {
   claim: (targetId: string) =>
     api
       .post<{ ok: boolean; status: string }>(`/tasks/targets/${targetId}/claim`, {})
+      .then((r) => r.data),
+
+  /** 指派承办人(承办部门负责人侧):把待接收对象指定给本部门某成员 */
+  assign: (targetId: string, userId: string) =>
+    api
+      .post<{ ok: boolean; status: string }>(`/tasks/targets/${targetId}/assign`, { userId })
       .then((r) => r.data),
 
   /** 平级确认队列(部门负责人侧):待我确认的跨机关部门派发对象 */

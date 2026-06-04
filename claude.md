@@ -262,15 +262,18 @@ npm run db:seed
   - **流程**:派发时发方负责人=派发人本人(或部门未设负责人)→ 发方自动通过,只等收方;`confirmStatus=pending` 的对象**不进任何人待办、不可认领**(inbox/claim 拦截);双方都 approved → 激活进收方待办;任一方 reject → 该对象作废(不连累同任务其他对象)。`platform_admin` 可代未决方推动(防死锁)。
   - **接口**:`GET /tasks/confirm-queue`(部门负责人「待我确认」队列)、`POST /tasks/targets/:id/confirm`{decision,note}、`POST /tasks/targets/:id/reinitiate`(派发人对**已驳回**对象**重新发起** → 重置回 pending、发方自动通过、清原因)。授权:确认由「我是相关部门 owner」在 service 判;reinitiate `@Permission('task:manage')` + dispatchUserId 校验。
   - **前端**:`ConfirmDrawer.tsx`(看任务内容:填报要求+通知文件+`TaskFormPreview` 表单结构 + 底部同意/驳回);「我的待办」顶部 **待我确认** 区(查看任务/同意下发/驳回);`TaskDetail` 派发对象行 `ConfirmCell` 显示待确认/已驳回(+原因)+ **重新发起** 按钮(`reinitiateConfirm`)。api.ts 加 `CONFIRM_STATUS_LABEL`/`confirmStatusChip` + `confirmQueue`/`confirmTarget`/`reinitiateConfirm`。门禁双绿(后端 0/0,前端 0 error/41 warning)+ 浏览器 + API 端到端冒烟(派发挂起→收方确认→进待办;驳回→排除;重新发起→回队列;越权 403/缺原因 400/非驳回重发 400 全过)。
-  - ⚠ 下一步(用户已点题):**部门负责人同意后,可把任务指派给部门内部某人落实**(管理员分派路径,接续平级确认 / 通用于所有可认领对象 —— owner 把 claimable 对象 assign 给本部门成员,设 ownerUserId,自助认领仍保留)。
-  - ⚠ dev 库已设测试负责人(王金雨=党委组织部、张明=党群工作部、孙彩霞=综合办公室),非 git;reseed 需重设。要让某机关部门能互派确认,先在组织页给它设负责人。
+- **(2026-06-04 任务分派 P2.5 · 指派承办人)部门收到任务后,有指派权限的人可把待接收任务指定给本部门成员承办**(不必等成员自助认领)。**权限驱动**:挂在**已有的** `task:reception`(原计划「任务接收管理(分派/对口)」),**不新建权限点**;有 `task:reception` 者可对「自己所在部门(及其下级)」的待接收任务指派。与平级确认负责人(`meta.ownerUserId`)**解耦** —— 确认归 owner、指派归 task:reception,可同人可不同人。
+  - **后端**:`POST /tasks/targets/:id/assign`{userId}(service 内鉴权,无 `@Permission` 装饰器);`assign` 校验 = 有 task:reception(`getScopesForPermission` 判)+ 承办部门在我所在区域(`orgInActorArea`:目标是我任一 membership 的子树内)+ 承办人是该部门成员;`platform_admin` 直通。承办部门 = 对口责任部门 / 否则目标单位本身。inbox 每条加 `canAssign`/`assignOrgId`/`assignOrgName`(按同一规则算)。设 ownerUserId+in_progress,自助 `claim` 仍保留。
+  - **前端**:`AssignPicker.tsx`(Popover 搜索本部门成员,`usersApi.list({adminOrgIds})`);「我的待办·待接收」行有指派权限时多「指派」按钮(与「接收」并列)。api.ts `TaskInboxItem` 加 canAssign/assignOrgId/assignOrgName + `taskApi.assign`。门禁双绿 + API+浏览器冒烟全过(有 reception 本部门可指派、无 reception 看不到/403、跨部门指派 403 区域、指派后进承办人「我负责的」)。
+  - ⚠ **dev 库补授**:给 `dept_manager`/`party_secretary`/`enterprise_admin` 手工授了 `task:reception`(dev 库陈旧漏授;seed 本就有此授权)。非 git,reseed 后自动恢复(seed 已含)。
+  - ⚠ dev 库测试数据(非 git,reseed 需重设):确认负责人 王金雨=党委组织部、张明=党群工作部、孙彩霞=综合办公室;指派权限靠上面补授的 reception(朱海君=党群工作部经理 dept_manager 即可指派)。要让某机关部门能互派确认,先在组织页给它设负责人。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
 2. **访问量/点赞统计**:NavItem.likes/views 接真实计数 + Redis 缓存
 3. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面
 4. **首页综合查询**:`<CertificateSearchBox embedded />` 已具备,把它和其他业务的查询入口拼到 NavPage / 新首页查询板块
-5. **任务分派系统 P2.5–P5**:P2 平级确认已落地(见已完成)。**P2.5(进行中):部门负责人同意后指派给部门内部某人落实**;再按 `~/.claude/plans/task-dispatch-system.md` 推进 P3 汇总 → P4 富文本+群晖文档 → P5 Tauri 客户端
+5. **任务分派系统 P3–P5**:P2 平级确认 + P2.5 指派承办人已落地(见已完成)。按 `~/.claude/plans/task-dispatch-system.md` 推进 P3 汇总(数字求和/附件汇总/导出)→ P4 富文本+群晖文档 → P5 Tauri 客户端
 6. **其它业务模块**:排座 / AI 图片分拣 等 —— 按 conventions.md 的"加新模块"清单逐个加
 
 ### ❌ 明确延后/放弃(有真实需求再做)
