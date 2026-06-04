@@ -217,6 +217,32 @@ export class StorageService {
   }
 
   /**
+   * 孤儿候选:未软删(deletedAt=null)、上传超过 graceDays 天、且 id 不在「在用集合」里的文件。
+   * 在用集合由调用方(maintenance,聚合 certificate/task 的引用)传入 —— 本服务只查自己的 StoredFile 表,
+   * 不感知业务消费方,守「不直 prisma 别人的表」。graceDays 宽限避免误删进行中的上传。
+   */
+  async findOrphanCandidates(
+    inUse: Set<string>,
+    graceDays: number,
+  ): Promise<
+    { id: string; storageKey: string; ownerModule: string; originalName: string; size: number; createdAt: Date }[]
+  > {
+    const cutoff = new Date(Date.now() - graceDays * 86_400_000);
+    const rows = await this.prisma.storedFile.findMany({
+      where: { deletedAt: null, createdAt: { lt: cutoff } },
+      select: {
+        id: true,
+        storageKey: true,
+        ownerModule: true,
+        originalName: true,
+        size: true,
+        createdAt: true,
+      },
+    });
+    return rows.filter((r) => !inUse.has(r.id));
+  }
+
+  /**
    * 短时效签名下载 URL —— 浏览器原生下载用(无需 Bearer)。
    * 返回的 url 相对于 API base(已含 /api 前缀),前端拼 baseURL 即命中公开下载口。
    */

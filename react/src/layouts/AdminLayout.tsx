@@ -11,6 +11,7 @@ import {
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
+import { useDesktopInboxAlerts } from "@/features/task";
 
 /* ─── 顶部一级分类 → 联动左侧二级菜单 ─── */
 /** group:可选的二级菜单分组标题(同 group 的项聚在一个小标题下) */
@@ -136,6 +137,8 @@ export default function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { me } = useAuth();
+  // 桌面客户端(Tauri)后台待办提醒;浏览器里 no-op
+  useDesktopInboxAlerts(!!me);
 
   /* ── 按权限过滤菜单(platform_admin 直通;无 perm 的项人人可见,如「我的待办」)── */
   const visibleCategories = useMemo(() => {

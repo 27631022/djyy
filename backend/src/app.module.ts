@@ -19,6 +19,7 @@ import { StorageModule } from './storage';
 import { IconModule } from './icon';
 import { CertificateModule } from './certificate';
 import { TaskModule } from './task';
+import { MaintenanceModule } from './maintenance';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { TaskModule } from './task';
     IconModule,
     CertificateModule,
     TaskModule,
+    MaintenanceModule,
   ],
   providers: [
     // 全局权限守卫:仅 @Permission() 装饰的接口实际校验,其他不影响

@@ -21,6 +21,19 @@ export class CertificateService {
     private readonly audit: AuditService,
   ) {}
 
+  /** 本模块在用的 storage fileId(证书 PDF + 原始表彰文件)—— 供孤儿文件 GC 聚合「在用集合」。 */
+  async collectInUseFileIds(): Promise<string[]> {
+    const rows = await this.prisma.certificate.findMany({
+      select: { pdfFileId: true, sourceFileId: true },
+    });
+    const out: string[] = [];
+    for (const r of rows) {
+      if (r.pdfFileId) out.push(r.pdfFileId);
+      if (r.sourceFileId) out.push(r.sourceFileId);
+    }
+    return out;
+  }
+
   /** 列表 — 默认只返回 active,active=false 时返回禁用,不传返回全部 */
   async listTemplates(active?: boolean) {
     return this.prisma.certificateTemplate.findMany({

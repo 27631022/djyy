@@ -115,6 +115,25 @@ export class TaskService {
     return { count };
   }
 
+  /** 本模块在用的 storage fileId(通知文件 + 回执附件)—— 供孤儿文件 GC 聚合「在用集合」。 */
+  async collectInUseFileIds(): Promise<string[]> {
+    const [tasks, subs] = await Promise.all([
+      this.prisma.task.findMany({ where: { noticeFileId: { not: null } }, select: { noticeFileId: true } }),
+      this.prisma.taskSubmission.findMany({ where: { fileIds: { not: null } }, select: { fileIds: true } }),
+    ]);
+    const out: string[] = [];
+    for (const t of tasks) if (t.noticeFileId) out.push(t.noticeFileId);
+    for (const s of subs) {
+      try {
+        const arr: unknown = JSON.parse(s.fileIds ?? '[]');
+        if (Array.isArray(arr)) for (const id of arr) if (typeof id === 'string') out.push(id);
+      } catch {
+        /* 坏 JSON 跳过 */
+      }
+    }
+    return out;
+  }
+
   /**
    * 派发任务:建 Task(快照 fields)+ fan-out TaskTarget + 对口路由定责任人。
    * - 个人直派 → 该人即责任人(status=assigned)

@@ -57,31 +57,6 @@ export const SUBMISSION_STATUS_LABEL: Record<string, string> = {
   approved: "已通过",
 };
 
-/* ─── 任务模板 ─── */
-export interface TaskTemplateDto {
-  id: string;
-  code: string;
-  name: string;
-  description: string | null;
-  category: string | null;
-  fields: TaskField[];
-  builtin: boolean;
-  active: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateTaskTemplateInput {
-  code: string;
-  name: string;
-  description?: string;
-  category?: string;
-  fields: TaskField[];
-  active?: boolean;
-}
-
-export type UpdateTaskTemplateInput = Partial<Omit<CreateTaskTemplateInput, "code">>;
-
 /* ─── 派发 ─── */
 export interface TaskTargetInput {
   targetType: "org" | "user";
@@ -265,28 +240,6 @@ export function taskApiErrorMessage(err: unknown, fallback: string): string {
   }
   return msg || e?.message || fallback;
 }
-
-/* ─── API ─── */
-export const taskTemplateApi = {
-  list: (active?: boolean) =>
-    api
-      .get<TaskTemplateDto[]>("/task-templates", {
-        params: active === undefined ? undefined : { active },
-      })
-      .then((r) => r.data),
-
-  get: (id: string) =>
-    api.get<TaskTemplateDto>(`/task-templates/${id}`).then((r) => r.data),
-
-  create: (input: CreateTaskTemplateInput) =>
-    api.post<TaskTemplateDto>("/task-templates", input).then((r) => r.data),
-
-  update: (id: string, input: UpdateTaskTemplateInput) =>
-    api.patch<TaskTemplateDto>(`/task-templates/${id}`, input).then((r) => r.data),
-
-  remove: (id: string) =>
-    api.delete<{ id: string; deleted: boolean }>(`/task-templates/${id}`).then((r) => r.data),
-};
 
 /* ─── 我的待办(接收侧)─── */
 export interface TaskInboxItem {

@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口能力 —— 含加载的局域网 web 页(remote 白名单)可调通知。",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://10.10.10.194:5173"]
+  },
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "notification:default"
+  ]
+}

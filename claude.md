@@ -278,13 +278,22 @@ npm run db:seed
   - **回执状态中文化**:填报页标题小标在非草稿态用的是回执状态(draft/submitted/returned/**approved**),而 `TASK_TARGET_STATUS_LABEL` 没有 `approved` 键 → 露出英文。加 `SUBMISSION_STATUS_LABEL`(approved=**已通过**)+ `taskStatusChip` 的 approved 绿色;TaskFill 用 `chipLabel`(草稿→对象状态,其余→回执状态)。
   - **超期自动通过**:任务**截止满 1 个月**(dueAt + 1 月 < 现在)、回执仍停「已提交」待审 → 自动转**已通过(回执 approved)+ 已完成(对象 done)**,reviewNote 标「(超过截止满 1 个月,系统自动通过)」。幂等只动 submitted、无 dueAt 不参与。`TaskService.autoCompleteOverdue()` + 管理员手动端点 `POST /tasks/admin/sweep-overdue`(service 内 isPlatformAdmin 判)。
   - **定时任务底座**:新增依赖 **`@nestjs/schedule@^4`**(适配 Nest 10)+ `app.module` 加 `ScheduleModule.forRoot()`。`TaskService` 用 `@Timeout(20_000)`(启动补扫一次)+ `@Cron(CronExpression.EVERY_DAY_AT_3AM)`(每天凌晨3点)替代手搓 `setInterval`。**以后加定时任务 = 任意 provider 里写方法挂 `@Cron('cron表达式')`**。⚠ 单进程内跑;上多副本需加分布式锁(单机 MVP 无虑)。验证:app 带装饰器干净启动 + @Timeout 触发(审计有 sweep)+ 手动扫描 count=1、数据正确转换。
+- **(2026-06-04 续 · 技术债清理)**:
+  - **删 task-template 死代码**:任务模板早已弃用(向导改「按要求生成 / 复制往期」),菜单/路由先前已删,本次清掉剩余孤儿 —— 后端 `task-template.{controller,service}.ts` + 2 个 dto + task.module 注册 + barrel 导出;前端 `TaskTemplates.tsx` + `taskTemplateApi` + 3 个类型 + barrel 导出。**保留** Prisma `TaskTemplate` 模型/表 + `Task.templateId` 列(免一次迁移;现作元数据无害)。门禁双绿、0 外部引用残留(仅 task/README.md 还提及,待后续顺手清)。
+  - **孤儿文件 GC**(原延后项):新增 **`maintenance` 模块**(位于 storage/certificate/task 之上、无人依赖 → 不破 DAG)。「孤儿」=storage 里上传过、无任何业务引用、超 30 天宽限的文件(典型:走了上传但放弃发证/派发)。**`storage.softDelete` 删字节不可逆 → 报告优先**:`@Cron(EVERY_WEEK)` 只扫描 + 写审计(`maintenance.orphan-scan`),真正清理由管理员手动 `POST /maintenance/orphan-files/purge`(`admin:menu` + service 内再判 platform_admin)。「在用集合」由各模块自报 `collectInUseFileIds()`(certificate=pdfFileId/sourceFileId,task=noticeFileId/回执 fileIds)聚合 —— **新增引用 storage 文件的模块,务必在 `MaintenanceService.inUseFileIds()` 加上,否则会误删**。`GET /maintenance/orphan-files` 看报告。验证:孤儿 A 被标 / 在用 B 排除 / 非管理员 403 / admin purge 软删 A 不动 B。⚠ 暂无前端 UI(端点就绪,可后续加「清理孤儿文件」按钮)。
+- **(2026-06-04 任务分派 P5 · Tauri 桌面客户端)`desktop/`(Tauri v2 瘦壳)**:窗口直接加载局域网 web 地址(前端改动零重打包),常驻系统托盘,关闭=最小化到托盘,后台轮询待办 → 新任务弹**原生桌面通知**。选 Tauri 因内网 HTTP 无 HTTPS、PWA 安装/推送失效。
+  - **结构**:`src-tauri/tauri.conf.json`(`app.windows[0].url` = web 地址 + `withGlobalTauri`)+ `capabilities/default.json`(`remote.urls` 白名单 + `notification:default`,让远程页 JS 能调通知)+ `src-tauri/src/lib.rs`(`TrayIconBuilder` 菜单/左键唤起、`CloseRequested→hide()` 最小化到托盘、注册 `tauri-plugin-notification`)。Cargo `tauri` 开 `tray-icon` 特性。
+  - **web 端集成**:`react/src/shared/lib/desktop.ts`(`isDesktop()`/`desktopNotify()` 走 `window.__TAURI__`,不引 `@tauri-apps` npm 依赖)+ `react/src/features/task/useDesktopInboxAlerts.ts`(挂 `AdminLayout`,每 90s 轮询 inbox,新「待接收」→ 通知)。浏览器里全 no-op。
+  - **改加载地址** = 改两处:`tauri.conf.json` 的 `window.url` + `capabilities/default.json` 的 `remote.urls`(当前默认 `http://10.10.10.194:5173`)。详见 `desktop/README.md`。
+  - **验证**:`cargo check` ✓ + 前端门禁 0 error/41 warning + **`npm run tauri build` 成功出 `.msi`/`.exe`**(`target/release/bundle/`)。需 Rust(stable-msvc)+ VS C++ 生成工具 + WebView2;`desktop/{node_modules,target}` 已 gitignore。
+  - ⚠ 后续打磨:① 后台轮询在 JS 端,webview 最小化后 WebView2 节流定时器、通知可能延迟 → 要实时改 **Rust 侧轮询**(登录后经 IPC 把 token 传 Rust);② 托盘**未读角标**、通知点击直达填报、开机自启;③ 未签名安装包内网分发有 SmartScreen 提示。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
 2. **访问量/点赞统计**:NavItem.likes/views 接真实计数 + Redis 缓存
 3. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面
 4. **首页综合查询**:`<CertificateSearchBox embedded />` 已具备,把它和其他业务的查询入口拼到 NavPage / 新首页查询板块
-5. **任务分派系统 P3–P5**:P2 平级确认 + P2.5 指派承办人已落地(见已完成)。按 `~/.claude/plans/task-dispatch-system.md` 推进 P3 汇总(数字求和/附件汇总/导出)→ P4 富文本+群晖文档 → P5 Tauri 客户端
+5. **任务分派系统 P4 富文本+在线文档**(仅剩这一期):P1–P3 + P2.5 指派 + P5 Tauri 客户端 + 超期自动通过都已落地(见已完成);汇总(数字求和/附件 ZIP/CSV)在 `TaskSummary` 已具备。剩 **P4**:内置富文本编辑器(`richtext` 字段)+ `doclink` 接 `DocProvider` 接口 + 群晖在线文档占位 driver。
 6. **其它业务模块**:排座 / AI 图片分拣 等 —— 按 conventions.md 的"加新模块"清单逐个加
 
 ### ❌ 明确延后/放弃(有真实需求再做)
