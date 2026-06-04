@@ -236,12 +236,14 @@ export function taskApiErrorMessage(err: unknown, fallback: string): string {
     response?: { status?: number; data?: { message?: string | string[] } };
     message?: string;
   };
-  if (e?.response?.status === 403) {
-    return "当前账号没有「任务管理(task:manage)」权限,无法操作。请改用系统管理员账号,或让管理员在「角色管理」给你的角色勾上该权限。";
-  }
   const m = e?.response?.data?.message;
-  if (Array.isArray(m)) return m.join("; ");
-  return m ?? e?.message ?? fallback;
+  const msg = Array.isArray(m) ? m.join("; ") : typeof m === "string" ? m : "";
+  if (e?.response?.status === 403) {
+    // 后端有具体说明(如「超出派发范围」)就显示它;否则给「缺少派发权限」的通用提示
+    if (msg) return msg;
+    return "当前账号没有「任务派发(task:manage)」权限,无法操作。请让管理员在「角色管理」给你授予「任务派发」角色,或改用系统管理员账号。";
+  }
+  return msg || e?.message || fallback;
 }
 
 /* ─── API ─── */
@@ -407,6 +409,12 @@ export const taskApi = {
 
   /** 我的待办(接收侧) */
   inbox: () => api.get<TaskInboxItem[]>("/tasks/inbox").then((r) => r.data),
+
+  /** 我的派发范围(对象选择器过滤用;unrestricted=true 不限) */
+  dispatchScope: () =>
+    api
+      .get<{ unrestricted: boolean; orgIds: string[] }>("/tasks/dispatch-scope")
+      .then((r) => r.data),
 
   /** 接收(认领)一个派发对象 → 成为责任人 */
   claim: (targetId: string) =>

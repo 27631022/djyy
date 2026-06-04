@@ -10,6 +10,7 @@ import { AuditService } from '../audit';
 import { OrganizationService } from '../organization';
 import { UserService } from '../user';
 import { StorageService } from '../storage';
+import { RoleService } from '../role';
 import { normalizeFieldDefs, parseFields } from './task-fields';
 import { DispatchTaskDto, type TaskTargetInput } from './dto/dispatch-task.dto';
 import { SaveFillDto } from './dto/save-fill.dto';
@@ -47,6 +48,7 @@ export class TaskService {
     private readonly orgs: OrganizationService,
     private readonly users: UserService,
     private readonly storage: StorageService,
+    private readonly roles: RoleService,
   ) {}
 
   /**
@@ -58,6 +60,31 @@ export class TaskService {
     if (!actor.actorId) throw new BadRequestException('缺少操作者身份');
     const fields = normalizeFieldDefs(dto.fields);
     const targets = await this.resolveTargets(dto.targets);
+
+    // 派发范围校验:非超管 / 非全平台范围时,所有对象必须落在派发人范围内(管辖单位及其下级)
+    const scope = await this.resolveDispatchScope(actor.actorId);
+    if (!scope.unrestricted) {
+      const orgNameMap = await this.namesForOrgs(
+        targets.filter((t) => t.targetType === 'org').map((t) => t.targetOrgId as string),
+      );
+      const outNames: string[] = [];
+      for (const t of targets) {
+        if (t.targetType === 'org') {
+          if (!t.targetOrgId || !scope.orgIds.has(t.targetOrgId)) {
+            outNames.push(orgNameMap[t.targetOrgId as string] ?? '(单位)');
+          }
+        } else {
+          const u = await this.users.findOne(t.targetUserId as string);
+          if (!u.memberships.admin.some((m) => scope.orgIds.has(m.orgId))) outNames.push(u.name);
+        }
+      }
+      if (outNames.length) {
+        throw new ForbiddenException(
+          `以下派发对象超出你的派发范围(只能派给你管辖单位及其下级):${outNames.slice(0, 8).join('、')}${outNames.length > 8 ? ' 等' : ''}`,
+        );
+      }
+    }
+
     const dispatchOrgId = dto.dispatchOrgId?.trim() || null;
     if (dispatchOrgId) await this.orgs.findOne(dispatchOrgId); // 校验派发部门存在
 
@@ -149,6 +176,50 @@ export class TaskService {
       }
     }
     return { childrenOf, metaById, parentOf };
+  }
+
+  /**
+   * 解析派发人的「可派发范围」(单位 id 集合)。
+   * platform_admin 或 任一含 task:manage 的角色 scope=all → 不限范围;
+   * 否则按各角色范围取并集:custom→其锚点单位的子树;subtree/own→派发人行政归属单位的子树;self→无。
+   */
+  private async resolveDispatchScope(
+    actorId: string,
+  ): Promise<{ unrestricted: boolean; orgIds: Set<string> }> {
+    const { isPlatformAdmin, entries } = await this.roles.getScopesForPermission(
+      actorId,
+      'task:manage',
+    );
+    if (isPlatformAdmin || entries.some((e) => e.scope === 'all')) {
+      return { unrestricted: true, orgIds: new Set() };
+    }
+    const anchors = new Set<string>();
+    let needMemberships = false;
+    for (const e of entries) {
+      if (e.scope === 'custom') for (const id of e.orgIds) anchors.add(id);
+      else if (e.scope === 'subtree' || e.scope === 'own') needMemberships = true;
+    }
+    if (needMemberships) {
+      const me = await this.users.findOne(actorId);
+      for (const m of me.memberships.admin) anchors.add(m.orgId);
+    }
+    // 锚点 → 子树展开(行政机构索引)
+    const index = await this.loadAdminOrgIndex();
+    const orgIds = new Set<string>();
+    const stack = [...anchors];
+    while (stack.length) {
+      const id = stack.pop() as string;
+      if (orgIds.has(id)) continue;
+      orgIds.add(id);
+      for (const c of index.childrenOf.get(id) ?? []) stack.push(c);
+    }
+    return { unrestricted: false, orgIds };
+  }
+
+  /** 派发范围(给前端「派发对象」选择器过滤用)。 */
+  async getDispatchScope(actorId: string) {
+    const s = await this.resolveDispatchScope(actorId);
+    return { unrestricted: s.unrestricted, orgIds: [...s.orgIds] };
   }
 
   /** 目标单位子树里「对口上级」含 sourceId 的部门 = 责任部门;无 = null(未配置对口 → 谁都不可见)。 */
@@ -327,8 +398,9 @@ export class TaskService {
   }
 
   /**
-   * 我的待办(接收侧)：我负责的(ownerUserId==我)+ 我所在责任部门「待接收」的
-   * (handlerOrgId∈我的行政归属;或未配对口 handlerOrgId 空但 targetOrgId∈我的行政归属=整单位可见)。
+   * 我的待办(接收侧)：我负责的(ownerUserId==我)+ 我可接收的「待接收」的:
+   * - 配了对口 → handlerOrgId∈我的行政归属(只有责任部门成员可见)
+   * - 未配对口 → handlerOrgId 空 + targetOrgId∈我所在单位子树 = 整单位全员可见可认领
    */
   async inbox(actor: ActorContext) {
     const actorId = actor.actorId;
@@ -357,7 +429,7 @@ export class TaskService {
     });
     const taskById = new Map(tasksList.map((t) => [t.id, t]));
 
-    // 实时解析每个候选的责任部门;待接收的只有「责任部门是我所在部门」才可见(未配置对口=谁都不可见)
+    // 实时解析每个候选的责任部门:配了对口 → 仅该部门成员可见;未配对口 → 整单位全员可见可认领
     const rows: {
       t: (typeof candidates)[number];
       task: (typeof tasksList)[number];
@@ -370,9 +442,10 @@ export class TaskService {
         t.targetType === 'org' && t.targetOrgId && task.dispatchOrgId
           ? this.findHandlerDept(index, t.targetOrgId, task.dispatchOrgId)
           : null;
-      if (t.ownerUserId !== actorId && (!handlerOrgId || !myOrgSet.has(handlerOrgId))) {
-        continue; // 待接收但责任部门不是我 / 未配置对口 → 不可见
+      if (t.ownerUserId !== actorId && handlerOrgId && !myOrgSet.has(handlerOrgId)) {
+        continue; // 配了对口、但责任部门不是我 → 不可见
       }
+      // 未配对口(handlerOrgId 空)→ 整单位成员可见可认领(targetOrgId∈myUnits 已由候选 where 保证)
       rows.push({ t, task, handlerOrgId });
     }
     if (rows.length === 0) return [];
@@ -410,15 +483,30 @@ export class TaskService {
 
     const me = await this.users.findOne(actorId);
     const myOrgIds = new Set(me.memberships.admin.map((m) => m.orgId));
-    // 实时解析责任部门:未配置对口 / 我不在该部门 → 不能接收
     const task = await this.prisma.task.findUnique({ where: { id: target.taskId } });
     const index = await this.loadAdminOrgIndex();
-    const handlerOrgId =
+    // 实时解析责任部门:配了对口 → 必须是该部门成员;未配对口 → 整单位子树成员皆可认领
+    const deptHandler =
       task?.dispatchOrgId && target.targetOrgId
         ? this.findHandlerDept(index, target.targetOrgId, task.dispatchOrgId)
         : null;
-    if (!handlerOrgId || !myOrgIds.has(handlerOrgId)) {
-      throw new ForbiddenException('你不在该任务的责任部门(或该单位尚未配置对口),无法接收');
+    const inTargetSubtree = (orgId: string) =>
+      !!target.targetOrgId &&
+      (orgId === target.targetOrgId ||
+        this.ancestorsOf(index, orgId).includes(target.targetOrgId));
+    let handlerOrgId: string | null;
+    if (deptHandler) {
+      if (!myOrgIds.has(deptHandler)) {
+        throw new ForbiddenException('你不在该任务的责任部门,无法接收');
+      }
+      handlerOrgId = deptHandler;
+    } else {
+      // 未配对口:校验我在目标单位子树内(目标单位是我归属部门的「自身或祖先」)
+      if (!target.targetOrgId || ![...myOrgIds].some(inTargetSubtree)) {
+        throw new ForbiddenException('你不在该任务派发的单位范围内,无法接收');
+      }
+      // 责任部门记为我在该单位子树内的归属部门(便于显示;取首个匹配)
+      handlerOrgId = [...myOrgIds].find(inTargetSubtree) ?? null;
     }
 
     const updated = await this.prisma.taskTarget.update({

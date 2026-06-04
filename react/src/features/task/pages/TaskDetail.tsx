@@ -44,8 +44,8 @@ import {
 const REVIEWABLE = new Set(["submitted", "returned", "done"]);
 
 /* ─── 派发对象「阶段」分桶 —— 比原始 status 更贴近实际流程 ─────────────────
-   原始 status 里 pending 既可能是「没配对口(谁都看不到)」也可能是「配了对口等认领」,
-   两者处置完全不同;这里按 (status, handlerOrgId, ownerUserId) 还原成真实阶段。 */
+   原始 status 里 pending 既可能是「未指定对口(全单位可认领)」也可能是「配了对口等责任部门认领」,
+   两者范围不同;这里按 (status, handlerOrgId, ownerUserId) 还原成真实阶段。 */
 type Bucket = "unconfigured" | "claimable" | "claimed" | "submitted" | "returned" | "done";
 
 function bucketOf(t: TaskTargetView): Bucket {
@@ -68,17 +68,17 @@ const BUCKET_META: {
 }[] = [
   {
     key: "unconfigured",
-    label: "未配置对口",
-    color: "#C2410C",
-    bg: "#FFF7ED",
-    hint: "该单位下没有部门把「对口上级」指向派发机关部门 —— 配置前谁都看不到此任务,需尽快配置",
+    label: "全单位待认领",
+    color: "#0E7490",
+    bg: "#ECFEFF",
+    hint: "未指定对口责任部门 —— 该单位全体成员都可在「我的待办」看到并认领;如需固定到某个部门,可点该行「配置对口」(可选)",
   },
   {
     key: "claimable",
     label: "待认领",
     color: "#1D4ED8",
     bg: "#EFF6FF",
-    hint: "已定责任部门,等部门成员在「我的待办」接收",
+    hint: "已定对口责任部门,等该部门成员在「我的待办」接收",
   },
   {
     key: "claimed",
@@ -329,12 +329,12 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
           </div>
         )}
         {task.dispatchOrgId && counts.unconfigured > 0 && (
-          <div className="mt-3 flex items-start gap-1.5 text-[12px] text-[#C2410C] bg-[#FFF7ED] border border-[#FED7AA] rounded-md px-3 py-2">
+          <div className="mt-3 flex items-start gap-1.5 text-[12px] text-[#0E7490] bg-[#ECFEFF] border border-[#A5F0FC] rounded-md px-3 py-2">
             <InfoIcon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
             <span>
-              有 <b>{counts.unconfigured}</b> 个单位未配置对口 —— 在下方该单位行点
-              <b className="text-[var(--party-primary)]">「配置对口」</b>
-              选一个责任部门即可(即时生效);点上方「未配置对口」可只看这些单位。
+              有 <b>{counts.unconfigured}</b> 个单位未指定对口责任部门 —— 这些单位<b>全体成员</b>都可在「我的待办」接收;
+              如需把任务固定到某个部门,可在下方该单位行点
+              <b className="text-[var(--party-primary)]">「配置对口」</b>(可选)。
             </span>
           </div>
         )}
@@ -419,7 +419,7 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
                               setConfigUnit({ orgId: t.targetOrgId as string, orgName: t.targetName })
                             }
                             className="inline-flex items-center gap-1 text-[12px] text-[var(--party-primary)] hover:underline"
-                            title="为该单位指定责任部门(设其「对口上级」=本任务派发部门),即时生效"
+                            title="可选:把该单位的任务固定到某个责任部门(设其「对口上级」=本任务派发部门),即时生效;不配则该单位全员可认领"
                           >
                             <Settings2Icon className="w-3.5 h-3.5" />
                             配置对口
@@ -532,7 +532,7 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
         </div>
         <div className="px-4 py-2 bg-[#FBFBFC] border-t border-[#F0F0F0] text-[11px] text-[#9CA3AF] flex items-center gap-1.5">
           <InfoIcon className="w-3 h-3" />
-          待接收=该责任部门成员可在「我的待办」接收;未配置对口前谁都看不到;已接收→显示责任人 + 电话;「已填报」点状态可审核(通过 / 退回重填)。
+          待认领=对口责任部门成员(未指定对口则该单位全员)可在「我的待办」接收;已接收→显示责任人 + 电话;「已填报」点状态可审核(通过 / 退回重填)。
         </div>
       </div>
 

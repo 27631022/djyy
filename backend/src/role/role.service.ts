@@ -18,6 +18,38 @@ export class RoleService {
     private readonly audit: AuditService,
   ) {}
 
+  /**
+   * 解析某用户在某权限点下的「数据范围」(供越权校验 / 数据过滤复用)。
+   * 返回 isPlatformAdmin(超管不限范围);entries = 持有该权限的各角色的 { scope, orgIds(custom 时的锚点单位) }。
+   * 范围语义(scope):self 仅本人 / own 仅本组织 / subtree 本组织+下级 / custom 指定子树 / all 全平台。
+   */
+  async getScopesForPermission(
+    userId: string,
+    permissionCode: string,
+  ): Promise<{ isPlatformAdmin: boolean; entries: { scope: string; orgIds: string[] }[] }> {
+    const userRoles = await this.prisma.userRole.findMany({
+      where: { userId },
+      select: {
+        scope: true,
+        scopeOrgs: { select: { orgId: true } },
+        role: {
+          select: {
+            code: true,
+            permissions: { select: { permission: { select: { code: true } } } },
+          },
+        },
+      },
+    });
+    let isPlatformAdmin = false;
+    const entries: { scope: string; orgIds: string[] }[] = [];
+    for (const ur of userRoles) {
+      if (ur.role.code === 'platform_admin') isPlatformAdmin = true;
+      const grants = ur.role.permissions.some((rp) => rp.permission.code === permissionCode);
+      if (grants) entries.push({ scope: ur.scope, orgIds: ur.scopeOrgs.map((s) => s.orgId) });
+    }
+    return { isPlatformAdmin, entries };
+  }
+
   /** 列出所有角色,带用户与权限计数 */
   async list() {
     const roles = await this.prisma.role.findMany({

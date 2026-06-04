@@ -67,6 +67,11 @@ function flatten(nodes: OrgTreeNode[]): FlatOrg[] {
   nodes.forEach(walk);
   return out;
 }
+/** 子树里是否有在派发范围内的节点(范围过滤用) */
+function subtreeInScope(node: OrgTreeNode, scopeSet: Set<string>): boolean {
+  if (scopeSet.has(node.id)) return true;
+  return node.children.some((c) => subtreeInScope(c, scopeSet));
+}
 /** 找出所有「虚拟机构 + 其非虚拟直接子单位」(公司机关→各部门;基层单位→塔运司/各分公司) */
 function findWrappers(nodes: OrgTreeNode[]): Wrapper[] {
   const out: Wrapper[] = [];
@@ -106,17 +111,25 @@ export function TargetPicker({
   onChange,
   aiScope,
   uid = "anon",
+  scope,
 }: {
   value: PickedTarget[];
   onChange: (v: PickedTarget[]) => void;
   aiScope?: AiScope;
   uid?: string;
+  /** 派发范围(限制可派单位);unrestricted=true 或不传 = 不限 */
+  scope?: { unrestricted: boolean; orgIds: string[] };
 }) {
   const [tab, setTab] = useState<"org" | "user">("org");
   const [kind, setKind] = useState<OrgKind>("admin");
   const [groups, setGroups] = useState<UnitGroup[]>(() => loadGroups(uid));
   const [manageGroups, setManageGroups] = useState(false);
   const selectedKeys = new Set(value.map(keyOf));
+  // 范围集合(仅对行政树生效);null = 不限
+  const scopeSet = useMemo(
+    () => (scope && !scope.unrestricted ? new Set(scope.orgIds) : null),
+    [scope],
+  );
 
   // 当前展示用树(随 kind 切)
   const treeQuery = useQuery({
@@ -134,10 +147,13 @@ export function TargetPicker({
     () => flatten(adminTreeQuery.data ?? []),
     [adminTreeQuery.data],
   );
-  const wrappers = useMemo(
-    () => findWrappers(adminTreeQuery.data ?? []),
-    [adminTreeQuery.data],
-  );
+  const wrappers = useMemo(() => {
+    const ws = findWrappers(adminTreeQuery.data ?? []);
+    if (!scopeSet) return ws;
+    return ws
+      .map((w) => ({ ...w, kids: w.kids.filter((k) => scopeSet.has(k.id)) }))
+      .filter((w) => w.kids.length > 0);
+  }, [adminTreeQuery.data, scopeSet]);
 
   function toggle(t: PickedTarget) {
     const k = keyOf(t);
@@ -147,10 +163,11 @@ export function TargetPicker({
   function remove(k: string) {
     onChange(value.filter((v) => keyOf(v) !== k));
   }
-  /** 把一批行政单位「加入」选择(去重) */
+  /** 把一批行政单位「加入」选择(去重 + 范围过滤) */
   function addOrgs(list: FlatOrg[]) {
     const have = new Set(value.map(keyOf));
-    const additions: PickedTarget[] = list
+    const inScope = scopeSet ? list.filter((o) => scopeSet.has(o.id)) : list;
+    const additions: PickedTarget[] = inScope
       .filter((o) => !have.has(`org:${o.id}`))
       .map((o) => ({
         targetType: "org",
@@ -382,6 +399,7 @@ export function TargetPicker({
               loading={treeQuery.isLoading}
               selectedKeys={selectedKeys}
               onToggle={toggle}
+              scopeSet={scopeSet}
             />
           ) : (
             <UserTab selectedKeys={selectedKeys} onToggle={toggle} />
@@ -423,6 +441,7 @@ function OrgTab({
   loading,
   selectedKeys,
   onToggle,
+  scopeSet,
 }: {
   kind: OrgKind;
   setKind: (k: OrgKind) => void;
@@ -430,7 +449,14 @@ function OrgTab({
   loading: boolean;
   selectedKeys: Set<string>;
   onToggle: (t: PickedTarget) => void;
+  scopeSet: Set<string> | null;
 }) {
+  // 范围仅约束行政单位;受限派发人的「党组织」视图给提示(范围按行政单位算)
+  const restrictedParty = !!scopeSet && kind === "party";
+  const visibleNodes =
+    scopeSet && kind === "admin"
+      ? nodes.filter((n) => subtreeInScope(n, scopeSet))
+      : nodes;
   return (
     <div>
       <div className="flex gap-1 mb-2">
@@ -454,13 +480,28 @@ function OrgTab({
           </button>
         ))}
       </div>
-      {loading ? (
+      {restrictedParty ? (
+        <div className="text-[12px] text-[#9CA3AF] py-6 text-center px-4 leading-relaxed">
+          你的派发范围按「行政单位」设定,暂不支持派发党组织。
+          <br />
+          如需派党组织,请用不限范围的账号,或联系管理员调整你的角色范围。
+        </div>
+      ) : loading ? (
         <div className="text-[13px] text-[#9CA3AF] py-6 text-center">加载中…</div>
-      ) : nodes.length === 0 ? (
-        <div className="text-[13px] text-[#9CA3AF] py-6 text-center">无组织</div>
+      ) : visibleNodes.length === 0 ? (
+        <div className="text-[13px] text-[#9CA3AF] py-6 text-center">
+          {scopeSet ? "你的派发范围内暂无单位" : "无组织"}
+        </div>
       ) : (
-        nodes.map((n) => (
-          <OrgRow key={n.id} node={n} depth={0} selectedKeys={selectedKeys} onToggle={onToggle} />
+        visibleNodes.map((n) => (
+          <OrgRow
+            key={n.id}
+            node={n}
+            depth={0}
+            selectedKeys={selectedKeys}
+            onToggle={onToggle}
+            scopeSet={scopeSet}
+          />
         ))
       )}
     </div>
@@ -472,15 +513,20 @@ function OrgRow({
   depth,
   selectedKeys,
   onToggle,
+  scopeSet,
 }: {
   node: OrgTreeNode;
   depth: number;
   selectedKeys: Set<string>;
   onToggle: (t: PickedTarget) => void;
+  scopeSet: Set<string> | null;
 }) {
-  const [open, setOpen] = useState(depth < 1);
-  const hasChildren = node.children.length > 0;
+  const [open, setOpen] = useState(depth < 2);
+  // 受限时只展示有范围内后代的子节点
+  const kids = scopeSet ? node.children.filter((c) => subtreeInScope(c, scopeSet)) : node.children;
+  const hasChildren = kids.length > 0;
   const checked = selectedKeys.has(`org:${node.id}`);
+  const selectable = !scopeSet || scopeSet.has(node.id);
   return (
     <>
       <div className="flex items-center gap-1 py-0.5" style={{ paddingLeft: depth * 16 }}>
@@ -495,32 +541,55 @@ function OrgRow({
         ) : (
           <span className="w-5" />
         )}
-        <label className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0 py-1">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={() =>
-              onToggle({
-                targetType: "org",
-                id: node.id,
-                name: node.name,
-                sub: ORG_TYPE_LABELS[node.type],
-              })
-            }
-          />
-          <Building2Icon className="w-4 h-4 text-[#246BFE] flex-shrink-0" />
-          <span className="text-[13px] text-[#172033] truncate">{node.name}</span>
-          <span className="text-[10px] px-1 rounded bg-[#F0F0F0] text-[#6B7280] flex-shrink-0">
-            {ORG_TYPE_LABELS[node.type]}
-          </span>
-          {node.transitiveMembers > 0 && (
-            <span className="text-[10px] text-[#9CA3AF] flex-shrink-0">{node.transitiveMembers}人</span>
-          )}
-        </label>
+        {selectable ? (
+          <label className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0 py-1">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() =>
+                onToggle({
+                  targetType: "org",
+                  id: node.id,
+                  name: node.name,
+                  sub: ORG_TYPE_LABELS[node.type],
+                })
+              }
+            />
+            <Building2Icon className="w-4 h-4 text-[#246BFE] flex-shrink-0" />
+            <span className="text-[13px] text-[#172033] truncate">{node.name}</span>
+            <span className="text-[10px] px-1 rounded bg-[#F0F0F0] text-[#6B7280] flex-shrink-0">
+              {ORG_TYPE_LABELS[node.type]}
+            </span>
+            {node.transitiveMembers > 0 && (
+              <span className="text-[10px] text-[#9CA3AF] flex-shrink-0">
+                {node.transitiveMembers}人
+              </span>
+            )}
+          </label>
+        ) : (
+          <div
+            className="flex items-center gap-1.5 flex-1 min-w-0 py-1 text-[#9CA3AF]"
+            title="不在你的派发范围 —— 展开选它下面的单位"
+          >
+            <span className="w-[13px] flex-shrink-0" />
+            <Building2Icon className="w-4 h-4 text-[#C0C6D0] flex-shrink-0" />
+            <span className="text-[13px] truncate">{node.name}</span>
+            <span className="text-[10px] px-1 rounded bg-[#F0F0F0] text-[#9CA3AF] flex-shrink-0">
+              {ORG_TYPE_LABELS[node.type]}
+            </span>
+          </div>
+        )}
       </div>
       {open &&
-        node.children.map((c) => (
-          <OrgRow key={c.id} node={c} depth={depth + 1} selectedKeys={selectedKeys} onToggle={onToggle} />
+        kids.map((c) => (
+          <OrgRow
+            key={c.id}
+            node={c}
+            depth={depth + 1}
+            selectedKeys={selectedKeys}
+            onToggle={onToggle}
+            scopeSet={scopeSet}
+          />
         ))}
     </>
   );

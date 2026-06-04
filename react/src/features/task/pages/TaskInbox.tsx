@@ -64,12 +64,12 @@ export default function TaskInboxPage() {
           <div className="text-center py-16 rounded-xl border border-dashed border-[#dce4ef] bg-white/70 text-[#9CA3AF]">
             <InboxIcon className="w-10 h-10 mx-auto mb-2 opacity-40" />
             <div className="text-sm">暂无待办任务</div>
-            <div className="text-xs mt-1">机关部门派发、且对口到你所在部门的任务会出现在这里</div>
+            <div className="text-xs mt-1">上级派发到你所在单位 / 部门的任务会出现在这里</div>
           </div>
         ) : (
           <>
             {pending.length > 0 && (
-              <Section title={`待接收(${pending.length})`} hint="本部门对口,接收后由你负责">
+              <Section title={`待接收(${pending.length})`} hint="接收后由你负责填报(本单位/部门任务)">
                 {pending.map((it) => (
                   <InboxRow
                     key={it.targetId}
@@ -157,7 +157,11 @@ function InboxRow({ item, action }: { item: TaskInboxItem; action: React.ReactNo
               <Building2Icon className="w-3.5 h-3.5" />来自 {item.dispatchOrgName}
             </span>
           )}
-          {item.handlerOrgName && <span>责任部门:{item.handlerOrgName}</span>}
+          {item.handlerOrgName ? (
+            <span>责任部门:{item.handlerOrgName}</span>
+          ) : (
+            item.claimable && <span className="text-[#0E7490]">全单位待认领</span>
+          )}
           {item.dueAt && (
             <span className="inline-flex items-center gap-1">
               <ClockIcon className="w-3.5 h-3.5" />截止 {item.dueAt.replace("T", " ").slice(0, 16)}

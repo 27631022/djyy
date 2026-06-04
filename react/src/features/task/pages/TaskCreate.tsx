@@ -92,6 +92,13 @@ export default function TaskCreatePage() {
   });
   const pastTasks = (pastTasksQuery.data ?? []).filter((t) => t.fieldCount > 0);
 
+  // 我的派发范围(限制「派发对象」可选单位;不限范围账号 unrestricted=true)
+  const dispatchScopeQuery = useQuery({
+    queryKey: ["task-dispatch-scope"],
+    queryFn: () => taskApi.dispatchScope(),
+    staleTime: 60_000,
+  });
+
   function onExtracted(r: TaskExtractResponse) {
     if (r.fields.length > 0) setFields(r.fields.map((f) => ({ ...f })));
     if (r.scopeHint || r.suggestedUnits.length > 0) {
@@ -312,6 +319,7 @@ export default function TaskCreatePage() {
                   onChange={setTargets}
                   aiScope={aiScope}
                   uid={me?.id ?? "anon"}
+                  scope={dispatchScopeQuery.data}
                 />
               </div>
             ) : (

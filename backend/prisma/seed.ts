@@ -318,6 +318,8 @@ async function seedRolesAndPermissions() {
     { code: 'platform_admin', name: '平台管理员',    perms: permissions.map((p) => p.code) },
     { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
     { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
+    // 任务派发:给各级机关部门的派发人;配合 UserRole.scope(本组织+下级 / 自定义单位)限定派发范围
+    { code: 'task_dispatcher', name: '任务派发',     perms: ['portal:view', 'task:manage', 'task:review', 'file:upload'] },
     { code: 'member',          name: '普通用户',     perms: ['portal:view', 'task:fill'] },
   ];
   for (const r of roles) {

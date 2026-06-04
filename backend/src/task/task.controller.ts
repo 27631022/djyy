@@ -114,6 +114,12 @@ export class TaskController {
     return this.svc.inbox({ actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
+  /** 我的派发范围(给「派发对象」选择器过滤;unrestricted=true 不限) */
+  @Get('dispatch-scope')
+  dispatchScope(@CurrentUser() me: AuthPayload) {
+    return this.svc.getDispatchScope(me.sub);
+  }
+
   /** 接收(认领)一个派发对象 → 成为责任人(service 内校验「只能认领自己责任部门的」)。 */
   @Post('targets/:id/claim')
   claim(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
