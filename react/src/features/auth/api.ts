@@ -13,6 +13,7 @@ export interface AuthMembership {
     kind: "party" | "admin";
     type: string;
     isVirtual: boolean;
+    isDept: boolean;
     parentId: string | null;
   };
 }
@@ -33,6 +34,10 @@ export interface AuthMe {
   email: string | null;
   avatarUrl: string | null;
   active: boolean;
+  /** platform_admin 超管 = 看全部菜单(直通) */
+  isPlatformAdmin: boolean;
+  /** 有效权限点(供前端按权限隐藏菜单) */
+  permissions: string[];
   memberships: {
     admin: AuthMembership[];
     party: AuthMembership[];

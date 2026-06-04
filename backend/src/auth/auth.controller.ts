@@ -83,7 +83,7 @@ export class AuthController {
         },
         roles: {
           include: {
-            role: true,
+            role: { include: { permissions: { include: { permission: true } } } },
             scopeOrgs: { include: { org: true } },
           },
         },
@@ -95,6 +95,14 @@ export class AuthController {
     const adminMemberships = user.memberships.filter((m) => m.org.kind === 'admin');
     const partyMemberships = user.memberships.filter((m) => m.org.kind === 'party');
 
+    // 有效权限点(供前端按权限隐藏菜单);platform_admin = 超管直通
+    const permSet = new Set<string>();
+    let isPlatformAdmin = false;
+    for (const r of user.roles) {
+      if (r.role.code === 'platform_admin') isPlatformAdmin = true;
+      for (const rp of r.role.permissions) permSet.add(rp.permission.code);
+    }
+
     return {
       id: user.id,
       username: user.username,
@@ -102,6 +110,8 @@ export class AuthController {
       email: user.email,
       avatarUrl: user.avatarUrl,
       active: user.active,
+      isPlatformAdmin,
+      permissions: [...permSet],
       memberships: {
         admin: adminMemberships,
         party: partyMemberships,

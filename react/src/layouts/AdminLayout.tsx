@@ -14,7 +14,8 @@ import { useAuth } from "../stores/auth";
 
 /* ─── 顶部一级分类 → 联动左侧二级菜单 ─── */
 /** group:可选的二级菜单分组标题(同 group 的项聚在一个小标题下) */
-interface MenuItem { path: string; label: string; icon: React.ElementType; disabled?: boolean; group?: string; }
+/** perm:需要的权限点(无则人人可见;platform_admin 直通看全部) */
+interface MenuItem { path: string; label: string; icon: React.ElementType; disabled?: boolean; group?: string; perm?: string; }
 interface Category { id: string; label: string; icon: React.ElementType; items: MenuItem[]; }
 
 const CATEGORIES: Category[] = [
@@ -23,9 +24,9 @@ const CATEGORIES: Category[] = [
     label: "组织与权限",
     icon: NetworkIcon,
     items: [
-      { path: "/admin/organizations", label: "党组织 / 行政机构", icon: BuildingIcon },
-      { path: "/admin/users",         label: "用户管理",           icon: UserIcon    },
-      { path: "/admin/roles",         label: "角色与权限",         icon: ShieldIcon  },
+      { path: "/admin/organizations", label: "党组织 / 行政机构", icon: BuildingIcon, perm: "admin:org:read" },
+      { path: "/admin/users",         label: "用户管理",           icon: UserIcon,    perm: "admin:user:read" },
+      { path: "/admin/roles",         label: "角色与权限",         icon: ShieldIcon,  perm: "admin:role:read" },
     ],
   },
   {
@@ -33,12 +34,12 @@ const CATEGORIES: Category[] = [
     label: "系统设置",
     icon: SlidersHorizontalIcon,
     items: [
-      { path: "/admin/dictionaries",   label: "数据字典",         icon: BookTextIcon },
-      { path: "/admin/custom-fields",  label: "用户自定义字段",   icon: SlidersHorizontalIcon },
-      { path: "/admin/site-settings",  label: "站点设置",         icon: PaletteIcon  },
-      { path: "/admin/navigation",     label: "首页导航",         icon: LayoutGridIcon },
-      { path: "/admin/external-apis",  label: "AI 接入管理",      icon: SparklesIcon },
-      { path: "/admin/icon-library",   label: "图标库",           icon: ImageIcon },
+      { path: "/admin/dictionaries",   label: "数据字典",         icon: BookTextIcon, perm: "admin:menu" },
+      { path: "/admin/custom-fields",  label: "用户自定义字段",   icon: SlidersHorizontalIcon, perm: "admin:menu" },
+      { path: "/admin/site-settings",  label: "站点设置",         icon: PaletteIcon,  perm: "admin:menu" },
+      { path: "/admin/navigation",     label: "首页导航",         icon: LayoutGridIcon, perm: "admin:menu" },
+      { path: "/admin/external-apis",  label: "AI 接入管理",      icon: SparklesIcon, perm: "admin:menu" },
+      { path: "/admin/icon-library",   label: "图标库",           icon: ImageIcon, perm: "admin:menu" },
     ],
   },
   {
@@ -46,11 +47,12 @@ const CATEGORIES: Category[] = [
     label: "业务功能",
     icon: BriefcaseIcon,
     items: [
-      { path: "/admin/certificate-templates", label: "证书模板",   icon: AwardIcon,      group: "证书管理" },
-      { path: "/admin/certificates/issue",    label: "颁发证书",   icon: SendIcon,       group: "证书管理" },
-      { path: "/admin/certificates/external", label: "外部证书录入", icon: UploadIcon,    group: "证书管理" },
-      { path: "/admin/certificates",          label: "已发证书",   icon: ListChecksIcon, group: "证书管理" },
-      { path: "/admin/tasks",                 label: "任务派发",     icon: SendIcon,          group: "任务管理" },
+      { path: "/admin/certificate-templates", label: "证书模板",   icon: AwardIcon,      group: "证书管理", perm: "certificate:issue" },
+      { path: "/admin/certificates/issue",    label: "颁发证书",   icon: SendIcon,       group: "证书管理", perm: "certificate:issue" },
+      { path: "/admin/certificates/external", label: "外部证书录入", icon: UploadIcon,    group: "证书管理", perm: "certificate:issue" },
+      { path: "/admin/certificates",          label: "已发证书",   icon: ListChecksIcon, group: "证书管理", perm: "certificate:issue" },
+      // 任务派发:仅有 task:manage 的人(派发人/管理员)可见;我的待办:人人可见(任何登录员工都能收任务)
+      { path: "/admin/tasks",                 label: "任务派发",     icon: SendIcon,          group: "任务管理", perm: "task:manage" },
       { path: "/admin/tasks/inbox",           label: "我的待办",     icon: InboxIcon,         group: "任务管理" },
     ],
   },
@@ -59,9 +61,9 @@ const CATEGORIES: Category[] = [
     label: "数据统计",
     icon: BarChart2Icon,
     items: [
-      { path: "/admin/stats/views", label: "浏览统计", icon: EyeIcon,         disabled: true },
-      { path: "/admin/stats/likes", label: "点赞统计", icon: ThumbsUpIcon,    disabled: true },
-      { path: "/admin/feedback",    label: "用户反馈", icon: MessageSquareIcon, disabled: true },
+      { path: "/admin/stats/views", label: "浏览统计", icon: EyeIcon,         disabled: true, perm: "admin:menu" },
+      { path: "/admin/stats/likes", label: "点赞统计", icon: ThumbsUpIcon,    disabled: true, perm: "admin:menu" },
+      { path: "/admin/feedback",    label: "用户反馈", icon: MessageSquareIcon, disabled: true, perm: "admin:menu" },
     ],
   },
 ];
@@ -133,6 +135,16 @@ const GROUP_COLLAPSED_KEY = "djyy_admin_collapsed_groups_v1";
 export default function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { me } = useAuth();
+
+  /* ── 按权限过滤菜单(platform_admin 直通;无 perm 的项人人可见,如「我的待办」)── */
+  const visibleCategories = useMemo(() => {
+    const canSee = (it: MenuItem) =>
+      !it.perm || !!me?.isPlatformAdmin || (me?.permissions ?? []).includes(it.perm);
+    return CATEGORIES.map((c) => ({ ...c, items: c.items.filter(canSee) })).filter(
+      (c) => c.items.length > 0,
+    );
+  }, [me]);
 
   /* ── 当前所在 category(基于当前路径或本地存储) ── */
   const [activeCatId, setActiveCatId] = useState<string>(() => {
@@ -214,7 +226,10 @@ export default function AdminLayout() {
     localStorage.setItem(CAT_STORAGE_KEY, activeCatId);
   }, [activeCatId]);
 
-  const activeCat = useMemo(() => CATEGORIES.find((c) => c.id === activeCatId) ?? CATEGORIES[0], [activeCatId]);
+  const activeCat = useMemo(
+    () => visibleCategories.find((c) => c.id === activeCatId) ?? visibleCategories[0] ?? CATEGORIES[0],
+    [activeCatId, visibleCategories],
+  );
 
   /* 把二级菜单项按 group 聚合(保持出现顺序);无 group 的归到匿名组 "" */
   const menuGroups = useMemo(() => {
@@ -248,8 +263,8 @@ export default function AdminLayout() {
 
   function switchCategory(catId: string) {
     setActiveCatId(catId);
-    // 切换分类时,如果当前路径不在该分类下,自动跳到该分类首项(若可用)
-    const cat = CATEGORIES.find((c) => c.id === catId);
+    // 切换分类时,如果当前路径不在该分类下,自动跳到该分类首项(若可用;只取有权限的可见项)
+    const cat = visibleCategories.find((c) => c.id === catId);
     const stillInCat = cat?.items.some((i) => i.path === currentPath);
     if (!stillInCat) {
       const firstEnabled = cat?.items.find((i) => !i.disabled);
@@ -284,9 +299,9 @@ export default function AdminLayout() {
 
         {/* 右上中:一级分类菜单 */}
         <nav className="flex-1 flex items-center gap-1 px-3 overflow-x-auto">
-          {CATEGORIES.map((c) => {
+          {visibleCategories.map((c) => {
             const Icon = c.icon;
-            const active = c.id === activeCatId;
+            const active = c.id === activeCat.id;
             return (
               <button
                 key={c.id}
