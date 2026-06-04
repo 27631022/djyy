@@ -17,7 +17,6 @@ import {
 import {
   organizationsApi,
   ORG_TYPE_LABELS,
-  type OrgKind,
   type OrgType,
   type OrgTreeNode,
 } from "@/features/organization";
@@ -42,17 +41,12 @@ interface FlatOrg {
   name: string;
   type: OrgType;
   isVirtual: boolean;
+  isDept: boolean;
 }
 interface UnitGroup {
   id: string;
   name: string;
   ids: string[];
-}
-/** 虚拟机构(如 公司机关 / 基层单位)及其下属真实单位 —— 快捷选单位以此为维度 */
-interface Wrapper {
-  id: string;
-  name: string;
-  kids: FlatOrg[];
 }
 
 function keyOf(t: { targetType: string; id: string }) {
@@ -61,7 +55,7 @@ function keyOf(t: { targetType: string; id: string }) {
 function flatten(nodes: OrgTreeNode[]): FlatOrg[] {
   const out: FlatOrg[] = [];
   const walk = (n: OrgTreeNode) => {
-    out.push({ id: n.id, name: n.name, type: n.type, isVirtual: n.isVirtual });
+    out.push({ id: n.id, name: n.name, type: n.type, isVirtual: n.isVirtual, isDept: n.isDept });
     n.children.forEach(walk);
   };
   nodes.forEach(walk);
@@ -72,20 +66,9 @@ function subtreeInScope(node: OrgTreeNode, scopeSet: Set<string>): boolean {
   if (scopeSet.has(node.id)) return true;
   return node.children.some((c) => subtreeInScope(c, scopeSet));
 }
-/** 找出所有「虚拟机构 + 其非虚拟直接子单位」(公司机关→各部门;基层单位→塔运司/各分公司) */
-function findWrappers(nodes: OrgTreeNode[]): Wrapper[] {
-  const out: Wrapper[] = [];
-  const walk = (n: OrgTreeNode) => {
-    if (n.isVirtual && n.children.length > 0) {
-      const kids = n.children
-        .filter((c) => !c.isVirtual)
-        .map((c) => ({ id: c.id, name: c.name, type: c.type, isVirtual: c.isVirtual }));
-      if (kids.length) out.push({ id: n.id, name: n.name, kids });
-    }
-    n.children.forEach(walk);
-  };
-  nodes.forEach(walk);
-  return out;
+/** 类型标签:部门(isDept)显示「部门」,否则按层级(一级/二级单位…)—— 体现「部门」而非误显层级。 */
+function orgTypeLabel(node: { type: OrgType; isDept: boolean }): string {
+  return node.isDept ? "部门" : ORG_TYPE_LABELS[node.type];
 }
 
 /* ─── 自定义快捷组持久化(localStorage,按用户隔离)─── */
@@ -121,11 +104,10 @@ export function TargetPicker({
   scope?: { unrestricted: boolean; orgIds: string[]; selfOrgIds: string[] };
 }) {
   const [tab, setTab] = useState<"org" | "user">("org");
-  const [kind, setKind] = useState<OrgKind>("admin");
   const [groups, setGroups] = useState<UnitGroup[]>(() => loadGroups(uid));
   const [manageGroups, setManageGroups] = useState(false);
   const selectedKeys = new Set(value.map(keyOf));
-  // 范围集合(仅对行政树生效);null = 不限
+  // 范围集合(仅对行政单位生效);null = 不限
   const scopeSet = useMemo(
     () => (scope && !scope.unrestricted ? new Set(scope.orgIds) : null),
     [scope],
@@ -133,29 +115,13 @@ export function TargetPicker({
   // 「个人」tab 可选人员范围 = 本单位/部门子树;null = 不限(全部用户)
   const personOrgIds = scope && !scope.unrestricted ? scope.selfOrgIds : null;
 
-  // 当前展示用树(随 kind 切)
+  // 只派「行政机构」(党组织暂不考虑)。一棵行政树:树展示 + AI 范围名称匹配都用它。
   const treeQuery = useQuery({
-    queryKey: ["org-tree", kind],
-    queryFn: () => organizationsApi.tree(kind),
-    staleTime: 60_000,
-  });
-  // 快捷条 / AI 范围基于「行政树」做层级与名称匹配(始终拉 admin,react-query 去重)
-  const adminTreeQuery = useQuery({
     queryKey: ["org-tree", "admin"],
     queryFn: () => organizationsApi.tree("admin"),
     staleTime: 60_000,
   });
-  const adminFlat = useMemo(
-    () => flatten(adminTreeQuery.data ?? []),
-    [adminTreeQuery.data],
-  );
-  const wrappers = useMemo(() => {
-    const ws = findWrappers(adminTreeQuery.data ?? []);
-    if (!scopeSet) return ws;
-    return ws
-      .map((w) => ({ ...w, kids: w.kids.filter((k) => scopeSet.has(k.id)) }))
-      .filter((w) => w.kids.length > 0);
-  }, [adminTreeQuery.data, scopeSet]);
+  const adminFlat = useMemo(() => flatten(treeQuery.data ?? []), [treeQuery.data]);
 
   function toggle(t: PickedTarget) {
     const k = keyOf(t);
@@ -175,20 +141,13 @@ export function TargetPicker({
         targetType: "org",
         id: o.id,
         name: o.name,
-        sub: ORG_TYPE_LABELS[o.type],
+        sub: orgTypeLabel(o),
       }));
     if (additions.length) onChange([...value, ...additions]);
   }
   function removeOrgs(ids: string[]) {
     const drop = new Set(ids.map((id) => `org:${id}`));
     onChange(value.filter((v) => !drop.has(keyOf(v))));
-  }
-  function wrapperAllSelected(w: Wrapper): boolean {
-    return w.kids.length > 0 && w.kids.every((o) => selectedKeys.has(`org:${o.id}`));
-  }
-  function toggleWrapper(w: Wrapper) {
-    if (wrapperAllSelected(w)) removeOrgs(w.kids.map((o) => o.id));
-    else addOrgs(w.kids);
   }
   function groupOrgs(g: UnitGroup): FlatOrg[] {
     const set = new Set(g.ids);
@@ -269,8 +228,8 @@ export function TargetPicker({
         </div>
       )}
 
-      {/* 快捷选单位条(仅单位 tab + 行政视图) */}
-      {tab === "org" && kind === "admin" && (
+      {/* 快捷选单位条(仅单位 tab):无默认壳,只展示用户自存的快捷组 */}
+      {tab === "org" && (
         <div className="rounded-xl border border-[#dce4ef] bg-white/70 px-3 py-2.5">
           <div className="flex items-center gap-1.5 mb-2 text-[12px] font-bold text-[#475467]">
             <ZapIcon className="w-3.5 h-3.5 text-[var(--party-primary)]" />
@@ -300,26 +259,6 @@ export function TargetPicker({
             )}
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {wrappers.map((w) => {
-              const all = wrapperAllSelected(w);
-              return (
-                <button
-                  key={w.id}
-                  type="button"
-                  onClick={() => toggleWrapper(w)}
-                  title={`选中「${w.name}」下属 ${w.kids.length} 个单位`}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] border transition-colors ${
-                    all
-                      ? "border-[var(--party-primary)] bg-party-soft text-[var(--party-primary)] font-bold"
-                      : "border-[#dce4ef] bg-white text-[#475467] hover:border-[var(--party-primary)]"
-                  }`}
-                >
-                  {all ? <CheckIcon className="w-3 h-3" /> : <PlusIcon className="w-3 h-3" />}
-                  全选{w.name}
-                  <span className="text-[10px] text-[#9CA3AF]">{w.kids.length}</span>
-                </button>
-              );
-            })}
             {groups.map((g) => {
               const all = groupAllSelected(g);
               return (
@@ -350,8 +289,10 @@ export function TargetPicker({
                 </span>
               );
             })}
-            {wrappers.length === 0 && groups.length === 0 && (
-              <span className="text-[12px] text-[#9CA3AF]">加载单位中…</span>
+            {groups.length === 0 && (
+              <span className="text-[12px] text-[#9CA3AF]">
+                还没有快捷组 —— 在下面选好若干单位后点「存为快捷组」,下次一键选中
+              </span>
             )}
           </div>
         </div>
@@ -395,8 +336,6 @@ export function TargetPicker({
         <div className="flex-1 min-h-0 overflow-auto p-3">
           {tab === "org" ? (
             <OrgTab
-              kind={kind}
-              setKind={setKind}
               nodes={treeQuery.data ?? []}
               loading={treeQuery.isLoading}
               selectedKeys={selectedKeys}
@@ -437,58 +376,23 @@ export function TargetPicker({
 }
 
 function OrgTab({
-  kind,
-  setKind,
   nodes,
   loading,
   selectedKeys,
   onToggle,
   scopeSet,
 }: {
-  kind: OrgKind;
-  setKind: (k: OrgKind) => void;
   nodes: OrgTreeNode[];
   loading: boolean;
   selectedKeys: Set<string>;
   onToggle: (t: PickedTarget) => void;
   scopeSet: Set<string> | null;
 }) {
-  // 范围仅约束行政单位;受限派发人的「党组织」视图给提示(范围按行政单位算)
-  const restrictedParty = !!scopeSet && kind === "party";
-  const visibleNodes =
-    scopeSet && kind === "admin"
-      ? nodes.filter((n) => subtreeInScope(n, scopeSet))
-      : nodes;
+  // 只派行政机构;受限派发人只看范围内子树
+  const visibleNodes = scopeSet ? nodes.filter((n) => subtreeInScope(n, scopeSet)) : nodes;
   return (
     <div>
-      <div className="flex gap-1 mb-2">
-        {(
-          [
-            ["admin", "行政机构"],
-            ["party", "党组织"],
-          ] as [OrgKind, string][]
-        ).map(([k, label]) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setKind(k)}
-            className={`px-2.5 py-1 rounded-md text-[12px] border ${
-              kind === k
-                ? "border-[var(--party-primary)] text-[var(--party-primary)] bg-party-soft"
-                : "border-[#dce4ef] text-[#667085]"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {restrictedParty ? (
-        <div className="text-[12px] text-[#9CA3AF] py-6 text-center px-4 leading-relaxed">
-          你的派发范围按「行政单位」设定,暂不支持派发党组织。
-          <br />
-          如需派党组织,请用不限范围的账号,或联系管理员调整你的角色范围。
-        </div>
-      ) : loading ? (
+      {loading ? (
         <div className="text-[13px] text-[#9CA3AF] py-6 text-center">加载中…</div>
       ) : visibleNodes.length === 0 ? (
         <div className="text-[13px] text-[#9CA3AF] py-6 text-center">
@@ -555,14 +459,14 @@ function OrgRow({
                   targetType: "org",
                   id: node.id,
                   name: node.name,
-                  sub: ORG_TYPE_LABELS[node.type],
+                  sub: orgTypeLabel(node),
                 })
               }
             />
             <Building2Icon className="w-4 h-4 text-[#246BFE] flex-shrink-0" />
             <span className="text-[13px] text-[#172033] truncate">{node.name}</span>
             <span className="text-[10px] px-1 rounded bg-[#F0F0F0] text-[#6B7280] flex-shrink-0">
-              {ORG_TYPE_LABELS[node.type]}
+              {orgTypeLabel(node)}
             </span>
             {node.transitiveMembers > 0 && (
               <span className="text-[10px] text-[#9CA3AF] flex-shrink-0">
@@ -579,7 +483,7 @@ function OrgRow({
             <Building2Icon className="w-4 h-4 text-[#C0C6D0] flex-shrink-0" />
             <span className="text-[13px] truncate">{node.name}</span>
             <span className="text-[10px] px-1 rounded bg-[#F0F0F0] text-[#9CA3AF] flex-shrink-0">
-              {ORG_TYPE_LABELS[node.type]}
+              {orgTypeLabel(node)}
             </span>
           </div>
         )}

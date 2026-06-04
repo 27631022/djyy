@@ -69,7 +69,10 @@ export function TaskStep1Upload({
       extracted = await taskApi.extract(f);
       if (extracted.title) setTitle(extracted.title);
       if (extracted.requirements) setRequirements(extracted.requirements);
-      if (extracted.dueDate) setDueAt(`${extracted.dueDate}T18:00`);
+      // AI 抽到截止日期 → 预填(时间固定 15:00,可改)
+      if (extracted.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(extracted.dueDate)) {
+        setDueAt(`${extracted.dueDate}T15:00`);
+      }
       setSource(extracted.source);
       onExtracted(extracted);
       const fc = extracted.fields.length;
@@ -221,12 +224,10 @@ export function TaskStep1Upload({
           />
         </Field>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="报送截止日期" required hint="填报人需在此前提交">
+          <Field label="报送截止日期" required hint="默认今天+10天、15:00,日期和时间都可改">
             <input
               type="datetime-local"
               value={dueAt}
-              min="2024-01-01T00:00"
-              max="2099-12-31T23:59"
               onChange={(e) => setDueAt(e.target.value)}
               className={inputCls}
             />

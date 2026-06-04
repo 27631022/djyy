@@ -66,7 +66,15 @@ export default function TaskCreatePage() {
   // Step1 基本信息
   const [title, setTitle] = useState("");
   const [requirements, setRequirements] = useState("");
-  const [dueAt, setDueAt] = useState("");
+  // 报送截止日期默认「今天+10 天、15:00」(日期、时间都可改);单个 datetime-local 控件
+  const [dueAt, setDueAt] = useState(() => {
+    const n = new Date();
+    n.setDate(n.getDate() + 10);
+    const d = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(
+      n.getDate(),
+    ).padStart(2, "0")}`;
+    return `${d}T15:00`;
+  });
   const [noticeFileId, setNoticeFileId] = useState<string | null>(null);
   const [noticeFileName, setNoticeFileName] = useState<string | null>(null);
   // Step2 字段
