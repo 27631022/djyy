@@ -28,6 +28,7 @@ import {
   taskApiErrorMessage,
   groupTaskFields,
   TASK_TARGET_STATUS_LABEL,
+  SUBMISSION_STATUS_LABEL,
   taskStatusChip,
   dueInfo,
   dueToneStyle,
@@ -83,8 +84,12 @@ export default function TaskFillPage() {
   const locked = !fill.editable; // 已提交 / 已通过 → 锁定只读
   const returnCount = fill.submission.returnCount;
   const submittedAt = fill.submission.submittedAt;
-  // 状态小标:草稿态用对象状态,已提交/退回用回执状态
+  // 状态小标:草稿态用对象状态,已提交/退回/已通过用回执状态(各自的中文标签)
   const chipStatus = subStatus === "draft" ? fill.targetStatus : subStatus;
+  const chipLabel =
+    subStatus === "draft"
+      ? TASK_TARGET_STATUS_LABEL[fill.targetStatus] ?? fill.targetStatus
+      : SUBMISSION_STATUS_LABEL[subStatus] ?? subStatus;
   // 醒目截止提醒(仍可编辑且临近/逾期时)
   const reminder = !locked ? dueInfo(fill.dueAt) : null;
   const showReminder = reminder && (reminder.tone === "soon" || reminder.tone === "overdue");
@@ -109,7 +114,7 @@ export default function TaskFillPage() {
                   className="text-[11px] px-1.5 py-0.5 rounded-full"
                   style={taskStatusChip(chipStatus)}
                 >
-                  {TASK_TARGET_STATUS_LABEL[chipStatus] ?? chipStatus}
+                  {chipLabel}
                 </span>
                 {fill.periodLabel && (
                   <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-[#FFF7ED] text-[#C2410C]">

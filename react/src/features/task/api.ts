@@ -49,6 +49,14 @@ export const TASK_TARGET_STATUS_LABEL: Record<string, string> = {
   done: "已完成",
 };
 
+/* ─── 回执(填报)状态 ── draft/submitted/returned/approved(approved=派发人审核通过) ─── */
+export const SUBMISSION_STATUS_LABEL: Record<string, string> = {
+  draft: "草稿",
+  submitted: "已提交",
+  returned: "已退回",
+  approved: "已通过",
+};
+
 /* ─── 任务模板 ─── */
 export interface TaskTemplateDto {
   id: string;
@@ -645,6 +653,7 @@ export function dueToneStyle(tone: DueTone): CSSProperties {
 export function taskStatusChip(st: string): CSSProperties {
   switch (st) {
     case "done":
+    case "approved": // 回执已通过 = 绿色,同已完成
       return { backgroundColor: "#ECFDF5", color: "#047857" };
     case "returned":
       return { backgroundColor: "#FEF2F2", color: "#DC2626" };
