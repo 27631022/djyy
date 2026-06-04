@@ -274,6 +274,10 @@ npm run db:seed
   - **附件打包命名**:从「{单位}/{字段}-{原名}」分文件夹改为**扁平**「`{单位序号}-{单位(部门)名}-{字段名}({同字段多文件跟序号}).扩展名`」,单位按中文名排序编号(补零)。
   - **填报页**:标题下显示**派发部门 · 派发人 · 电话**(`tel:` 可拨),便于基层咨询;`getFill` 补返回 `dispatchOrgName`/`dispatchUserName`/`dispatchUserPhone`。
   - ⚠ dev 库补授:**孙彩霞 加 `dept_manager` 角色**(从而有 task:reception,可指派本部门;原只有 member+task_dispatcher)。非 git,reseed 自动恢复(她的角色不在 seed,reseed 后需按需重设)。
+- **(2026-06-04 续 · 回执中文化 + 超期自动通过 + 定时任务底座)**:
+  - **回执状态中文化**:填报页标题小标在非草稿态用的是回执状态(draft/submitted/returned/**approved**),而 `TASK_TARGET_STATUS_LABEL` 没有 `approved` 键 → 露出英文。加 `SUBMISSION_STATUS_LABEL`(approved=**已通过**)+ `taskStatusChip` 的 approved 绿色;TaskFill 用 `chipLabel`(草稿→对象状态,其余→回执状态)。
+  - **超期自动通过**:任务**截止满 1 个月**(dueAt + 1 月 < 现在)、回执仍停「已提交」待审 → 自动转**已通过(回执 approved)+ 已完成(对象 done)**,reviewNote 标「(超过截止满 1 个月,系统自动通过)」。幂等只动 submitted、无 dueAt 不参与。`TaskService.autoCompleteOverdue()` + 管理员手动端点 `POST /tasks/admin/sweep-overdue`(service 内 isPlatformAdmin 判)。
+  - **定时任务底座**:新增依赖 **`@nestjs/schedule@^4`**(适配 Nest 10)+ `app.module` 加 `ScheduleModule.forRoot()`。`TaskService` 用 `@Timeout(20_000)`(启动补扫一次)+ `@Cron(CronExpression.EVERY_DAY_AT_3AM)`(每天凌晨3点)替代手搓 `setInterval`。**以后加定时任务 = 任意 provider 里写方法挂 `@Cron('cron表达式')`**。⚠ 单进程内跑;上多副本需加分布式锁(单机 MVP 无虑)。验证:app 带装饰器干净启动 + @Timeout 触发(审计有 sweep)+ 手动扫描 count=1、数据正确转换。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor

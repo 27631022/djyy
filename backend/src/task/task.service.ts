@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Cron, CronExpression, Timeout } from '@nestjs/schedule';
 import JSZip from 'jszip';
 import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
@@ -56,6 +57,63 @@ export class TaskService {
     private readonly storage: StorageService,
     private readonly roles: RoleService,
   ) {}
+
+  /** 启动 20s 后跑一次「超期自动通过」(部署/重启后的补扫)。@nestjs/schedule。 */
+  @Timeout(20_000)
+  sweepOverdueOnBoot(): void {
+    void this.autoCompleteOverdue().catch(() => undefined);
+  }
+
+  /** 每天凌晨 3 点定时跑「超期自动通过」(避开高峰)。@nestjs/schedule @Cron。 */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  sweepOverdueDaily(): void {
+    void this.autoCompleteOverdue().catch(() => undefined);
+  }
+
+  /**
+   * 超期自动通过:任务截止满 1 个月(dueAt + 1 月 < 现在)、回执仍停在「已提交」待审 →
+   * 自动转「已通过」(回执 approved)+「已完成」(对象 done)。派发人长期未审的旧回执到期自动结案。
+   * 幂等:只动 status=submitted 的回执;无截止(dueAt 空)的任务不参与。返回本次自动通过的条数。
+   */
+  async autoCompleteOverdue(): Promise<number> {
+    const now = new Date();
+    const threshold = new Date(now);
+    threshold.setMonth(threshold.getMonth() - 1); // 截止早于(现在 - 1 个月)= 超期满 1 个月
+    const overdueTasks = await this.prisma.task.findMany({
+      where: { dueAt: { not: null, lt: threshold } },
+      select: { id: true },
+    });
+    if (overdueTasks.length === 0) return 0;
+    const subs = await this.prisma.taskSubmission.findMany({
+      where: { taskId: { in: overdueTasks.map((t) => t.id) }, status: 'submitted' },
+      select: { id: true, targetId: true },
+    });
+    if (subs.length === 0) return 0;
+    await this.prisma.taskSubmission.updateMany({
+      where: { id: { in: subs.map((s) => s.id) } },
+      data: {
+        status: 'approved',
+        reviewedAt: now,
+        reviewNote: '(超过截止满 1 个月,系统自动通过)',
+      },
+    });
+    await this.prisma.taskTarget.updateMany({
+      where: { id: { in: subs.map((s) => s.targetId) }, status: 'submitted' },
+      data: { status: 'done' },
+    });
+    await this.audit.log({ action: 'task.auto-approve.sweep', detail: { count: subs.length } });
+    return subs.length;
+  }
+
+  /** 手动触发「超期自动通过」扫描(仅平台管理员);返回本次自动通过的条数。 */
+  async triggerOverdueSweep(actorId: string): Promise<{ count: number }> {
+    const { isPlatformAdmin } = await this.roles.getScopesForPermission(actorId, 'task:manage');
+    if (!isPlatformAdmin) {
+      throw new ForbiddenException('仅系统管理员可手动触发超期自动通过');
+    }
+    const count = await this.autoCompleteOverdue();
+    return { count };
+  }
 
   /**
    * 派发任务:建 Task(快照 fields)+ fan-out TaskTarget + 对口路由定责任人。

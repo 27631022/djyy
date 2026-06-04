@@ -273,6 +273,12 @@ export class TaskController {
     });
   }
 
+  /** 手动触发「超期自动通过」扫描(仅系统管理员;自动扫描已每 6h 跑一次)。 */
+  @Post('admin/sweep-overdue')
+  sweepOverdue(@CurrentUser() me: AuthPayload) {
+    return this.svc.triggerOverdueSweep(me.sub);
+  }
+
   @Get(':id')
   get(@Param('id') id: string) {
     return this.svc.get(id);

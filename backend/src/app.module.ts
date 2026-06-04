@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma';
 import { HealthModule } from './health';
@@ -22,6 +23,7 @@ import { TaskModule } from './task';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(), // 定时任务底座(@Cron / @Interval / @Timeout)
     PrismaModule,
     // AuthModule 在业务模块之前注册,确保它们使用 AuthGuard 时已可用
     AuthModule,
