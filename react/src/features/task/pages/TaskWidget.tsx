@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Lock,
@@ -11,6 +11,7 @@ import {
   Trophy,
   ExternalLink,
   Clock,
+  LogOut,
 } from "lucide-react";
 import { useAuth } from "@/stores/auth";
 import { SiteLogo } from "@/features/site-setting";
@@ -23,9 +24,10 @@ import {
   type RankedUnit,
 } from "@/shared/lib/ranking-demo";
 import { cn } from "@/shared/lib/utils";
-import { isDesktop, setWidgetLocked, openExternal } from "@/shared/lib/desktop";
+import { isDesktop, setWidgetLocked, startWidgetDrag, openExternal } from "@/shared/lib/desktop";
 import { taskApi, TASK_TARGET_STATUS_LABEL, type TaskInboxItem } from "../api";
 import { useDesktopInboxAlerts } from "../useDesktopInboxAlerts";
+import { toast } from "sonner";
 
 /* ── 日期小工具(本地时区,不引日期库)── */
 const pad2 = (n: number) => (n < 10 ? `0${n}` : `${n}`);
@@ -73,7 +75,7 @@ const STATUS_CHIP: Record<string, string> = {
 
 /** 桌面任务小组件:身份 + 计数 + 月历(待落实气泡)+ 选中日待办。透明卡片,挂件窗口里融入壁纸。 */
 export default function TaskWidget() {
-  const { me } = useAuth();
+  const { me, login, logout } = useAuth();
   const desktop = isDesktop();
   useDesktopInboxAlerts(!!me);
 
@@ -85,14 +87,31 @@ export default function TaskWidget() {
   const [locked, setLocked] = useState(false);
   const [tab, setTab] = useState<"tasks" | "ranking">("tasks");
 
+  // 桌面挂件:让 html/body 透明,露出壁纸(配合无边框 + 锁定沉入桌面)。浏览器里不动。
+  useEffect(() => {
+    if (!desktop) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.background;
+    const prevBody = body.style.background;
+    html.style.background = "transparent";
+    body.style.background = "transparent";
+    return () => {
+      html.style.background = prevHtml;
+      body.style.background = prevBody;
+    };
+  }, [desktop]);
+
   const inboxQ = useQuery({
     queryKey: ["task", "inbox"],
     queryFn: () => taskApi.inbox(),
+    enabled: !!me,
     refetchInterval: 90_000,
   });
   const statsQ = useQuery({
     queryKey: ["task", "my-stats"],
     queryFn: () => taskApi.myStats(),
+    enabled: !!me,
     refetchInterval: 90_000,
   });
 
@@ -144,7 +163,12 @@ export default function TaskWidget() {
   async function toggleLock() {
     const next = !locked;
     setLocked(next);
-    await setWidgetLocked(next);
+    try {
+      await setWidgetLocked(next);
+    } catch (e) {
+      setLocked(!next); // 失败回退视觉
+      toast.error("锁定失败:" + (e instanceof Error ? e.message : String(e)));
+    }
   }
   function openTask(it: TaskInboxItem) {
     const path = it.isOwner ? `/admin/tasks/fill/${it.targetId}` : `/admin/tasks/inbox`;
@@ -168,8 +192,28 @@ export default function TaskWidget() {
             : "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(255,228,230,0.82))",
         }}
       >
-        {/* ── 顶栏:身份(左)+ 刷新/锁(右)── */}
-        <div data-tauri-drag-region className="flex items-center gap-2.5">
+        {me === undefined ? (
+          <div
+            onMouseDown={(e) => {
+              if (e.button === 0) void startWidgetDrag();
+            }}
+            className="flex items-center justify-center py-12 text-sm text-slate-500"
+          >
+            加载中…
+          </div>
+        ) : !me ? (
+          <WidgetLogin login={login} />
+        ) : (
+          <>
+        {/* ── 顶栏:身份(左)+ 刷新/锁(右);解锁态按住拖动整窗 ── */}
+        <div
+          onMouseDown={(e) => {
+            if (!locked && e.button === 0 && !(e.target as HTMLElement).closest("button")) {
+              void startWidgetDrag();
+            }
+          }}
+          className="flex items-center gap-2.5"
+        >
           {me?.avatarUrl ? (
             <img
               src={me.avatarUrl}
@@ -195,15 +239,21 @@ export default function TaskWidget() {
           </button>
           <button
             onClick={toggleLock}
-            title={desktop ? (locked ? "解锁:从桌面层唤回" : "锁定:沉入桌面融入壁纸") : "锁定(桌面客户端里生效)"}
+            title={
+              desktop
+                ? locked
+                  ? "已固定到桌面(点击解锁,可拖动)"
+                  : "可拖动浮窗(点击固定到桌面)"
+                : "固定到桌面(桌面客户端里生效)"
+            }
             className={cn(
               "grid h-7 w-7 place-items-center rounded-lg",
               locked
-                ? "bg-[var(--party-primary)] text-white"
-                : "text-slate-500 hover:bg-slate-100",
+                ? "bg-slate-200 text-slate-500 hover:bg-slate-300" // 锁死=灰
+                : "bg-green-100 text-green-600 hover:bg-green-200", // 打开=绿(可移动)
             )}
           >
-            {locked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+            {locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
           </button>
         </div>
 
@@ -339,18 +389,87 @@ export default function TaskWidget() {
         )}
         {tab === "ranking" && <RankingPanel unitName={myUnit.name} matched={myUnit.matched} />}
 
-        {/* ── 底栏:品牌标志(左)+ 最近更新(右),同一排 ── */}
-        <div className="flex items-center justify-between pt-0.5 text-slate-400">
+        {/* ── 底栏:品牌标志(左)+ 更新时间 + 退出登录(右)── */}
+        <div className="flex items-center justify-between pt-0.5 text-[10px] text-slate-400">
           <div className="flex items-center gap-1.5 opacity-60">
             <SiteLogo className="h-4 w-4" />
             <span className="text-[11px] font-medium tracking-wide">党建益友</span>
           </div>
-          <div className="flex items-center gap-1 text-[10px]">
-            <Clock className="h-2.5 w-2.5" />
-            最近更新 {fmtUpdated(lastUpdated)}
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1" title="最近更新">
+              <Clock className="h-2.5 w-2.5" />
+              {fmtUpdated(lastUpdated)}
+            </span>
+            <button
+              onClick={logout}
+              title="退出登录"
+              className="flex items-center gap-0.5 rounded px-1 py-0.5 hover:bg-slate-100 hover:text-[var(--party-primary)]"
+            >
+              <LogOut className="h-3 w-3" />
+              退出登录
+            </button>
           </div>
         </div>
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** 紧凑登录(挂件未登录时):透明圆角壳内的员工编号登录。Casdoor 上线后替换。 */
+function WidgetLogin({ login }: { login: (username: string) => Promise<void> }) {
+  const [username, setUsername] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function submit() {
+    const u = username.trim();
+    if (!u) {
+      setErr("请输入员工编号");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      await login(u);
+    } catch {
+      setErr("登录失败,请检查员工编号");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex flex-col items-center gap-4 py-6">
+      <div
+        onMouseDown={(e) => {
+          if (e.button === 0 && !(e.target as HTMLElement).closest("button,input")) void startWidgetDrag();
+        }}
+        className="flex flex-col items-center gap-2"
+      >
+        <SiteLogo className="h-14 w-14" />
+        <div className="text-center">
+          <div className="text-base font-semibold text-slate-800">党建益友桌面端</div>
+          <div className="text-xs text-slate-500">登录查看你的任务与考核</div>
+        </div>
+      </div>
+      <input
+        value={username}
+        onChange={(e) => {
+          setUsername(e.target.value);
+          setErr(null);
+        }}
+        onKeyDown={(e) => e.key === "Enter" && void submit()}
+        placeholder="员工编号(如 admin)"
+        className="h-10 w-full rounded-lg border border-slate-200 bg-white/80 px-3 text-sm outline-none focus:border-[var(--party-primary)]"
+      />
+      {err && <div className="-mt-2 self-start text-xs text-[var(--party-primary)]">{err}</div>}
+      <button
+        onClick={() => void submit()}
+        disabled={busy}
+        className="h-10 w-full rounded-lg bg-[var(--party-primary)] text-sm font-semibold text-white transition-opacity disabled:opacity-60"
+      >
+        {busy ? "登录中…" : "登 录"}
+      </button>
     </div>
   );
 }
@@ -435,8 +554,8 @@ function RankingPanel({ unitName, matched }: { unitName: string; matched: boolea
   const count = ranking.length;
   const mine = ranking.find((u) => u.name === unitName);
   const myRank = mine?.rank ?? count;
-  const top5 = ranking.slice(0, 5);
-  const windowRows = ranking.filter((u) => u.rank >= myRank - 2 && u.rank <= myRank + 2);
+  const top3 = ranking.slice(0, 3);
+  const windowRows = ranking.filter((u) => u.rank >= myRank - 1 && u.rank <= myRank + 1);
   const higher = ranking.find((u) => u.rank === myRank - 1);
   const gap = higher && mine ? Math.round((higher.score - mine.score) * 10) / 10 : null;
   const series = unitRankSeries(unitName);
@@ -454,10 +573,10 @@ function RankingPanel({ unitName, matched }: { unitName: string; matched: boolea
         <RankTrendChart series={series} count={count} />
       </div>
 
-      {/* 前 5 名 */}
+      {/* 前 3 名 */}
       <div className="flex flex-col gap-1.5">
-        <div className="px-1 text-xs font-medium text-slate-500">前 5 名</div>
-        {top5.map((u) => (
+        <div className="px-1 text-xs font-medium text-slate-500">前 3 名</div>
+        {top3.map((u) => (
           <RankRow key={u.rank} u={u} highlight={u.name === unitName} />
         ))}
       </div>

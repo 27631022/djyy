@@ -55,13 +55,26 @@ export async function desktopNotify(title: string, body?: string): Promise<void>
  * 锁定/解锁桌面挂件 —— 锁定时窗体沉入桌面层(always_on_bottom + 不显示任务栏),融入壁纸。
  * 经 Rust 命令 `set_widget_locked`(在 desktop/src-tauri/src/lib.rs)生效;浏览器里 no-op。
  */
+/**
+ * 锁定/解锁桌面挂件。锁定 → 沉入桌面层 + 任务栏隐藏(固定不可移);解锁 → 恢复浮动可移动。
+ * 远程挂件页:**自定义命令被 ACL 拦**,改经 core IPC 直调 window 插件命令(窗口标签固定 "main",
+ * 权限 core:window:allow-* 已在 capability 授予远程)。浏览器 no-op;失败**抛出**供调用方提示定位。
+ */
 export async function setWidgetLocked(locked: boolean): Promise<void> {
   const core = tauri()?.core;
   if (!core) return;
+  await core.invoke('plugin:window|set_always_on_bottom', { label: 'main', value: locked });
+  await core.invoke('plugin:window|set_skip_taskbar', { label: 'main', value: locked });
+}
+
+/** 开始拖动无边框窗口(挂件解锁态顶栏按下时调用),经 core IPC 调 window 插件命令。浏览器 no-op。 */
+export async function startWidgetDrag(): Promise<void> {
+  const core = tauri()?.core;
+  if (!core) return;
   try {
-    await core.invoke('set_widget_locked', { locked });
+    await core.invoke('plugin:window|start_dragging', { label: 'main' });
   } catch {
-    /* 桌面命令失败不影响页面交互 */
+    /* 拖动失败忽略 */
   }
 }
 

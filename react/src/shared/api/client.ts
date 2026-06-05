@@ -56,8 +56,9 @@ api.interceptors.response.use(
       } catch {
         /* ignore */
       }
-      // 仅当当前不在 /login 时跳转,避免重定向死循环
-      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      // 不在 /login 时跳转,避免死循环;/widget(桌面挂件)自行处理登录,401 只清 token 不跳整页
+      const path = typeof window !== "undefined" ? window.location.pathname : "";
+      if (path && !path.startsWith("/login") && !path.startsWith("/widget")) {
         const redirect = encodeURIComponent(window.location.pathname + window.location.search);
         window.location.assign(`/login?redirect=${redirect}`);
       }

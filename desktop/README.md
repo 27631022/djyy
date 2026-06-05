@@ -1,21 +1,27 @@
 # 党建益友 · 桌面客户端(Tauri v2 瘦壳)
 
-任务分派系统 P5。**瘦壳**:窗口直接加载局域网 web 地址(前端改动零重打包),常驻系统托盘,
-关闭=最小化到托盘,后台轮询「我的待办」→ 新任务弹**原生桌面通知**。
+任务分派系统 P5。**桌面任务挂件**:无边框 + 半透明窗口加载服务器的 `/widget` 透明小组件页
+(身份 / 任务计数 / 日历待办 / 党建考核排名),常驻系统托盘,可「锁定」沉入桌面融入壁纸,
+后台轮询「我的待办」→ 新任务弹**原生桌面通知**。前端改动零重打包。
 
 之所以用 Tauri 而非 PWA:内网 HTTP 无 HTTPS,PWA 的安装/推送会失效;Tauri 不受限,
 且托盘后台 + 原生通知正好补上平台缺失的通知机制。
 
 ## 形态 / 架构
 
-- **运行时自填服务器地址**:窗口默认加载**本地连接页** `src/index.html`(非远程 URL),用户在页里
-  填党建益友服务的局域网地址(只填 IP 自动补 `http://` + 端口 `5173`),存浏览器 `localStorage`,
-  下次自动直连;托盘右键「设置服务器地址」可随时改(导航回 `index.html?edit=1` 预填上次值)。
-  **一个安装包发给任何局域网电脑都能自配**,无需为每台改配置重打包。
-  `src-tauri/capabilities/default.json` 的 `remote.urls` 用通配 `http://*:5173`,使任意被填入的
-  局域网地址其页面 JS 都能调 Tauri 通知 API(`withGlobalTauri` 暴露 `window.__TAURI__`)。
-- **托盘 + 关闭最小化**:`src-tauri/src/lib.rs`(`TrayIconBuilder` 菜单「打开/退出」+ 左键唤起;
-  `CloseRequested` → `hide()` 而非销毁,保持后台 webview 继续轮询)。
+- **无边框 + 透明挂件窗**:`tauri.conf.json` 主窗口 `decorations:false` + `transparent:true` +
+  `shadow:false`(380×680);`react/src/features/task/pages/TaskWidget.tsx` 在桌面端把 html/body 设透明,
+  露出壁纸。顶栏 `data-tauri-drag-region` 拖动整窗。
+- **运行时自填服务器地址**:窗口默认加载**本地连接页** `src/index.html`,用户填服务器局域网地址
+  (只填 IP 自动补 `http://` + 端口 `5173`),存 `localStorage`,连通后跳 `<地址>/widget`;下次自动直连;
+  托盘「设置服务器地址」随时改(回 `index.html?edit=1` 预填)。**一个安装包发给任何局域网电脑都能自配**。
+  `capabilities/default.json` 的 `remote.urls` 通配 `http://*:5173`,使挂件页 JS 能调 Tauri 通知 + 窗口 API
+  (`withGlobalTauri` 暴露 `window.__TAURI__`)。
+- **锁定 / 融入桌面**:挂件顶栏🔒按钮调 `setWidgetLocked`(`shared/lib/desktop.ts` → Tauri 窗口 API
+  `setAlwaysOnBottom` + `setSkipTaskbar`,需 `capabilities` 里两个 `core:window:allow-*` 权限)→ 沉到桌面层。
+  托盘「沉入桌面(挂件)」同效;「打开党建益友」/ 左键托盘 = 取消沉底 + 唤回前台(锁定后被遮挡时的出口)。
+- **托盘 + 关闭最小化**:`src-tauri/src/lib.rs`(`TrayIconBuilder` 菜单「打开 / 沉入桌面 / 设置服务器地址 /
+  退出」+ 左键唤起;`CloseRequested` → `hide()` 而非销毁,保持后台 webview 继续轮询)。
 - **通知**:web 端 `react/src/shared/lib/desktop.ts`(`isDesktop()` / `desktopNotify()`)+
   `react/src/features/task/useDesktopInboxAlerts.ts`(挂在 `AdminLayout`,每 90s 轮询待办)。
   浏览器里全部 no-op(`window.__TAURI__` 不存在)。

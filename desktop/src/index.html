@@ -15,8 +15,8 @@
         color: #1f2330;
       }
       .card {
-        width: 420px; max-width: calc(100vw - 48px);
-        background: #fff; border-radius: 16px; padding: 36px 34px;
+        width: 420px; max-width: calc(100vw - 28px);
+        background: #fff; border-radius: 16px; padding: 26px 22px;
         box-shadow: 0 18px 50px rgba(40, 10, 15, 0.12);
         border: 1px solid #f0e2e4;
       }
@@ -28,13 +28,13 @@
       label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #3a3f4d; }
       .row { display: flex; gap: 8px; }
       input {
-        flex: 1; height: 44px; padding: 0 14px; font-size: 15px;
+        flex: 1; min-width: 0; height: 44px; padding: 0 14px; font-size: 15px;
         border: 1.5px solid #e3e5ec; border-radius: 10px; outline: none;
         transition: border-color .15s;
       }
       input:focus { border-color: var(--party); }
       button {
-        height: 44px; padding: 0 22px; border: none; border-radius: 10px;
+        height: 44px; padding: 0 18px; border: none; border-radius: 10px; flex-shrink: 0;
         background: var(--party); color: #fff; font-size: 15px; font-weight: 600;
         cursor: pointer; white-space: nowrap; transition: filter .15s;
       }
@@ -53,12 +53,12 @@
   </head>
   <body>
     <div class="card" id="card">
-      <div class="brand"><div class="dot">党</div><h1>党建益友</h1></div>
+      <div class="brand" data-tauri-drag-region><div class="dot">党</div><h1>党建益友</h1></div>
       <div id="form-view">
         <div class="sub">请输入运行<strong>党建益友服务</strong>的电脑地址(同一局域网)。</div>
         <label for="addr">服务器地址</label>
         <div class="row">
-          <input id="addr" placeholder="例如 10.185.28.199 或 192.168.1.20:5173" autocomplete="off" />
+          <input id="addr" placeholder="例如 10.185.28.199" autocomplete="off" />
           <button id="go">连接</button>
         </div>
         <div class="err" id="err"></div>
@@ -98,8 +98,10 @@
       function connect(url) {
         try { localStorage.setItem(KEY, url); } catch (e) {}
         showConnecting(url);
+        // 记住的是服务器根地址;桌面端加载的是任务挂件页 /widget。
+        var target = url.replace(/\/$/, "") + "/widget";
         // 给「正在连接」一帧渲染时间再跳转
-        setTimeout(function () { location.replace(url); }, 60);
+        setTimeout(function () { location.replace(target); }, 60);
       }
 
       $("go").addEventListener("click", function () {
