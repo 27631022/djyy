@@ -8,9 +8,12 @@
 
 ## 形态 / 架构
 
-- **加载远程 URL**:`src-tauri/tauri.conf.json` 的 `app.windows[0].url` = web 地址;
-  `src-tauri/capabilities/default.json` 的 `remote.urls` 把该地址加入白名单,使其页面里的 JS
-  能调 Tauri 通知 API(`withGlobalTauri` 暴露 `window.__TAURI__`)。
+- **运行时自填服务器地址**:窗口默认加载**本地连接页** `src/index.html`(非远程 URL),用户在页里
+  填党建益友服务的局域网地址(只填 IP 自动补 `http://` + 端口 `5173`),存浏览器 `localStorage`,
+  下次自动直连;托盘右键「设置服务器地址」可随时改(导航回 `index.html?edit=1` 预填上次值)。
+  **一个安装包发给任何局域网电脑都能自配**,无需为每台改配置重打包。
+  `src-tauri/capabilities/default.json` 的 `remote.urls` 用通配 `http://*:5173`,使任意被填入的
+  局域网地址其页面 JS 都能调 Tauri 通知 API(`withGlobalTauri` 暴露 `window.__TAURI__`)。
 - **托盘 + 关闭最小化**:`src-tauri/src/lib.rs`(`TrayIconBuilder` 菜单「打开/退出」+ 左键唤起;
   `CloseRequested` → `hide()` 而非销毁,保持后台 webview 继续轮询)。
 - **通知**:web 端 `react/src/shared/lib/desktop.ts`(`isDesktop()` / `desktopNotify()`)+
@@ -37,13 +40,13 @@ npm run tauri build
 
 > 未签名内网分发会有 SmartScreen「仍要运行」提示;要去掉需代码签名证书。
 
-## 改加载地址(换部署环境时)
+## 服务器地址(运行时自填,无需改配置)
 
-改**两处**为新地址,保持一致:
-1. `src-tauri/tauri.conf.json` → `app.windows[0].url`
-2. `src-tauri/capabilities/default.json` → `remote.urls`
+客户端**不写死地址**:首次启动弹连接页填服务器 IP,记住后自动直连;托盘右键「设置服务器地址」可改。
+所以同一个安装包发到任何局域网电脑都能用 —— 各自填自己能访问到的服务地址即可。
 
-当前默认 = `http://10.10.10.194:5173`(开发用局域网 dev 地址)。
+> 默认端口 `5173`(web)。若 web 改了端口,连接页里连端口一起填(如 `10.0.0.5:8080`),
+> 并把 `capabilities/default.json` 的 `remote.urls` 通配项加上该端口后重打包。
 
 ## 待打磨(P5 后续)
 

@@ -1,39 +1,130 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <link rel="stylesheet" href="styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri App</title>
-    <script type="module" src="/main.js" defer></script>
+    <title>党建益友 · 连接服务器</title>
+    <style>
+      :root { --party: #c8001e; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        font-family: "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+        background: linear-gradient(135deg, #fdf3f4 0%, #f7f7fb 100%);
+        display: flex; align-items: center; justify-content: center;
+        color: #1f2330;
+      }
+      .card {
+        width: 420px; max-width: calc(100vw - 48px);
+        background: #fff; border-radius: 16px; padding: 36px 34px;
+        box-shadow: 0 18px 50px rgba(40, 10, 15, 0.12);
+        border: 1px solid #f0e2e4;
+      }
+      .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+      .dot { width: 34px; height: 34px; border-radius: 9px; background: var(--party);
+        color: #fff; font-weight: 700; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+      .brand h1 { font-size: 20px; margin: 0; font-weight: 700; }
+      .sub { color: #8a8f9c; font-size: 13px; margin: 14px 0 22px; line-height: 1.6; }
+      label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #3a3f4d; }
+      .row { display: flex; gap: 8px; }
+      input {
+        flex: 1; height: 44px; padding: 0 14px; font-size: 15px;
+        border: 1.5px solid #e3e5ec; border-radius: 10px; outline: none;
+        transition: border-color .15s;
+      }
+      input:focus { border-color: var(--party); }
+      button {
+        height: 44px; padding: 0 22px; border: none; border-radius: 10px;
+        background: var(--party); color: #fff; font-size: 15px; font-weight: 600;
+        cursor: pointer; white-space: nowrap; transition: filter .15s;
+      }
+      button:hover { filter: brightness(0.92); }
+      button:disabled { opacity: .6; cursor: default; }
+      .hint { color: #a2a7b3; font-size: 12px; margin-top: 12px; line-height: 1.6; }
+      .hint code { background: #f3f3f6; padding: 1px 5px; border-radius: 4px; }
+      .err { color: var(--party); font-size: 13px; margin-top: 10px; min-height: 18px; }
+      .connecting { text-align: center; color: #6b7280; font-size: 15px; padding: 8px 0; }
+      .spin { display: inline-block; width: 16px; height: 16px; margin-right: 8px; vertical-align: -2px;
+        border: 2px solid #e3e5ec; border-top-color: var(--party); border-radius: 50%;
+        animation: r .7s linear infinite; }
+      @keyframes r { to { transform: rotate(360deg); } }
+      .muted { color: #a2a7b3; font-size: 12px; margin-top: 16px; text-align: center; }
+    </style>
   </head>
-
   <body>
-    <main class="container">
-      <h1>Welcome to Tauri</h1>
-
-      <div class="row">
-        <a href="https://tauri.app" target="_blank">
-          <img src="/assets/tauri.svg" class="logo tauri" alt="Tauri logo" />
-        </a>
-        <a
-          href="https://developer.mozilla.org/en-US/docs/Web/JavaScript"
-          target="_blank"
-        >
-          <img
-            src="/assets/javascript.svg"
-            class="logo vanilla"
-            alt="JavaScript logo"
-          />
-        </a>
+    <div class="card" id="card">
+      <div class="brand"><div class="dot">党</div><h1>党建益友</h1></div>
+      <div id="form-view">
+        <div class="sub">请输入运行<strong>党建益友服务</strong>的电脑地址(同一局域网)。</div>
+        <label for="addr">服务器地址</label>
+        <div class="row">
+          <input id="addr" placeholder="例如 10.185.28.199 或 192.168.1.20:5173" autocomplete="off" />
+          <button id="go">连接</button>
+        </div>
+        <div class="err" id="err"></div>
+        <div class="hint">只填 IP 即可,默认端口 <code>5173</code>(如 <code>10.185.28.199</code> → <code>http://10.185.28.199:5173</code>)。<br />连接后会记住,下次自动进入;之后可在托盘图标右键「设置服务器地址」里修改。</div>
       </div>
-      <p>Click on the Tauri logo to learn more about the framework</p>
+      <div id="connecting-view" style="display:none">
+        <div class="connecting"><span class="spin"></span><span id="connecting-text">正在连接…</span></div>
+        <div class="muted">连不上?右键托盘图标「设置服务器地址」可重新填写。</div>
+      </div>
+    </div>
 
-      <form class="row" id="greet-form">
-        <input id="greet-input" placeholder="Enter a name..." />
-        <button type="submit">Greet</button>
-      </form>
-      <p id="greet-msg"></p>
-    </main>
+    <script>
+      var KEY = "djyy_server";
+      var params = new URLSearchParams(location.search);
+      var editMode = params.get("edit") === "1";
+
+      function $(id) { return document.getElementById(id); }
+      function showForm() { $("form-view").style.display = ""; $("connecting-view").style.display = "none"; }
+      function showConnecting(url) {
+        $("form-view").style.display = "none";
+        $("connecting-view").style.display = "";
+        $("connecting-text").textContent = "正在连接 " + url + " …";
+      }
+
+      // 把用户输入规整成完整 URL:补 http://、补默认端口 5173。
+      function normalize(raw) {
+        var s = (raw || "").trim();
+        if (!s) return null;
+        if (!/^https?:\/\//i.test(s)) s = "http://" + s;
+        var u;
+        try { u = new URL(s); } catch (e) { return null; }
+        if (!u.hostname) return null;
+        if (!u.port && u.protocol === "http:") u.port = "5173";
+        return u.toString().replace(/\/$/, "");
+      }
+
+      function connect(url) {
+        try { localStorage.setItem(KEY, url); } catch (e) {}
+        showConnecting(url);
+        // 给「正在连接」一帧渲染时间再跳转
+        setTimeout(function () { location.replace(url); }, 60);
+      }
+
+      $("go").addEventListener("click", function () {
+        var url = normalize($("addr").value);
+        if (!url) { $("err").textContent = "请输入有效的服务器地址(IP 或网址)。"; return; }
+        $("err").textContent = "";
+        connect(url);
+      });
+      $("addr").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") $("go").click();
+        else $("err").textContent = "";
+      });
+
+      // 启动逻辑:已保存且非「修改」模式 → 直接连;否则显示表单(预填上次地址)。
+      (function init() {
+        var saved = null;
+        try { saved = localStorage.getItem(KEY); } catch (e) {}
+        if (saved && !editMode) {
+          connect(saved);
+          return;
+        }
+        showForm();
+        if (saved) $("addr").value = saved;
+        $("addr").focus();
+      })();
+    </script>
   </body>
 </html>

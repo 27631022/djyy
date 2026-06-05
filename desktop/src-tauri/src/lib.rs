@@ -15,6 +15,19 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
+/// 导航回本地「连接设置」页(?edit=1 让其显示表单并预填上次地址),用于随时改服务器地址。
+fn open_config(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        // Windows 上本地页 origin 为 http://tauri.localhost;导航即可回到连接页。
+        if let Ok(url) = "http://tauri.localhost/index.html?edit=1".parse::<tauri::Url>() {
+            let _ = w.navigate(url);
+        }
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -23,8 +36,9 @@ pub fn run() {
         .setup(|app| {
             // 系统托盘:菜单(打开 / 退出)+ 左键点击唤起窗口。
             let open_i = MenuItem::with_id(app, "open", "打开党建益友", true, None::<&str>)?;
+            let config_i = MenuItem::with_id(app, "config", "设置服务器地址", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open_i, &quit_i])?;
+            let menu = Menu::with_items(app, &[&open_i, &config_i, &quit_i])?;
             let _tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("党建益友")
@@ -32,6 +46,7 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => show_main(app),
+                    "config" => open_config(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
