@@ -116,6 +116,12 @@ export class TaskController {
     return this.svc.inbox({ actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
+  /** 我的统计(桌面挂件):待领取 / 待落实 / 已完成(本年)/ 累计完成。 */
+  @Get('my-stats')
+  myStats(@CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.myStats({ actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
   /** 我的派发范围(给「派发对象」选择器过滤;unrestricted=true 不限) */
   @Get('dispatch-scope')
   dispatchScope(@CurrentUser() me: AuthPayload) {

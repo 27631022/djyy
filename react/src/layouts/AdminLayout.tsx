@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 import { useDesktopInboxAlerts } from "@/features/task";
+import { SiteLogo } from "@/features/site-setting";
 
 /* ─── 顶部一级分类 → 联动左侧二级菜单 ─── */
 /** group:可选的二级菜单分组标题(同 group 的项聚在一个小标题下) */
@@ -281,11 +282,7 @@ export default function AdminLayout() {
       <header className="h-14 flex items-center bg-white border-b border-[#E9E9E9] shadow-sm flex-shrink-0">
         {/* 左上:Logo + 返回门户 */}
         <div className="w-60 flex-shrink-0 flex items-center gap-2 px-4 border-r border-[#F0F0F0]">
-          <div className="w-8 h-8 rounded-full bg-[var(--party-primary)] flex items-center justify-center flex-shrink-0">
-            <svg viewBox="0 0 40 40" width="22" height="22">
-              <polygon points="20,5 23.5,15 34,15 25.5,21.5 28.5,32 20,26 11.5,32 14.5,21.5 6,15 16.5,15" fill="var(--party-accent)" />
-            </svg>
-          </div>
+          <SiteLogo className="w-8 h-8 flex-shrink-0" />
           <div className="flex flex-col leading-tight min-w-0">
             <span className="text-sm font-bold text-[var(--party-primary)] truncate">党建益友</span>
             <span className="text-[10px] text-[#9CA3AF]">管理后台</span>

@@ -314,23 +314,21 @@ function BrandForm({ value, onChange }: { value: SiteSettingsData["brand"]; onCh
         label="LOGO 图片 URL"
         value={value.logoUrl}
         onChange={(v) => onChange({ logoUrl: v })}
-        placeholder="留空使用内置党徽 SVG"
-        hint="支持外链或站内静态资源 URL。留空时显示默认党徽图标"
+        placeholder="留空使用内置 LOGO(/logo.svg)"
+        hint="全站统一站标:此处设置,前台门户 / 后台 / 登录 / 工作台 / 桌面挂件同步生效。支持外链或站内静态资源 URL;留空显示内置 logo"
       />
-      {value.logoUrl && (
-        <div className="mb-5 p-3 bg-[#FAFAFA] rounded-md border border-[#E9E9E9]">
-          <p className="text-[11px] text-[#9CA3AF] mb-2 flex items-center gap-1">
-            <ImageIcon className="w-3 h-3" />
-            预览
-          </p>
-          <img
-            src={value.logoUrl}
-            alt="LOGO 预览"
-            className="w-12 h-12 rounded-full object-cover border border-[#E9E9E9] bg-white"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-          />
-        </div>
-      )}
+      <div className="mb-5 p-3 bg-[#FAFAFA] rounded-md border border-[#E9E9E9]">
+        <p className="text-[11px] text-[#9CA3AF] mb-2 flex items-center gap-1">
+          <ImageIcon className="w-3 h-3" />
+          当前站标预览{!value.logoUrl?.trim() && "(内置默认)"}
+        </p>
+        <img
+          src={value.logoUrl?.trim() || "/logo.svg"}
+          alt="LOGO 预览"
+          className="w-12 h-12 rounded-md object-contain border border-[#E9E9E9] bg-white p-1"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+        />
+      </div>
     </div>
   );
 }

@@ -15,8 +15,9 @@ import { Input } from "@/shared/components/ui/input";
 import { Badge } from "@/shared/components/ui/badge";
 import { Separator } from "@/shared/components/ui/separator";
 import { useAuth } from "../stores/auth";
-import { siteSettingApi, FALLBACK_SITE_SETTINGS } from "@/features/site-setting";
+import { siteSettingApi, FALLBACK_SITE_SETTINGS, SiteLogo } from "@/features/site-setting";
 import { navApi, type NavCategoryDto, type NavItemDto } from "@/features/nav-category";
+import { DEMO_RANKINGS, rankBarGradient, scoreBarPct } from "@/shared/lib/ranking-demo";
 import { LucideIcon } from "@/shared/components/IconPicker";
 
 /* ─── Login gate: 未登录直接跳登录页 ─── */
@@ -46,14 +47,8 @@ function useLoginGate() {
 function fmt(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
-function progressGrad(rank: number): string {
-  // 排行榜进度条用固定的"层级语义色":金/橙(领先) → 红(靠前) → 灰(中后段)。
-  // 这些是排行榜的设计语义,与主题色解耦 —— 即便主题色被改成蓝色,
-  // 排名"金→红→灰"的层级感仍然成立。
-  if (rank <= 3) return `linear-gradient(to right, #F5A623, #E8700A)`;
-  if (rank <= 6) return `linear-gradient(to right, #C8001E, #FF6B6B)`;
-  return `linear-gradient(to right, #9CA3AF, #D1D5DB)`;
-}
+// 排名层级色统一在 shared/lib/ranking-demo(门户 + 桌面挂件共用)
+const progressGrad = rankBarGradient;
 
 /* ─── Navigation data hook:统一从后端拉,React Query 缓存共享 ─── */
 function useNavCategories() {
@@ -64,19 +59,8 @@ function useNavCategories() {
   });
 }
 
-/* ─── Rankings ─── */
-const RANKING_LIST = [
-  { rank: 1, name: `第一党支部·机关综合处`, score: 98.6 },
-  { rank: 2, name: `第二党支部·财务审计处`, score: 96.2 },
-  { rank: 3, name: `第三党支部·人力资源处`, score: 94.8 },
-  { rank: 4, name: `第四党支部·业务发展部`, score: 93.1 },
-  { rank: 5, name: `第五党支部·信息技术中心`, score: 91.7 },
-  { rank: 6, name: `第六党支部·市场运营部`, score: 90.4 },
-  { rank: 7, name: `第七党支部·法律合规处`, score: 89.0 },
-  { rank: 8, name: `第八党支部·后勤保障处`, score: 87.5 },
-  { rank: 9, name: `第九党支部·安全管理处`, score: 86.3 },
-  { rank: 10, name: `第十党支部·宣传文化处`, score: 85.1 },
-];
+/* ─── Rankings(演示数据统一在 shared/lib/ranking-demo)─── */
+const RANKING_LIST = DEMO_RANKINGS;
 
 const STATS = [
   { label: `党支部总数`, value: `10`, unit: `个`, icon: BuildingIcon },
@@ -409,7 +393,7 @@ function RankingSidebar() {
                 <div className="w-14 h-1 rounded-full bg-[#F0F0F0] overflow-hidden">
                   <div
                     className="h-full rounded-full"
-                    style={{ width: `${((item.score - 80) / 20) * 100}%`, background: progressGrad(item.rank) }}
+                    style={{ width: `${scoreBarPct(item.score)}%`, background: progressGrad(item.rank) }}
                   />
                 </div>
                 <span className="text-sm font-bold text-[var(--party-primary)] w-10 text-right">{item.score}</span>
@@ -717,28 +701,7 @@ export default function NavPage() {
         <div className="max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            {brand.logoUrl ? (
-              <img
-                src={brand.logoUrl}
-                alt={brand.title}
-                className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-                onError={(e) => {
-                  // 加载失败时隐藏图片(保留占位以防布局跳动)
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
-              />
-            ) : (
-              <div
-                className="w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0"
-                style={{ backgroundColor: "var(--party-primary)" }}
-              >
-                <svg viewBox="0 0 40 40" width="28" height="28" fill="none">
-                  <polygon points="20,5 23.5,15 34,15 25.5,21.5 28.5,32 20,26 11.5,32 14.5,21.5 6,15 16.5,15" fill="var(--party-accent)" />
-                  <path d="M15,22 Q16,18 20,17 Q18,22 18,26 Z" fill="white" opacity="0.85" />
-                  <rect x="19" y="16" width="2" height="8" rx="1" fill="white" opacity="0.85" transform="rotate(30 20 20)" />
-                </svg>
-              </div>
-            )}
+            <SiteLogo className="w-10 h-10 flex-shrink-0" alt={brand.title} />
             <div className="flex flex-col leading-tight">
               <span className="text-2xl font-bold tracking-wide" style={{ color: "var(--party-primary)" }}>{brand.title}</span>
               <span className="text-[12px] text-[#6B7280] tracking-widest">{brand.subtitle}</span>

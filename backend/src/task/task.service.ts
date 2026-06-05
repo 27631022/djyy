@@ -762,6 +762,38 @@ export class TaskService {
     });
   }
 
+  /**
+   * 我的统计(桌面挂件用):待领取 / 待落实 / 已完成(本年度)/ 累计完成。
+   * - toClaimCount / pendingCount:复用 inbox() 口径(claimable / 未完成),与待办列表完全一致。
+   * - cumulativeDone:我负责(ownerUserId=我)且已结案(target.status='done')的对象总数。
+   * - doneThisYear:上述对象里,回执 reviewedAt(审核/自动通过时间)落在当年的条数。
+   * 纯读,不写审计。
+   */
+  async myStats(actor: ActorContext) {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const inbox = await this.inbox(actor);
+    const toClaimCount = inbox.filter((i) => i.claimable).length;
+    const pendingCount = inbox.filter((i) => i.status !== 'done').length;
+    const doneTargets = await this.prisma.taskTarget.findMany({
+      where: { ownerUserId: actorId, status: 'done' },
+      select: { id: true },
+    });
+    const cumulativeDone = doneTargets.length;
+    let doneThisYear = 0;
+    if (cumulativeDone > 0) {
+      const startOfYear = new Date(new Date().getFullYear(), 0, 1);
+      doneThisYear = await this.prisma.taskSubmission.count({
+        where: {
+          targetId: { in: doneTargets.map((t) => t.id) },
+          status: 'approved',
+          reviewedAt: { gte: startOfYear },
+        },
+      });
+    }
+    return { toClaimCount, pendingCount, doneThisYear, cumulativeDone };
+  }
+
   /** 接收(认领):未被接收 + 我是责任部门成员 → 成为责任人(转填报中)。 */
   async claim(targetId: string, actor: ActorContext) {
     const actorId = actor.actorId;

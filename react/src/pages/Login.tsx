@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../stores/auth";
+import { SiteLogo } from "@/features/site-setting";
 
 /* Mock 阶段:用户从下拉选一个 demo 账号,后端发 token。
    Casdoor 接入后此页面改为"跳转到 IdP 授权端点 + 处理回调"。 */
@@ -65,13 +66,8 @@ export default function LoginPage() {
             background: "linear-gradient(to right, var(--party-primary), color-mix(in srgb, var(--party-primary) 78%, black))",
           }}
         >
-          <div className="w-14 h-14 rounded-full bg-white/15 flex items-center justify-center backdrop-blur-sm">
-            <svg viewBox="0 0 40 40" width="36" height="36">
-              <polygon
-                points="20,5 23.5,15 34,15 25.5,21.5 28.5,32 20,26 11.5,32 14.5,21.5 6,15 16.5,15"
-                fill="var(--party-accent)"
-              />
-            </svg>
+          <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center p-2 flex-shrink-0">
+            <SiteLogo className="w-full h-full" />
           </div>
           <div className="flex flex-col text-white">
             <span className="text-2xl font-bold tracking-wide">党建益友</span>

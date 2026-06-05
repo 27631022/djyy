@@ -64,7 +64,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettingsData = {
   brand: {
     title: '党建益友',
     subtitle: 'PARTY BUILDING DIGITAL PORTAL',
-    logoUrl: '',
+    logoUrl: '/logo.svg',
   },
   hero: {
     mainSlogan: '不忘初心,牢记使命',

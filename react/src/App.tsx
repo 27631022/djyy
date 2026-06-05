@@ -20,6 +20,7 @@ import {
   TaskInboxPage,
   TaskFillPage,
   TaskSummaryPage,
+  TaskWidgetPage,
 } from "@/features/task";
 import {
   CertificateTemplatesPage,
@@ -93,6 +94,15 @@ const App = () => (
             element={
               <ProtectedRoute>
                 <WorkbenchPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* 桌面任务小组件(Tauri 挂件加载的透明页;浏览器也可直接开 /widget 调试) */}
+          <Route
+            path="/widget"
+            element={
+              <ProtectedRoute>
+                <TaskWidgetPage />
               </ProtectedRoute>
             }
           />

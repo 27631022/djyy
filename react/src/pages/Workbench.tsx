@@ -27,6 +27,7 @@ import {
   LogOutIcon,
 } from "lucide-react";
 import { useAuth } from "@/stores/auth";
+import { SiteLogo } from "@/features/site-setting";
 import {
   WbCardFrame,
   WbCardContent,
@@ -212,9 +213,7 @@ function TopBar({ name, subtitle, isAdmin }: { name: string; subtitle: string; i
   return (
     <header className="h-[68px] grid grid-cols-[1fr] sm:grid-cols-[286px_minmax(280px,1fr)_auto] items-center gap-4 px-6 border-b border-[#e2e8f0]/90 bg-white/75 backdrop-blur-xl">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-lg grid place-items-center text-white text-[22px] font-black flex-shrink-0" style={{ background: "linear-gradient(145deg, #C8001E, #e25339)" }}>
-          益
-        </div>
+        <SiteLogo className="w-10 h-10 flex-shrink-0" />
         <div className="leading-tight min-w-0">
           <strong className="block text-[16px] font-bold text-[#172033] truncate">党建益友 · 智能应用中台</strong>
           <span className="block text-[12px] text-[#667085] mt-0.5">员工登录后的统一工作入口</span>
