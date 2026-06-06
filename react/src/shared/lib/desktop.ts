@@ -18,8 +18,19 @@ interface TauriOpener {
   openUrl: (url: string) => Promise<void>;
 }
 /** @tauri-apps/api 的 window 模块(withGlobalTauri 暴露)。只声明用到的方法。 */
+interface PhysPos {
+  x: number;
+  y: number;
+}
+interface TauriMonitor {
+  position: PhysPos;
+  size: { width: number; height: number };
+  scaleFactor: number;
+}
 interface TauriWindowHandle {
   setSize: (size: unknown) => Promise<void>;
+  setPosition: (pos: unknown) => Promise<void>;
+  outerPosition: () => Promise<PhysPos>;
   center: () => Promise<void>;
   setFocus: () => Promise<void>;
   minimize: () => Promise<void>;
@@ -28,13 +39,17 @@ interface TauriWindowHandle {
   setSkipTaskbar: (v: boolean) => Promise<void>;
 }
 type SizeCtor = new (width: number, height: number) => unknown;
+type PosCtor = new (x: number, y: number) => unknown;
 interface TauriWindowApi {
   getCurrentWindow?: () => TauriWindowHandle; // v2 名
   getCurrent?: () => TauriWindowHandle; // v1 名(兜底)
+  // ⚠ currentMonitor 是 window 模块的**独立函数**(不是 Window 方法),v2 必须模块级调用
+  currentMonitor?: () => Promise<TauriMonitor | null>;
   LogicalSize?: SizeCtor; // v1 位置(兜底)
 }
 interface TauriDpi {
   LogicalSize?: SizeCtor; // v2 位置(@tauri-apps/api/dpi)
+  PhysicalPosition?: PosCtor;
 }
 interface TauriGlobal {
   notification?: TauriNotification;
@@ -126,28 +141,101 @@ function currentWindow(): TauriWindowHandle | null {
 }
 /** 构造 LogicalSize(v2 在 dpi 模块 / v1 在 window 模块;都没有则给结构相同的兜底对象)。 */
 function logicalSize(width: number, height: number): unknown {
-  const g = tauri();
-  const Ctor = g?.dpi?.LogicalSize ?? g?.window?.LogicalSize;
+  const Ctor = tauri()?.dpi?.LogicalSize ?? tauri()?.window?.LogicalSize;
   return Ctor ? new Ctor(width, height) : { type: 'Logical', width, height };
 }
+/** 构造 PhysicalPosition(物理像素;v2 在 dpi 模块,缺失则兜底对象)。 */
+function physicalPosition(x: number, y: number): unknown {
+  const Ctor = tauri()?.dpi?.PhysicalPosition;
+  return Ctor ? new Ctor(x, y) : { type: 'Physical', x, y };
+}
+
+const WIDGET_W = 380;
+const WIDGET_H = 680;
+const WORKBENCH_W = 1080;
+const WORKBENCH_H = 760;
+/** 放大成工作台前的挂件位置(物理像素);收起时还原,避免挂件位移。 */
+let savedWidgetPos: PhysPos | null = null;
 
 export async function setClientMode(mode: 'widget' | 'workbench'): Promise<void> {
+  const w = tauri()?.window;
   const win = currentWindow();
   if (!win) return;
   try {
     if (mode === 'workbench') {
-      // 注意:不调 center() —— 从挂件当前左上角原地长大,收起时再缩回同一左上角,挂件不位移。
-      await win.setSize(logicalSize(1080, 760));
+      // 智能定位:把放大的窗口锚定在挂件「靠屏幕边的角」、朝屏幕中心方向展开,夹在屏幕内 → 不出屏。
+      //   挂件在右上 → 以右上为基点向左下开;右下 → 右下为基点向左上开;以此类推。
+      let target: PhysPos | null = null;
+      try {
+        const pos = await win.outerPosition(); // 物理像素(Window 方法)
+        const mon = w?.currentMonitor ? await w.currentMonitor() : null; // 模块级函数,非 Window 方法
+        savedWidgetPos = pos ? { x: pos.x, y: pos.y } : null;
+        if (pos && mon) {
+          const s = mon.scaleFactor || 1;
+          const wgW = WIDGET_W * s;
+          const wgH = WIDGET_H * s;
+          const wbW = WORKBENCH_W * s;
+          const wbH = WORKBENCH_H * s;
+          const { x: mx, y: my } = mon.position;
+          const { width: mw, height: mh } = mon.size;
+          // 挂件中心在屏幕右半 → 右对齐(向左展开);左半 → 左对齐(向右展开)
+          let nx = pos.x + wgW / 2 > mx + mw / 2 ? pos.x + wgW - wbW : pos.x;
+          // 下半 → 下对齐(向上展开);上半 → 上对齐(向下展开)
+          let ny = pos.y + wgH / 2 > my + mh / 2 ? pos.y + wgH - wbH : pos.y;
+          // 夹到显示器范围内,保证完整可见
+          nx = Math.max(mx, Math.min(nx, mx + mw - wbW));
+          ny = Math.max(my, Math.min(ny, my + mh - wbH));
+          target = { x: Math.round(nx), y: Math.round(ny) };
+        }
+      } catch {
+        /* 读位置/显示器失败 → 退回「原地长大」 */
+      }
+      if (target) await win.setPosition(physicalPosition(target.x, target.y));
+      await win.setSize(logicalSize(WORKBENCH_W, WORKBENCH_H));
       await win.setAlwaysOnBottom(false);
       await win.setSkipTaskbar(false);
       await win.setFocus();
     } else {
-      await win.setSize(logicalSize(380, 680));
+      await win.setSize(logicalSize(WIDGET_W, WIDGET_H));
       await win.setAlwaysOnBottom(false);
       await win.setSkipTaskbar(false);
+      // 收起回挂件 → 还原到放大前的位置(避免位移)
+      if (savedWidgetPos) {
+        await win.setPosition(physicalPosition(savedWidgetPos.x, savedWidgetPos.y));
+        savedWidgetPos = null;
+      }
     }
   } catch {
     /* 缩放失败不阻断:填报页仍可在当前窗口尺寸打开 */
+  }
+}
+
+const WIDGET_POS_KEY = 'djyy_widget_pos_v1';
+
+/** 保存当前窗口位置到 localStorage(挂件模式定时调用)。localStorage 跨更新/重装不丢。 */
+export async function saveWidgetPos(): Promise<void> {
+  const win = currentWindow();
+  if (!win) return;
+  try {
+    const p = await win.outerPosition();
+    if (p) localStorage.setItem(WIDGET_POS_KEY, JSON.stringify({ x: p.x, y: p.y }));
+  } catch {
+    /* ignore */
+  }
+}
+/** 还原到上次保存的窗口位置(挂件挂载时调用;跨更新/重启复位)。 */
+export async function restoreWidgetPos(): Promise<void> {
+  const win = currentWindow();
+  if (!win) return;
+  try {
+    const raw = localStorage.getItem(WIDGET_POS_KEY);
+    if (!raw) return;
+    const p = JSON.parse(raw) as { x: number; y: number };
+    if (typeof p?.x === 'number' && typeof p?.y === 'number') {
+      await win.setPosition(physicalPosition(p.x, p.y));
+    }
+  } catch {
+    /* ignore */
   }
 }
 

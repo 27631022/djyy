@@ -33,6 +33,8 @@ import {
   setClientMode,
   startWidgetDrag,
   openExternal,
+  saveWidgetPos,
+  restoreWidgetPos,
 } from "@/shared/lib/desktop";
 import {
   taskApi,
@@ -163,6 +165,14 @@ export default function TaskWidget() {
   // 客户端版本号(底栏显示,便于确认当前版本 / 更新后变化)
   useEffect(() => {
     if (desktop) void getAppVersion().then(setAppVersion);
+  }, [desktop]);
+
+  // 记住挂件位置(存 localStorage,跨更新/重启不丢):挂载时复位 + 每 4s 保存当前位置。
+  useEffect(() => {
+    if (!desktop) return;
+    void restoreWidgetPos();
+    const id = setInterval(() => void saveWidgetPos(), 4000);
+    return () => clearInterval(id);
   }, [desktop]);
 
   const inboxQ = useQuery({

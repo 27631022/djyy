@@ -111,6 +111,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // 记住窗口位置(只存位置,不存尺寸 —— 尺寸由挂件/工作台双形态控制):
+        // 关闭/移动时保存,重启(含自动更新后重启)恢复到原位置。
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(tauri_plugin_window_state::StateFlags::POSITION)
+                .build(),
+        )
         .setup(|app| {
             // 系统托盘:菜单(打开 / 退出)+ 左键点击唤起窗口。
             let open_i = MenuItem::with_id(app, "open", "打开党建益友", true, None::<&str>)?;
