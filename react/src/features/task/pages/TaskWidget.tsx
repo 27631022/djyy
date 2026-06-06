@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import {
   Lock,
   Unlock,
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  ArrowLeft,
   Inbox,
+  ClipboardList,
   CheckCircle2,
-  Trophy,
   ExternalLink,
   Clock,
   LogOut,
@@ -24,8 +26,21 @@ import {
   type RankedUnit,
 } from "@/shared/lib/ranking-demo";
 import { cn } from "@/shared/lib/utils";
-import { isDesktop, setWidgetLocked, startWidgetDrag, openExternal } from "@/shared/lib/desktop";
-import { taskApi, TASK_TARGET_STATUS_LABEL, type TaskInboxItem } from "../api";
+import {
+  isDesktop,
+  getAppVersion,
+  setWidgetLocked,
+  setClientMode,
+  startWidgetDrag,
+  openExternal,
+} from "@/shared/lib/desktop";
+import {
+  taskApi,
+  taskApiErrorMessage,
+  TASK_TARGET_STATUS_LABEL,
+  type TaskInboxItem,
+  type TaskCompletedItem,
+} from "../api";
 import { useDesktopInboxAlerts } from "../useDesktopInboxAlerts";
 import { toast } from "sonner";
 
@@ -58,12 +73,41 @@ function buildMonth(year: number, month: number): (number | null)[] {
   while (cells.length % 7 !== 0) cells.push(null);
   return cells;
 }
+/** 取某天所在周的周一(Monday-start)。 */
+function startOfWeek(d: Date): Date {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+function addDays(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+function addMonths(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth() + n, 1);
+}
 
 const WEEK = ["一", "二", "三", "四", "五", "六", "日"];
+/** "6月8日 周一" */
+function dayHeading(d: Date): string {
+  return `${d.getMonth() + 1}月${d.getDate()}日 周${WEEK[(d.getDay() + 6) % 7]}`;
+}
+
 const TABS = [
   ["tasks", "任务"],
   ["ranking", "党建考核排名"],
 ] as const;
+/** 日历视图档位:周(默认,最矮、给任务流最大空间)/ 半月 / 整月 */
+const CAL_MODES = [
+  ["week", "周"],
+  ["half", "半月"],
+  ["month", "月"],
+] as const;
+type CalMode = (typeof CAL_MODES)[number][0];
+/** 计数详情视图:null=日历 / claim=待领任务 / fill=待填报 / done=本年已完成 */
+type StatView = null | "claim" | "fill" | "done";
+
 const STATUS_CHIP: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
   assigned: "bg-slate-100 text-slate-700",
@@ -73,19 +117,33 @@ const STATUS_CHIP: Record<string, string> = {
   done: "bg-green-100 text-green-700",
 };
 
-/** 桌面任务小组件:身份 + 计数 + 月历(待落实气泡)+ 选中日待办。透明卡片,挂件窗口里融入壁纸。 */
+/** 待办按截止时间升序(无截止排最后)。 */
+function byDue(a: TaskInboxItem, b: TaskInboxItem): number {
+  const ta = a.dueAt ? new Date(a.dueAt).getTime() : Number.POSITIVE_INFINITY;
+  const tb = b.dueAt ? new Date(b.dueAt).getTime() : Number.POSITIVE_INFINITY;
+  return ta - tb;
+}
+
+/**
+ * 桌面任务小组件:身份 + 计数(待完成/已完成/累计)+ 日历(周/半月/月)+ 任务流。
+ * 透明卡片融入壁纸;**窗口固定高度,仅列表区内部滚动**(无窗口级滚动条,见 desktop/README.md)。
+ */
 export default function TaskWidget() {
   const { me, login, logout } = useAuth();
   const desktop = isDesktop();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   useDesktopInboxAlerts(!!me);
 
   const today = new Date();
   const todayKey = dateKey(today);
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [anchor, setAnchor] = useState<Date>(() => new Date());
+  const [calMode, setCalMode] = useState<CalMode>("week");
   const [selected, setSelected] = useState(todayKey);
+  const [statView, setStatView] = useState<StatView>(null);
   const [locked, setLocked] = useState(false);
   const [tab, setTab] = useState<"tasks" | "ranking">("tasks");
+  const [appVersion, setAppVersion] = useState<string | null>(null);
 
   // 桌面挂件:让 html/body 透明,露出壁纸(配合无边框 + 锁定沉入桌面)。浏览器里不动。
   useEffect(() => {
@@ -102,6 +160,11 @@ export default function TaskWidget() {
     };
   }, [desktop]);
 
+  // 客户端版本号(底栏显示,便于确认当前版本 / 更新后变化)
+  useEffect(() => {
+    if (desktop) void getAppVersion().then(setAppVersion);
+  }, [desktop]);
+
   const inboxQ = useQuery({
     queryKey: ["task", "inbox"],
     queryFn: () => taskApi.inbox(),
@@ -113,6 +176,20 @@ export default function TaskWidget() {
     queryFn: () => taskApi.myStats(),
     enabled: !!me,
     refetchInterval: 90_000,
+  });
+  const completedQ = useQuery({
+    queryKey: ["task", "my-completed", "year"],
+    queryFn: () => taskApi.myCompleted("year"),
+    enabled: !!me && statView === "done",
+  });
+  const claimMut = useMutation({
+    mutationFn: (targetId: string) => taskApi.claim(targetId),
+    onSuccess: (_r, targetId) => {
+      void qc.invalidateQueries({ queryKey: ["task", "inbox"] });
+      void qc.invalidateQueries({ queryKey: ["task", "my-stats"] });
+      goFill(targetId); // 接收成功 → 直接展开填报
+    },
+    onError: (e) => toast.error(taskApiErrorMessage(e, "接收失败")),
   });
 
   const byDate = useMemo(() => {
@@ -127,38 +204,56 @@ export default function TaskWidget() {
     return m;
   }, [inboxQ.data]);
 
+  // 三个计数都从 inbox 派生,保证「计数 = 点开后的清单」一致:
+  //   待领任务 = 可接收未认领(claimable);待填报 = 我负责、未提交未完成(需我填报)。已完成走 my-stats / my-completed。
+  const claimList = useMemo(
+    () => (inboxQ.data ?? []).filter((i) => i.claimable).sort(byDue),
+    [inboxQ.data],
+  );
+  const fillList = useMemo(
+    () =>
+      (inboxQ.data ?? [])
+        .filter((i) => i.isOwner && i.status !== "submitted" && i.status !== "done")
+        .sort(byDue),
+    [inboxQ.data],
+  );
+  const claimCount = claimList.length;
+  const fillCount = fillList.length;
+  const actionableCount = claimCount + fillCount;
   const undatedCount = useMemo(
     () => (inboxQ.data ?? []).filter((i) => !parseDueKey(i.dueAt) && i.status !== "done").length,
     [inboxQ.data],
   );
 
   const stats = statsQ.data;
-  const pendingBadge = stats?.pendingCount ?? 0;
   const lastUpdated = Math.max(inboxQ.dataUpdatedAt, statsQ.dataUpdatedAt);
   const position =
     me?.memberships?.admin?.find((m) => m.isPrimary)?.position ??
     me?.memberships?.admin?.[0]?.position ??
     null;
-  const personLine =
-    [me?.name, me?.username, position].filter(Boolean).join(" · ") || "未登录";
+  const personLine = [me?.name, me?.username, position].filter(Boolean).join(" · ") || "未登录";
   const myUnit = resolveUnitName(
     (me?.memberships?.admin ?? []).map((m) => m.org?.name ?? "").filter(Boolean),
   );
-  const cells = buildMonth(viewYear, viewMonth);
+
+  // 日历格子:周/半月 = 从周一起的连续日期;整月 = 月格(含前置空位)。
+  const weekStart = startOfWeek(anchor);
+  const span = calMode === "half" ? 14 : 7;
+  const weekDates = Array.from({ length: span }, (_, i) => addDays(weekStart, i));
+  const monthCells = buildMonth(anchor.getFullYear(), anchor.getMonth());
+  const weekEnd = addDays(weekStart, span - 1);
+  const rangeLabel =
+    calMode === "month"
+      ? `${anchor.getFullYear()} 年 ${anchor.getMonth() + 1} 月`
+      : `${weekStart.getMonth() + 1}月${weekStart.getDate()}日 - ${weekEnd.getMonth() + 1}月${weekEnd.getDate()}日`;
+
+  // 周视图:一次性铺开本周(7 天)按天分组的任务流;半月/整月:点选某天看当天。
+  const weekFlow = weekDates.map((d) => ({ date: d, items: byDate.get(dateKey(d)) ?? [] }));
+  const weekHasAny = weekFlow.some((g) => g.items.length > 0);
   const selectedTodos = byDate.get(selected) ?? [];
 
-  function shiftMonth(delta: number) {
-    let y = viewYear;
-    let m = viewMonth + delta;
-    if (m < 0) {
-      m = 11;
-      y -= 1;
-    } else if (m > 11) {
-      m = 0;
-      y += 1;
-    }
-    setViewYear(y);
-    setViewMonth(m);
+  function shiftRange(dir: number) {
+    setAnchor((a) => (calMode === "month" ? addMonths(a, dir) : addDays(a, dir * span)));
   }
   async function toggleLock() {
     const next = !locked;
@@ -170,22 +265,36 @@ export default function TaskWidget() {
       toast.error("锁定失败:" + (e instanceof Error ? e.message : String(e)));
     }
   }
-  function openTask(it: TaskInboxItem) {
-    const path = it.isOwner ? `/admin/tasks/fill/${it.targetId}` : `/admin/tasks/inbox`;
-    openExternal(`${window.location.origin}${path}`);
+  // 点任务:桌面端「展开成工作台」内领/填(不开浏览器);浏览器里走外开后台页兜底。
+  function goFill(targetId: string) {
+    if (desktop) {
+      void setClientMode("workbench");
+      navigate(`/w/fill/${targetId}`);
+    } else {
+      openExternal(`${window.location.origin}/admin/tasks/fill/${targetId}`);
+    }
+  }
+  function onRowOpen(it: TaskInboxItem) {
+    if (it.isOwner) goFill(it.targetId);
+    else if (it.claimable) claimMut.mutate(it.targetId); // 待领 → 接收后自动展开填报
+    else openExternal(`${window.location.origin}/admin/tasks/inbox`);
+  }
+  function toggleStat(v: Exclude<StatView, null>) {
+    setStatView((cur) => (cur === v ? null : v));
   }
   function refresh() {
     void inboxQ.refetch();
     void statsQ.refetch();
+    if (statView === "done") void completedQ.refetch();
   }
 
   return (
     <div
       data-widget-root
-      className="min-h-screen w-full flex justify-center bg-transparent p-3 select-none"
+      className="flex h-screen w-full justify-center overflow-hidden bg-transparent p-3 select-none"
     >
       <div
-        className="w-full max-w-[380px] flex flex-col gap-3 rounded-2xl border border-white/60 p-4 shadow-xl backdrop-blur-xl transition-[background]"
+        className="flex w-full max-w-[380px] flex-col gap-3 overflow-hidden rounded-2xl border border-white/60 p-4 shadow-xl backdrop-blur-xl transition-[background]"
         style={{
           background: locked
             ? "linear-gradient(135deg, rgba(255,255,255,0.60), rgba(255,228,230,0.52))"
@@ -197,7 +306,7 @@ export default function TaskWidget() {
             onMouseDown={(e) => {
               if (e.button === 0) void startWidgetDrag();
             }}
-            className="flex items-center justify-center py-12 text-sm text-slate-500"
+            className="flex flex-1 items-center justify-center py-12 text-sm text-slate-500"
           >
             加载中…
           </div>
@@ -205,216 +314,426 @@ export default function TaskWidget() {
           <WidgetLogin login={login} />
         ) : (
           <>
-        {/* ── 顶栏:身份(左)+ 刷新/锁(右);解锁态按住拖动整窗 ── */}
-        <div
-          onMouseDown={(e) => {
-            if (!locked && e.button === 0 && !(e.target as HTMLElement).closest("button")) {
-              void startWidgetDrag();
-            }
-          }}
-          className="flex items-center gap-2.5"
-        >
-          {me?.avatarUrl ? (
-            <img
-              src={me.avatarUrl}
-              alt=""
-              className="h-10 w-10 rounded-full object-cover shadow-sm"
-              draggable={false}
-            />
-          ) : (
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--party-primary)] text-base font-semibold text-white shadow-sm">
-              {me?.name?.[0] ?? "?"}
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[15px] font-semibold text-slate-800">党建益友桌面端</div>
-            <div className="truncate text-xs text-slate-500">{personLine}</div>
-          </div>
-          <button
-            onClick={refresh}
-            title="刷新"
-            className="grid h-7 w-7 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", (inboxQ.isFetching || statsQ.isFetching) && "animate-spin")} />
-          </button>
-          <button
-            onClick={toggleLock}
-            title={
-              desktop
-                ? locked
-                  ? "已固定到桌面(点击解锁,可拖动)"
-                  : "可拖动浮窗(点击固定到桌面)"
-                : "固定到桌面(桌面客户端里生效)"
-            }
-            className={cn(
-              "grid h-7 w-7 place-items-center rounded-lg",
-              locked
-                ? "bg-slate-200 text-slate-500 hover:bg-slate-300" // 锁死=灰
-                : "bg-green-100 text-green-600 hover:bg-green-200", // 打开=绿(可移动)
-            )}
-          >
-            {locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-          </button>
-        </div>
-
-        {/* ── Tab 切换:任务 / 党建考核排名 ── */}
-        <div className="flex gap-1 rounded-lg bg-slate-100/70 p-0.5">
-          {TABS.map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={cn(
-                "flex-1 rounded-md py-1.5 text-xs font-medium transition-colors",
-                tab === key
-                  ? "bg-white text-[var(--party-primary)] shadow-sm"
-                  : "text-slate-500 hover:text-slate-700",
-              )}
+            {/* ── 顶栏:身份(左)+ 刷新/锁(右);解锁态按住拖动整窗 ── */}
+            <div
+              onMouseDown={(e) => {
+                if (!locked && e.button === 0 && !(e.target as HTMLElement).closest("button")) {
+                  void startWidgetDrag();
+                }
+              }}
+              className="flex shrink-0 items-center gap-2.5"
             >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {tab === "tasks" && (
-          <>
-        {/* ── 计数行 ── */}
-        <div className="grid grid-cols-3 gap-2">
-          <Stat icon={<Inbox className="h-4 w-4" />} label="待领取" value={stats?.toClaimCount} tone="amber" />
-          <Stat icon={<CheckCircle2 className="h-4 w-4" />} label="已完成" value={stats?.doneThisYear} tone="green" />
-          <Stat icon={<Trophy className="h-4 w-4" />} label="累计完成" value={stats?.cumulativeDone} tone="slate" />
-        </div>
-
-        {/* ── 月历 ── */}
-        <div className="rounded-xl bg-white/70 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <button onClick={() => shiftMonth(-1)} className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100">
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              {viewYear} 年 {viewMonth + 1} 月
-              {pendingBadge > 0 && (
-                <span
-                  title="待落实"
-                  className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-[var(--party-primary)] px-1.5 text-xs font-semibold text-white"
-                >
-                  {pendingBadge}
-                </span>
-              )}
-            </div>
-            <button onClick={() => shiftMonth(1)} className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100">
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-slate-400">
-            {WEEK.map((w) => (
-              <div key={w} className="py-1">{w}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {cells.map((day, i) => {
-              const key = day ? `${viewYear}-${pad2(viewMonth + 1)}-${pad2(day)}` : null;
-              const count = key ? byDate.get(key)?.length ?? 0 : 0;
-              const isToday = key === todayKey;
-              const isSel = key === selected;
-              return (
-                <button
-                  key={key ?? `b${i}`}
-                  disabled={!day}
-                  onClick={() => key && setSelected(key)}
-                  className={cn(
-                    "relative h-9 rounded-md text-sm",
-                    !day && "invisible",
-                    isSel
-                      ? "bg-[var(--party-primary)] font-semibold text-white"
-                      : isToday
-                        ? "bg-party-soft font-semibold text-[var(--party-primary)]"
-                        : "text-slate-600 hover:bg-slate-100",
-                  )}
-                >
-                  {day}
-                  {count > 0 && (
-                    <span
-                      className={cn(
-                        "absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full",
-                        isSel ? "bg-white" : "bg-[var(--party-accent)]",
-                      )}
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── 选中日待办 ── */}
-        <div className="flex flex-col gap-2">
-          <div className="px-1 text-xs font-medium text-slate-500">
-            {selected === todayKey ? "今日待办" : `${selected} 待办`}
-            <span className="ml-1 text-slate-400">({selectedTodos.length})</span>
-          </div>
-          {inboxQ.isLoading ? (
-            <div className="px-1 py-4 text-center text-xs text-slate-400">加载中…</div>
-          ) : selectedTodos.length === 0 ? (
-            <div className="rounded-lg bg-white/60 px-3 py-5 text-center text-xs text-slate-400">这一天没有待办</div>
-          ) : (
-            selectedTodos.map((it) => (
-              <button
-                key={it.targetId}
-                onClick={() => openTask(it)}
-                className="group flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2 text-left hover:bg-white"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm text-slate-800">{it.title}</div>
-                  <div className="mt-0.5 flex items-center gap-2">
-                    <span className={cn("rounded px-1.5 py-0.5 text-[11px]", STATUS_CHIP[it.status] ?? "bg-slate-100 text-slate-600")}>
-                      {it.claimable ? "待接收" : TASK_TARGET_STATUS_LABEL[it.status] ?? it.status}
-                    </span>
-                    {dueTime(it.dueAt) && <span className="text-[11px] text-slate-400">截止 {dueTime(it.dueAt)}</span>}
-                  </div>
+              {me?.avatarUrl ? (
+                <img
+                  src={me.avatarUrl}
+                  alt=""
+                  className="h-10 w-10 rounded-full object-cover shadow-sm"
+                  draggable={false}
+                />
+              ) : (
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--party-primary)] text-base font-semibold text-white shadow-sm">
+                  {me?.name?.[0] ?? "?"}
                 </div>
-                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-[var(--party-primary)]" />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[15px] font-semibold text-slate-800">党建益友桌面端</div>
+                <div className="truncate text-xs text-slate-500">{personLine}</div>
+              </div>
+              <button
+                onClick={refresh}
+                title="刷新"
+                className="grid h-7 w-7 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", (inboxQ.isFetching || statsQ.isFetching) && "animate-spin")} />
               </button>
-            ))
-          )}
-          {undatedCount > 0 && (
-            <button
-              onClick={() => openExternal(`${window.location.origin}/admin/tasks/inbox`)}
-              className="px-1 text-left text-[11px] text-slate-400 hover:text-[var(--party-primary)]"
-            >
-              另有 {undatedCount} 项无截止日期待办 →
-            </button>
-          )}
-        </div>
-          </>
-        )}
-        {tab === "ranking" && <RankingPanel unitName={myUnit.name} matched={myUnit.matched} />}
+              <button
+                onClick={toggleLock}
+                title={
+                  desktop
+                    ? locked
+                      ? "已固定到桌面(点击解锁,可拖动)"
+                      : "可拖动浮窗(点击固定到桌面)"
+                    : "固定到桌面(桌面客户端里生效)"
+                }
+                className={cn(
+                  "grid h-7 w-7 place-items-center rounded-lg",
+                  locked
+                    ? "bg-slate-200 text-slate-500 hover:bg-slate-300" // 锁死=灰
+                    : "bg-green-100 text-green-600 hover:bg-green-200", // 打开=绿(可移动)
+                )}
+              >
+                {locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+              </button>
+            </div>
 
-        {/* ── 底栏:品牌标志(左)+ 更新时间 + 退出登录(右)── */}
-        <div className="flex items-center justify-between pt-0.5 text-[10px] text-slate-400">
-          <div className="flex items-center gap-1.5 opacity-60">
-            <SiteLogo className="h-4 w-4" />
-            <span className="text-[11px] font-medium tracking-wide">党建益友</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1" title="最近更新">
-              <Clock className="h-2.5 w-2.5" />
-              {fmtUpdated(lastUpdated)}
-            </span>
-            <button
-              onClick={logout}
-              title="退出登录"
-              className="flex items-center gap-0.5 rounded px-1 py-0.5 hover:bg-slate-100 hover:text-[var(--party-primary)]"
-            >
-              <LogOut className="h-3 w-3" />
-              退出登录
-            </button>
-          </div>
-        </div>
+            {/* ── Tab 切换:任务 / 党建考核排名 ── */}
+            <div className="flex shrink-0 gap-1 rounded-lg bg-slate-100/70 p-0.5">
+              {TABS.map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
+                  className={cn(
+                    "flex-1 rounded-md py-1.5 text-xs font-medium transition-colors",
+                    tab === key
+                      ? "bg-white text-[var(--party-primary)] shadow-sm"
+                      : "text-slate-500 hover:text-slate-700",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {tab === "tasks" && (
+              <>
+                {/* ── 计数行(可点,点开即看相应清单,无需打开网页)── */}
+                <div className="grid shrink-0 grid-cols-3 gap-2">
+                  <Stat
+                    icon={<Inbox className="h-4 w-4" />}
+                    label="待领任务"
+                    value={claimCount}
+                    tone="amber"
+                    active={statView === "claim"}
+                    onClick={() => toggleStat("claim")}
+                  />
+                  <Stat
+                    icon={<ClipboardList className="h-4 w-4" />}
+                    label="待填报"
+                    value={fillCount}
+                    tone="blue"
+                    active={statView === "fill"}
+                    onClick={() => toggleStat("fill")}
+                  />
+                  <Stat
+                    icon={<CheckCircle2 className="h-4 w-4" />}
+                    label="已完成"
+                    value={stats?.doneThisYear}
+                    tone="green"
+                    active={statView === "done"}
+                    onClick={() => toggleStat("done")}
+                  />
+                </div>
+
+                {statView === null ? (
+                  <>
+                    {/* ── 日历(固定高度;周/半月/月切换)── */}
+                    <div className="shrink-0 rounded-xl bg-white/70 p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <button
+                          onClick={() => shiftRange(-1)}
+                          className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                          {rangeLabel}
+                          {actionableCount > 0 && (
+                            <span
+                              title="待处理(待领 + 待填报)"
+                              className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-[var(--party-primary)] px-1.5 text-xs font-semibold text-white"
+                            >
+                              {actionableCount}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => shiftRange(1)}
+                          className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                      {/* 档位切换 */}
+                      <div className="mb-2 flex gap-1 rounded-lg bg-slate-100/70 p-0.5">
+                        {CAL_MODES.map(([m, label]) => (
+                          <button
+                            key={m}
+                            onClick={() => setCalMode(m)}
+                            className={cn(
+                              "flex-1 rounded-md py-1 text-[11px] transition-colors",
+                              calMode === m
+                                ? "bg-white font-semibold text-[var(--party-primary)] shadow-sm"
+                                : "text-slate-500 hover:text-slate-700",
+                            )}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-slate-400">
+                        {WEEK.map((w) => (
+                          <div key={w} className="py-1">{w}</div>
+                        ))}
+                      </div>
+                      {calMode === "month" ? (
+                        <div className="grid grid-cols-7 gap-1">
+                          {monthCells.map((day, i) => {
+                            const key = day
+                              ? `${anchor.getFullYear()}-${pad2(anchor.getMonth() + 1)}-${pad2(day)}`
+                              : null;
+                            const count = key ? byDate.get(key)?.length ?? 0 : 0;
+                            return (
+                              <CalCell
+                                key={key ?? `b${i}`}
+                                label={day}
+                                count={count}
+                                isToday={key === todayKey}
+                                isSel={key === selected}
+                                onClick={() => key && setSelected(key)}
+                              />
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-7 gap-1">
+                          {weekDates.map((d) => {
+                            const key = dateKey(d);
+                            return (
+                              <CalCell
+                                key={key}
+                                label={d.getDate()}
+                                count={byDate.get(key)?.length ?? 0}
+                                isToday={key === todayKey}
+                                isSel={key === selected}
+                                onClick={() => setSelected(key)}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── 任务流(唯一滚动区:周视图铺开整周 / 半月·整月看选中日)── */}
+                    <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+                      {calMode === "week" ? (
+                        inboxQ.isLoading ? (
+                          <Loading />
+                        ) : !weekHasAny ? (
+                          <Empty text="本周没有带日期的待办" />
+                        ) : (
+                          weekFlow
+                            .filter((g) => g.items.length > 0)
+                            .map((g) => (
+                              <div key={dateKey(g.date)} className="flex flex-col gap-1.5">
+                                <div className="px-1 text-xs font-medium text-slate-500">
+                                  {dayHeading(g.date)}
+                                  <span className="ml-1 text-slate-400">({g.items.length})</span>
+                                </div>
+                                {g.items.map((it) => (
+                                  <TaskRow key={it.targetId} it={it} onOpen={() => onRowOpen(it)} />
+                                ))}
+                              </div>
+                            ))
+                        )
+                      ) : (
+                        <>
+                          <div className="px-1 text-xs font-medium text-slate-500">
+                            {selected === todayKey ? "今日待办" : `${selected} 待办`}
+                            <span className="ml-1 text-slate-400">({selectedTodos.length})</span>
+                          </div>
+                          {inboxQ.isLoading ? (
+                            <Loading />
+                          ) : selectedTodos.length === 0 ? (
+                            <Empty text="这一天没有待办" />
+                          ) : (
+                            selectedTodos.map((it) => (
+                              <TaskRow key={it.targetId} it={it} onOpen={() => onRowOpen(it)} />
+                            ))
+                          )}
+                        </>
+                      )}
+                      {undatedCount > 0 && (
+                        <button
+                          onClick={() => openExternal(`${window.location.origin}/admin/tasks/inbox`)}
+                          className="px-1 text-left text-[11px] text-slate-400 hover:text-[var(--party-primary)]"
+                        >
+                          另有 {undatedCount} 项无截止日期待办 →
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* ── 计数详情(挂件内直显,点 ← 返回日历)── */}
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        onClick={() => setStatView(null)}
+                        title="返回日历"
+                        className="grid h-7 w-7 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                      </button>
+                      <div className="text-sm font-medium text-slate-700">
+                        {statView === "claim" ? "待领任务" : statView === "fill" ? "待填报" : "本年已完成"}
+                      </div>
+                      <span className="text-xs text-slate-400">
+                        ({statView === "claim" ? claimCount : statView === "fill" ? fillCount : completedQ.data?.length ?? 0})
+                      </span>
+                    </div>
+                    <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+                      {statView === "claim" ? (
+                        claimList.length === 0 ? (
+                          <Empty text="没有待领的任务" />
+                        ) : (
+                          claimList.map((it) => (
+                            <TaskRow key={it.targetId} it={it} onOpen={() => onRowOpen(it)} />
+                          ))
+                        )
+                      ) : statView === "fill" ? (
+                        fillList.length === 0 ? (
+                          <Empty text="没有待填报的任务 🎉" />
+                        ) : (
+                          fillList.map((it) => (
+                            <TaskRow key={it.targetId} it={it} onOpen={() => onRowOpen(it)} />
+                          ))
+                        )
+                      ) : completedQ.isLoading ? (
+                        <Loading />
+                      ) : (completedQ.data ?? []).length === 0 ? (
+                        <Empty text="本年还没有已完成任务" />
+                      ) : (
+                        (completedQ.data ?? []).map((it) => (
+                          <CompletedRow
+                            key={it.targetId}
+                            it={it}
+                            onOpen={() => goFill(it.targetId)}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {tab === "ranking" && (
+              <div className="no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
+                <RankingPanel unitName={myUnit.name} matched={myUnit.matched} />
+              </div>
+            )}
+
+            {/* ── 底栏:品牌标志(左)+ 更新时间 + 退出登录(右)── */}
+            <div className="flex shrink-0 items-center justify-between pt-0.5 text-[10px] text-slate-400">
+              <div className="flex items-center gap-1.5 opacity-60">
+                <SiteLogo className="h-4 w-4" />
+                <span className="text-[11px] font-medium tracking-wide">
+                  党建益友{appVersion ? ` v${appVersion}` : ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1" title="最近更新">
+                  <Clock className="h-2.5 w-2.5" />
+                  {fmtUpdated(lastUpdated)}
+                </span>
+                <button
+                  onClick={logout}
+                  title="退出登录"
+                  className="flex items-center gap-0.5 rounded px-1 py-0.5 hover:bg-slate-100 hover:text-[var(--party-primary)]"
+                >
+                  <LogOut className="h-3 w-3" />
+                  退出登录
+                </button>
+              </div>
+            </div>
           </>
         )}
       </div>
     </div>
   );
+}
+
+/** 月历 / 周历单格(日期 + 当天任务圆点)。 */
+function CalCell({
+  label,
+  count,
+  isToday,
+  isSel,
+  onClick,
+}: {
+  label: number | null;
+  count: number;
+  isToday: boolean;
+  isSel: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      disabled={label == null}
+      onClick={onClick}
+      className={cn(
+        "relative h-9 rounded-md text-sm",
+        label == null && "invisible",
+        isSel
+          ? "bg-[var(--party-primary)] font-semibold text-white"
+          : isToday
+            ? "bg-party-soft font-semibold text-[var(--party-primary)]"
+            : "text-slate-600 hover:bg-slate-100",
+      )}
+    >
+      {label}
+      {count > 0 && (
+        <span
+          className={cn(
+            "absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full",
+            isSel ? "bg-white" : "bg-[var(--party-accent)]",
+          )}
+        />
+      )}
+    </button>
+  );
+}
+
+/** 待办行(任务流 / 待完成清单复用):标题 + 状态 + 截止时间,点开完整版。 */
+function TaskRow({ it, onOpen }: { it: TaskInboxItem; onOpen: () => void }) {
+  return (
+    <button
+      onClick={onOpen}
+      className="group flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2 text-left hover:bg-white"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm text-slate-800">{it.title}</div>
+        <div className="mt-0.5 flex items-center gap-2">
+          <span className={cn("rounded px-1.5 py-0.5 text-[11px]", STATUS_CHIP[it.status] ?? "bg-slate-100 text-slate-600")}>
+            {it.claimable ? "待接收" : TASK_TARGET_STATUS_LABEL[it.status] ?? it.status}
+          </span>
+          {dueTime(it.dueAt) && <span className="text-[11px] text-slate-400">截止 {dueTime(it.dueAt)}</span>}
+        </div>
+      </div>
+      {it.claimable ? (
+        <span className="shrink-0 rounded-md bg-[var(--party-primary)] px-2 py-1 text-[11px] font-medium text-white">
+          接收
+        </span>
+      ) : (
+        <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-[var(--party-primary)]" />
+      )}
+    </button>
+  );
+}
+
+/** 已完成行(已完成 / 累计完成清单):标题 + 完成时间,点开查看回执。 */
+function CompletedRow({ it, onOpen }: { it: TaskCompletedItem; onOpen: () => void }) {
+  return (
+    <button
+      onClick={onOpen}
+      className="group flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2 text-left hover:bg-white"
+    >
+      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm text-slate-800">{it.title}</div>
+        <div className="mt-0.5 text-[11px] text-slate-400">
+          {it.completedAt ? `完成于 ${fmtUpdated(new Date(it.completedAt).getTime())}` : "已完成"}
+        </div>
+      </div>
+      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-[var(--party-primary)]" />
+    </button>
+  );
+}
+
+function Loading() {
+  return <div className="px-1 py-4 text-center text-xs text-slate-400">加载中…</div>;
+}
+function Empty({ text }: { text: string }) {
+  return <div className="rounded-lg bg-white/60 px-3 py-5 text-center text-xs text-slate-400">{text}</div>;
 }
 
 /** 紧凑登录(挂件未登录时):透明圆角壳内的员工编号登录。Casdoor 上线后替换。 */
@@ -439,7 +758,7 @@ function WidgetLogin({ login }: { login: (username: string) => Promise<void> }) 
     }
   }
   return (
-    <div className="flex flex-col items-center gap-4 py-6">
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 py-6">
       <div
         onMouseDown={(e) => {
           if (e.button === 0 && !(e.target as HTMLElement).closest("button,input")) void startWidgetDrag();
@@ -604,25 +923,37 @@ function Stat({
   label,
   value,
   tone,
+  active,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number | undefined;
-  tone: "amber" | "green" | "slate";
+  tone: "amber" | "green" | "slate" | "blue";
+  active?: boolean;
+  onClick?: () => void;
 }) {
   const toneCls =
     tone === "amber"
       ? "text-amber-600"
       : tone === "green"
         ? "text-green-600"
-        : "text-slate-600";
+        : tone === "blue"
+          ? "text-blue-600"
+          : "text-slate-600";
   return (
-    <div className="flex flex-col items-center gap-1 rounded-xl bg-white/70 py-3">
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex flex-col items-center gap-1 rounded-xl py-3 transition-colors",
+        active ? "bg-white ring-1 ring-[var(--party-primary)]" : "bg-white/70 hover:bg-white",
+      )}
+    >
       <span className={cn("flex items-center gap-1 text-xs", toneCls)}>
         {icon}
         {label}
       </span>
       <span className="text-xl font-semibold text-slate-800">{value ?? "—"}</span>
-    </div>
+    </button>
   );
 }

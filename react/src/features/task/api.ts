@@ -273,6 +273,16 @@ export interface TaskMyStats {
   cumulativeDone: number;
 }
 
+/** 我的已完成清单项(挂件点「已完成 / 累计完成」拉取) */
+export interface TaskCompletedItem {
+  targetId: string;
+  taskId: string;
+  title: string;
+  dueAt: string | null;
+  /** 完成(审核通过)时间;无回执时为 null */
+  completedAt: string | null;
+}
+
 /* ─── 平级确认(机关↔机关互派,部门负责人侧)─── */
 export interface TaskConfirmQueueItem {
   targetId: string;
@@ -445,6 +455,12 @@ export const taskApi = {
 
   /** 我的统计(桌面挂件计数) */
   myStats: () => api.get<TaskMyStats>("/tasks/my-stats").then((r) => r.data),
+
+  /** 我的已完成清单(挂件点「已完成/累计完成」即看):range=year 本年 / all 累计 */
+  myCompleted: (range: "year" | "all") =>
+    api
+      .get<TaskCompletedItem[]>("/tasks/my-completed", { params: { range } })
+      .then((r) => r.data),
 
   /** 我的派发范围(对象选择器过滤用;unrestricted=true 不限)。selfOrgIds=本单位子树(个人 tab 过滤用) */
   dispatchScope: () =>

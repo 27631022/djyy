@@ -3,8 +3,8 @@
  * 每个字段的可输入控件由字段类型注册表的 FillInput 提供(text/textarea/number/date/select/
  * file/image/richtext/doclink),file/image 内部走 storage 上传。存草稿 / 提交(提交校验必填)。
  */
-import { Fragment, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Fragment, useEffect, useState } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -22,6 +22,8 @@ import {
   Building2Icon,
   UserIcon,
   PhoneIcon,
+  MinusIcon,
+  XIcon,
 } from "lucide-react";
 import {
   taskApi,
@@ -37,6 +39,14 @@ import {
 } from "../api";
 import { getFieldType } from "../fields";
 import { DueBadge } from "../components/DueBadge";
+import {
+  isDesktop,
+  setClientMode,
+  minimizeWindow,
+  hideWindow,
+  startWidgetDrag,
+} from "@/shared/lib/desktop";
+import { cn } from "@/shared/lib/utils";
 
 const PARTY = "var(--party-primary)";
 const PAGE_BG = "linear-gradient(120deg, rgba(200,0,30,0.05), transparent 30%), #eef2f7";
@@ -45,6 +55,30 @@ export default function TaskFillPage() {
   const { targetId } = useParams<{ targetId: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const location = useLocation();
+  // 桌面客户端「展开成工作台」打开(/w/fill/...):返回/提交后收起回挂件,而非去后台待办页。
+  const inClient = isDesktop() && location.pathname.startsWith("/w/");
+  const leaveToWidget = () => {
+    void setClientMode("widget");
+    navigate("/widget");
+  };
+  const goBack = () => (inClient ? leaveToWidget() : navigate(-1));
+  const exitFill = () => (inClient ? leaveToWidget() : navigate("/admin/tasks/inbox"));
+
+  // 客户端工作台窗:透明窗 + 圆角(露出壁纸边角),html/body 设透明配合。浏览器/后台里不动。
+  useEffect(() => {
+    if (!inClient) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const ph = html.style.background;
+    const pb = body.style.background;
+    html.style.background = "transparent";
+    body.style.background = "transparent";
+    return () => {
+      html.style.background = ph;
+      body.style.background = pb;
+    };
+  }, [inClient]);
 
   const q = useQuery({
     queryKey: ["task-fill", targetId],
@@ -64,7 +98,7 @@ export default function TaskFillPage() {
       qc.invalidateQueries({ queryKey: ["task-inbox"] });
       qc.invalidateQueries({ queryKey: ["tasks"] });
       toast.success(submit ? "已提交报送" : "草稿已保存");
-      if (submit) navigate("/admin/tasks/inbox");
+      if (submit) exitFill();
     },
     onError: (e) => toast.error(taskApiErrorMessage(e, "保存失败"), { duration: 8000 }),
   });
@@ -95,14 +129,37 @@ export default function TaskFillPage() {
   const showReminder = reminder && (reminder.tone === "soon" || reminder.tone === "overdue");
 
   return (
-    <div className="h-full flex flex-col" style={{ background: PAGE_BG }}>
-      <div className="flex-1 overflow-auto">
+    <div
+      className={cn(
+        "flex flex-col",
+        inClient
+          ? "absolute inset-2.5 overflow-hidden rounded-2xl border border-white/55 shadow-2xl"
+          : "h-full",
+      )}
+      style={{ background: PAGE_BG }}
+    >
+      <div className="flex-1 overflow-auto thin-scrollbar">
         <div className="max-w-3xl mx-auto p-6 space-y-4">
           {/* 头部 */}
-          <div className="flex items-center gap-3">
+          <div
+            className="flex items-center gap-3"
+            onMouseDown={
+              inClient
+                ? (e) => {
+                    if (
+                      e.button === 0 &&
+                      !(e.target as HTMLElement).closest("button,a,input,textarea")
+                    ) {
+                      void startWidgetDrag();
+                    }
+                  }
+                : undefined
+            }
+          >
             <button
               type="button"
-              onClick={() => navigate(-1)}
+              onClick={goBack}
+              title={inClient ? "收起为挂件" : "返回"}
               className="w-9 h-9 rounded-lg grid place-items-center border border-[#dce4ef] bg-white text-[#475467] hover:border-[var(--party-primary)] flex-shrink-0"
             >
               <ArrowLeftIcon className="w-4 h-4" />
@@ -156,6 +213,26 @@ export default function TaskFillPage() {
                 </div>
               )}
             </div>
+            {inClient && (
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => void minimizeWindow()}
+                  title="最小化"
+                  className="w-8 h-8 rounded-lg grid place-items-center text-[#667085] hover:bg-[#eef2f7]"
+                >
+                  <MinusIcon className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void hideWindow()}
+                  title="关闭到托盘"
+                  className="w-8 h-8 rounded-lg grid place-items-center text-[#667085] hover:bg-red-50 hover:text-red-600"
+                >
+                  <XIcon className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 醒目截止提醒(临近 / 逾期) */}
@@ -275,7 +352,7 @@ export default function TaskFillPage() {
               </span>
               <button
                 type="button"
-                onClick={() => navigate("/admin/tasks/inbox")}
+                onClick={exitFill}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-[14px] font-bold border border-[#dce4ef] bg-white text-[#475467] hover:border-[var(--party-primary)]"
               >
                 返回待办

@@ -22,6 +22,9 @@ prisma/*.db-journal
 # 本地文件存储(storage 模块 LocalDiskDriver 默认根;生产指向挂载的群晖共享盘)
 storage-data/
 
+# 桌面客户端发版分发目录(安装包 + .sig + release.json,不入库)
+desktop-dist/
+
 # OS
 .DS_Store
 Thumbs.db

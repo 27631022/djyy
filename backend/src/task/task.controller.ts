@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   StreamableFile,
   UploadedFile,
@@ -120,6 +121,19 @@ export class TaskController {
   @Get('my-stats')
   myStats(@CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.svc.myStats({ actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 我的已完成清单(挂件「已完成 / 累计完成」点开即看):range=year|all。 */
+  @Get('my-completed')
+  myCompleted(
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+    @Query('range') range?: string,
+  ) {
+    return this.svc.myCompleted(
+      { actorId: me.sub, actorName: me.name, ip: req.ip },
+      range === 'year' ? 'year' : 'all',
+    );
   }
 
   /** 我的派发范围(给「派发对象」选择器过滤;unrestricted=true 不限) */

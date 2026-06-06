@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Tauri 更新签名私钥(绝不进 git;丢了就没法签更新包)
+/.tauri-keys/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

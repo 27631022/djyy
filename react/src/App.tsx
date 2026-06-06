@@ -100,6 +100,18 @@ const App = () => (
           {/* 桌面任务小组件(Tauri 挂件加载的透明页;浏览器也可直接开 /widget 调试)。
               挂件自行处理登录(未登录显示紧凑登录),不套 ProtectedRoute,保持透明圆角壳 */}
           <Route path="/widget" element={<TaskWidgetPage />} />
+          {/* 桌面客户端「展开成工作台」填报页:挂件点任务 → 窗口放大 → 此路由直接领/填,
+              不套 AdminLayout(无后台侧边栏),提交/返回收起回挂件。浏览器里也可直接开调试。 */}
+          <Route
+            path="/w/fill/:targetId"
+            element={
+              <ProtectedRoute>
+                <div className="relative h-screen">
+                  <TaskFillPage />
+                </div>
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/admin"
             element={

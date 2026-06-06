@@ -794,6 +794,55 @@ export class TaskService {
     return { toClaimCount, pendingCount, doneThisYear, cumulativeDone };
   }
 
+  /**
+   * 我的已完成清单(挂件「已完成 / 累计完成」点开即看,无需打开网页):
+   *   range='year' → 本年度审核通过(reviewedAt 落当年,口径同 myStats.doneThisYear)
+   *   range='all'  → 累计完成(我负责且 status='done' 的全部,口径同 myStats.cumulativeDone)
+   * 最近完成在前,最多 200 条。纯读,不写审计。
+   */
+  async myCompleted(actor: ActorContext, range: 'year' | 'all') {
+    const actorId = actor.actorId;
+    if (!actorId) throw new BadRequestException('缺少操作者身份');
+    const doneTargets = await this.prisma.taskTarget.findMany({
+      where: { ownerUserId: actorId, status: 'done' },
+      select: { id: true, taskId: true },
+    });
+    if (doneTargets.length === 0) return [];
+    const subs = await this.prisma.taskSubmission.findMany({
+      where: { targetId: { in: doneTargets.map((t) => t.id) }, status: 'approved' },
+      select: { targetId: true, reviewedAt: true, submittedAt: true },
+    });
+    const subByTarget = new Map(subs.map((s) => [s.targetId, s]));
+    const tasks = await this.prisma.task.findMany({
+      where: { id: { in: [...new Set(doneTargets.map((t) => t.taskId))] } },
+      select: { id: true, title: true, dueAt: true },
+    });
+    const taskById = new Map(tasks.map((t) => [t.id, t]));
+    const startOfYear = new Date(new Date().getFullYear(), 0, 1);
+    return doneTargets
+      .map((t) => {
+        const task = taskById.get(t.taskId);
+        const sub = subByTarget.get(t.id);
+        const completedAt = sub?.reviewedAt ?? sub?.submittedAt ?? null;
+        return {
+          targetId: t.id,
+          taskId: t.taskId,
+          title: task?.title ?? '(已删除任务)',
+          dueAt: task?.dueAt ?? null,
+          completedAt,
+        };
+      })
+      .filter((r) =>
+        range === 'year' ? r.completedAt != null && new Date(r.completedAt) >= startOfYear : true,
+      )
+      .sort((a, b) => {
+        const ta = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+        const tb = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+        return tb - ta;
+      })
+      .slice(0, 200);
+  }
+
   /** 接收(认领):未被接收 + 我是责任部门成员 → 成为责任人(转填报中)。 */
   async claim(targetId: string, actor: ActorContext) {
     const actorId = actor.actorId;
@@ -1554,7 +1603,7 @@ export class TaskService {
     );
     const unitNo = new Map(units.map((u, i) => [u, i + 1]));
     const unitPad = String(units.length).length;
-    const groupKey = (it: { unit: string; field: string }) => `${it.unit} ${it.field}`;
+    const groupKey = (it: { unit: string; field: string }) => `${it.unit} ${it.field}`;
     const groupTotal = new Map<string, number>();
     for (const it of items) {
       groupTotal.set(groupKey(it), (groupTotal.get(groupKey(it)) ?? 0) + 1);

@@ -210,4 +210,20 @@
   .ring-party-accent-40 { --tw-ring-color: color-mix(in srgb, var(--party-accent) 40%, transparent); }
   .focus\:ring-party-primary-10:focus { --tw-ring-color: color-mix(in srgb, var(--party-primary) 10%, transparent); }
   .focus\:ring-party-primary-20:focus { --tw-ring-color: color-mix(in srgb, var(--party-primary) 20%, transparent); }
+
+  /* 隐藏滚动条但保留滚动能力 ——
+     桌面挂件(无边框透明小窗)规则:窗口固定高度、只在列表区内部滚动,
+     绝不出现窗口级原生滚动条(透明窗上极丑)。详见 desktop/README.md「界面规则」。 */
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .no-scrollbar::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+  /* 细而克制的滚动条(表单等需要滚动指示、又不想要默认丑滚动条的地方)。 */
+  .thin-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(120,124,140,0.32) transparent; }
+  .thin-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(120,124,140,0.32); border-radius: 9999px;
+    border: 2px solid transparent; background-clip: content-box;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(120,124,140,0.5); background-clip: content-box; }
+  .thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
 }

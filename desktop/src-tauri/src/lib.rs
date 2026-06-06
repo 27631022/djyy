@@ -5,6 +5,8 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, WindowEvent,
 };
+use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_updater::UpdaterExt;
 
 /// 唤起主窗口到前台(取消「沉入桌面」+ 显示 + 取消最小化 + 聚焦)。挂件锁到壁纸层后从托盘唤回用。
 fn show_main(app: &tauri::AppHandle) {
@@ -46,19 +48,81 @@ fn open_config(app: &tauri::AppHandle) {
     }
 }
 
+/// 原生通知(更新进度 / 结果)。
+fn notify(app: &tauri::AppHandle, title: &str, body: &str) {
+    let _ = app.notification().builder().title(title).body(body).show();
+}
+
+/// 托盘「检查更新」:从**当前连接的服务器**取更新清单并一键更新(下载→安装→自动重启)。
+/// 更新地址不写死(服务器 IP 会变)—— 读 webview 当前 URL 的主机(用户连的那台),
+/// 指向其 `http://<host>:3001/api/desktop/latest.json`;连哪台、就从哪台更新。
+fn check_for_update(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let host = app
+            .get_webview_window("main")
+            .and_then(|w| w.url().ok())
+            .and_then(|u| u.host_str().map(|h| h.to_string()));
+        let host = match host {
+            Some(h) if h != "tauri.localhost" => h,
+            _ => {
+                notify(&app, "检查更新", "请先连接服务器,再检查更新");
+                return;
+            }
+        };
+        let endpoint = format!("http://{}:3001/api/desktop/latest.json", host);
+        if let Err(e) = run_update(&app, &endpoint).await {
+            notify(&app, "更新失败", &e);
+        }
+    });
+}
+
+async fn run_update(app: &tauri::AppHandle, endpoint: &str) -> Result<(), String> {
+    let url = endpoint
+        .parse::<url::Url>()
+        .map_err(|_| "更新地址无效".to_string())?;
+    let updater = app
+        .updater_builder()
+        .endpoints(vec![url])
+        .map_err(|e| e.to_string())?
+        .build()
+        .map_err(|e| e.to_string())?;
+    match updater.check().await {
+        Ok(Some(update)) => {
+            notify(
+                app,
+                "正在更新",
+                &format!("发现新版本 v{},正在下载安装,完成后自动重启…", update.version),
+            );
+            update
+                .download_and_install(|_, _| {}, || {})
+                .await
+                .map_err(|e| e.to_string())?;
+            app.restart();
+        }
+        Ok(None) => notify(app, "检查更新", "当前已是最新版本"),
+        Err(e) => return Err(e.to_string()),
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // 系统托盘:菜单(打开 / 退出)+ 左键点击唤起窗口。
             let open_i = MenuItem::with_id(app, "open", "打开党建益友", true, None::<&str>)?;
             let sink_i = MenuItem::with_id(app, "sink", "沉入桌面(挂件)", true, None::<&str>)?;
             let config_i = MenuItem::with_id(app, "config", "设置服务器地址", true, None::<&str>)?;
+            let update_i = MenuItem::with_id(app, "update", "检查更新", true, None::<&str>)?;
             let logout_i = MenuItem::with_id(app, "logout", "退出登录", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open_i, &sink_i, &config_i, &logout_i, &quit_i])?;
+            let menu = Menu::with_items(
+                app,
+                &[&open_i, &sink_i, &config_i, &update_i, &logout_i, &quit_i],
+            )?;
             let _tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("党建益友")
@@ -68,6 +132,7 @@ pub fn run() {
                     "open" => show_main(app),
                     "sink" => sink_to_desktop(app),
                     "config" => open_config(app),
+                    "update" => check_for_update(app.clone()),
                     "logout" => logout_web(app),
                     "quit" => app.exit(0),
                     _ => {}
