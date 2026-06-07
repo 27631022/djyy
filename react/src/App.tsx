@@ -114,6 +114,18 @@ const App = () => (
               </ProtectedRoute>
             }
           />
+          {/* 桌面客户端「展开成工作台」新建任务向导:挂件「任务管理」点新建 → 窗口放大 →
+              此路由整页跑发证式向导,提交/返回收起回挂件。浏览器里也可直接开调试。 */}
+          <Route
+            path="/w/tasks/new"
+            element={
+              <ProtectedRoute>
+                <div className="relative h-screen">
+                  <TaskCreatePage />
+                </div>
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/admin"
             element={

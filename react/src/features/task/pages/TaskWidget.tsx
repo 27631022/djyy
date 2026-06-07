@@ -277,9 +277,14 @@ export default function TaskWidget() {
   function openManage(taskId: string) {
     openExternal(`${window.location.origin}/admin/tasks/${taskId}`);
   }
-  // 新建任务:发证向导式多步流程(上传/AI/字段设计/派发对象),整页操作,走外部浏览器。
+  // 新建任务:桌面端「展开成工作台」在客户端内跑向导(免再登录);浏览器里外开兜底。
   function openCreate() {
-    openExternal(`${window.location.origin}/admin/tasks/new`);
+    if (desktop) {
+      void setClientMode("workbench");
+      navigate("/w/tasks/new");
+    } else {
+      openExternal(`${window.location.origin}/admin/tasks/new`);
+    }
   }
   function refresh() {
     void inboxQ.refetch();

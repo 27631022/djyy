@@ -6,7 +6,7 @@
  *   Step 4 确认派发:汇总 + 填报预览
  */
 import { useMemo, useState, type ElementType } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -27,6 +27,7 @@ import {
   AlertTriangleIcon,
 } from "lucide-react";
 import { useAuth } from "@/stores/auth";
+import { isDesktop, setClientMode } from "@/shared/lib/desktop";
 import {
   taskApi,
   taskApiErrorMessage,
@@ -59,7 +60,14 @@ const STEPS: StepDef[] = [
 
 export default function TaskCreatePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { me } = useAuth();
+  // 桌面客户端「展开成工作台」打开(/w/tasks/new):成功/返回后收起回挂件,而非去后台。
+  const inClient = isDesktop() && location.pathname.startsWith("/w/");
+  const leaveToWidget = () => {
+    void setClientMode("widget");
+    navigate("/widget");
+  };
   const [step, setStep] = useState(0);
   const [maxStep, setMaxStep] = useState(0);
 
@@ -160,7 +168,8 @@ export default function TaskCreatePage() {
     },
     onSuccess: (task) => {
       toast.success(`已派发「${task.title}」到 ${task.targets.length} 个对象`);
-      navigate(`/admin/tasks/${task.id}`);
+      if (inClient) leaveToWidget();
+      else navigate(`/admin/tasks/${task.id}`);
     },
     onError: (err) => {
       // 派发失败的原因(无权限 / 字段 / 对象校验)要看清,延长展示时间
@@ -184,8 +193,12 @@ export default function TaskCreatePage() {
     setMaxStep((m) => Math.max(m, n));
   }
   function goPrev() {
-    if (step === 0) navigate("/admin/tasks");
-    else setStep(step - 1);
+    if (step === 0) {
+      if (inClient) leaveToWidget();
+      else navigate("/admin/tasks");
+    } else {
+      setStep(step - 1);
+    }
   }
   function jump(i: number) {
     if (i <= maxStep) setStep(i);
@@ -199,11 +212,11 @@ export default function TaskCreatePage() {
       {/* 顶栏 */}
       <header className="flex-shrink-0 flex items-center gap-3 px-6 h-[60px] border-b border-[#e2e8f0]/80 bg-white/75 backdrop-blur-xl">
         <button
-          onClick={() => navigate("/admin/tasks")}
+          onClick={() => (inClient ? leaveToWidget() : navigate("/admin/tasks"))}
           className="flex items-center gap-1.5 text-[13px] text-[#667085] hover:text-[#172033]"
         >
           <ArrowLeftIcon className="w-4 h-4" />
-          任务列表
+          {inClient ? "返回挂件" : "任务列表"}
         </button>
         <div className="w-px h-5 bg-[#e2e8f0]" />
         <SendIcon className="w-5 h-5" style={{ color: PARTY }} />
@@ -376,7 +389,7 @@ export default function TaskCreatePage() {
               className="flex items-center gap-1.5 px-4 py-2.5 text-[14px] rounded-lg border border-[#dce4ef] bg-white/85 hover:bg-white text-[#475467] disabled:opacity-50"
             >
               <ChevronLeftIcon className="w-4 h-4" />
-              {step === 0 ? "返回列表" : "上一步"}
+              {step === 0 ? (inClient ? "返回挂件" : "返回列表") : "上一步"}
             </button>
 
             <div className="flex items-center gap-3">

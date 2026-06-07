@@ -152,7 +152,7 @@ function physicalPosition(x: number, y: number): unknown {
 
 const WIDGET_W = 380;
 const WIDGET_H = 680;
-const WORKBENCH_W = 1080;
+const WORKBENCH_W = 1350; // 工作台展开宽度(填报/新建共用);较初版 1080 加宽约 1/4,填报表单更舒展
 const WORKBENCH_H = 760;
 /** 放大成工作台前的挂件位置(物理像素);收起时还原,避免挂件位移。 */
 let savedWidgetPos: PhysPos | null = null;
