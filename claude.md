@@ -287,6 +287,12 @@ npm run db:seed
   - **改加载地址** = 改两处:`tauri.conf.json` 的 `window.url` + `capabilities/default.json` 的 `remote.urls`(当前默认 `http://10.10.10.194:5173`)。详见 `desktop/README.md`。
   - **验证**:`cargo check` ✓ + 前端门禁 0 error/41 warning + **`npm run tauri build` 成功出 `.msi`/`.exe`**(`target/release/bundle/`)。需 Rust(stable-msvc)+ VS C++ 生成工具 + WebView2;`desktop/{node_modules,target}` 已 gitignore。
   - ⚠ 后续打磨:① 后台轮询在 JS 端,webview 最小化后 WebView2 节流定时器、通知可能延迟 → 要实时改 **Rust 侧轮询**(登录后经 IPC 把 token 传 Rust);② 托盘**未读角标**、通知点击直达填报、开机自启;③ 未签名安装包内网分发有 SmartScreen 提示。
+- **(2026-06-07)头像 AI 生成 + 3D 后端 + 提示词集中管理 + 组织成员管理**(一批):
+  - **头像 AI 生成**(`avatar` 模块):火山 **Seedream 5.0 图生图**(`doubao-seedream-5-0-260128`,i2i:image=base64 dataURL / `sequential_image_generation:'disabled'` / `response_format:'url'` / `size:'2K'`)—— 上传本人照片 → 职场风 3D 仿真人头像(**红底、提亮**);**原图按「姓名-工号」存 storage**(文件夹 `avatars/{工号}-{姓名}/`,下次上线不必重生成)+ **历史头像库**可挑选;接入用户管理「基本信息」tab;**全站当前用户头像统一显示**(首页右上 / 后台右上 / 客户端左上)——根因=avatarUrl 存相对 `/api/public/avatars/:id`,`<img>` 必须经 `resolveAvatarUrl()` 拼后端 origin,否则 5173 origin 404。
+  - **3D 生成后端**(`model3d` 模块,为「3D 展厅」打底):火山 **Seed3D-2.0**(`doubao-seed3d-2-0-260328`)**异步任务**(`POST .../contents/generations/tasks`→`cgt-…`、GET 轮询 → `.glb`,前端 12s 轮询);`external-api` 能力注册表加 `image`/`3d`,`ExternalApi` 加 `model3d` 列(migrate `add_external_api_model3d` + `add_external_api_image_model`);`storage` 放行 `glb/gltf`。前端 `Model3dStudio` 上传→生成→`@google/model-viewer` 预览。⚠ Seed3D 很慢(10min+),成功路径收尾见交接任务 `~/.claude/plans/ai-3d-indexed-wren.md`。
+  - **提示词集中管理**(`prompt` 模块):代码注册表 `ai-prompts.ts` 存默认值(**不 import 业务模块,守 DAG**)+ `AiPrompt` 覆盖表(key 主键,migrate `add_ai_prompt`)+ `PromptService.get(key)`=覆盖或默认;**task/certificate/avatar 提示词全抽离**,业务模块注入 `PromptService` 调 `await this.prompts.get(key)`;前端 `/admin/prompts` **左列表/右编辑**分栏页(改即生效、可恢复默认)。**以后加 AI 提示词 = ai-prompts.ts 加一条 + 业务模块 get(key)**。
+  - **组织管理**:行政机构设为**默认 tab 且左置**(原党组织默认);**编辑行政机构抽屉加「成员」tab**(基本属性 / 成员 切换)—— 看直接成员 + 加(选现有用户搜索 / 新建用户,带职务)+ 移出,**改动即时生效**(不走表单保存);后端 `user` 加**单条归属增删**接口(`POST /users/:id/memberships`、`DELETE /users/:id/memberships/:orgId`,复合主键 `userId_orgId`,首条同类自动设主、删主自动提升、重复加 409)。党组织侧不变。
+  - 门禁:前端 0 error / 41 warning(基线),后端 0 error / 0 cycle;org 成员增删接口 API 端到端冒烟过(加→查→重复 409→删→不存在 404)。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
@@ -294,7 +300,8 @@ npm run db:seed
 3. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面
 4. **首页综合查询**:`<CertificateSearchBox embedded />` 已具备,把它和其他业务的查询入口拼到 NavPage / 新首页查询板块
 5. **任务分派系统 P4 富文本+在线文档**(仅剩这一期):P1–P3 + P2.5 指派 + P5 Tauri 客户端 + 超期自动通过都已落地(见已完成);汇总(数字求和/附件 ZIP/CSV)在 `TaskSummary` 已具备。剩 **P4**:内置富文本编辑器(`richtext` 字段)+ `doclink` 接 `DocProvider` 接口 + 群晖在线文档占位 driver。
-6. **其它业务模块**:排座 / AI 图片分拣 等 —— 按 conventions.md 的"加新模块"清单逐个加
+6. **企业虚拟展厅系统(3D / VR)** ★大方向 —— 独立 **Babylon.js** 客户端(单人第一人称漫游,桌面/移动/VR 同一份,WebXR 开箱)+ **数据驱动**(展品上传即上架;一个展厅=一份空间 JSON 由平面图生成器产出,多展厅不写代码)+ **复用现有 NestJS 后台**(另起前端工程,不并入 react/)。组件库(图片展柜/视频墙/模型台/荣誉墙/党务公开板/门),**连接器**实时取数:荣誉墙→证书/荣誉、党务板→任务/党务;素材走 storage(自托管 **MinIO**,storage 抽象已留 S3 占位)。已有两原型(数据驱动展厅 + 平面图生成器)验证可行,分 P0–P7。**衔接已建 `model3d` 模块(Seed3D→.glb)+ 3D 交接任务 `~/.claude/plans/ai-3d-indexed-wren.md`**。完整规格 **docs/specs/2026-06-07-virtual-exhibition-hall.md**
+7. **其它业务模块**:排座 / AI 图片分拣 等 —— 按 conventions.md 的"加新模块"清单逐个加
 
 ### ❌ 明确延后/放弃(有真实需求再做)
 - 信创适配(达梦 / 麒麟 / 国密)
@@ -324,6 +331,7 @@ npm run db:seed
 | 移除 unplugin-auto-import | 基座加固阶段 | 静默吞错,IDE 已能 auto-import,得不偿失 |
 | 权限模型暂不 enforce | 多次确认 | 单人 MVP 没必要,等多角色冲突真发生再补(4-6 小时即可上) |
 | 文件存储:driver 抽象 + 本地盘默认,群晖走挂载 | 2026-06-01 | 单位用群晖;挂载共享盘后 LocalDiskDriver 零改即用,文件落成 File Station 可浏览目录;SynologyDriver(File Station API)/ S3 留占位。消费方用 fileId 松引用、不建跨模块外键(守「表归属 + DAG」) |
+| 企业虚拟展厅用 Babylon.js 独立 3D 客户端,不用 Unity/Unreal | 2026-06-07 | 非游戏企业应用免付费授权 +「开网址即进」+ WebXR 开箱 VR;单人浏览=普通网页访问,无多人/语音并发难点(剔除 Colyseus/LiveKit/声网);复用现有 NestJS 后台 + storage(MinIO),连接器对接荣誉/党务,数据与鉴权收敛后台。详见 docs/specs/2026-06-07-virtual-exhibition-hall.md |
 
 ---
 
