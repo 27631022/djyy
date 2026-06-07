@@ -13,6 +13,7 @@ import {
   Clock,
   LogOut,
   Settings,
+  Plus,
   X,
 } from "lucide-react";
 import { useAuth } from "@/stores/auth";
@@ -276,6 +277,10 @@ export default function TaskWidget() {
   function openManage(taskId: string) {
     openExternal(`${window.location.origin}/admin/tasks/${taskId}`);
   }
+  // 新建任务:发证向导式多步流程(上传/AI/字段设计/派发对象),整页操作,走外部浏览器。
+  function openCreate() {
+    openExternal(`${window.location.origin}/admin/tasks/new`);
+  }
   function refresh() {
     void inboxQ.refetch();
     if (canManage) void manageQ.refetch();
@@ -421,6 +426,18 @@ export default function TaskWidget() {
                     );
                   })}
                 </div>
+
+                {/* ── 任务管理:新建任务(整页向导走外部浏览器,常驻列表上方)── */}
+                {cat === "manage" && canManage && (
+                  <button
+                    onClick={openCreate}
+                    className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg py-2 text-[13px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+                    style={{ background: C_MANAGE }}
+                  >
+                    <Plus className="h-4 w-4" />
+                    新建任务
+                  </button>
+                )}
 
                 {/* ── 清单(唯一滚动区:显示当前分类的全部内容)── */}
                 <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
