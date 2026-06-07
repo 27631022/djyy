@@ -726,12 +726,22 @@ export class TaskService {
     }
     if (rows.length === 0) return [];
 
-    const orgNames = await this.namesForOrgs(
-      [
-        ...rows.flatMap((r) => [r.t.targetOrgId, r.handlerOrgId]),
-        ...rows.map((r) => r.task.dispatchOrgId),
-      ].filter((x): x is string => !!x),
-    );
+    const [orgNames, dispatchUserInfo, submissions] = await Promise.all([
+      this.namesForOrgs(
+        [
+          ...rows.flatMap((r) => [r.t.targetOrgId, r.handlerOrgId]),
+          ...rows.map((r) => r.task.dispatchOrgId),
+        ].filter((x): x is string => !!x),
+      ),
+      // 派发人(姓名 + 电话)—— 挂件待办行展示「发布部门·派发人」,姓名悬浮显电话
+      this.infoForUsers(rows.map((r) => r.task.dispatchUserId).filter((x): x is string => !!x)),
+      // 各对象的提报时间 —— 已完成行显示「提报日期 + 提前/逾期」
+      this.prisma.taskSubmission.findMany({
+        where: { targetId: { in: rows.map((r) => r.t.id) } },
+        select: { targetId: true, submittedAt: true },
+      }),
+    ]);
+    const submittedByTarget = new Map(submissions.map((s) => [s.targetId, s.submittedAt]));
 
     return rows.map(({ t, task, handlerOrgId }) => {
       const claimable = !t.ownerUserId && t.status !== 'done';
@@ -751,6 +761,9 @@ export class TaskService {
         isOwner: t.ownerUserId === actorId,
         claimable,
         dispatchOrgName: task.dispatchOrgId ? orgNames[task.dispatchOrgId] ?? null : null,
+        dispatchUserName: task.dispatchUserId ? dispatchUserInfo[task.dispatchUserId]?.name ?? null : null,
+        dispatchUserPhone: task.dispatchUserId ? dispatchUserInfo[task.dispatchUserId]?.phone ?? null : null,
+        submittedAt: submittedByTarget.get(t.id) ?? null,
         targetOrgName: t.targetOrgId ? orgNames[t.targetOrgId] ?? null : null,
         handlerOrgName: handlerOrgId ? orgNames[handlerOrgId] ?? null : null,
         canAssign,

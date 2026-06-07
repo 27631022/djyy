@@ -13,6 +13,8 @@ import { SiteSettingsPage, siteSettingApi } from "@/features/site-setting";
 import { NavigationPage } from "@/features/nav-category";
 import { ExternalApisPage } from "@/features/external-api";
 import { IconLibraryPage } from "@/features/icon-library";
+import { Model3dStudioPage } from "@/features/model3d";
+import { PromptsPage } from "@/features/prompt";
 import {
   TaskCreatePage,
   TaskListPage,
@@ -129,6 +131,7 @@ const App = () => (
             <Route path="site-settings" element={<SiteSettingsPage />} />
             <Route path="navigation" element={<NavigationPage />} />
             <Route path="external-apis" element={<ExternalApisPage />} />
+            <Route path="prompts" element={<PromptsPage />} />
             <Route path="icon-library" element={<IconLibraryPage />} />
             <Route path="certificate-templates" element={<CertificateTemplatesPage />} />
             <Route path="certificate-templates/new" element={<CertificateDesignerPage />} />
@@ -142,6 +145,7 @@ const App = () => (
             <Route path="tasks/new" element={<TaskCreatePage />} />
             <Route path="tasks/:id/summary" element={<TaskSummaryPage />} />
             <Route path="tasks/:id" element={<TaskDetailPage />} />
+            <Route path="model3d" element={<Model3dStudioPage />} />
           </Route>
         </Routes>
         <Toaster position="top-center" richColors closeButton />

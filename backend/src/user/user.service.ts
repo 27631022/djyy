@@ -322,6 +322,112 @@ export class UserService {
     return this.findOne(id);
   }
 
+  /* ─── 新增「单条」组织归属(组织管理页「点机构加成员」)─── */
+  /**
+   * 只追加一条归属,不影响用户其它归属(区别于 replaceMemberships 的整体替换)。
+   * 规则:同组织不可重复;党组织最多 1 个;首条同类归属自动设为主岗,
+   * 显式 isPrimary=true 时把同类其它主岗降级(每种 kind 内仅一个 primary)。
+   */
+  async addMembership(
+    id: string,
+    input: { orgId: string; position?: string; isPrimary?: boolean },
+    actor: ActorContext,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('用户不存在');
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: input.orgId },
+      select: { id: true, kind: true, name: true, active: true },
+    });
+    if (!org) throw new NotFoundException('组织不存在');
+
+    const existing = await this.prisma.userOrganization.findUnique({
+      where: { userId_orgId: { userId: id, orgId: input.orgId } },
+    });
+    if (existing) throw new ConflictException('该用户已在此组织中');
+
+    // 同类(同 kind)现有归属 —— 决定主岗 + 是否需要降级
+    const sameKind = await this.prisma.userOrganization.findMany({
+      where: { userId: id, org: { kind: org.kind } },
+      select: { orgId: true, isPrimary: true },
+    });
+    if (org.kind === 'party' && sameKind.length >= 1) {
+      throw new BadRequestException('一个用户最多归属一个党组织');
+    }
+
+    const isPrimary =
+      org.kind === 'party'
+        ? true
+        : sameKind.length === 0
+          ? true
+          : (input.isPrimary ?? false);
+
+    await this.prisma.$transaction(async (tx) => {
+      if (isPrimary) {
+        const demoteOrgIds = sameKind.filter((m) => m.isPrimary).map((m) => m.orgId);
+        if (demoteOrgIds.length > 0) {
+          await tx.userOrganization.updateMany({
+            where: { userId: id, orgId: { in: demoteOrgIds } },
+            data: { isPrimary: false },
+          });
+        }
+      }
+      await tx.userOrganization.create({
+        data: {
+          userId: id,
+          orgId: input.orgId,
+          position: input.position ?? null,
+          isPrimary,
+        },
+      });
+    });
+
+    await this.audit.log({
+      ...actor,
+      action: 'user.membership.add',
+      target: id,
+      detail: { orgId: input.orgId, orgName: org.name, position: input.position ?? null, isPrimary },
+    });
+
+    return this.findOne(id);
+  }
+
+  /* ─── 移除「单条」组织归属(把成员移出某机构)─── */
+  /** 删主岗后,若同类还有其它归属,自动把最早加入的一条提升为主岗。 */
+  async removeMembership(id: string, orgId: string, actor: ActorContext) {
+    const row = await this.prisma.userOrganization.findUnique({
+      where: { userId_orgId: { userId: id, orgId } },
+      include: { org: { select: { kind: true, name: true } } },
+    });
+    if (!row) throw new NotFoundException('该用户不在此组织中');
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.userOrganization.delete({ where: { userId_orgId: { userId: id, orgId } } });
+      if (row.isPrimary) {
+        const next = await tx.userOrganization.findFirst({
+          where: { userId: id, org: { kind: row.org.kind } },
+          orderBy: { joinedAt: 'asc' },
+        });
+        if (next) {
+          await tx.userOrganization.update({
+            where: { userId_orgId: { userId: id, orgId: next.orgId } },
+            data: { isPrimary: true },
+          });
+        }
+      }
+    });
+
+    await this.audit.log({
+      ...actor,
+      action: 'user.membership.remove',
+      target: id,
+      detail: { orgId, orgName: row.org.name },
+    });
+
+    return this.findOne(id);
+  }
+
   /* ─── 批量按员工编号查 User(V3 发证页 Step 3b 用) ─── */
   /**
    * empNos → { [empNo]: UserByEmpNoLite | null } 字典。

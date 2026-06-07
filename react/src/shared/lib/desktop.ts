@@ -283,3 +283,17 @@ async function runOpener(opener: TauriOpener, url: string): Promise<void> {
     /* 打开失败忽略,不影响页面 */
   }
 }
+
+/**
+ * 回到本地「连接设置」页改服务器地址(仅桌面端)。
+ * Windows 上本地页 origin 为 http://tauri.localhost;导航到 ?edit=1 让连接页显示表单并预填上次地址。
+ * 与托盘「设置服务器地址」(lib.rs 的 open_config)同一入口。浏览器里 no-op。
+ */
+export function openServerConfig(): void {
+  if (!isDesktop()) return;
+  try {
+    window.location.href = 'http://tauri.localhost/index.html?edit=1';
+  } catch {
+    /* ignore */
+  }
+}

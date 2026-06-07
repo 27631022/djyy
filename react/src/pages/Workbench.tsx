@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/stores/auth";
 import { SiteLogo } from "@/features/site-setting";
+import { resolveAvatarUrl } from "@/features/avatar";
 import {
   WbCardFrame,
   WbCardContent,
@@ -237,7 +238,8 @@ function TopBar({ name, subtitle, isAdmin }: { name: string; subtitle: string; i
 function UserMenu({ name, subtitle, isAdmin }: { name: string; subtitle: string; isAdmin: boolean }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, me } = useAuth();
+  const avatarSrc = resolveAvatarUrl(me?.avatarUrl);
   return (
     <div className="relative">
       <button
@@ -245,7 +247,11 @@ function UserMenu({ name, subtitle, isAdmin }: { name: string; subtitle: string;
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         className="grid grid-cols-[32px_1fr] items-center gap-2.5 min-w-[160px] pl-1.5 pr-2.5 py-1.5 rounded-lg border border-[#dce4ef] bg-white/85 text-left"
       >
-        <span className="w-8 h-8 grid place-items-center rounded-lg font-black text-[var(--party-primary)] bg-[#ffe8ea]">{name.charAt(0)}</span>
+        {avatarSrc ? (
+          <img src={avatarSrc} alt="" className="w-8 h-8 rounded-lg object-cover" />
+        ) : (
+          <span className="w-8 h-8 grid place-items-center rounded-lg font-black text-[var(--party-primary)] bg-[#ffe8ea]">{name.charAt(0)}</span>
+        )}
         <span className="min-w-0">
           <strong className="block text-[13px] text-[#172033] truncate">{name}</strong>
           <span className="block text-[11px] text-[#667085] truncate">{subtitle || "—"}</span>

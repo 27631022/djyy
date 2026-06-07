@@ -172,6 +172,14 @@ export const usersApi = {
   replaceMemberships: (id: string, memberships: MembershipInput[]) =>
     api.put<UserDetail>(`/users/${id}/memberships`, { memberships }).then((r) => r.data),
 
+  /** 新增单条组织归属(组织管理页「点机构加成员」),不影响用户其它归属。 */
+  addMembership: (id: string, input: MembershipInput) =>
+    api.post<UserDetail>(`/users/${id}/memberships`, input).then((r) => r.data),
+
+  /** 移除单条组织归属(把成员移出某机构)。 */
+  removeMembership: (id: string, orgId: string) =>
+    api.delete<UserDetail>(`/users/${id}/memberships/${orgId}`).then((r) => r.data),
+
   replaceRoles: (id: string, roles: RoleAssignmentInput[]) =>
     api.put<UserDetail>(`/users/${id}/roles`, { roles }).then((r) => r.data),
 

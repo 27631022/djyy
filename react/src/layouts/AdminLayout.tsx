@@ -8,11 +8,12 @@ import {
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
   AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon,
   PanelLeftCloseIcon, PanelLeftOpenIcon,
-  ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon,
+  ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 import { useDesktopInboxAlerts } from "@/features/task";
 import { SiteLogo } from "@/features/site-setting";
+import { resolveAvatarUrl } from "@/features/avatar";
 
 /* ─── 顶部一级分类 → 联动左侧二级菜单 ─── */
 /** group:可选的二级菜单分组标题(同 group 的项聚在一个小标题下) */
@@ -41,6 +42,7 @@ const CATEGORIES: Category[] = [
       { path: "/admin/site-settings",  label: "站点设置",         icon: PaletteIcon,  perm: "admin:menu" },
       { path: "/admin/navigation",     label: "首页导航",         icon: LayoutGridIcon, perm: "admin:menu" },
       { path: "/admin/external-apis",  label: "AI 接入管理",      icon: SparklesIcon, perm: "admin:menu" },
+      { path: "/admin/prompts",        label: "AI 提示词",        icon: MessageSquareTextIcon, perm: "admin:menu" },
       { path: "/admin/icon-library",   label: "图标库",           icon: ImageIcon, perm: "admin:menu" },
     ],
   },
@@ -56,6 +58,7 @@ const CATEGORIES: Category[] = [
       // 任务派发:仅有 task:manage 的人(派发人/管理员)可见;我的待办:人人可见(任何登录员工都能收任务)
       { path: "/admin/tasks",                 label: "任务派发",     icon: SendIcon,          group: "任务管理", perm: "task:manage" },
       { path: "/admin/tasks/inbox",           label: "我的待办",     icon: InboxIcon,         group: "任务管理" },
+      { path: "/admin/model3d",               label: "3D 生成",      icon: BoxIcon,           group: "3D 展厅", perm: "admin:menu" },
     ],
   },
   {
@@ -465,6 +468,7 @@ function UserSettingsMenu() {
 
   const displayName = me?.name ?? "未登录";
   const avatarInitial = me?.name?.charAt(0) ?? "?";
+  const avatarSrc = resolveAvatarUrl(me?.avatarUrl);
 
   return (
     <div className="relative w-56 flex-shrink-0 px-3 flex items-center justify-end border-l border-[#F0F0F0]">
@@ -473,9 +477,17 @@ function UserSettingsMenu() {
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-[#F7F8FA] transition-colors max-w-full"
       >
-        <div className="w-7 h-7 rounded-full bg-[var(--party-primary)] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-          {avatarInitial}
-        </div>
+        {avatarSrc ? (
+          <img
+            src={avatarSrc}
+            alt=""
+            className="w-7 h-7 rounded-full object-cover border border-[#E9E9E9] flex-shrink-0"
+          />
+        ) : (
+          <div className="w-7 h-7 rounded-full bg-[var(--party-primary)] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+            {avatarInitial}
+          </div>
+        )}
         <div className="flex flex-col leading-tight items-start min-w-0">
           <span className="text-xs font-medium text-[#1A1A1A] truncate max-w-[140px]">
             {displayName}

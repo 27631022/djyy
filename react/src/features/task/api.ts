@@ -253,6 +253,11 @@ export interface TaskInboxItem {
   /** 是否可接收(未被认领) */
   claimable: boolean;
   dispatchOrgName: string | null;
+  /** 派发人姓名 + 电话(挂件待办行展示,姓名悬浮显电话) */
+  dispatchUserName: string | null;
+  dispatchUserPhone: string | null;
+  /** 提报时间(已完成行显示提报日期 + 提前/逾期);无回执为 null */
+  submittedAt: string | null;
   targetOrgName: string | null;
   handlerOrgName: string | null;
   /** 我是否是该任务承办部门的负责人(可「指派」给本部门成员) */

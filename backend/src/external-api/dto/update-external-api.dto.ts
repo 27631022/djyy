@@ -57,6 +57,18 @@ export class UpdateExternalApiDto {
   @MaxLength(64)
   visionModel?: string;
 
+  /** 图像生成/图生图模型(SeedEdit 等,出图)。空 = 该 provider 不支持生图 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  imageModel?: string;
+
+  /** 3D 生成模型(Seed3D 等,异步出 .glb)。空 = 不支持 3D 生成 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  model3d?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(512)
@@ -150,6 +162,18 @@ export class CreateExternalApiDto {
   @IsString()
   @MaxLength(64)
   visionModel?: string;
+
+  /** 图像生成/图生图模型(SeedEdit 等,出图)。空 = 该 provider 不支持生图 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  imageModel?: string;
+
+  /** 3D 生成模型(Seed3D 等,异步出 .glb)。空 = 不支持 3D 生成 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  model3d?: string;
 
   @IsOptional()
   @IsString()

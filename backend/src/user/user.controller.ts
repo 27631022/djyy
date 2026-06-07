@@ -17,6 +17,7 @@ import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ReplaceMembershipsDto } from './dto/replace-memberships.dto';
+import { AddMembershipDto } from './dto/add-membership.dto';
 import { ReplaceRolesDto } from './dto/replace-roles.dto';
 import { ListUsersQuery } from './dto/list-users.query';
 import { LookupByEmpNoDto, LookupByNameDto } from './dto/lookup-by-empno.dto';
@@ -79,6 +80,28 @@ export class UserController {
     @Req() req: Request,
   ) {
     return this.users.replaceMemberships(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 新增单条组织归属(组织管理页「点机构加成员」)。 */
+  @Post(':id/memberships')
+  addMembership(
+    @Param('id') id: string,
+    @Body() dto: AddMembershipDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.users.addMembership(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 移除单条组织归属(把成员移出某机构)。 */
+  @Delete(':id/memberships/:orgId')
+  removeMembership(
+    @Param('id') id: string,
+    @Param('orgId') orgId: string,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.users.removeMembership(id, orgId, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
   @Put(':id/roles')

@@ -10,7 +10,7 @@
  * consumerKey 命名约定:`<模块>.<功能>.<子类>`,如 'certificate.extract.text'。
  * 一旦上线就别改 key —— AiRoute 表用它做绑定主键。
  */
-export type AiCapability = 'chat' | 'vision' | 'reasoning';
+export type AiCapability = 'chat' | 'vision' | 'reasoning' | 'image' | '3d';
 
 export interface AiConsumer {
   /** 稳定标识,AiRoute.consumerKey 引用它。上线后勿改。 */
@@ -51,6 +51,22 @@ export const AI_CONSUMERS: AiConsumer[] = [
     capability: 'chat',
     description:
       '解析上传的通知 / 红头文件,抽取任务名称 / 填报要求 / 截止日期,并按要求生成填报字段、建议填报范围',
+  },
+  {
+    key: 'user.avatar.generate',
+    app: '用户管理',
+    label: 'AI 头像 · 照片生成专业头像',
+    capability: 'image',
+    description:
+      '上传本人照片,用图生图(image-to-image)模型生成蓝底白衬衣写实证件照风格的工作头像,保留本人面部特征。需配 imageModel(如 doubao-seededit-3-0-i2i)',
+  },
+  {
+    key: 'model3d.generate',
+    app: '3D 展厅',
+    label: 'AI 3D · 图片生成 3D 模型',
+    capability: '3d',
+    description:
+      '上传一张图片,用 3D 生成模型(异步任务)生成带纹理 + PBR 材质的 3D 模型(.glb),供 3D 展厅加载。需配 model3d(如 doubao-seed3d-2-0)',
   },
 ];
 

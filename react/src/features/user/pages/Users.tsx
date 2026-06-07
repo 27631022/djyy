@@ -24,8 +24,10 @@ import {
   type DictItem, type DictionaryDetail,
 } from "@/features/dictionary";
 import { userCustomFieldsApi, type UserCustomField } from "@/features/user-custom-field";
+import { AvatarGenerator, resolveAvatarUrl } from "@/features/avatar";
 import { matchesPinyin, highlightMatch } from "@/shared/lib/pinyinSearch";
 import { OrgPicker } from "../components/OrgPicker";
+import { toast } from "sonner";
 
 /* ═══════════════════════════════════════════════════════════════
    Color tokens
@@ -486,9 +488,17 @@ function UserDetailDrawer({
         <div className="flex-shrink-0 px-5 py-4 border-b border-[#E9E9E9] flex items-center gap-3">
           {u ? (
             <>
-              <div className="w-10 h-10 rounded-full bg-[var(--party-primary)] flex items-center justify-center text-white text-sm font-bold">
-                {u.name.charAt(0)}
-              </div>
+              {resolveAvatarUrl(u.avatarUrl) ? (
+                <img
+                  src={resolveAvatarUrl(u.avatarUrl)}
+                  alt=""
+                  className="w-10 h-10 rounded-full object-cover ring-1 ring-[#E9E9E9]"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-[var(--party-primary)] flex items-center justify-center text-white text-sm font-bold">
+                  {u.name.charAt(0)}
+                </div>
+              )}
               <div className="flex flex-col leading-tight min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-base font-bold text-[#1A1A1A] truncate">{u.name}</span>
@@ -575,6 +585,7 @@ function BasicInfoTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
   const [phone, setPhone] = useState(user.phone ?? "");
   const [active, setActive] = useState(user.active);
   const [error, setError] = useState<string | null>(null);
+  const [showAvatarGen, setShowAvatarGen] = useState(false);
 
   useEffect(() => {
     setName(user.name);
@@ -608,8 +619,55 @@ function BasicInfoTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
     },
   });
 
+  const avatarSrc = resolveAvatarUrl(user.avatarUrl);
+  const setAvatarMut = useMutation({
+    mutationFn: (url: string) => usersApi.update(user.id, { avatarUrl: url }),
+    onSuccess: () => {
+      setShowAvatarGen(false);
+      toast.success("头像已更新");
+      onSaved();
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } }; message?: string }) => {
+      const msg = err.response?.data?.message;
+      toast.error(Array.isArray(msg) ? msg.join("; ") : (msg ?? err.message ?? "设置头像失败"));
+    },
+  });
+
   return (
     <div className="p-5 space-y-4">
+      {/* 头像 + AI 生成(上传照片→火山 SeedEdit→蓝底职场头像) */}
+      <Field label="头像" hint="上传本人照片,AI 一键生成职场头像(3D 仿真人 · 蓝底)">
+        <div className="flex items-center gap-3">
+          {avatarSrc ? (
+            <img
+              src={avatarSrc}
+              alt=""
+              className="h-14 w-14 rounded-full object-cover ring-1 ring-[#E9E9E9]"
+            />
+          ) : (
+            <div className="grid h-14 w-14 place-items-center rounded-full bg-[var(--party-primary)] text-lg font-bold text-white">
+              {user.name.charAt(0)}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowAvatarGen((v) => !v)}
+            className="rounded-md border border-[#E9E9E9] px-3 py-1.5 text-xs text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+          >
+            {showAvatarGen ? "收起" : "AI 生成头像"}
+          </button>
+        </div>
+        {showAvatarGen && (
+          <div className="mt-3 rounded-lg border border-[#E9E9E9] bg-[#FAFAFA] p-3">
+            <AvatarGenerator
+              onConfirm={(url) => setAvatarMut.mutate(url)}
+              confirmLabel="设为该用户头像"
+              targetName={user.name}
+              employeeNumber={user.username}
+            />
+          </div>
+        )}
+      </Field>
       <Field label="姓名">
         <input
           value={name}

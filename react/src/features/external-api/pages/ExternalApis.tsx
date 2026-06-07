@@ -816,6 +816,7 @@ function EditDialog({
   const [apiUrl, setApiUrl] = useState(api.apiUrl ?? "");
   const [model, setModel] = useState(api.model ?? "");
   const [visionModel, setVisionModel] = useState(api.visionModel ?? "");
+  const [imageModel, setImageModel] = useState(api.imageModel ?? "");
   const [rechargeUrl, setRechargeUrl] = useState(api.rechargeUrl ?? "");
   const [priority, setPriority] = useState(api.priority);
   const [capabilities, setCapabilities] = useState(api.capabilities);
@@ -850,6 +851,7 @@ function EditDialog({
         apiUrl: apiUrl || undefined,
         model: model || undefined,
         visionModel: visionModel || undefined,
+        imageModel: imageModel || undefined,
         rechargeUrl: rechargeUrl || undefined,
         priority,
         capabilities,
@@ -921,6 +923,13 @@ function EditDialog({
           value={visionModel}
           onChange={setVisionModel}
           placeholder="如 doubao-1.5-vision-pro-32k / qwen-vl-max / gpt-4o"
+          mono
+        />
+        <LabeledInput
+          label="图像生成模型(图生图 / AI 头像;出图,需平台开通,与文本/视觉不通用)"
+          value={imageModel}
+          onChange={setImageModel}
+          placeholder="如 doubao-seededit-3-0-i2i-250628"
           mono
         />
         <LabeledInput
@@ -1126,6 +1135,13 @@ function CreateDialog({
           placeholder="如 Qwen2.5-VL / doubao-vision / gpt-4o"
           mono
         />
+        <LabeledInput
+          label="图像生成模型(图生图 / AI 头像;出图,可留空)"
+          value={draft.imageModel ?? ""}
+          onChange={(v) => patch("imageModel", v)}
+          placeholder="如 doubao-seededit-3-0-i2i-250628"
+          mono
+        />
         <CapabilitiesPicker
           value={draft.capabilities ?? "chat"}
           onChange={(v) => patch("capabilities", v)}
@@ -1288,6 +1304,7 @@ const CAP_LABELS: Record<string, string> = {
   chat: "对话",
   vision: "视觉",
   reasoning: "推理",
+  image: "图像生成",
   embedding: "向量",
   tts: "语音合成",
   asr: "语音识别",
@@ -1307,6 +1324,8 @@ function capColor(cap: string): string {
       return "bg-purple-100 text-purple-700";
     case "reasoning":
       return "bg-emerald-100 text-emerald-700";
+    case "image":
+      return "bg-rose-100 text-rose-700";
     case "embedding":
       return "bg-amber-100 text-amber-700";
     case "tts":
@@ -1393,7 +1412,7 @@ function ProviderAvatar({
 }
 
 /** 能力标签点选(多选 chip;value/onChange 用逗号分隔字符串,与后端契约一致) */
-const ALL_CAPS = ["chat", "vision", "reasoning", "embedding", "tts", "asr"];
+const ALL_CAPS = ["chat", "vision", "reasoning", "image", "embedding", "tts", "asr"];
 function CapabilitiesPicker({
   value,
   onChange,

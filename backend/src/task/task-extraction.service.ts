@@ -27,6 +27,7 @@ const PDFParse: PdfParseCtor = (() => {
 })();
 import { AuditService } from '../audit';
 import { ExternalApiService } from '../external-api';
+import { PromptService } from '../prompt';
 import type {
   TaskExtractResponse,
   SuggestFieldsResponse,
@@ -40,35 +41,8 @@ interface ExtractCtx {
   ip?: string;
 }
 
-/** 填报字段设计规则(extract / suggest-fields 共用,保证两条路径产出一致) */
-const FIELD_RULES = `fields 字段设计规则:
-- 每个字段对象:{ "label":"显示名", "type":"类型", "required":true/false, "group":"分组名(可选)", "unit":"数字单位(可选,如 人/万元)" }
-- type 只能用以下之一:text(单行文本)/textarea(多行文本)/number(数字)/date(日期)/file(文件)/image(图片)/richtext(在线富文本填写)/doclink(在线文档链接)。**绝对不要用下拉/select**。
-- 示例:要求"上传通知扫描件"→ file;"报送党员合影/现场照片"→ image;"填写男党员数、女党员数"→ 两个 number,group 都填"党员数据",unit 填"人";"在线填写工作总结"→ richtext;"上交工作台账"→ file。
-- 把同类数据项归到同一 group(如"党员数据"下放"男党员数""女党员数")。
-- 不要包含 code 字段(系统自动生成)。若要求里看不出明确字段,给一个 file 类型"相关材料"即可。`;
-
-/** 从通知文件提取整套任务信息 */
-const EXTRACT_PROMPT = `你是一个任务派发系统的「通知文件解析助手」。用户上传一份工作通知 / 红头文件(Word/PDF 转出的纯文本),你要为一次「任务派发」提取结构化信息,供派发人确认后下发给下属单位 / 个人填报。全部输出中文。
-
-输出严格 JSON(不要 markdown / 围栏 / 解释):
-{
- "title": "任务名称,提炼成简洁任务名,不要带『关于…的通知』等公文套话",
- "requirements": "填报要求:要报送什么内容、口径、格式、时间节点等,概括成几句话或分条(每条以『· 』开头)",
- "dueDate": "报送 / 上报截止日期,ISO 格式 YYYY-MM-DD,抽不到留空字符串",
- "fields": [ 按填报要求初步设计的填报字段数组,见下方规则 ],
- "scopeHint": "建议填报范围层级,只能填其一:level1(一级单位)/ level2(二级单位)/ level3(三级单位)/ level4;判断不出留空字符串",
- "suggestedUnits": ["从文件抬头 / 正文识别到的应填报单位名称数组,没有则空数组"]
-}
-
-` + FIELD_RULES;
-
-/** 仅按填报要求文本生成字段 */
-const FIELD_SUGGEST_PROMPT = `你是任务派发系统的「填报字段设计助手」。根据用户给的「填报要求」文字,设计一组用于下属填报的字段。全部输出中文。
-
-输出严格 JSON(不要 markdown / 围栏 / 解释):{"fields":[ 字段数组 ]}
-
-` + FIELD_RULES;
+// 任务提取 / 字段建议 的提示词已迁到 AI 提示词注册表(prompt/ai-prompts.ts),
+// 运行时经 PromptService.get('task.extract' / 'task.suggest_fields') 取(后台可覆盖)。
 
 @Injectable()
 export class TaskExtractionService {
@@ -78,6 +52,7 @@ export class TaskExtractionService {
     private readonly config: ConfigService,
     private readonly audit: AuditService,
     private readonly externalApi: ExternalApiService,
+    private readonly prompts: PromptService,
   ) {}
 
   /**
@@ -95,7 +70,7 @@ export class TaskExtractionService {
     }
 
     const llm = await this.callLlm(
-      EXTRACT_PROMPT,
+      await this.prompts.get('task.extract'),
       `文件名:${file.originalname}\n--- 文件正文 ---\n${text.slice(0, 20000)}`,
     );
 
@@ -175,7 +150,7 @@ export class TaskExtractionService {
       throw new BadRequestException('填报要求太短,请先把要填报的内容写清楚再生成');
     }
     const llm = await this.callLlm(
-      FIELD_SUGGEST_PROMPT,
+      await this.prompts.get('task.suggest_fields'),
       `${title ? `任务名称:${title}\n` : ''}填报要求:\n${req.slice(0, 8000)}`,
     );
 

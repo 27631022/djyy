@@ -44,6 +44,8 @@ export interface ExternalApiPublic {
   apiUrl: string | null;
   model: string | null;
   visionModel: string | null;
+  imageModel: string | null;
+  model3d: string | null;
   rechargeUrl: string | null;
   priority: number;
   capabilities: string;
@@ -159,6 +161,8 @@ function toPublic(
     apiUrl: row.apiUrl,
     model: row.model,
     visionModel: row.visionModel,
+    imageModel: row.imageModel,
+    model3d: row.model3d,
     rechargeUrl: row.rechargeUrl,
     priority: row.priority,
     capabilities: row.capabilities,
@@ -175,6 +179,8 @@ function capabilityLabel(tag: string): string {
   if (tag === 'chat') return '对话';
   if (tag === 'vision') return '视觉';
   if (tag === 'reasoning') return '推理';
+  if (tag === 'image') return '图像生成';
+  if (tag === '3d') return '3D生成';
   return tag;
 }
 
@@ -373,9 +379,16 @@ export class ExternalApiService {
     return r.kind === 'internal';
   }
 
-  /** 某能力下实际会用的模型(vision 用 visionModel,空则兜底 model) */
+  /**
+   * 某能力下实际会用的模型:
+   *   vision → visionModel,空则兜底 model;
+   *   image  → imageModel(**不兜底 model** —— 文本/视觉模型不能生图,空即视为该 provider 无生图能力);
+   *   其它   → model。
+   */
   private modelForCapability(r: ExternalApi, tag: AiCapability): string {
     if (tag === 'vision') return r.visionModel || r.model || '';
+    if (tag === 'image') return r.imageModel || '';
+    if (tag === '3d') return r.model3d || '';
     return r.model || '';
   }
 
@@ -496,6 +509,8 @@ export class ExternalApiService {
         apiUrl: dto.apiUrl,
         model: dto.model,
         visionModel: dto.visionModel,
+        imageModel: dto.imageModel,
+        model3d: dto.model3d,
         rechargeUrl: dto.rechargeUrl,
         priority: dto.priority ?? 50,
         capabilities: dto.capabilities ?? 'chat',
@@ -549,6 +564,8 @@ export class ExternalApiService {
         apiUrl: dto.apiUrl ?? undefined,
         model: dto.model ?? undefined,
         visionModel: dto.visionModel ?? undefined,
+        imageModel: dto.imageModel ?? undefined,
+        model3d: dto.model3d ?? undefined,
         rechargeUrl: dto.rechargeUrl ?? undefined,
         priority: dto.priority ?? undefined,
         capabilities: dto.capabilities ?? undefined,

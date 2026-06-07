@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRightIcon,
   ChevronDownIcon,
@@ -14,6 +14,8 @@ import {
   BuildingIcon,
   SparklesIcon,
   UsersIcon,
+  UserPlusIcon,
+  Loader2Icon,
   GripVerticalIcon,
   EyeIcon,
   EyeOffIcon,
@@ -29,11 +31,14 @@ import {
   type OrgTreeNode,
   type OrgType,
   type OrgKind,
+  type OrgMember,
   type CreateOrgInput,
   type UpdateOrgInput,
   type MovePosition,
 } from "@/features/organization";
+import { usersApi } from "@/features/user";
 import { matchesPinyin, highlightMatch } from "@/shared/lib/pinyinSearch";
+import { toast } from "sonner";
 
 interface EditingState {
   mode: "create" | "edit";
@@ -56,7 +61,7 @@ const KIND_META: Record<OrgKind, { label: string; icon: React.ElementType; color
 };
 
 export default function OrganizationsPage() {
-  const [kind, setKind] = useState<OrgKind>("party");
+  const [kind, setKind] = useState<OrgKind>("admin");
   const [tree, setTree] = useState<OrgTreeNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -294,7 +299,7 @@ export default function OrganizationsPage() {
       {/* Kind Tabs + Search */}
       <div className="flex items-center mb-4 gap-3">
         <div className="flex gap-2">
-          {(["party", "admin"] as OrgKind[]).map((k) => {
+          {(["admin", "party"] as OrgKind[]).map((k) => {
             const m = KIND_META[k];
             const Icon = m.icon;
             const active = k === kind;
@@ -416,6 +421,7 @@ export default function OrganizationsPage() {
           tree={tree}
           onCancel={() => setEditing(null)}
           onSave={handleSave}
+          onMembersChanged={reload}
         />
       )}
 
@@ -638,18 +644,22 @@ function TreeNode({
 
 /* ─── Form modal ─── */
 function OrgFormModal({
-  editing, tree, onCancel, onSave,
+  editing, tree, onCancel, onSave, onMembersChanged,
 }: {
   editing: EditingState;
   tree: OrgTreeNode[];
   onCancel: () => void;
   onSave: (input: any) => void;
+  onMembersChanged: () => void;
 }) {
   const isEdit = editing.mode === "edit";
   const init = editing.target;
   const kindMeta = KIND_META[editing.kind];
   const isParty = editing.kind === "party";
   const isAdmin = editing.kind === "admin";
+  // 行政机构编辑态:抽屉内分「基本属性 / 成员」两个 tab(成员改动即时生效)
+  const showMembers = isAdmin && isEdit && !!init;
+  const [activeTab, setActiveTab] = useState<"basic" | "members">("basic");
   const TYPE_OPTIONS = isParty ? PARTY_TYPE_OPTIONS : ADMIN_TYPE_OPTIONS;
   const defaultType: OrgType = isParty ? "branch" : "level2";
 
@@ -725,7 +735,7 @@ function OrgFormModal({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onCancel}>
       <div
-        className="bg-white shadow-2xl w-[460px] max-w-[92vw] h-screen flex flex-col"
+        className="bg-white shadow-2xl w-[480px] max-w-[92vw] h-screen flex flex-col"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
@@ -744,7 +754,31 @@ function OrgFormModal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto p-5 flex flex-col gap-3.5">
+        {showMembers && (
+          <div className="flex-shrink-0 flex gap-1 px-5 pt-2 border-b border-[#E9E9E9]">
+            {([["basic", "基本属性"], ["members", "成员"]] as const).map(([id, label]) => {
+              const on = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveTab(id)}
+                  className="px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+                  style={{
+                    borderColor: on ? kindMeta.color : "transparent",
+                    color: on ? kindMeta.color : "#6B7280",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 flex flex-col">
+          {(!showMembers || activeTab === "basic") && (
+          <div className="flex-1 overflow-auto p-5 flex flex-col gap-3.5">
           {editing.mode === "create" && (
             <p className="text-xs text-[#6B7280] bg-[#F7F8FA] px-3 py-2 rounded">
               {editing.parentId
@@ -932,6 +966,21 @@ function OrgFormModal({
                   </p>
                 </div>
               )}
+            </div>
+          )}
+          </div>
+          )}
+
+          {showMembers && init && activeTab === "members" && (
+            <div
+              className="flex-1 min-h-0 flex flex-col"
+              onKeyDown={(e) => { if (e.key === "Enter") e.stopPropagation(); }}
+            >
+              <OrgMembersPanel
+                orgId={init.id}
+                orgName={form.name || init.name}
+                onChanged={onMembersChanged}
+              />
             </div>
           )}
         </div>
@@ -1320,6 +1369,293 @@ function DeleteConfirmModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ─── 机构成员分栏(编辑行政机构时右侧栏:看 / 加 / 移成员,改动即时生效)─── */
+const ADMIN_BLUE = "rgb(26,107,200)";
+const ADMIN_BLUE_BG = "rgb(238,244,255)";
+
+function OrgMembersPanel({
+  orgId, orgName, onChanged,
+}: {
+  orgId: string;
+  orgName: string;
+  onChanged: () => void;
+}) {
+  const qc = useQueryClient();
+  const membersQuery = useQuery({
+    queryKey: ["org-direct-members", orgId],
+    queryFn: () => organizationsApi.members(orgId, false),
+  });
+  const members = useMemo(() => membersQuery.data ?? [], [membersQuery.data]);
+  const memberIds = useMemo(() => new Set(members.map((m) => m.userId)), [members]);
+
+  const [tab, setTab] = useState<"existing" | "new">("existing");
+  const [position, setPosition] = useState(""); // 职务(可选),加成员时带上
+  const [search, setSearch] = useState("");
+  const [newForm, setNewForm] = useState({ username: "", name: "", phone: "" });
+  const [err, setErr] = useState<string | null>(null);
+
+  function refresh() {
+    qc.invalidateQueries({ queryKey: ["org-direct-members", orgId] });
+    qc.invalidateQueries({ queryKey: ["users"] });
+    onChanged(); // 刷新组织树成员计数
+  }
+  function fail(e: unknown) {
+    const m = e as { response?: { data?: { message?: string | string[] } }; message?: string };
+    const msg = m.response?.data?.message;
+    setErr(Array.isArray(msg) ? msg.join("; ") : (msg ?? m.message ?? "操作失败"));
+  }
+
+  const removeMut = useMutation({
+    mutationFn: (userId: string) => usersApi.removeMembership(userId, orgId),
+    onSuccess: () => { setErr(null); refresh(); toast.success("已移出本机构"); },
+    onError: fail,
+  });
+  const addExistingMut = useMutation({
+    mutationFn: (userId: string) =>
+      usersApi.addMembership(userId, { orgId, position: position.trim() || undefined }),
+    onSuccess: () => { setErr(null); refresh(); toast.success("已加入本机构"); },
+    onError: fail,
+  });
+  const createMut = useMutation({
+    mutationFn: async () => {
+      const u = await usersApi.create({
+        username: newForm.username.trim(),
+        name: newForm.name.trim(),
+        phone: newForm.phone.trim() || undefined,
+      });
+      await usersApi.addMembership(u.id, { orgId, position: position.trim() || undefined });
+      return u;
+    },
+    onSuccess: () => {
+      setErr(null);
+      setNewForm({ username: "", name: "", phone: "" });
+      refresh();
+      toast.success("已创建并加入本机构");
+    },
+    onError: fail,
+  });
+
+  const searchQ = useQuery({
+    queryKey: ["user-search-for-org", search],
+    queryFn: () => usersApi.list({ search: search.trim(), take: 20 }),
+    enabled: search.trim().length >= 1,
+  });
+  const candidates = (searchQ.data?.items ?? []).filter((u) => !memberIds.has(u.id));
+
+  const canCreate = newForm.username.trim().length >= 2 && newForm.name.trim().length >= 1;
+  const busy = addExistingMut.isPending || createMut.isPending || removeMut.isPending;
+
+  const inputCls =
+    "w-full px-2.5 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[rgb(26,107,200)]";
+
+  return (
+    <div className="flex-1 min-h-0 flex flex-col bg-[#FCFDFE]">
+      {/* 栏头 */}
+      <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-[#E9E9E9] bg-[#FAFBFC]">
+        <UsersIcon className="w-4 h-4 flex-shrink-0" style={{ color: ADMIN_BLUE }} />
+        <h3 className="text-sm font-bold text-[#1A1A1A] truncate">本机构成员</h3>
+        <span className="text-[10px] text-[#9CA3AF] flex-shrink-0">直接 {members.length} 人</span>
+        <span className="ml-auto text-[10px] text-[#9CA3AF] flex-shrink-0">改动即时生效</span>
+      </div>
+
+      <div className="flex-1 overflow-auto p-4 space-y-4">
+          {/* 当前成员 */}
+          <section>
+            <h4 className="text-xs font-semibold text-[#4B5563] mb-2">当前成员</h4>
+            {membersQuery.isLoading ? (
+              <div className="text-xs text-[#9CA3AF] py-4 text-center">加载中…</div>
+            ) : members.length === 0 ? (
+              <div className="text-xs text-[#9CA3AF] py-4 text-center border border-dashed border-[#E9E9E9] rounded-md">
+                本机构暂无直接成员
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {members.map((m) => (
+                  <MemberRow
+                    key={m.userId}
+                    m={m}
+                    disabled={busy}
+                    onRemove={() => removeMut.mutate(m.userId)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* 添加成员 */}
+          <section className="rounded-lg border border-[#E9E9E9] bg-[#FAFBFC] p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <UserPlusIcon className="w-4 h-4" style={{ color: ADMIN_BLUE }} />
+              <h4 className="text-xs font-semibold text-[#1A1A1A] truncate">添加成员到「{orgName}」</h4>
+            </div>
+
+            <div className="flex gap-1 text-xs">
+              {([["existing", "选择现有用户"], ["new", "新建用户"]] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => { setTab(id); setErr(null); }}
+                  className="px-3 py-1.5 rounded-md border transition-colors"
+                  style={{
+                    backgroundColor: tab === id ? ADMIN_BLUE_BG : "white",
+                    borderColor: tab === id ? ADMIN_BLUE : "#E9E9E9",
+                    color: tab === id ? ADMIN_BLUE : "#6B7280",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* 职务(两种方式共用) */}
+            <div>
+              <label className="text-[11px] text-[#6B7280]">职务(可选)</label>
+              <input
+                value={position}
+                onChange={(e) => setPosition(e.target.value)}
+                placeholder="如:科员 / 部长(留空则不填)"
+                className={`mt-1 ${inputCls}`}
+              />
+            </div>
+
+            {tab === "existing" ? (
+              <div className="space-y-2">
+                <div className="relative">
+                  <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
+                  <input
+                    autoFocus
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="搜索姓名 / 员工编号(支持拼音)"
+                    className="w-full pl-7 pr-2 py-1.5 text-sm border border-[#E9E9E9] rounded-md focus:outline-none focus:border-[rgb(26,107,200)]"
+                  />
+                </div>
+                {search.trim().length === 0 ? (
+                  <p className="text-[11px] text-[#9CA3AF] px-1">输入关键词查找用户,点「加入」即可。</p>
+                ) : searchQ.isLoading ? (
+                  <div className="text-xs text-[#9CA3AF] py-3 text-center">搜索中…</div>
+                ) : candidates.length === 0 ? (
+                  <div className="text-xs text-[#9CA3AF] py-3 text-center">无匹配(或都已在本机构)</div>
+                ) : (
+                  <div className="space-y-1.5 max-h-60 overflow-auto">
+                    {candidates.map((u) => (
+                      <div
+                        key={u.id}
+                        className="flex items-center gap-2 p-2 rounded-md border border-[#E9E9E9] bg-white"
+                      >
+                        <div className="w-7 h-7 rounded-full text-white grid place-items-center text-xs font-bold flex-shrink-0"
+                          style={{ backgroundColor: ADMIN_BLUE }}>
+                          {u.name.charAt(0)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm text-[#1A1A1A] truncate">
+                            {u.name}
+                            <span className="text-[10px] text-[#9CA3AF] ml-1">{u.username}</span>
+                          </div>
+                          {u.primaryAdmin && (
+                            <div className="text-[10px] text-[#9CA3AF] truncate">
+                              现属:{u.primaryAdmin.orgName}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => addExistingMut.mutate(u.id)}
+                          disabled={busy}
+                          className="px-2.5 py-1 rounded-md text-xs font-medium text-white disabled:opacity-50 flex-shrink-0"
+                          style={{ backgroundColor: ADMIN_BLUE }}
+                        >
+                          加入
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  value={newForm.username}
+                  onChange={(e) => setNewForm({ ...newForm, username: e.target.value })}
+                  placeholder="员工编号 *(登录账号,不可重复)"
+                  className={inputCls}
+                />
+                <input
+                  value={newForm.name}
+                  onChange={(e) => setNewForm({ ...newForm, name: e.target.value })}
+                  placeholder="姓名 *"
+                  className={inputCls}
+                />
+                <input
+                  value={newForm.phone}
+                  onChange={(e) => setNewForm({ ...newForm, phone: e.target.value })}
+                  placeholder="手机号(可选)"
+                  className={inputCls}
+                />
+                <button
+                  onClick={() => createMut.mutate()}
+                  disabled={!canCreate || busy}
+                  className="w-full px-3 py-1.5 rounded-md text-xs font-medium text-white disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  style={{ backgroundColor: ADMIN_BLUE }}
+                >
+                  {createMut.isPending ? (
+                    <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <UserPlusIcon className="w-3.5 h-3.5" />
+                  )}
+                  创建并加入本机构
+                </button>
+                <p className="text-[10px] text-[#9CA3AF]">
+                  创建后默认在职;党组织归属、角色权限可到「用户管理」补充。
+                </p>
+              </div>
+            )}
+
+            {err && (
+              <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">
+                {err}
+              </div>
+            )}
+          </section>
+        </div>
+    </div>
+  );
+}
+
+function MemberRow({ m, onRemove, disabled }: { m: OrgMember; onRemove: () => void; disabled: boolean }) {
+  return (
+    <div className="flex items-center gap-2 p-2 rounded-md border border-[#E9E9E9]">
+      <div
+        className="w-7 h-7 rounded-full text-white grid place-items-center text-xs font-bold flex-shrink-0"
+        style={{ backgroundColor: ADMIN_BLUE }}
+      >
+        {m.name.charAt(0)}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm text-[#1A1A1A] truncate">
+          {m.name}
+          <span className="text-[10px] text-[#9CA3AF] ml-1">{m.username}</span>
+          {m.isPrimary && (
+            <span
+              className="text-[9px] font-bold px-1 py-0.5 rounded ml-1"
+              style={{ backgroundColor: ADMIN_BLUE_BG, color: ADMIN_BLUE }}
+            >
+              主岗
+            </span>
+          )}
+        </div>
+        {m.position && <div className="text-[10px] text-[#9CA3AF] truncate">{m.position}</div>}
+      </div>
+      <button
+        onClick={onRemove}
+        disabled={disabled}
+        className="p-1 rounded hover:bg-red-50 text-[#9CA3AF] hover:text-red-600 disabled:opacity-50 flex-shrink-0"
+        title="移出本机构"
+      >
+        <Trash2Icon className="w-3.5 h-3.5" />
+      </button>
     </div>
   );
 }

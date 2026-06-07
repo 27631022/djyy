@@ -186,6 +186,32 @@ export class StorageService {
   }
 
   /**
+   * 列某业务文件夹下未软删的文件(新→旧),供「历史库」等浏览/挑选场景。
+   * originalNameContains 可再按文件名子串筛(如只要含「头像」的)。只回安全投影,不含字节。
+   */
+  async list(opts: {
+    ownerModule: string;
+    folder?: string;
+    originalNameContains?: string;
+    limit?: number;
+  }): Promise<StoredFileMeta[]> {
+    const folder = opts.folder ? this.sanitizeFolder(opts.folder) || undefined : undefined;
+    const rows = (await this.prisma.storedFile.findMany({
+      where: {
+        deletedAt: null,
+        ownerModule: opts.ownerModule,
+        ...(folder ? { folder } : {}),
+        ...(opts.originalNameContains
+          ? { originalName: { contains: opts.originalNameContains } }
+          : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(opts.limit ?? 50, 200),
+    })) as StoredFileRow[];
+    return rows.map((r) => this.toMeta(r));
+  }
+
+  /**
    * 软删:置 deletedAt + 删真实字节(显式删除是管理员动作,顺手清字节,避免孤儿)。
    * 元数据行保留(审计可追),字节删除 best-effort(失败不阻断)。
    */

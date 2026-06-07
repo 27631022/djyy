@@ -402,6 +402,8 @@ model ExternalApi {
   apiUrl       String? // 自定义 endpoint(internal 必填内网地址,如 http://10.x:8000/v1)
   model        String? // 默认文本模型
   visionModel  String? // 多模态/视觉模型(OCR 用)。空 = 走 model 兜底
+  imageModel   String? // 图像生成/图生图模型(SeedEdit 等,出图)。空 = 不支持生图,不与文本/视觉模型混用
+  model3d      String? // 3D 生成模型(Seed3D 等,异步出 .glb 3D 模型)。空 = 不支持 3D 生成
   rechargeUrl  String? // 平台充值/计费控制台 URL
   priority     Int      @default(50) // 业务优先级,大者优先。getActive*() 按此降序选
   capabilities String   @default("chat") // 能力标签逗号分隔:chat/vision/reasoning
@@ -423,6 +425,17 @@ model AiRoute {
   id          String   @id @default(cuid())
   consumerKey String   @unique // 对应 AI_CONSUMERS[].key,如 'certificate.extract.text'
   provider    String? // 绑定到的 ExternalApi.provider;null/缺行 = 自动按优先级
+  updatedById String? // 最后修改人(审计冗余)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// AI 提示词覆盖表 —— 后台改过的提示词存这里(key→content);默认值在代码 prompt/ai-prompts.ts。
+// 无行 = 用代码默认值;删行 = 还原默认。
+// @module: prompt
+model AiPrompt {
+  key         String   @id // = AI_PROMPTS[].key,如 'avatar.generate'
+  content     String // 覆盖后的提示词全文
   updatedById String? // 最后修改人(审计冗余)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

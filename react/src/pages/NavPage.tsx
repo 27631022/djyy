@@ -17,6 +17,7 @@ import { Separator } from "@/shared/components/ui/separator";
 import { useAuth } from "../stores/auth";
 import { siteSettingApi, FALLBACK_SITE_SETTINGS, SiteLogo } from "@/features/site-setting";
 import { navApi, type NavCategoryDto, type NavItemDto } from "@/features/nav-category";
+import { resolveAvatarUrl } from "@/features/avatar";
 import { DEMO_RANKINGS, rankBarGradient, scoreBarPct } from "@/shared/lib/ranking-demo";
 import { LucideIcon } from "@/shared/components/IconPicker";
 
@@ -567,6 +568,7 @@ function HeaderUserArea() {
 
   /* 已登录:显示用户头像 + 名字 + 下拉菜单 */
   const initial = (me.name || me.username || "?").trim().charAt(0).toUpperCase();
+  const avatarSrc = resolveAvatarUrl(me.avatarUrl);
   return (
     <div className="flex items-center gap-2" ref={menuRef}>
       <Link
@@ -582,8 +584,8 @@ function HeaderUserArea() {
           onClick={() => setMenuOpen(v => !v)}
           className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-party-soft transition-colors"
         >
-          {me.avatarUrl ? (
-            <img src={me.avatarUrl} alt={me.name} className="w-8 h-8 rounded-full object-cover border border-[#E9E9E9]" />
+          {avatarSrc ? (
+            <img src={avatarSrc} alt={me.name} className="w-8 h-8 rounded-full object-cover border border-[#E9E9E9]" />
           ) : (
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-white text-base font-bold flex-shrink-0"

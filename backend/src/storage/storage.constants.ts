@@ -21,4 +21,7 @@ export const ALLOWED_EXT_MIME: Record<string, string> = {
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   txt: 'text/plain',
   csv: 'text/csv',
+  // 3D 模型(Seed3D 生成 / 3D 展厅用)
+  glb: 'model/gltf-binary',
+  gltf: 'model/gltf+json',
 };

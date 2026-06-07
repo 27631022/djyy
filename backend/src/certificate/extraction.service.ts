@@ -28,6 +28,7 @@ const PDFParse: PdfParseCtor = (() => {
 })();
 import { AuditService } from '../audit';
 import { ExternalApiService } from '../external-api';
+import { PromptService } from '../prompt';
 import type {
   ExtractHonorResponse,
   ExtractedHonor,
@@ -40,27 +41,8 @@ interface ExtractCtx {
   ip?: string;
 }
 
-/** 提示 DeepSeek 返回结构化 JSON 的 system prompt */
-const SYSTEM_PROMPT = `你是一个证书管理系统的「荣誉表彰文件解析助手」。用户上传表彰文件原文(Word/PDF 转出的纯文本),你的任务是从中提取结构化信息。
-
-关键能力:**一份文件可能包含多种荣誉**(如"两优一先"通常包含"优秀共产党员"、"优秀党务工作者"、"先进基层党组织"三类)。务必识别为多个 honor 项,不要合并成一项。
-
-提取要点:
-1. honors:荣誉项数组,每项含:
-   - honorName:荣誉名称(如"优秀共产党员",不要带年份前缀)
-   - honorType:荣誉类型,严格二选一:
-     · "individual" — 个人荣誉(优秀共产党员、优秀党务工作者、先进个人 等)
-     · "collective" — 集体荣誉(凡非个人皆归此类:先进基层党组织、文明单位、青年突击队、
-        巾帼建功示范岗、五好家庭、某某小组、某某团队、某某班组 等)
-     如无法明确判断,默认 "individual"
-   - issuingOrg:该荣誉的颁发机构,如"中共 XX 委员会"(找不到留空字符串)
-   - recipients:对应受表彰对象/单位的数组,每项含 name(必填)/ empNo(可选)/ dept(可选)
-     · honorType=collective 时,把 name 填成单位/集体/团队名,empNo/dept 留空
-2. yearLabel:整个文件级别的年份,"2024" 或 "2024-2025"。抽不到留空
-3. issueDate:整个文件的颁发/落款日期,ISO 格式 YYYY-MM-DD,抽不到留空
-
-输出严格 JSON,不要 markdown / 围栏 / 解释:
-{"honors":[{"honorName":"...","honorType":"individual","issuingOrg":"...","recipients":[{"name":"..."}]}],"yearLabel":"...","issueDate":"..."}`;
+// 证书表彰文件解析的 system prompt 已迁到 AI 提示词注册表(prompt/ai-prompts.ts),
+// 运行时经 PromptService.get('certificate.extract') 取(文本 + 图片 OCR 共用,后台可覆盖)。
 
 @Injectable()
 export class CertificateExtractionService {
@@ -70,6 +52,7 @@ export class CertificateExtractionService {
     private readonly config: ConfigService,
     private readonly audit: AuditService,
     private readonly externalApi: ExternalApiService,
+    private readonly prompts: PromptService,
   ) {}
 
   /**
@@ -134,7 +117,7 @@ export class CertificateExtractionService {
           model,
           response_format: { type: 'json_object' },
           messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'system', content: await this.prompts.get('certificate.extract') },
             {
               role: 'user',
               content: `文件名:${file.originalname}\n--- 文件正文 ---\n${truncated}`,
@@ -280,7 +263,7 @@ export class CertificateExtractionService {
           model,
           response_format: { type: 'json_object' },
           messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'system', content: await this.prompts.get('certificate.extract') },
             {
               role: 'user',
               content: [

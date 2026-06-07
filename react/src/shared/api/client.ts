@@ -23,6 +23,13 @@ function inferApiBase(): string {
 
 const BASE_URL = inferApiBase();
 
+/**
+ * API 源(BASE_URL 去掉末尾 /api)—— 拼**公开静态资源**(头像等 <img src>)的完整 URL 用。
+ * 如 BASE_URL=http://10.10.10.195:3001/api → apiOrigin=http://10.10.10.195:3001。
+ * 治局域网 IP 变动:随 hostname 推断,头像 URL 存相对路径、渲染时拼这个前缀即可。
+ */
+export const apiOrigin = BASE_URL.replace(/\/api\/?$/, "");
+
 const TOKEN_KEY = "djyy_auth_token_v1";
 
 export const api = axios.create({

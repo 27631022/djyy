@@ -18,6 +18,8 @@ export interface ExternalApiDto {
   model: string | null;
   /** 多模态/视觉模型(OCR 用)。空时图像调用走 model 兜底 */
   visionModel: string | null;
+  /** 图像生成/图生图模型(SeedEdit 等,出图)。空 = 不支持生图 */
+  imageModel: string | null;
   /** 平台充值/计费控制台 URL */
   rechargeUrl: string | null;
   /** 业务优先级 0-100,数字大的优先,默认 50 */
@@ -65,6 +67,7 @@ export interface UpdateExternalApiInput {
   apiUrl?: string;
   model?: string;
   visionModel?: string;
+  imageModel?: string;
   rechargeUrl?: string;
   priority?: number;
   capabilities?: string;
@@ -100,7 +103,7 @@ export interface ResolvedConsumer {
   app: string;
   label: string;
   description?: string;
-  capability: "chat" | "vision" | "reasoning";
+  capability: "chat" | "vision" | "reasoning" | "image";
   /** 'pinned'=已指定;'auto'=按优先级 */
   mode: "pinned" | "auto";
   /** 用户绑定的 provider(null=自动) */

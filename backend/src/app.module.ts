@@ -21,6 +21,9 @@ import { CertificateModule } from './certificate';
 import { TaskModule } from './task';
 import { MaintenanceModule } from './maintenance';
 import { DesktopModule } from './desktop';
+import { AvatarModule } from './avatar';
+import { Model3dModule } from './model3d';
+import { PromptModule } from './prompt';
 
 @Module({
   imports: [
@@ -46,6 +49,9 @@ import { DesktopModule } from './desktop';
     TaskModule,
     MaintenanceModule,
     DesktopModule,
+    AvatarModule,
+    Model3dModule,
+    PromptModule,
   ],
   providers: [
     // 全局权限守卫:仅 @Permission() 装饰的接口实际校验,其他不影响
