@@ -26,9 +26,9 @@ async function bootstrap() {
       if (!origin) return cb(null, true);
       // 显式白名单
       if (whitelist.includes(origin)) return cb(null, true);
-      // 开发环境:允许局域网内任意主机的 5173 端口(前端 dev server)
-      // 形如 http://10.10.10.195:5173 / http://192.168.x.x:5173 都放行
-      if (isDev && /^https?:\/\/[^/]+:5173$/.test(origin)) return cb(null, true);
+      // 开发环境:允许局域网内任意主机的 5173/5174 端口
+      // (5173=react 前端,5174=3D 展厅客户端;同源 POST 浏览器也带 Origin,经 vite proxy 透传到这)
+      if (isDev && /^https?:\/\/[^/]+:517[34]$/.test(origin)) return cb(null, true);
       return cb(new Error(`CORS rejected: ${origin}`));
     },
     credentials: true,

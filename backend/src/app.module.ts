@@ -24,6 +24,7 @@ import { DesktopModule } from './desktop';
 import { AvatarModule } from './avatar';
 import { Model3dModule } from './model3d';
 import { PromptModule } from './prompt';
+import { ExhibitionModule } from './exhibition';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { PromptModule } from './prompt';
     AvatarModule,
     Model3dModule,
     PromptModule,
+    ExhibitionModule,
   ],
   providers: [
     // 全局权限守卫:仅 @Permission() 装饰的接口实际校验,其他不影响

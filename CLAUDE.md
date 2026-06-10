@@ -293,6 +293,13 @@ npm run db:seed
   - **提示词集中管理**(`prompt` 模块):代码注册表 `ai-prompts.ts` 存默认值(**不 import 业务模块,守 DAG**)+ `AiPrompt` 覆盖表(key 主键,migrate `add_ai_prompt`)+ `PromptService.get(key)`=覆盖或默认;**task/certificate/avatar 提示词全抽离**,业务模块注入 `PromptService` 调 `await this.prompts.get(key)`;前端 `/admin/prompts` **左列表/右编辑**分栏页(改即生效、可恢复默认)。**以后加 AI 提示词 = ai-prompts.ts 加一条 + 业务模块 get(key)**。
   - **组织管理**:行政机构设为**默认 tab 且左置**(原党组织默认);**编辑行政机构抽屉加「成员」tab**(基本属性 / 成员 切换)—— 看直接成员 + 加(选现有用户搜索 / 新建用户,带职务)+ 移出,**改动即时生效**(不走表单保存);后端 `user` 加**单条归属增删**接口(`POST /users/:id/memberships`、`DELETE /users/:id/memberships/:orgId`,复合主键 `userId_orgId`,首条同类自动设主、删主自动提升、重复加 409)。党组织侧不变。
   - 门禁:前端 0 error / 41 warning(基线),后端 0 error / 0 cycle;org 成员增删接口 API 端到端冒烟过(加→查→重复 409→删→不存在 404)。
+- **(2026-06-09)企业虚拟展厅 P1:后端 exhibition 模块 + 美观大气 3D 客户端**(规格 v2 修订见 docs/specs/2026-06-07-virtual-exhibition-hall.md 第 15 节;用户三方向=美观大气 / 2D拖拽建厅 / 后台内容编辑,本期落①打底③):
+  - **后端 `exhibition` 模块**:`Hall` 表(空间 JSON:metaJson/wallsJson/fixturesJson,素材松引用 storage fileId)+ CRUD(`GET /halls`、`GET /halls/:id` 公开;写 `@Permission('exhibition:manage')`,已进 seed 并授 platform/enterprise_admin)+「**已解析**」逻辑(fileId→`/api/public/exhibition/assets/:id` 公开流式口,校验 ownerModule)+ 连接器占位注册表(P5 接证书/任务真数据)。
+  - **中文 3D 文字管线**(新组件类型 **`text_3d`**):`GET /api/public/exhibition/font?chars=` 用 **opentype.js** 解析 `backend/assets/fonts/NotoSansSC.ttf`(思源黑体 OFL,~18MB 进 git)按需出 **typeface 格式 glyph 子集**(6 字 ~5KB;TTF 二次曲线只产 m/l/q,**q/b 终点在前**);客户端 `MeshBuilder.CreateText + earcut` 挤出,失败回退平面字。冒烟实测「企业文化展厅」金属红立体字完美。
+  - **独立客户端 `exhibition-client/`**(Vite+TS+Babylon 9,无 React,5174,proxy `/api`→3001 免 CORS):数据驱动渲染(墙体挤出+碰撞 / 第一人称 WASD+指针锁定+移动端摇杆 / POINTERTAP 拾取→HTML 详情浮层 / WebXR 优雅降级)+ **美术包前置**(全 PBR+IBL 自托管 HDR、发光格栅吊顶+GlowLayer、反光地板、展品射灯+假体积光锥 `includedOnlyMeshes` 控灯数、画框/卡纸/玻璃、踢脚线/顶角线、ACES+FXAA+轻bloom、**三套主题预设**(默认 modern_light 浅色现代,党建红点缀)、精致占位面板、品牌化加载页)。seed 示例厅「企业文化展厅」(24×14m 序厅+主展区、挑高 4.5m、9 个组件覆盖全类型)。
+  - **踩坑记录(都修了)**:① PBR albedo/emissive 要 `.toLinearSpace()`(sRGB 直喂会把党建红洗成粉,统一收在 materialFactory);② HemisphericLight `groundColor` 默认黑→吊顶发黑(补灰底色+吊顶微 emissive);③ 双面文字禁 DOUBLESIDE(背面镜像,改两块单面板);④ **同源 POST 浏览器也带 Origin** → 经 vite proxy 透传,后端 dev CORS 放行 `*:517[34]`(main.ts);⑤ fixture rot 约定 0=朝-Y,根节点 `rotation.y=-rot`、相机 `π-rot`。
+  - 验证:两端门禁 0 error(+backend 0 cycle);预览窗隐藏用「手动 scene.render() + canvas→/api/files 落盘」截 6 张图核对美术包全项;拾取命中 fx_model;console 0 红错。⚠ 遗留:VR 按钮需安全上下文(localhost 可、局域网 IP 要 TLS);HTML 浮层 VR 内不可见;Draco/KTX2 解码器未配(当前 glb 不压缩,要压缩资产时自托管)。
+  - ⏭ **下轮 = 2D 拖拽搭建器 + 内容编辑**(react/ `features/exhibition`:SVG 画布画墙/拖组件/吸附/撤销重做,右栏按类型编辑内容,复用证书设计器+dnd-kit+useFieldHistory 范式;保存→新窗口 3D 预览)。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
@@ -300,7 +307,7 @@ npm run db:seed
 3. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面
 4. **首页综合查询**:`<CertificateSearchBox embedded />` 已具备,把它和其他业务的查询入口拼到 NavPage / 新首页查询板块
 5. **任务分派系统 P4 富文本+在线文档**(仅剩这一期):P1–P3 + P2.5 指派 + P5 Tauri 客户端 + 超期自动通过都已落地(见已完成);汇总(数字求和/附件 ZIP/CSV)在 `TaskSummary` 已具备。剩 **P4**:内置富文本编辑器(`richtext` 字段)+ `doclink` 接 `DocProvider` 接口 + 群晖在线文档占位 driver。
-6. **企业虚拟展厅系统(3D / VR)** ★大方向 —— 独立 **Babylon.js** 客户端(单人第一人称漫游,桌面/移动/VR 同一份,WebXR 开箱)+ **数据驱动**(展品上传即上架;一个展厅=一份空间 JSON 由平面图生成器产出,多展厅不写代码)+ **复用现有 NestJS 后台**(另起前端工程,不并入 react/)。组件库(图片展柜/视频墙/模型台/荣誉墙/党务公开板/门),**连接器**实时取数:荣誉墙→证书/荣誉、党务板→任务/党务;素材走 storage(自托管 **MinIO**,storage 抽象已留 S3 占位)。已有两原型(数据驱动展厅 + 平面图生成器)验证可行,分 P0–P7。**衔接已建 `model3d` 模块(Seed3D→.glb)+ 3D 交接任务 `~/.claude/plans/ai-3d-indexed-wren.md`**。完整规格 **docs/specs/2026-06-07-virtual-exhibition-hall.md**
+6. **企业虚拟展厅系统(3D / VR)** ★大方向 —— **P1 已交付(2026-06-09,见已完成)**:后端 exhibition 模块 + `exhibition-client/` 美观 3D 客户端 + text_3d 中文立体字管线 + seed 示例厅。**下一期 = 2D 拖拽搭建器 + 组件内容编辑**(react/ `features/exhibition`,设计要点见 spec 第 15 节);再后:门洞(P4)/装饰库/连接器真数据(P5:荣誉墙→证书、党务板→任务)/VR 内网 TLS(P7)。规格 **docs/specs/2026-06-07-virtual-exhibition-hall.md**(含 v2 修订)
 7. **其它业务模块**:排座 / AI 图片分拣 等 —— 按 conventions.md 的"加新模块"清单逐个加
 
 ### ❌ 明确延后/放弃(有真实需求再做)

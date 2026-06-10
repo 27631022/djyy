@@ -305,6 +305,8 @@ async function seedRolesAndPermissions() {
     { code: 'task:review',               name: '任务审核(通过/退回)',    category: 'operation' },
     { code: 'task:reception',            name: '任务接收管理(分派/对口)', category: 'operation' },
     { code: 'task:fill',                 name: '任务填报',                category: 'operation' },
+    // 虚拟展厅(exhibition)— 布展管理(建厅/编辑空间 JSON/删厅);浏览公开免权限
+    { code: 'exhibition:manage',         name: '展厅管理(布展)',          category: 'operation' },
   ];
   for (const p of permissions) {
     await prisma.permission.upsert({
@@ -319,7 +321,7 @@ async function seedRolesAndPermissions() {
     // 企业管理员:全套企业管理权限(不含 角色授权 admin:role:write / 插件 / 删除证书 / 删除文件 等高危权限,留 platform_admin)。
     // 一级 vs 二级 = 同角色不同 scope:分配时 scope=all(一级,全集团)或 scope=subtree(二级,自动锚到派发人所在单位的子树)。
     // 任务域已按 scope 强制;组织/用户管理的范围限制后续按需加。
-    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
+    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage'] },
     { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
     { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
     // 任务派发:给各级机关部门的派发人;配合 UserRole.scope(本组织+下级 / 自定义单位)限定派发范围
@@ -342,6 +344,121 @@ async function seedRolesAndPermissions() {
       }
     }
   }
+}
+
+/* ─── 虚拟展厅:示例厅「企业文化展厅」 ───
+ * 布局(米,原点=平面图中心):外墙 24×14,x=-5 处一道带 2.4m 门洞的内隔墙,
+ * 分出西侧序厅(7×14,入口 LOGO 立体字)与东侧主展区(17×14)。
+ * seed 无 StorageService,素材全空 → 客户端渲染「精致占位」;荣誉墙/公开板
+ * 用 text-only manual 内容,空厅也有真实观感。
+ */
+async function seedExhibitionHall() {
+  const walls = [
+    // 外墙(逆时针围合)
+    { id: 'w1', x1: -12, y1: -7, x2: 12, y2: -7 }, // 南
+    { id: 'w2', x1: 12, y1: -7, x2: 12, y2: 7 }, // 东
+    { id: 'w3', x1: 12, y1: 7, x2: -12, y2: 7 }, // 北
+    { id: 'w4', x1: -12, y1: 7, x2: -12, y2: -7 }, // 西
+    // 内隔墙(x=-5,中间留 2.4m 门洞:y∈[-1.2,1.2])
+    { id: 'w5', x1: -5, y1: -7, x2: -5, y2: -1.2 },
+    { id: 'w6', x1: -5, y1: 1.2, x2: -5, y2: 7 },
+  ];
+  // rot 约定:0=朝-Y(平面图下方),90=朝+X,180=朝+Y,270=朝-X
+  const fixtures = [
+    // ── 序厅(x∈[-12,-5]) ──
+    {
+      id: 'fx_logo', type: 'text_3d', x: -11.5, y: 0, rot: 90, w: 6, d: 0.4,
+      label: '展厅标题',
+      source: { mode: 'manual', content: { text: '企业文化展厅', sizeM: 0.85, depthM: 0.16, finish: 'metal', mount: 'wall' } },
+    },
+    {
+      id: 'fx_door', type: 'door', x: -5, y: 0, rot: 90, w: 2.4, d: 0.5,
+      label: '主展区入口',
+      source: { mode: 'manual', content: null },
+    },
+    // ── 主展区(x∈[-5,12]) ──
+    {
+      id: 'fx_slogan', type: 'text_3d', x: -4.7, y: 3.5, rot: 90, w: 5.5, d: 0.3,
+      label: '标语',
+      source: { mode: 'manual', content: { text: '凝心聚力 · 共创未来', sizeM: 0.45, depthM: 0.1, finish: 'glow', mount: 'wall' } },
+    },
+    {
+      id: 'fx_honor', type: 'honor_wall', x: 4, y: 6.7, rot: 0, w: 4.5, d: 0.3,
+      label: '荣誉墙',
+      source: {
+        mode: 'manual',
+        content: {
+          items: [
+            { title: '全国五一劳动奖状', level: '国家级', year: 2023 },
+            { title: '国家高新技术企业', level: '国家级', year: 2022 },
+            { title: '省级文明单位', level: '省部级', year: 2024 },
+            { title: '省安全生产先进集体', level: '省部级', year: 2023 },
+            { title: '行业质量标杆企业', level: '行业级', year: 2024 },
+            { title: '五四红旗团委', level: '省部级', year: 2025 },
+          ],
+        },
+      },
+    },
+    {
+      id: 'fx_notice', type: 'notice_board', x: -1.5, y: 6.7, rot: 0, w: 2.6, d: 0.3,
+      label: '党务公开板',
+      source: {
+        mode: 'manual',
+        content: {
+          items: [
+            { title: '支部换届选举结果公示', date: '2026-05' },
+            { title: '六月主题党日活动通知', date: '2026-06' },
+            { title: '党费收缴情况公示(上半年)', date: '2026-06' },
+          ],
+        },
+      },
+    },
+    {
+      id: 'fx_img1', type: 'image_case', x: 0, y: -6.7, rot: 180, w: 1.8, d: 0.6,
+      label: '企业发展历程',
+      source: { mode: 'manual', content: { images: [] } },
+    },
+    {
+      id: 'fx_img2', type: 'image_case', x: 4.5, y: -6.7, rot: 180, w: 1.8, d: 0.6,
+      label: '党建活动掠影',
+      source: { mode: 'manual', content: { images: [] } },
+    },
+    {
+      id: 'fx_video', type: 'video_wall', x: 11.7, y: 0, rot: 270, w: 4.2, d: 0.3,
+      label: '企业宣传片',
+      source: { mode: 'manual', content: {} },
+    },
+    {
+      id: 'fx_model', type: 'model_stand', x: 3.5, y: 0, rot: 0, w: 1.2, d: 1.2,
+      label: '产品模型',
+      source: { mode: 'manual', content: {} },
+    },
+  ];
+  const meta = {
+    gridM: 0.5,
+    wallH: 4.5, // 挑高显大气
+    spawn: { x: -8.5, y: 0, rot: 90 }, // 序厅中心,面向主展区
+    theme: { preset: 'modern_light', accent: '#C8001E' },
+  };
+  await prisma.hall.upsert({
+    where: { id: 'hall-demo-culture' },
+    create: {
+      id: 'hall-demo-culture',
+      name: '企业文化展厅',
+      metaJson: JSON.stringify(meta),
+      wallsJson: JSON.stringify(walls),
+      fixturesJson: JSON.stringify(fixtures),
+      published: true,
+      sortOrder: 0,
+    },
+    update: {
+      name: '企业文化展厅',
+      metaJson: JSON.stringify(meta),
+      wallsJson: JSON.stringify(walls),
+      fixturesJson: JSON.stringify(fixtures),
+      published: true,
+    },
+  });
 }
 
 /* ─── 演示用户:展示双归属 ─── */
@@ -904,6 +1021,9 @@ async function main() {
 
   await seedExternalApis();
   console.log('  ✓ 外部 API 预置已写入');
+
+  await seedExhibitionHall();
+  console.log('  ✓ 示例展厅「企业文化展厅」已写入');
 
   // 收尾清理:此时所有 user 归属 / 虚拟组织都已重新指向 KL-* 节点,
   // 老的 PARTY-*/ADMIN-* 节点既无业务引用也无 children,可放心删。

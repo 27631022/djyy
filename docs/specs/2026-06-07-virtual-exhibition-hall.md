@@ -321,3 +321,31 @@ flowchart TB
 ---
 
 *本计划书与已交付的两个原型(数据驱动展厅、平面图生成器)配套使用。*
+
+---
+
+## 15. v2 完善(2026-06-09)—— 三方向规划 + P1 已交付
+
+围绕用户三大方向对规划做的修订,**P1「美观大气 3D 客户端」已按此落地**(后端 `backend/src/exhibition/` + 客户端 `exhibition-client/`):
+
+| 方向 | 修订 | 状态 |
+|---|---|---|
+| ① 美观大气 | 「美术包」从 P6/P7 **前置进首版客户端**:全 PBR + IBL(自托管 1K HDR)、发光格栅吊顶 + GlowLayer、反光地板(低 roughness 吃 env 反射,`mirrorFloor` 预留)、展品射灯 + 假体积光锥(`includedOnlyMeshes` 控灯数)、画框/卡纸/玻璃细节、踢脚线/顶角线、ACES+FXAA+轻 bloom、精致占位面板(空厅也好看)、品牌化加载页 | ✅ P1 已落地 |
+| ② 2D 拖拽建厅 | react/ 后台 `features/exhibition`:SVG 网格画布画墙(0.5m 吸附)+ 组件拖放/旋转/撤销重做(复用证书设计器 + dnd-kit + useFieldHistory 范式),保存 Hall JSON → 新窗口 3D 预览 | ⏭ 下轮 |
+| ③ 后台内容编辑 | 搭建器右栏按组件类型出内容编辑器(图片多传+图注/视频+海报/选 model3d 产物或传 .glb/3D 文字样式/连接器参数),上传走 `storageApi.upload({ownerModule:'exhibition', folder:hallId})` | ⏭ 下轮(text_3d 渲染管线已就绪) |
+
+**契约新增**:
+- `FIXTURE_TYPES` + **`text_3d`**(立体字):`Text3dContent { text, sizeM, depthM, color, finish:'paint'|'metal'|'glow', mount:'floor'|'wall' }`
+- `HallTheme` + `preset:'modern_light'|'party_red'|'dark_tech'`(三套主题参数表在客户端 `theme/presets.ts`)+ `accent` + `mirrorFloor`
+- `HallMeta` + `spawn:{x,y,rot}` 进场出生点
+
+**中文 3D 文字管线**(本版核心新增,已验证):后端 `GET /api/public/exhibition/font?chars=…` 用 opentype.js 解析 `backend/assets/fonts/NotoSansSC.ttf`(思源黑体 OFL),按需输出 **typeface.js 格式 glyph 子集**(TTF 二次曲线 → 只产 m/l/q,注意 q/b 终点在前控制点在后);客户端 `MeshBuilder.CreateText + earcut` 挤出,失败回退 DynamicTexture 平面字。6 字子集仅 ~5KB。
+
+**实现要点备忘**(踩坑记录):
+- PBR `albedoColor/emissiveColor` 要线性空间 —— sRGB hex 必须 `.toLinearSpace()`,否则党建红被洗成粉色;
+- HemisphericLight `groundColor` 默认黑 → 吊顶(面朝下)发黑,要给灰底色 + 吊顶补微量 emissive;
+- 门头牌等双面文字不能用 DOUBLESIDE(背面镜像),要两块单面板背靠背;
+- 同源 POST 浏览器也带 `Origin` 头 → 经 vite proxy 透传后端,后端 dev CORS 需放行 `*:5174`;
+- fixture `rot` 约定:0=朝-Y,面向 = (sin rot, -cos rot);fixture 根节点 `rotation.y=-rot`,相机 `rotation.y=π-rot`。
+
+里程碑修订:原 P6(装扮)大部分已并入 P1;P2(管理端)与 P3(平面图生成器)合并为下轮「2D 搭建器 + 内容编辑」。

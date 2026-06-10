@@ -4,6 +4,9 @@
 # Node deps (新加的 root package.json 装了 husky)
 node_modules/
 
+# 3D 展厅客户端构建产物(public/env 的 HDR 与后端字体 TTF 要提交,勿忽略)
+exhibition-client/dist/
+
 # Husky 自动生成的工具脚本(由 npm install 触发的 husky init 重建)
 # 但保留 .husky/pre-commit 和其他用户编写的 hook
 .husky/_/

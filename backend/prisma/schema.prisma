@@ -751,3 +751,26 @@ model UnitTaskRouting {
   @@unique([unitOrgId, sourceOrgId])
   @@index([unitOrgId])
 }
+
+// ─────────────────────────────────────────────────────────
+// 企业虚拟展厅(数据驱动:一个展厅 = 一份空间文档)
+// ─────────────────────────────────────────────────────────
+// @module: exhibition  虚拟展厅空间文档
+// walls/fixtures/meta 均为 JSON 串(SQLite 无原生 JSON);素材一律松引用 storage fileId,
+// 不建跨模块外键。GET /halls/:id 时由 service 把 fileId 解析成公开素材 URL(即「已解析」展厅)。
+model Hall {
+  id              String   @id @default(cuid())
+  name            String
+  thumbnailFileId String? // 封面图 storage fileId(松引用 StoredFile)
+  metaJson        String   @default("{}") // { gridM, wallH, theme:{floorMat,wallMat,lighting} }
+  envModelFileId  String? // 可选:Blender 烘焙的房间外壳 .glb 的 fileId(替换程序化墙)
+  wallsJson       String   @default("[]") // Wall[]: {id,x1,y1,x2,y2}(米,原点在平面图中心)
+  fixturesJson    String   @default("[]") // Fixture[]: 组件实例(source.mode = manual | connector)
+  published       Boolean  @default(false)
+  sortOrder       Int      @default(0)
+  createdById     String? // 创建人 user id(松引用)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([published])
+}
