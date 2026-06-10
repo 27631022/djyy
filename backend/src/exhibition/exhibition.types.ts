@@ -117,6 +117,7 @@ export interface ResolvedHall {
   id: string;
   name: string;
   thumbnail: string | null;
+  published: boolean;
   meta: HallMeta;
   envModelUrl: string | null;
   walls: Wall[];

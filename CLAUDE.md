@@ -47,6 +47,7 @@ djyy/                              ← git 根 + monorepo
 │   │   │   ├── auth/              ← api.ts + index.ts (无页面)
 │   │   │   ├── certificate/       ← 证书 V1-V3:模板设计器/发证向导/公开验证/AI 提取/外部录入
 │   │   │   ├── dictionary/        ← api.ts + pages/Dictionaries.tsx + index.ts
+│   │   │   ├── exhibition/        ← 3D 展厅管理:展厅库 + 2D 拖拽搭建器(SVG 画墙/组件/吸附)+ 内容编辑
 │   │   │   ├── external-api/      ← AI 平台配置(DeepSeek/豆包/千问 — key/model/优先级)
 │   │   │   ├── nav-category/
 │   │   │   ├── organization/
@@ -308,6 +309,14 @@ npm run db:seed
   - **后端 `venue` 模块**:4 表均 `// @module: venue` —— `MeetingRoom`(实体会议室)/ `VenueLayout`(会场图,`layoutJson`=可序列化画布 VenueDesignerState)/ `SeatingPlan`(选座方案,rosterJson+rulesJson)/ `SeatingAssignment`(座位分配,seatId 引用 layoutJson 稳定 id)。venue 内部真 relation+cascade,指向外部 orgId/userId/fileId 松引用不建外键。Room/Layout/Seating/VenueAI 4 组 controller+service(AI 生成布局走 ExternalApiModule)。权限点 `venue:manage`(授 platform/enterprise_admin)+ 字典 `venue_roster_group`/`venue_special_type` + seed 示例「综合楼三楼大会议室」+ 标准表彰布局 60 座。
   - **前端 `features/venue`**:会议室列表 / 会场图设计器(SVG 画布+元素面板+图层+属性栏,复用证书设计器+dnd-kit 范式)/ 排座向导(4 步)/ 排座工作台(名单工作台+AI 智能排座+手动微调)/ 导出(座位图 PNG·PDF、安排表/签到表 Excel、对折桌签)。AdminLayout「会场管理」分组 3 项 + App.tsx 6 路由 + `DICT_CODES` 加两键。
   - **踩坑**:首次合并我自编 venue 路由/菜单(`rooms/:roomId/layout/new` 等)与页面内部 navigate 对不上 → 菜单只 2 项且点进 404;**改回分支原配置**(6 路由含 `seating/:planId/wizard`,新建会议=planId="new")后 preview 实测三页全渲染+后端数据通+0 console error。门禁:后端 0 error/0 cycle、前端 0 error/41 warning(基线)。**已删** 分支(3 个 claude/*)+ worktree + 残留 backend 进程。⚠ 分支里的 `task-template` 是 main 已删死代码,**未并回**。详见 commit `a9572104`(合并)+ `da30a504`(路由修正)。
+- **(2026-06-10)企业虚拟展厅 P2:2D 拖拽搭建器 + 组件内容编辑**(用户方向②③,接 P1 的 3D 客户端):`react/src/features/exhibition/` 全新 feature,菜单「3D 展厅 → 展厅管理」(`exhibition:manage`),路由 `/admin/halls` + `/admin/halls/:hallId/design`。
+  - **2D 搭建器**(`HallDesigner` 三栏):左 `FixturePalette`(选择/画墙工具 + 7 组件类型 stamp 放置 + 对象列表)/ 中 **`HallCanvas` SVG 画布**(米坐标×`M2U=50` 直接当 viewBox 单位、原点居中;`<pattern>` 双层网格;**滚轮缩放锚定光标 + 空白左拖/中键平移**(viewBox 平移缩放,非滚动容器);**画墙**=点击连线 0.5m 网格吸附+端点吸附+7° 正交自动拉直+实时长度标注,双击/Esc/右键收笔;**贴墙组件自动吸附**(`snapFixtureToWall`:投影到最近墙段、偏移 `WALL_T/2+d/2`、朝向=背墙朝外,门吸在墙中线;Alt 取消);旋转手柄 15° 步进(Shift=1°);出生点可拖)/ 右 `PropertiesPanel`(未选=厅设置 墙高/网格/主题预设/点缀色/镜面地板/出生点;选中=通用属性+**按类型内容编辑器**)。撤销重做 `useHistory`(copy 同源)+ 快捷键(Ctrl+Z/Y、Delete、R 旋 90°、方向键微移)。
+  - **内容编辑**(`ContentEditors`,方向③):图片展柜=多图上传+图注+排序;视频墙=mp4/webm+封面;模型台=.glb+缩放+自转;荣誉墙/党务板=条目编辑 + **数据来源切换 手动/连接器**(GET /connectors,P1 占位标「待接入」);立体字=文字/字高/厚度/颜色/质感(烤漆·金属·发光)/安装(贴墙·落地)。上传统一 `storageApi.upload({ownerModule:'exhibition', folder:hallId})`,预览用公开口 URL。
+  - **保存链**:剥后端「已解析」旁补的 url 键(`stripResolvedUrls`)→ PATCH /halls/:id + **平面缩略图**(canvas 2d 画墙/组件/出生点 → PNG 传 storage → `thumbnailFileId`,旧图顺手删);「3D 预览」=先保存再开 `/exhibition/?hall=<id>`(vite 已代理);发布/下架按钮。列表页 `Halls`=卡片(缩略图+发布态+布展/3D/删除)+ 新建对话框(名称+三主题预设,初始 16×10m 矩形房)。
+  - **后端配套**:`ResolvedHall` 加 `published`(三处契约同步:backend/react/exhibition-client);**`ExhibitionService.collectInUseFileIds()`**(thumbnail/envModel/fixtures 深层 `*FileId`)→ **`MaintenanceService` 聚合** + ⚠ 顺手修了潜在数据丢失:孤儿 GC 原本不分模块,**avatar(头像库)/model3d(生成历史)整库会被当孤儿 purge 真删** → 加 `LIBRARY_MODULES` 豁免(这俩设计上常驻、无业务表逐条引用)。
+  - **React Compiler 踩坑**:① render 期读 `dragRef`(光标样式)→ `react-hooks/refs` error,改 `panning` state;② 「加载→effect 同步 setState」让编译器跳过组件、连带全部 useCallback 报 `preserve-manual-memoization` error → **数据就绪后以 `key={hall.id}` 重挂载内层组件,编辑态全用 useState 初始化器起步**(无加载 effect),画布初始视野也在 useState 初始化器里按内容包围盒适配。模式可复用:**取数页面想零 effect 同步,就拆「外壳查询 + key 重挂载内层」**。
+  - 验证:双端门禁 0 error(前端 41 warning 基线持平、后端 0 cycle);preview 端到端冒烟=列表卡片→设计器加载 seed 厅(6 墙 9 组件平面图正确)→palette 点立体字→画布点击放置(9→10)→右栏出 text_3d 编辑器→保存(POST /files 201 + PATCH 200 + toast)→Ctrl+Z 撤销(10→9)→再保存恢复→`/exhibition/?hall=` 200;console 0 error。
+  - ⏭ 下轮:门洞挖墙(P4)/ 装饰组件库 / 连接器真数据(P5:荣誉墙→证书、党务板→任务)/ VR 内网 TLS(P7);模型台「从 3D 生成历史挑选」(现仅提示去下载再上传,因公开素材口校验 ownerModule=exhibition)。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
@@ -315,7 +324,7 @@ npm run db:seed
 3. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面
 4. **首页综合查询**:`<CertificateSearchBox embedded />` 已具备,把它和其他业务的查询入口拼到 NavPage / 新首页查询板块
 5. **任务分派系统 P4 富文本+在线文档**(仅剩这一期):P1–P3 + P2.5 指派 + P5 Tauri 客户端 + 超期自动通过都已落地(见已完成);汇总(数字求和/附件 ZIP/CSV)在 `TaskSummary` 已具备。剩 **P4**:内置富文本编辑器(`richtext` 字段)+ `doclink` 接 `DocProvider` 接口 + 群晖在线文档占位 driver。
-6. **企业虚拟展厅系统(3D / VR)** ★大方向 —— **P1 已交付(2026-06-09,见已完成)**:后端 exhibition 模块 + `exhibition-client/` 美观 3D 客户端 + text_3d 中文立体字管线 + seed 示例厅。**下一期 = 2D 拖拽搭建器 + 组件内容编辑**(react/ `features/exhibition`,设计要点见 spec 第 15 节);再后:门洞(P4)/装饰库/连接器真数据(P5:荣誉墙→证书、党务板→任务)/VR 内网 TLS(P7)。规格 **docs/specs/2026-06-07-virtual-exhibition-hall.md**(含 v2 修订)
+6. **企业虚拟展厅系统(3D / VR)** ★大方向 —— **P1(美观 3D 客户端,2026-06-09)+ P2(2D 拖拽搭建器+内容编辑,2026-06-10)均已交付,见已完成**。剩余:门洞挖墙(P4)/ 装饰组件库 / 连接器真数据(P5:荣誉墙→证书、党务板→任务)/ VR 内网 TLS(P7)。规格 **docs/specs/2026-06-07-virtual-exhibition-hall.md**(含 v2 修订)
 7. **其它业务模块**:AI 图片分拣 等 —— 按 conventions.md 的"加新模块"清单逐个加(**会场排座已落地**,见已完成 2026-06-10 venue 合并)
 
 ### ❌ 明确延后/放弃(有真实需求再做)

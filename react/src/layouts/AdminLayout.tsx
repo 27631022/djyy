@@ -9,7 +9,7 @@ import {
   AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon,
   PanelLeftCloseIcon, PanelLeftOpenIcon,
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon,
-  ArmchairIcon, PlusIcon,
+  ArmchairIcon, PlusIcon, LandmarkIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 import { useDesktopInboxAlerts } from "@/features/task";
@@ -59,6 +59,7 @@ const CATEGORIES: Category[] = [
       // 任务派发:仅有 task:manage 的人(派发人/管理员)可见;我的待办:人人可见(任何登录员工都能收任务)
       { path: "/admin/tasks",                 label: "任务派发",     icon: SendIcon,          group: "任务管理", perm: "task:manage" },
       { path: "/admin/tasks/inbox",           label: "我的待办",     icon: InboxIcon,         group: "任务管理" },
+      { path: "/admin/halls",                 label: "展厅管理",     icon: LandmarkIcon,      group: "3D 展厅", perm: "exhibition:manage" },
       { path: "/admin/model3d",               label: "3D 生成",      icon: BoxIcon,           group: "3D 展厅", perm: "admin:menu" },
       { path: "/admin/venue/rooms",              label: "会议室 / 会场图", icon: LayoutGridIcon, group: "会场管理", perm: "venue:manage" },
       { path: "/admin/venue/seating",            label: "会议管理",        icon: ArmchairIcon,   group: "会场管理", perm: "venue:manage" },

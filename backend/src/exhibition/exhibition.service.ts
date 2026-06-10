@@ -121,6 +121,37 @@ export class ExhibitionService {
     return { ok: true };
   }
 
+  /**
+   * 自报「在用」storage fileId(供 maintenance 孤儿回收排除)——
+   * 封面 / 环境模型 + 各厅 fixtures content 里深层的所有 `*FileId`。
+   */
+  async collectInUseFileIds(): Promise<string[]> {
+    const rows = await this.prisma.hall.findMany({
+      select: { thumbnailFileId: true, envModelFileId: true, fixturesJson: true },
+    });
+    const ids = new Set<string>();
+    for (const r of rows) {
+      if (r.thumbnailFileId) ids.add(r.thumbnailFileId);
+      if (r.envModelFileId) ids.add(r.envModelFileId);
+      this.collectFileIdsDeep(this.parseJson<unknown>(r.fixturesJson, []), ids);
+    }
+    return [...ids];
+  }
+
+  /** 递归收集对象树里所有 `xxxFileId` 字段值 */
+  private collectFileIdsDeep(node: unknown, out: Set<string>): void {
+    if (Array.isArray(node)) {
+      for (const n of node) this.collectFileIdsDeep(n, out);
+      return;
+    }
+    if (node && typeof node === 'object') {
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        if (k.endsWith('FileId') && typeof v === 'string' && v) out.add(v);
+        else this.collectFileIdsDeep(v, out);
+      }
+    }
+  }
+
   /* ─── 内部:已解析 ─── */
 
   private resolveHall(row: HallRow): ResolvedHall {
@@ -129,6 +160,7 @@ export class ExhibitionService {
       id: row.id,
       name: row.name,
       thumbnail: row.thumbnailFileId ? exhibitionAssetUrl(row.thumbnailFileId) : null,
+      published: row.published,
       meta: this.parseJson<HallMeta>(row.metaJson, {}),
       envModelUrl: row.envModelFileId ? exhibitionAssetUrl(row.envModelFileId) : null,
       walls: this.parseJson<Wall[]>(row.wallsJson, []),

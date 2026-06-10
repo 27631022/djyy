@@ -349,3 +349,22 @@ flowchart TB
 - fixture `rot` 约定:0=朝-Y,面向 = (sin rot, -cos rot);fixture 根节点 `rotation.y=-rot`,相机 `rotation.y=π-rot`。
 
 里程碑修订:原 P6(装扮)大部分已并入 P1;P2(管理端)与 P3(平面图生成器)合并为下轮「2D 搭建器 + 内容编辑」。
+
+---
+
+## 16. P2 已交付(2026-06-10)—— 2D 拖拽搭建器 + 组件内容编辑
+
+方向②③落地于 `react/src/features/exhibition/`(菜单「3D 展厅 → 展厅管理」,权限 `exhibition:manage`):
+
+- **展厅库** `/admin/halls`:卡片(平面缩略图/发布态)+ 新建(名称+三主题预设,初始 16×10m 矩形房)+ 删除 + 直达 3D。
+- **搭建器** `/admin/halls/:id/design` 三栏:
+  - 画布 = SVG,米坐标 ×50 直接作 viewBox 单位(原点居中),滚轮缩放锚定光标、空白拖动平移;
+  - 画墙:点击连线,0.5m 网格 + 既有端点吸附,±7° 自动正交,实时长度标注,双击/Esc/右键收笔;
+  - 组件:palette 点选 → 画布点击放置(stamp);**贴墙类型自动吸附**(投影最近墙段、偏移半墙厚+半深、朝向背墙朝外;门吸墙中线;Alt 取消);旋转手柄 15° 步进;出生点可拖;
+  - 右栏:未选中=厅设置(墙高/网格/主题/点缀色/镜面地板/出生点);选中=通用属性 + 按类型内容编辑器(图片多传+图注 / 视频+封面 / .glb+缩放自转 / 荣誉·公示条目 + 连接器切换 / 立体字全样式);
+  - 撤销重做(useHistory 50 步)+ Ctrl+Z/Y、Delete、R、方向键微移。
+- **保存链**:stripResolvedUrls 剥「已解析」url 键 → PATCH /halls/:id;平面缩略图 canvas 渲染 → storage → thumbnailFileId(旧图即删);「3D 预览」先保存再开 `/exhibition/?hall=<id>`。
+- **契约**:`ResolvedHall` + `published`(backend / react / exhibition-client 三处同步)。
+- **配套加固**:ExhibitionService.collectInUseFileIds() 进 maintenance 孤儿 GC 聚合;avatar/model3d 按「资料库」豁免(原会被整库误判孤儿)。
+
+剩余里程碑:P4 门洞挖墙、装饰库;P5 连接器真数据;P7 VR 内网 TLS。
