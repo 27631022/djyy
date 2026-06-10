@@ -49,5 +49,12 @@ export default defineConfig({
     host: true,
     port: 5173,
     strictPort: false,
+    proxy: {
+      // 3D 展厅(exhibition-client 构建产物,由后端 3001 托管在 /exhibition/)
+      // 经此代理后,用户从前台 5173 直接开 /exhibition/ 即可,符合「页面都走 5173」直觉
+      "/exhibition": { target: "http://localhost:3001", changeOrigin: true },
+      // 展厅页内的接口走相对路径 /api(react 自身用绝对地址推断,不受影响)
+      "/api": { target: "http://localhost:3001", changeOrigin: true },
+    },
   },
 });
