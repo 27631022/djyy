@@ -9,8 +9,10 @@ import { buildFixtures } from './fixtures/fixtureFactory';
 import { createFirstPersonCamera } from './camera/firstPersonCamera';
 import { setupMobileControls } from './camera/mobileControls';
 import { setupPicking } from './interaction/pickingManager';
+import { setupHover } from './interaction/hoverManager';
 import { Overlay } from './interaction/overlay';
 import { LoadingScreen, showHint } from './ui/loadingScreen';
+import { setupImmersiveUi } from './ui/immersive';
 import { setupXR } from './xr/webxrHelper';
 
 /**
@@ -65,6 +67,8 @@ async function boot(): Promise<void> {
       else camera.attachControl(canvas, true);
     };
     setupPicking(scene, canvas, (fx) => overlay.show(fx));
+    setupHover(scene, canvas); // 悬停手型+标签:让「能点的东西」可见
+    setupImmersiveUi(canvas); // 沉浸漫游按钮 + 锁定准星
 
     engine.runRenderLoop(() => scene.render());
     scene.executeWhenReady(() => {

@@ -39,14 +39,10 @@ export function createFirstPersonCamera(
   cam.ellipsoid = new Vector3(0.38, 0.85, 0.38);
   cam.attachControl(canvas, true);
 
-  // 桌面端:点击画布进指针锁定,移动鼠标即转视角(ESC 自动退出)
+  // 桌面端默认「鼠标可见 + 拖拽转视角」(内置 mouse input),对办公人群更友好;
+  // 指针锁定(沉浸模式)由右下角按钮自愿进入(见 ui/immersive.ts),这里只挂锁定后的视角控制
   const isTouch = 'ontouchstart' in window;
   if (!isTouch) {
-    canvas.addEventListener('click', () => {
-      if (document.pointerLockElement !== canvas) {
-        canvas.requestPointerLock?.();
-      }
-    });
     document.addEventListener('mousemove', (e) => {
       if (document.pointerLockElement !== canvas) return;
       cam.rotation.y += e.movementX / 700;
