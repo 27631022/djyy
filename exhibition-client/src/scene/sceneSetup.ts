@@ -21,6 +21,13 @@ export function createScene(engine: Engine, theme: ThemeParams): Scene {
   scene.collisionsEnabled = true;
   scene.gravity = new Vector3(0, -0.45, 0);
 
+  // 色调映射挂在「场景级 image processing」上:没有后处理管线时由材质 shader
+  // 内联完成(零额外全屏 pass,UHD630 关键省) —— pipeline 存在时也是同一配置对象。
+  const ip = scene.imageProcessingConfiguration;
+  ip.toneMappingEnabled = true;
+  ip.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
+  ip.exposure = 0.9; // 用户反馈「有点亮」,从 1.05 下调
+
   const hemi = new HemisphericLight('hemi', new Vector3(0.2, 1, 0.15), scene);
   hemi.intensity = theme.hemiIntensity;
   // groundColor 默认黑 → 朝下的面(吊顶底面/格栅)收不到光,会发黑
@@ -44,26 +51,36 @@ export function createScene(engine: Engine, theme: ThemeParams): Scene {
   return scene;
 }
 
-/** 后期管线:FXAA + ACES 色调映射 + 轻 bloom + 轻 vignette;GlowLayer 给灯带/发光字 */
+export interface PostFx {
+  pipeline: DefaultRenderingPipeline | null;
+  glow: GlowLayer;
+}
+
+/**
+ * 后期:GlowLayer(灯带/发光字)始终创建(low 档用 isEnabled 关掉它的 pass);
+ * DefaultRenderingPipeline(FXAA/bloom/vignette)仅 withPipeline 时创建 ——
+ * low 档完全不要它,场景直出 backbuffer,零全屏后处理。
+ */
 export function createPostFx(
   scene: Scene,
   camera: Camera,
   theme: ThemeParams,
-): { pipeline: DefaultRenderingPipeline; glow: GlowLayer } {
-  const pp = new DefaultRenderingPipeline('post', true, scene, [camera]);
-  pp.fxaaEnabled = true;
-  pp.imageProcessingEnabled = true;
-  pp.imageProcessing.toneMappingEnabled = true;
-  pp.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
-  pp.imageProcessing.exposure = 1.05;
-  pp.imageProcessing.vignetteEnabled = true;
-  pp.imageProcessing.vignetteWeight = 0.85;
-  pp.bloomEnabled = true;
-  pp.bloomThreshold = 0.85;
-  pp.bloomWeight = 0.18;
-  pp.bloomKernel = 48;
+  withPipeline: boolean,
+): PostFx {
+  let pipeline: DefaultRenderingPipeline | null = null;
+  if (withPipeline) {
+    pipeline = new DefaultRenderingPipeline('post', true, scene, [camera]);
+    pipeline.fxaaEnabled = true;
+    pipeline.imageProcessingEnabled = true; // 复用 scene.imageProcessingConfiguration
+    pipeline.imageProcessing.vignetteEnabled = true;
+    pipeline.imageProcessing.vignetteWeight = 0.85;
+    pipeline.bloomEnabled = true;
+    pipeline.bloomThreshold = 0.85;
+    pipeline.bloomWeight = 0.18;
+    pipeline.bloomKernel = 48;
+  }
 
   const glow = new GlowLayer('glow', scene);
   glow.intensity = theme.glowIntensity;
-  return { pipeline: pp, glow };
+  return { pipeline, glow };
 }

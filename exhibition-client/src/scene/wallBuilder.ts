@@ -61,16 +61,16 @@ export function buildShell(
   });
   floorMat.maxSimultaneousLights = 12; // 射灯地面光池
   const trimMat = pbr(scene, 'mat:trim', { color: theme.trim, roughness: 0.5, metallic: 0.3 });
-  // 吊顶面朝下,光照天然不足 → 补少量自发光,保持干净亮堂
+  // 吊顶面朝下,光照天然不足 → 补少量自发光(过高会让全场发亮,0.22 时用户反馈偏亮)
   const ceilMat = pbr(scene, 'mat:ceiling', {
     color: theme.ceiling,
     roughness: 0.95,
-    emissive: theme.ceiling.scale(0.22),
+    emissive: theme.ceiling.scale(0.13),
   });
   const beamMat = pbr(scene, 'mat:beam', {
     color: theme.beam,
     roughness: 0.8,
-    emissive: theme.beam.scale(0.12),
+    emissive: theme.beam.scale(0.08),
   });
   const stripMat = emissiveMat(scene, 'mat:strip', theme.stripEmissive);
 

@@ -3,7 +3,7 @@ import { hallApi } from './api/hallApi';
 import { resolveTheme } from './theme/presets';
 import { createEngine } from './scene/engineSetup';
 import { createPostFx, createScene } from './scene/sceneSetup';
-import { setupQuality } from './scene/qualityManager';
+import { detectInitialLevel, setupQuality } from './scene/qualityManager';
 import { buildShell } from './scene/wallBuilder';
 import { buildFixtures } from './fixtures/fixtureFactory';
 import { createFirstPersonCamera } from './camera/firstPersonCamera';
@@ -38,6 +38,7 @@ async function boot(): Promise<void> {
     loading.setProgress(25, '初始化渲染引擎…');
     const theme = resolveTheme(hall.meta.theme);
     const engine = createEngine(canvas);
+    const quality = detectInitialLevel(engine); // 集显(UHD630 等)直接流畅档起步
     const scene = createScene(engine, theme);
 
     loading.setProgress(45, '搭建空间…');
@@ -45,17 +46,17 @@ async function boot(): Promise<void> {
 
     loading.setProgress(60, '设置相机与光效…');
     const camera = createFirstPersonCamera(scene, canvas, hall.meta, shell);
-    const { pipeline, glow } = createPostFx(scene, camera, theme);
+    const fx = createPostFx(scene, camera, theme, quality !== 'low');
     setupMobileControls(scene, camera);
 
     loading.setProgress(75, '布置展品…');
-    await buildFixtures(scene, hall, theme, shell, glow);
+    await buildFixtures(scene, hall, theme, shell, fx.glow);
 
     // 静态网格冻结(性能守护)
     for (const m of shell.staticMeshes) m.freezeWorldMatrix();
 
-    // 质量自适应:集显办公机自动降档保流畅(?quality=high|medium|low 可锁定)
-    setupQuality(scene, engine, pipeline, glow);
+    // 质量自适应:集显按 GPU 探测直接流畅档,运行中 FPS 低再降(?quality= 可锁定)
+    setupQuality(scene, engine, fx, quality);
 
     loading.setProgress(90, '准备 VR…');
     await setupXR(scene, shell.floor);
