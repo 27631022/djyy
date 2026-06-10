@@ -27,8 +27,9 @@ export function createScene(engine: Engine, theme: ThemeParams): Scene {
   hemi.groundColor = theme.ceiling.scale(0.55);
 
   // IBL:自托管 1K HDR(运行时预滤波);加载失败只降质不阻塞
+  // 路径跟随部署 base(3001 托管在 /exhibition/ 下,不能写死绝对路径)
   const env = new HDRCubeTexture(
-    '/env/studio.hdr',
+    `${import.meta.env.BASE_URL}env/studio.hdr`,
     scene,
     128,
     false,

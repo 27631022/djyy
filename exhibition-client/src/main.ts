@@ -68,10 +68,8 @@ async function boot(): Promise<void> {
       showHint();
     });
 
-    if (import.meta.env.DEV) {
-      // dev 调试句柄(预览窗隐藏时手动 scene.render() 截 canvas 用)
-      (window as unknown as Record<string, unknown>).__hallDebug = { engine, scene, camera };
-    }
+    // 调试句柄:预览窗隐藏时手动 scene.render() 截 canvas / 生产排查用(场景对象本就在浏览器侧,无安全暴露)
+    (window as unknown as Record<string, unknown>).__hallDebug = { engine, scene, camera };
   } catch (e) {
     console.error('[展厅] 加载失败:', e);
     loading.error(e instanceof Error ? e.message : '加载失败,请确认后端服务已启动');

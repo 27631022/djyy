@@ -1,7 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { json, urlencoded } from 'express';
+import { json, urlencoded, static as expressStatic } from 'express';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -38,6 +40,23 @@ async function bootstrap() {
   // 单张可能十几 MB,旧的 10MB 上限会触发 413。放宽到 50MB(admin 操作、单张证书,内存可接受)。
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ extended: true, limit: '50mb' }));
+
+  // 3D 展厅客户端静态托管:exhibition-client 构建产物挂 /exhibition/
+  // 端口约定 = 对外只有 5173(react)/3001(本服务),展厅不再占独立端口;
+  // 与 /api 同源 → 素材/字体/halls 全零 CORS。改展厅代码后 cd exhibition-client && npm run build 即生效。
+  const exhibitionDist = config.get<string>(
+    'EXHIBITION_DIST_DIR',
+    join(process.cwd(), '..', 'exhibition-client', 'dist'),
+  );
+  if (existsSync(exhibitionDist)) {
+    app.use('/exhibition', expressStatic(exhibitionDist));
+    Logger.log(`3D 展厅客户端已托管: /exhibition/ ← ${exhibitionDist}`, 'Bootstrap');
+  } else {
+    Logger.warn(
+      `未找到展厅构建产物(${exhibitionDist}),/exhibition 不可用 —— 先 cd exhibition-client && npm run build`,
+      'Bootstrap',
+    );
+  }
 
   app.useGlobalPipes(
     new ValidationPipe({

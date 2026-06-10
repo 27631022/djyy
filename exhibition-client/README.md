@@ -3,15 +3,26 @@
 独立 Babylon.js 工程(无 React)。开网址即进:第一人称漫游 + 点击看详情 + WebXR。
 数据驱动:一个展厅 = 后端一份「已解析」JSON(`GET /api/halls/:id`),上传素材即上架。
 
-## 启动
+## 端口约定(重要)
+
+**对外只有 5173(react 前端)/ 3001(后端)两个端口**。本工程构建产物由后端 3001
+静态托管在 **`/exhibition/`**(见 `backend/src/main.ts`),与 `/api` 同源、零 CORS:
+
+```
+http://<服务器IP>:3001/exhibition/?hall=<展厅id>     ← 正式访问入口
+```
+
+## 开发
 
 ```bash
 npm install
-npm run dev        # http://localhost:5174/?hall=<展厅id>(缺省取第一个已发布厅)
+npm run build      # 产 dist/ → 后端 3001 立即生效(改完代码跑这个)
 npm run check      # tsc + eslint(门禁)
+npm run dev        # 仅本机调试热更(localhost:5174,host 已锁 localhost,不对外)
 ```
 
-dev 经 vite proxy 把 `/api` 转给 `localhost:3001`(免 CORS);生产构建后与后端同域反代即可。
+改展厅代码的日常循环:改码 → `npm run build` → 刷新 `3001/exhibition` 页面。
+需要 HMR 时才用 `npm run dev`(经 vite proxy 把 `/api` 转给 3001)。
 
 ## 操作
 

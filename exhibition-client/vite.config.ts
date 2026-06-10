@@ -1,10 +1,13 @@
 import { defineConfig } from 'vite';
 import checker from 'vite-plugin-checker';
 
-// dev 同源访问后端(免 CORS):/api → localhost:3001;生产经同域反代。
+// 端口约定:对外只有 5173(react)/3001(backend)。
+// 本工程 build 产物由后端 3001 静态托管在 /exhibition/(见 backend/src/main.ts),
+// 与 /api 同源,零 CORS。下面的 dev server(5174)仅本机改代码热更时用,不对外。
 export default defineConfig({
+  base: '/exhibition/',
   server: {
-    host: true,
+    host: 'localhost', // 仅本机,对外一律走 3001/exhibition
     port: 5174,
     strictPort: false,
     proxy: {
