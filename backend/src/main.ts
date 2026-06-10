@@ -24,14 +24,17 @@ async function bootstrap() {
   // 浏览器会把这个 413 误报成 "No 'Access-Control-Allow-Origin' header"(假 CORS、真 413)。
   app.enableCors({
     origin: (origin, cb) => {
-      // 无 Origin(同源请求 / curl / Postman):放行
+      // 无 Origin(普通同源请求 / curl / Postman):放行
       if (!origin) return cb(null, true);
       // 显式白名单
       if (whitelist.includes(origin)) return cb(null, true);
-      // 开发环境:允许局域网内任意主机的 5173/5174 端口
-      // (5173=react 前端,5174=3D 展厅客户端;同源 POST 浏览器也带 Origin,经 vite proxy 透传到这)
-      if (isDev && /^https?:\/\/[^/]+:517[34]$/.test(origin)) return cb(null, true);
-      return cb(new Error(`CORS rejected: ${origin}`));
+      // 开发环境:允许局域网内任意主机的 5173/5174/3001
+      // - 5173=react 前端(同源 POST 浏览器也带 Origin,经 vite proxy 透传到这)
+      // - 3001=本服务自身(展厅托管在 /exhibition/,<script type="module"> 即使同源也带 Origin!)
+      if (isDev && /^https?:\/\/[^/]+:(517[34]|3001)$/.test(origin)) return cb(null, true);
+      // ⚠ 不要 cb(new Error(...)) —— 那会让请求直接 500。
+      // cb(null, false) = 不发 CORS 头:同源请求不受影响,真跨域由浏览器按标准拦截。
+      return cb(null, false);
     },
     credentials: true,
   });
