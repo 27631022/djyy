@@ -3,6 +3,7 @@ import { hallApi } from './api/hallApi';
 import { resolveTheme } from './theme/presets';
 import { createEngine } from './scene/engineSetup';
 import { createPostFx, createScene } from './scene/sceneSetup';
+import { setupQuality } from './scene/qualityManager';
 import { buildShell } from './scene/wallBuilder';
 import { buildFixtures } from './fixtures/fixtureFactory';
 import { createFirstPersonCamera } from './camera/firstPersonCamera';
@@ -42,7 +43,7 @@ async function boot(): Promise<void> {
 
     loading.setProgress(60, '设置相机与光效…');
     const camera = createFirstPersonCamera(scene, canvas, hall.meta, shell);
-    const { glow } = createPostFx(scene, camera, theme);
+    const { pipeline, glow } = createPostFx(scene, camera, theme);
     setupMobileControls(scene, camera);
 
     loading.setProgress(75, '布置展品…');
@@ -50,6 +51,9 @@ async function boot(): Promise<void> {
 
     // 静态网格冻结(性能守护)
     for (const m of shell.staticMeshes) m.freezeWorldMatrix();
+
+    // 质量自适应:集显办公机自动降档保流畅(?quality=high|medium|low 可锁定)
+    setupQuality(scene, engine, pipeline, glow);
 
     loading.setProgress(90, '准备 VR…');
     await setupXR(scene, shell.floor);

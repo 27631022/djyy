@@ -30,6 +30,18 @@ npm run dev        # 仅本机调试热更(localhost:5174,host 已锁 localhost,
 - 移动:左下虚拟摇杆移动,拖屏转视角
 - VR:安全上下文(localhost / HTTPS)下自动出现「进入 VR」按钮,地面传送
 
+## 画质自适应(低配办公机)
+
+默认全特效起步,运行中每 2s 采样 FPS,连续 3 次 < 28 自动降档(见 `scene/qualityManager.ts`):
+
+| 档位 | 渲染分辨率上限 | bloom | 辉光 | 光锥 | FXAA |
+|---|---|---|---|---|---|
+| high(默认) | 1.75×DPR | ✓ | ✓ | ✓ | ✓ |
+| medium | 1.25×DPR | ✗ | 减半 | ✓ | ✓ |
+| low | 1× | ✗ | ✗ | ✗ | ✗ |
+
+URL 加 **`&quality=low`**(或 medium/high)可显式锁定,适合给固定的老旧机器发链接。
+
 ## 结构
 
 ```

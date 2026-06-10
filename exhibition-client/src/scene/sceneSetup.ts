@@ -49,7 +49,7 @@ export function createPostFx(
   scene: Scene,
   camera: Camera,
   theme: ThemeParams,
-): { glow: GlowLayer } {
+): { pipeline: DefaultRenderingPipeline; glow: GlowLayer } {
   const pp = new DefaultRenderingPipeline('post', true, scene, [camera]);
   pp.fxaaEnabled = true;
   pp.imageProcessingEnabled = true;
@@ -65,5 +65,5 @@ export function createPostFx(
 
   const glow = new GlowLayer('glow', scene);
   glow.intensity = theme.glowIntensity;
-  return { glow };
+  return { pipeline: pp, glow };
 }
