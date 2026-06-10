@@ -26,12 +26,38 @@ export function explicitQuality(): QualityLevel | null {
   return p === 'high' || p === 'medium' || p === 'low' ? p : null;
 }
 
-/** 按 GPU 粗判初始档:Intel 集显 → low,其余 → high(自适应仍会兜底降档) */
+/** CPU 软渲染警示横幅:SwiftShader 下显卡没干活,代码优化无解,引导用户开硬件加速 */
+function showSoftwareRenderBanner(): void {
+  const bar = document.createElement('div');
+  bar.style.cssText = `position:fixed;left:0;right:0;top:0;z-index:70;display:flex;
+    align-items:center;justify-content:center;gap:14px;padding:10px 16px;
+    background:#B45309;color:#fff;font:13px/1.6 'Microsoft YaHei',sans-serif;`;
+  bar.innerHTML = `⚠ 检测到浏览器<b>未启用硬件加速</b>,显卡未工作,3D 画面会很卡。
+    请打开 浏览器设置 → 系统 → 开启「使用图形加速/硬件加速」,重启浏览器后再访问。
+    (若已开启仍出现此提示,请更新显卡驱动)`;
+  const x = document.createElement('button');
+  x.textContent = '×';
+  x.style.cssText = 'border:none;background:rgba(255,255,255,.2);color:#fff;width:24px;height:24px;border-radius:50%;cursor:pointer;';
+  x.onclick = () => bar.remove();
+  bar.appendChild(x);
+  document.body.appendChild(bar);
+}
+
+/**
+ * 按 GPU 粗判初始档:
+ * - SwiftShader/软渲染 → low + 警示横幅(显卡没启用,任何优化都救不了)
+ * - Intel 集显 → low 起步;独显/Apple → high(自适应仍兜底降档)
+ */
 export function detectInitialLevel(engine: Engine): QualityLevel {
   const explicit = explicitQuality();
   if (explicit) return explicit;
   const renderer = engine.getGlInfo()?.renderer ?? '';
   console.info(`[展厅] GPU: ${renderer || '(未知)'}`);
+  if (/swiftshader|software|llvmpipe/i.test(renderer)) {
+    console.warn('[展厅] 浏览器在用 CPU 软件渲染(硬件加速未启用),性能会极差');
+    showSoftwareRenderBanner();
+    return 'low';
+  }
   if (/intel|uhd graphics|hd graphics|iris/i.test(renderer)) {
     console.info('[展厅] 检测到集成显卡,流畅模式起步');
     return 'low';
