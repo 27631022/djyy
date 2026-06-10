@@ -55,7 +55,8 @@ djyy/                              ← git 根 + monorepo
 │   │   │   ├── site-setting/
 │   │   │   ├── storage/          ← 文件上传/下载 client(storageApi.upload / fetchBlob / fileUrl)
 │   │   │   ├── user/
-│   │   │   └── user-custom-field/
+│   │   │   ├── user-custom-field/
+│   │   │   └── venue/             ← 会场管理:会议室/会场图设计器/排座向导/排座工作台/导出
 │   │   ├── shared/                ← 跨模块复用基础设施
 │   │   │   ├── api/client.ts      ← axios 实例 + 401 拦截器
 │   │   │   ├── components/        ← IconPicker + ui/(shadcn vendor)
@@ -94,6 +95,7 @@ djyy/                              ← git 根 + monorepo
         ├── certificate/           ← 证书 V1-V3:模板 + 发证 + 公开验证 + AI 提取 + 外部录入 + index.ts
         ├── external-api/          ← AI 平台配置(provider/key/model/visionModel/优先级)+ index.ts
         ├── storage/               ← 统一文件存储:StorageDriver 抽象(本地盘默认 / 群晖·S3 占位)+ StoredFile + index.ts
+        ├── venue/                 ← 会场管理:会议室 + 会场图设计 + 选座排座 + AI 生成布局 + 导出 + index.ts(4 表)
         ├── health/                ← /api/health + index.ts
         └── main.ts                ← listen 0.0.0.0,CORS dev 放开 *:5173
 ```
@@ -301,6 +303,11 @@ npm run db:seed
   - **「局域网访问不到」根因记录(2026-06-10,已二次更正)**:真根因 = **v2rayN 的 Tun 模式(`xray_tun` 网卡)全局劫持网络栈** —— 局域网设备的请求能进来,但回包被 TUN 抓进代理,TCP 握手完不成(铁证:`arp -a` 里 10.185.28.220/172.20.10.1 等局域网邻居出现在 xray_tun 接口下;本机自测 10.x 也被劫持返 503)。**修复 = v2rayN 关 Tun 模式,或路由规则加私有网段(10/8、172.16/12、192.168/16)直连**。防火墙不是根因(Public/Private profile 本就 Disabled;djyy-5173/3001 放行规则已加,无害保留)。本机还同时跑着 Clash Verge(mihomo),两套代理并存易打架。办公网=10.185.28.192/26(有群晖 .220 等设备),多网卡给地址按用户设备所在网段给。
   - 验证:两端门禁 0 error(+backend 0 cycle);预览窗隐藏用「手动 scene.render() + canvas→/api/files 落盘」截 6 张图核对美术包全项;拾取命中 fx_model;console 0 红错。⚠ 遗留:VR 按钮需安全上下文(localhost 可、局域网 IP 要 TLS);HTML 浮层 VR 内不可见;Draco/KTX2 解码器未配(当前 glb 不压缩,要压缩资产时自托管)。
   - ⏭ **下轮 = 2D 拖拽搭建器 + 内容编辑**(react/ `features/exhibition`:SVG 画布画墙/拖组件/吸附/撤销重做,右栏按类型编辑内容,复用证书设计器+dnd-kit+useFieldHistory 范式;保存→新窗口 3D 预览)。
+- **(2026-06-10)会场管理(venue)模块合并入 main**:把独立分支 `claude/stoic-ishizaka-b6b312`(AI 会场排座系统,141 提交)的成果并入主干。
+  - **合并方式(关键)**:因两分支大幅分叉(main 已演进出 exhibition/avatar/model3d/prompt/maintenance,venue 分支均无),**不走 `git merge`**(会反删这些后期模块),改用「`git checkout <branch> -- backend/src/venue react/src/features/venue` 取纯新增文件 + **手工补** schema/app.module/seed/路由」。迁移在 main 当前 schema 上**新生成**(`add_venue_module`),不抄分支旧迁移。
+  - **后端 `venue` 模块**:4 表均 `// @module: venue` —— `MeetingRoom`(实体会议室)/ `VenueLayout`(会场图,`layoutJson`=可序列化画布 VenueDesignerState)/ `SeatingPlan`(选座方案,rosterJson+rulesJson)/ `SeatingAssignment`(座位分配,seatId 引用 layoutJson 稳定 id)。venue 内部真 relation+cascade,指向外部 orgId/userId/fileId 松引用不建外键。Room/Layout/Seating/VenueAI 4 组 controller+service(AI 生成布局走 ExternalApiModule)。权限点 `venue:manage`(授 platform/enterprise_admin)+ 字典 `venue_roster_group`/`venue_special_type` + seed 示例「综合楼三楼大会议室」+ 标准表彰布局 60 座。
+  - **前端 `features/venue`**:会议室列表 / 会场图设计器(SVG 画布+元素面板+图层+属性栏,复用证书设计器+dnd-kit 范式)/ 排座向导(4 步)/ 排座工作台(名单工作台+AI 智能排座+手动微调)/ 导出(座位图 PNG·PDF、安排表/签到表 Excel、对折桌签)。AdminLayout「会场管理」分组 3 项 + App.tsx 6 路由 + `DICT_CODES` 加两键。
+  - **踩坑**:首次合并我自编 venue 路由/菜单(`rooms/:roomId/layout/new` 等)与页面内部 navigate 对不上 → 菜单只 2 项且点进 404;**改回分支原配置**(6 路由含 `seating/:planId/wizard`,新建会议=planId="new")后 preview 实测三页全渲染+后端数据通+0 console error。门禁:后端 0 error/0 cycle、前端 0 error/41 warning(基线)。**已删** 分支(3 个 claude/*)+ worktree + 残留 backend 进程。⚠ 分支里的 `task-template` 是 main 已删死代码,**未并回**。详见 commit `a9572104`(合并)+ `da30a504`(路由修正)。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
@@ -309,7 +316,7 @@ npm run db:seed
 4. **首页综合查询**:`<CertificateSearchBox embedded />` 已具备,把它和其他业务的查询入口拼到 NavPage / 新首页查询板块
 5. **任务分派系统 P4 富文本+在线文档**(仅剩这一期):P1–P3 + P2.5 指派 + P5 Tauri 客户端 + 超期自动通过都已落地(见已完成);汇总(数字求和/附件 ZIP/CSV)在 `TaskSummary` 已具备。剩 **P4**:内置富文本编辑器(`richtext` 字段)+ `doclink` 接 `DocProvider` 接口 + 群晖在线文档占位 driver。
 6. **企业虚拟展厅系统(3D / VR)** ★大方向 —— **P1 已交付(2026-06-09,见已完成)**:后端 exhibition 模块 + `exhibition-client/` 美观 3D 客户端 + text_3d 中文立体字管线 + seed 示例厅。**下一期 = 2D 拖拽搭建器 + 组件内容编辑**(react/ `features/exhibition`,设计要点见 spec 第 15 节);再后:门洞(P4)/装饰库/连接器真数据(P5:荣誉墙→证书、党务板→任务)/VR 内网 TLS(P7)。规格 **docs/specs/2026-06-07-virtual-exhibition-hall.md**(含 v2 修订)
-7. **其它业务模块**:排座 / AI 图片分拣 等 —— 按 conventions.md 的"加新模块"清单逐个加
+7. **其它业务模块**:AI 图片分拣 等 —— 按 conventions.md 的"加新模块"清单逐个加(**会场排座已落地**,见已完成 2026-06-10 venue 合并)
 
 ### ❌ 明确延后/放弃(有真实需求再做)
 - 信创适配(达梦 / 麒麟 / 国密)
