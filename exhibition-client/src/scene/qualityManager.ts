@@ -31,8 +31,9 @@ export function detectInitialLevel(engine: Engine): QualityLevel {
   const explicit = explicitQuality();
   if (explicit) return explicit;
   const renderer = engine.getGlInfo()?.renderer ?? '';
+  console.info(`[展厅] GPU: ${renderer || '(未知)'}`);
   if (/intel|uhd graphics|hd graphics|iris/i.test(renderer)) {
-    console.info(`[展厅] 检测到集成显卡(${renderer}),流畅模式起步`);
+    console.info('[展厅] 检测到集成显卡,流畅模式起步');
     return 'low';
   }
   return 'high';
@@ -77,6 +78,25 @@ function applyLevel(ctx: QualityCtx, level: QualityLevel): void {
   console.info(`[展厅] 画质档位: ${level}`);
 }
 
+/** FPS 角标:按 F 键显隐;显示 帧率 / 当前档位 / 显卡(诊断用,默认隐藏不碍展示) */
+function setupFpsMeter(engine: Engine, getLevel: () => QualityLevel): void {
+  const box = document.createElement('div');
+  box.style.cssText = `position:fixed;left:14px;top:14px;z-index:60;display:none;
+    background:rgba(12,12,16,.78);color:#9fe870;padding:8px 14px;border-radius:8px;
+    font:12px/1.7 Consolas,monospace;pointer-events:none;white-space:pre;`;
+  document.body.appendChild(box);
+  const renderer = engine.getGlInfo()?.renderer ?? '未知';
+  setInterval(() => {
+    if (box.style.display === 'none') return;
+    box.textContent = `FPS  ${engine.getFps().toFixed(0)}\n档位 ${getLevel()}\nGPU  ${renderer.slice(0, 48)}`;
+  }, 500);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'f' || e.key === 'F') {
+      box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    }
+  });
+}
+
 function showToast(text: string): void {
   const t = document.createElement('div');
   t.style.cssText = `position:fixed;left:50%;top:24px;transform:translateX(-50%);z-index:60;
@@ -98,10 +118,11 @@ export function setupQuality(
 ): void {
   const ctx: QualityCtx = { scene, engine, fx, glowBase: fx.glow.intensity };
 
-  applyLevel(ctx, initial);
-  if (explicitQuality()) return; // 显式指定 → 锁定,不自适应
-
   let idx = LEVELS.indexOf(initial);
+  applyLevel(ctx, initial);
+  setupFpsMeter(engine, () => LEVELS[idx]); // 按 F 显隐帧率角标
+
+  if (explicitQuality()) return; // 显式指定 → 锁定,不自适应
   if (idx >= LEVELS.length - 1) return; // low 起步,无可再降
 
   let slowStreak = 0;

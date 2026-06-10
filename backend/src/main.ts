@@ -52,7 +52,19 @@ async function bootstrap() {
     join(process.cwd(), '..', 'exhibition-client', 'dist'),
   );
   if (existsSync(exhibitionDist)) {
-    app.use('/exhibition', expressStatic(exhibitionDist));
+    app.use(
+      '/exhibition',
+      expressStatic(exhibitionDist, {
+        // index.html 禁缓存:每次 build 后用户刷新即拿新入口(assets 带 hash,可长缓存)
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache');
+          } else {
+            res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+          }
+        },
+      }),
+    );
     Logger.log(`3D 展厅客户端已托管: /exhibition/ ← ${exhibitionDist}`, 'Bootstrap');
   } else {
     Logger.warn(
