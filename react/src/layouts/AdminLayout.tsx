@@ -9,6 +9,7 @@ import {
   AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon,
   PanelLeftCloseIcon, PanelLeftOpenIcon,
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon,
+  LandmarkIcon, UsersIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 import { useDesktopInboxAlerts } from "@/features/task";
@@ -59,6 +60,8 @@ const CATEGORIES: Category[] = [
       { path: "/admin/tasks",                 label: "任务派发",     icon: SendIcon,          group: "任务管理", perm: "task:manage" },
       { path: "/admin/tasks/inbox",           label: "我的待办",     icon: InboxIcon,         group: "任务管理" },
       { path: "/admin/model3d",               label: "3D 生成",      icon: BoxIcon,           group: "3D 展厅", perm: "admin:menu" },
+      { path: "/admin/venue/rooms",           label: "会议室管理",   icon: LandmarkIcon,      group: "会场管理", perm: "venue:manage" },
+      { path: "/admin/venue/seating",         label: "座次安排",     icon: UsersIcon,         group: "会场管理", perm: "venue:manage" },
     ],
   },
   {

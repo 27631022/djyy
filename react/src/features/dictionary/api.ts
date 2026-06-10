@@ -153,4 +153,6 @@ export const DICT_CODES = {
   USER_EDUCATION: "user_education",   // 学历
   USER_POLITICAL: "user_political_status", // 政治面貌
   CERT_HONOR_LEVEL: "cert_honor_level",    // 证书荣誉等级(模板下拉 + 模板浏览页分类)
+  VENUE_ROSTER_GROUP: "venue_roster_group", // 会议名单默认分组
+  VENUE_SPECIAL_TYPE: "venue_special_type", // 会议特殊人员类别
 } as const;

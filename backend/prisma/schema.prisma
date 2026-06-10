@@ -774,3 +774,95 @@ model Hall {
 
   @@index([published])
 }
+
+// ─────────────────────────────────────────────────────────
+// 实体会议室 — 物理空间。一个会议室可挂多张会场图。
+// @module: venue
+model MeetingRoom {
+  id           String        @id @default(cuid())
+  name         String
+  location     String? // 楼栋/楼层/房间号等
+  capacity     Int           @default(0) // 标称容量(人)
+  description  String?
+  photoFileIds String? // JSON string[]:现场照片 storage fileId(松引用 StoredFile)
+  facilities   String? // JSON string[]:硬件设施标签(视频会议/音响/投屏/同声传译/录播…)
+  orgId        String? // 归属单位 org id(松引用 Organization);null = 全局可用
+  active       Boolean       @default(true)
+  createdById  String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  layouts      VenueLayout[]
+
+  @@index([active])
+  @@index([orgId])
+}
+
+// 会场图 — 一张布置方案的画布。layoutJson 是可 JSON.parse 还原的 VenueDesignerState
+// (elements 含 seat/zone 稳定 id + 网格设置 + 背景)。thumbnail 列表展示用;seatCount 缓存座位数。
+// @module: venue
+model VenueLayout {
+  id          String        @id @default(cuid())
+  roomId      String
+  room        MeetingRoom   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name        String
+  layoutJson  String // JSON: VenueDesignerState
+  thumbnail   String? // data URL 缩略图
+  width       Int           @default(1200)
+  height      Int           @default(800)
+  gridSize    Int           @default(20)
+  seatCount   Int           @default(0) // 保存时回填,列表/选座展示用
+  active      Boolean       @default(true)
+  status      String        @default("published") // draft 草稿 | published 已发布
+  createdById String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  plans       SeatingPlan[]
+
+  @@index([roomId])
+  @@index([active])
+}
+
+// 选座方案 — 一次活动,绑定一张会场图。
+// @module: venue
+model SeatingPlan {
+  id                 String              @id @default(cuid())
+  layoutId           String
+  layout             VenueLayout         @relation(fields: [layoutId], references: [id], onDelete: Restrict)
+  name               String
+  eventDate          DateTime?
+  rosterJson         String              @default("[]") // JSON Attendee[]
+  rulesJson          String              @default("[]") // JSON SeatingRule[]
+  status             String              @default("draft") // draft | computed | finalized
+  layoutSnapshotJson String? // 计算/定稿时的会场图快照(防 layout 后续改动错位)
+  createdById        String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  assignments        SeatingAssignment[]
+
+  @@index([layoutId])
+  @@index([status])
+}
+
+// 座位分配 — 一行 = 一个被分到具体座位的与会人。seatId 引用 layoutJson 里 seat 元素的稳定 id。
+// attendeeId 为空 = 空座/预留。source 区分来源(自动评分填 / 规则锁定 / 手动拖动)。
+// @module: venue
+model SeatingAssignment {
+  id           String      @id @default(cuid())
+  planId       String
+  plan         SeatingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  seatId       String
+  attendeeId   String? // null = 空座/预留
+  attendeeName String?
+  unit         String?
+  position     String?
+  score        Float?
+  source       String      @default("auto") // auto | rule | manual | locked
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([planId, seatId])
+  @@index([planId])
+  @@index([unit])
+  @@index([position])
+  @@index([attendeeId])
+}

@@ -16,6 +16,14 @@ import { IconLibraryPage } from "@/features/icon-library";
 import { Model3dStudioPage } from "@/features/model3d";
 import { PromptsPage } from "@/features/prompt";
 import {
+  VenueRoomsPage,
+  VenueLayoutDesignerPage,
+  VenueSeatingListPage,
+  VenueSeatingPlanPage,
+  VenueSeatingArrangePage,
+  VenueSeatingWizardPage,
+} from "@/features/venue";
+import {
   TaskCreatePage,
   TaskListPage,
   TaskDetailPage,
@@ -158,6 +166,13 @@ const App = () => (
             <Route path="tasks/:id/summary" element={<TaskSummaryPage />} />
             <Route path="tasks/:id" element={<TaskDetailPage />} />
             <Route path="model3d" element={<Model3dStudioPage />} />
+            <Route path="venue/rooms" element={<VenueRoomsPage />} />
+            <Route path="venue/rooms/:roomId/layout/new" element={<VenueLayoutDesignerPage />} />
+            <Route path="venue/rooms/:roomId/layout/:layoutId" element={<VenueLayoutDesignerPage />} />
+            <Route path="venue/seating" element={<VenueSeatingListPage />} />
+            <Route path="venue/seating/new" element={<VenueSeatingWizardPage />} />
+            <Route path="venue/seating/:planId" element={<VenueSeatingPlanPage />} />
+            <Route path="venue/seating/:planId/arrange" element={<VenueSeatingArrangePage />} />
           </Route>
         </Routes>
         <Toaster position="top-center" richColors closeButton />

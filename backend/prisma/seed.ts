@@ -307,6 +307,8 @@ async function seedRolesAndPermissions() {
     { code: 'task:fill',                 name: '任务填报',                category: 'operation' },
     // 虚拟展厅(exhibition)— 布展管理(建厅/编辑空间 JSON/删厅);浏览公开免权限
     { code: 'exhibition:manage',         name: '展厅管理(布展)',          category: 'operation' },
+    // 会场管理(venue)— manage:会议室/会场图设计 + 选座
+    { code: 'venue:manage',              name: '会场管理(会议室/会场图/选座)', category: 'operation' },
   ];
   for (const p of permissions) {
     await prisma.permission.upsert({
@@ -321,7 +323,7 @@ async function seedRolesAndPermissions() {
     // 企业管理员:全套企业管理权限(不含 角色授权 admin:role:write / 插件 / 删除证书 / 删除文件 等高危权限,留 platform_admin)。
     // 一级 vs 二级 = 同角色不同 scope:分配时 scope=all(一级,全集团)或 scope=subtree(二级,自动锚到派发人所在单位的子树)。
     // 任务域已按 scope 强制;组织/用户管理的范围限制后续按需加。
-    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage'] },
+    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage'] },
     { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
     { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
     // 任务派发:给各级机关部门的派发人;配合 UserRole.scope(本组织+下级 / 自定义单位)限定派发范围
@@ -721,6 +723,31 @@ const DICTIONARIES: SeedDictDef[] = [
       { code: 'subsidiary',  label: '分公司级' },
     ],
   },
+  {
+    code: 'venue_roster_group',
+    name: '会议名单默认分组',
+    description: '会议排座导入人员时的默认分组(名单工作台的快捷建组按钮)。在此增删改即改默认分组,无需改代码',
+    builtin: true,
+    sortOrder: 80,
+    items: [
+      { code: 'jiguan',   label: '机关组' },
+      { code: 'jiceng',   label: '基层组' },
+      { code: 'shangtai', label: '上台领奖组' },
+    ],
+  },
+  {
+    code: 'venue_special_type',
+    name: '会议特殊人员类别',
+    description: '会议排座中标记「特殊人员」的类别(来宾/记者/列席…)。特殊人员默认不参与自动排座、待手动指定座并锁定。在此增删改即改可选类别,无需改代码',
+    builtin: true,
+    sortOrder: 81,
+    items: [
+      { code: 'guest',    label: '来宾' },
+      { code: 'press',    label: '记者' },
+      { code: 'observer', label: '列席' },
+      { code: 'staff',    label: '工作人员' },
+    ],
+  },
 ];
 
 /* ─── 用户自定义字段定义 ─── */
@@ -1047,6 +1074,66 @@ async function main() {
     `\n📊 党组织 ${partyCount} · 行政机构 ${adminCount} · 虚拟 ${virtualCount}`,
   );
   console.log(`   用户 ${userCount} · 归属记录 ${membershipCount} · 角色 ${roleCount} · 权限 ${permCount}`);
+
+  await seedVenueExamples();
+}
+
+/** 预置示例会议室 + 一张已发布座次图(幂等 upsert,可改可删);开箱即用看会场/排座 */
+async function seedVenueExamples() {
+  const room = await prisma.meetingRoom.upsert({
+    where: { id: 'seed-venue-room-1' },
+    update: {},
+    create: {
+      id: 'seed-venue-room-1',
+      name: '综合楼三楼大会议室',
+      location: '综合楼 3F',
+      capacity: 120,
+      description: '示例会议室(可改可删)',
+      facilities: JSON.stringify(['视频会议', '音响系统', '投屏']),
+      active: true,
+    },
+  });
+
+  // 手写「标准表彰布局」:横幅 + 主席台 + 6 排 × 10 座
+  const base = { rotation: 0, opacity: 1, visible: true, locked: false };
+  const elements: unknown[] = [
+    {
+      id: 'banner1', type: 'banner', x: 200, y: 30, width: 800, height: 60, ...base,
+      name: '横幅', text: '表彰大会', fontFamily: '"Microsoft YaHei", sans-serif', fontSize: 32, color: '#FFFFFF', bg: '#C8001E',
+    },
+    {
+      id: 'pre1', type: 'presidium', x: 400, y: 120, width: 400, height: 60, ...base,
+      name: '主席台', fill: '#FCA5A5', stroke: '#C8001E', strokeWidth: 2, label: '主席台',
+    },
+  ];
+  const cols = 10, rows = 6, seatW = 36, seatH = 36, gapX = 16, gapY = 22;
+  const startX = Math.round((1200 - (cols * seatW + (cols - 1) * gapX)) / 2);
+  const startY = 240;
+  let n = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      n++;
+      elements.push({
+        id: `seat_${r + 1}_${c + 1}`, type: 'seat',
+        x: startX + c * (seatW + gapX), y: startY + r * (seatH + gapY),
+        width: seatW, height: seatH, ...base, name: `${r + 1}排${c + 1}号`, fill: '#DBEAFE', seatNo: '',
+      });
+    }
+  }
+  const layoutJson = JSON.stringify({
+    elements,
+    background: { type: 'color', color: '#FFFFFF' },
+    canvasWidth: 1200, canvasHeight: 700, gridSize: 20, showGrid: true,
+  });
+  await prisma.venueLayout.upsert({
+    where: { id: 'seed-venue-layout-1' },
+    update: {},
+    create: {
+      id: 'seed-venue-layout-1', roomId: room.id, name: '标准表彰布局(60座)',
+      layoutJson, width: 1200, height: 700, gridSize: 20, seatCount: n, status: 'published', active: true,
+    },
+  });
+  console.log(`   会场 示例会议室 1 · 座次图 1(${n} 座,已发布)`);
 }
 
 main()
