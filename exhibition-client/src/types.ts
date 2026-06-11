@@ -11,13 +11,25 @@ export const FIXTURE_TYPES = [
   'notice_board',
   'door',
   'text_3d',
-  'decor', // 装饰(绿植/长椅等,程序化建模,不可点击)
+  'decor', // 装饰(绿植/长椅/地面引导箭头,程序化建模,不可点击)
+  'ceiling_sign', // 顶端吊牌(吊杆 + 双面文字牌)
 ] as const;
 export type FixtureType = (typeof FIXTURE_TYPES)[number];
 
-/** 装饰内容:程序化变体 */
+/** 装饰内容:程序化变体(arrow=地面引导箭头) */
 export interface DecorContent {
-  kind?: 'plant' | 'plant_short' | 'bench'; // 高绿植 / 矮盆栽 / 长椅,默认 plant
+  kind?: 'plant' | 'plant_short' | 'bench' | 'arrow';
+}
+
+/** 门内容:targetHallId 设置后,点门跳转到目标展厅 */
+export interface DoorContent {
+  targetHallId?: string;
+  targetName?: string;
+}
+
+/** 顶端吊牌 */
+export interface CeilingSignContent {
+  text: string;
 }
 
 export interface Wall {
@@ -99,7 +111,7 @@ export interface Text3dContent {
   depthM?: number;
   color?: string;
   finish?: 'paint' | 'metal' | 'glow';
-  mount?: 'floor' | 'wall';
+  mount?: 'floor' | 'wall' | 'flat'; // flat = 平铺地面(地板字)
 }
 
 export interface ResolvedHall {

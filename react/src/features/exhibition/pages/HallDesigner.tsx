@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { storageApi } from "@/features/storage";
-import { hallApi } from "../api";
+import { AiButton } from "@/shared/components/AiButton";
+import { hallApi, type GeneratedHall } from "../api";
 import { useHistory } from "../hooks/useHistory";
 import type { CanvasTool, HallDesignerState, ResolvedHall, Selection } from "../lib/hallTypes";
 import { stripResolvedUrls } from "../lib/hallUtils";
@@ -20,6 +21,7 @@ import { renderPlanThumbnail } from "../lib/planThumbnail";
 import { HallCanvas } from "../components/designer/HallCanvas";
 import { FixturePalette } from "../components/designer/FixturePalette";
 import { PropertiesPanel } from "../components/designer/PropertiesPanel";
+import { GenerateHallDialog } from "../components/designer/GenerateHallDialog";
 
 const PARTY = "var(--party-primary)";
 
@@ -65,6 +67,7 @@ function DesignerInner({ hall }: { hall: ResolvedHall }) {
   const [published, setPublished] = useState(hall.published);
   const [tool, setTool] = useState<CanvasTool>({ mode: "select" });
   const [selection, setSelection] = useState<Selection>(null);
+  const [genOpen, setGenOpen] = useState(false);
 
   const accent = state.meta.theme?.accent || "#C8001E";
 
@@ -182,6 +185,14 @@ function DesignerInner({ hall }: { hall: ResolvedHall }) {
     }
   }
 
+  /** 应用 AI 生成结果:整体替换画布(一步可撤销),厅名跟随 */
+  function applyGenerated(g: GeneratedHall) {
+    update(() => ({ walls: g.walls, fixtures: g.fixtures, meta: { gridM: 0.5, ...g.meta } }));
+    if (g.name && (!name.trim() || name === "新建展厅")) setName(g.name);
+    setSelection(null);
+    setTool({ mode: "select" });
+  }
+
   return (
     <div className="h-full flex flex-col bg-[#F0F1F4]">
       {/* 工具栏 */}
@@ -203,6 +214,11 @@ function DesignerInner({ hall }: { hall: ResolvedHall }) {
         </span>
         <span className="text-xs text-[#9CA3AF]">{state.walls.length} 段墙 · {state.fixtures.length} 个组件</span>
         <div className="flex-1" />
+
+        <AiButton onClick={() => setGenOpen(true)} title="按描述/选项/参考图 AI 生成整厅布置" className="px-2.5 py-1.5 text-xs">
+          AI 生成
+        </AiButton>
+        <div className="w-px h-6 bg-[#E9E9E9] mx-1" />
 
         <button onClick={undo} disabled={!canUndo} title="撤销 (Ctrl+Z)" className="p-1.5 rounded hover:bg-[#F7F8FA] text-[#6B7280] disabled:opacity-40">
           <Undo2Icon className="w-4 h-4" />
@@ -295,6 +311,13 @@ function DesignerInner({ hall }: { hall: ResolvedHall }) {
           </div>
         </aside>
       </div>
+
+      <GenerateHallDialog
+        hallId={hallId}
+        open={genOpen}
+        onClose={() => setGenOpen(false)}
+        onGenerate={applyGenerated}
+      />
     </div>
   );
 }

@@ -13,6 +13,7 @@ export const FIXTURE_TYPES = [
   "door",
   "text_3d",
   "decor",
+  "ceiling_sign",
 ] as const;
 export type FixtureType = (typeof FIXTURE_TYPES)[number];
 
@@ -89,10 +90,19 @@ export interface Text3dContent {
   depthM?: number; // 挤出厚度(米),默认 0.12
   color?: string; // 默认主题点缀色
   finish?: "paint" | "metal" | "glow";
-  mount?: "floor" | "wall";
+  mount?: "floor" | "wall" | "flat"; // flat = 平铺地面(地板字)
 }
 export interface DecorContent {
-  kind?: "plant" | "plant_short" | "bench"; // 高绿植 / 矮盆栽 / 长椅
+  kind?: "plant" | "plant_short" | "bench" | "arrow"; // 高绿植 / 矮盆栽 / 长椅 / 地面引导箭头
+}
+/** 门内容:targetHallId 设置后,3D 里点门跳转到目标展厅 */
+export interface DoorContent {
+  targetHallId?: string;
+  targetName?: string;
+}
+/** 顶端吊牌 */
+export interface CeilingSignContent {
+  text: string;
 }
 
 /** GET /halls/:id「已解析」响应 */

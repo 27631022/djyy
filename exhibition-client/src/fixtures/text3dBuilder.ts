@@ -46,12 +46,20 @@ export function buildText3d(
   }
 
   if (mesh) {
-    // 归一定位:水平居中;floor=字脚落地,wall=中心抬到展示高
+    // 归一定位:水平居中;floor=字脚落地,wall=中心抬到展示高,flat=平铺地面(地板字)
     const bb = mesh.getBoundingInfo().boundingBox;
     const cx = (bb.minimum.x + bb.maximum.x) / 2;
     const cy = (bb.minimum.y + bb.maximum.y) / 2;
-    const targetY = mount === 'wall' ? Math.min(wallH * 0.55, 2.6) : -bb.minimum.y + 0.01;
-    mesh.position.set(-cx, mount === 'wall' ? targetY - cy : targetY, 0);
+    if (mount === 'flat') {
+      // 平躺(地板字):+π/2 字面朝上(AB 实测对比敲定;-π/2 是字背壳=镜像)。
+      // 正读站位 = fixture 的「正面侧」(2D 画布朝向小三角指向的那一侧)往下看;
+      // 要换读向,在设计器把组件旋转 180° 即可。
+      mesh.rotation.x = Math.PI / 2;
+      mesh.position.set(-cx, depth + 0.015, cy);
+    } else {
+      const targetY = mount === 'wall' ? Math.min(wallH * 0.55, 2.6) : -bb.minimum.y + 0.01;
+      mesh.position.set(-cx, mount === 'wall' ? targetY - cy : targetY, 0);
+    }
     mesh.parent = root;
 
     const finish = c.finish ?? 'paint';

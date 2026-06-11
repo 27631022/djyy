@@ -61,6 +61,20 @@ export const AI_CONSUMERS: AiConsumer[] = [
       '上传本人照片,用图生图(image-to-image)模型生成蓝底白衬衣写实证件照风格的工作头像,保留本人面部特征。需配 imageModel(如 doubao-seededit-3-0-i2i)',
   },
   {
+    key: 'exhibition.generate.text',
+    app: '3D 展厅',
+    label: 'AI 生成展厅 · 文字描述/选项',
+    capability: 'chat',
+    description: '按文字描述与选项(尺寸/色调/功能)生成展厅平面布置 JSON(墙体+组件+主题)',
+  },
+  {
+    key: 'exhibition.generate.vision',
+    app: '3D 展厅',
+    label: 'AI 生成展厅 · 参考图',
+    capability: 'vision',
+    description: '上传参考图(展厅照片/效果图/手绘平面),多模态理解后生成展厅平面布置 JSON',
+  },
+  {
     key: 'model3d.generate',
     app: '3D 展厅',
     label: 'AI 3D · 图片生成 3D 模型',

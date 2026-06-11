@@ -355,6 +355,18 @@ export function HallCanvas({
     onRecordHistory();
     dragRef.current = { kind: "fixture", id: f.id, grabDx: m.x - f.x, grabDy: m.y - f.y, moved: false };
   }
+  /** 组件上右键 = 旋转 90°(用户要的快捷调向;不冒泡到画布的「退出工具」) */
+  function fixtureContextMenu(e: React.MouseEvent, f: Fixture) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (tool.mode !== "select") return;
+    onSelectionChange({ kind: "fixture", id: f.id });
+    onRecordHistory();
+    onStateChange({
+      ...state,
+      fixtures: state.fixtures.map((x) => (x.id === f.id ? { ...x, rot: (x.rot + 90) % 360 } : x)),
+    });
+  }
   function wallMouseDown(e: React.MouseEvent, w: Wall) {
     if (tool.mode !== "select" || e.button !== 0) return;
     e.stopPropagation();
@@ -517,6 +529,7 @@ export function HallCanvas({
                 strokeDasharray={f.type === "door" ? `${6 * upp} ${4 * upp}` : undefined}
                 style={{ cursor: tool.mode === "select" ? "move" : undefined }}
                 onMouseDown={(e) => fixtureMouseDown(e, f)}
+                onContextMenu={(e) => fixtureContextMenu(e, f)}
               />
               {/* 朝向小三角(指向正面 = 本地 -Y) */}
               <path
@@ -634,7 +647,7 @@ export function HallCanvas({
             : "点击起笔画墙(0.5m 网格吸附)· 右键退出"
           : tool.mode === "stamp"
             ? `点击放置「${FIXTURE_META[tool.type].label}」· 贴墙组件自动吸附 · 右键/Esc 退出`
-            : "滚轮缩放 · 空白拖动平移 · 点选组件/墙编辑 · Alt 拖动取消吸墙"}
+            : "滚轮缩放 · 空白拖动平移 · 点选编辑 · 右键组件旋转90° · Alt 拖动取消吸墙"}
       </div>
     </div>
   );

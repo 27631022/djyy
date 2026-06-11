@@ -4,9 +4,28 @@ import type {
   Fixture,
   HallMeta,
   HallSummary,
+  HallThemePreset,
   ResolvedHall,
   Wall,
 } from "./lib/hallTypes";
+
+/** AI 生成展厅入参:描述 / 参考图 / 选项,至少给一样 */
+export interface GenerateHallBody {
+  description?: string;
+  imageFileId?: string;
+  widthM?: number;
+  depthM?: number;
+  preset?: HallThemePreset;
+  features?: string[];
+}
+
+/** AI 生成结果(不落库;应用进搭建器可撤销,确认后正常保存) */
+export interface GeneratedHall {
+  name: string;
+  meta: HallMeta;
+  walls: Wall[];
+  fixtures: Fixture[];
+}
 
 export interface SaveHallBody {
   name?: string;
@@ -36,4 +55,8 @@ export const hallApi = {
 
   /** 可用连接器(荣誉墙/党务板绑定数据来源;P1 占位 ready=false) */
   connectors: () => api.get<ConnectorMeta[]>("/connectors").then((r) => r.data),
+
+  /** AI 生成展厅布置(LLM 较慢,给 120s) */
+  aiGenerate: (body: GenerateHallBody) =>
+    api.post<GeneratedHall>("/halls/ai-generate", body, { timeout: 120_000 }).then((r) => r.data),
 };

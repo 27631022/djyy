@@ -67,7 +67,17 @@ async function boot(): Promise<void> {
       if (open) camera.detachControl();
       else camera.attachControl(canvas, true);
     };
-    setupPicking(scene, canvas, (fx) => overlay.show(fx));
+    setupPicking(scene, canvas, (fx) => {
+      // 门设了目标展厅 → 点击直接传送过去(展厅互通)
+      if (fx.type === 'door') {
+        const door = (fx.source?.content ?? {}) as { targetHallId?: string };
+        if (door.targetHallId) {
+          window.location.href = `${location.pathname}?hall=${encodeURIComponent(door.targetHallId)}`;
+          return;
+        }
+      }
+      overlay.show(fx);
+    });
     setupHover(scene, canvas); // 悬停手型+标签:让「能点的东西」可见
     setupImmersiveUi(canvas); // 沉浸漫游按钮 + 锁定准星
 

@@ -1,5 +1,5 @@
 import { Color3, MeshBuilder, type Scene } from '@babylonjs/core';
-import type { Fixture } from '../types';
+import type { DoorContent, Fixture } from '../types';
 import type { ThemeParams } from '../theme/presets';
 import { pbr } from '../scene/materialFactory';
 import { canvasTexture } from './placeholder';
@@ -40,7 +40,11 @@ export function buildDoor(scene: Scene, fx: Fixture, theme: ThemeParams): BuiltF
   lintel.parent = root;
 
   // 门头标识牌:两块单面板背靠背(DOUBLESIDE 从背面看文字会镜像)
-  const label = fx.label ?? '通道';
+  // 设了目标展厅 → 显示「→ 厅名」,点击传送(拦截在 main.ts onPick)
+  const door = (fx.source.content ?? {}) as DoorContent;
+  const label = door.targetHallId
+    ? `→ ${door.targetName || '另一个展厅'}`
+    : (fx.label ?? '通道');
   const signMat = pbr(scene, `door-sign-mat:${fx.id}`, {
     color: Color3.White(),
     roughness: 0.7,

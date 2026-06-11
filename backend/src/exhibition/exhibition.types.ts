@@ -17,8 +17,9 @@ export const FIXTURE_TYPES = [
   'honor_wall', // 荣誉墙(贴墙,连接器 → 证书/荣誉)
   'notice_board', // 党务公开板(贴墙,连接器 → 任务/党务)
   'door', // 门 / 通道(3D 端自动在墙上挖洞 + 过梁)
-  'text_3d', // 立体字(入口 LOGO 墙 / 标语,挤出 3D 文字)
-  'decor', // 装饰(绿植/长椅,程序化建模,不可点击)
+  'text_3d', // 立体字(入口 LOGO 墙 / 标语,挤出 3D 文字;mount=flat 平铺地面)
+  'decor', // 装饰(绿植/长椅/地面引导箭头,程序化建模,不可点击)
+  'ceiling_sign', // 顶端吊牌(吊杆 + 双面文字牌)
 ] as const;
 export type FixtureType = (typeof FIXTURE_TYPES)[number];
 
@@ -110,7 +111,20 @@ export interface Text3dContent {
   depthM?: number; // 挤出厚度(米),默认 0.12
   color?: string; // 默认主题点缀色(accent)
   finish?: 'paint' | 'metal' | 'glow'; // 烤漆 / 金属 / 发光,默认 paint
-  mount?: 'floor' | 'wall'; // 落地 / 贴墙,默认 floor
+  mount?: 'floor' | 'wall' | 'flat'; // 落地 / 贴墙 / 平铺地面(地板字),默认 floor
+}
+/** 装饰内容:程序化变体(arrow=地面引导箭头,沿朝向指引) */
+export interface DecorContent {
+  kind?: 'plant' | 'plant_short' | 'bench' | 'arrow';
+}
+/** 门内容:targetHallId 设置后,3D 里点门跳转到目标展厅(展厅间互通) */
+export interface DoorContent {
+  targetHallId?: string;
+  targetName?: string; // 冗余目标厅名(门头牌显示「→ 厅名」)
+}
+/** 顶端吊牌 */
+export interface CeilingSignContent {
+  text: string;
 }
 
 /** 已解析展厅(GET /halls/:id 响应,客户端拿到即用) */

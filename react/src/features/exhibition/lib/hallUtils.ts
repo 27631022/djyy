@@ -50,13 +50,15 @@ export const FIXTURE_META: Record<FixtureType, FixtureTypeMeta> = {
   door: { type: "door", label: "门 / 通道", w: 1.4, d: 0.3, wallMount: true, color: "#6B7280" },
   text_3d: { type: "text_3d", label: "立体字", w: 3.0, d: 0.4, wallMount: true, color: "#C8001E" },
   decor: { type: "decor", label: "装饰", w: 0.55, d: 0.55, wallMount: false, color: "#16A34A" },
+  ceiling_sign: { type: "ceiling_sign", label: "顶端吊牌", w: 1.8, d: 0.12, wallMount: false, color: "#0EA5E9" },
 };
 
 /** 装饰变体(palette 按变体出按钮,stamp preset 带各自尺寸) */
-export const DECOR_PRESETS: { kind: "plant" | "plant_short" | "bench"; label: string; w: number; d: number }[] = [
+export const DECOR_PRESETS: { kind: "plant" | "plant_short" | "bench" | "arrow"; label: string; w: number; d: number }[] = [
   { kind: "plant", label: "绿植(高)", w: 0.55, d: 0.55 },
   { kind: "plant_short", label: "矮盆栽", w: 0.5, d: 0.5 },
   { kind: "bench", label: "长椅", w: 1.2, d: 0.45 },
+  { kind: "arrow", label: "地面引导箭头", w: 2.0, d: 0.5 },
 ];
 
 /** 新组件实例(默认 content 按类型给最小可编辑形状;preset 覆盖尺寸/内容/名称) */
@@ -79,9 +81,9 @@ export function makeFixture(
             ? { text: "标题文字", sizeM: 0.6, depthM: 0.12, finish: "paint", mount: "wall" }
             : type === "decor"
               ? { kind: "plant" }
-              : type === "door"
-                ? null
-                : {};
+              : type === "ceiling_sign"
+                ? { text: "展区指引" }
+                : {}; // door 也给 {}:后续可设「通往展厅」
   return {
     id: uid("fx"),
     type,

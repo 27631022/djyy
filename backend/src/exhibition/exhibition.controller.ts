@@ -13,7 +13,9 @@ import type { Request } from 'express';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { Permission } from '../permission';
 import { ExhibitionService } from './exhibition.service';
+import { ExhibitionAiService } from './exhibition-ai.service';
 import { CreateHallDto, UpdateHallDto } from './dto/hall.dto';
+import { GenerateHallDto } from './dto/generate-hall.dto';
 
 /**
  * 展厅 CRUD(规格 5.5)。
@@ -25,11 +27,26 @@ import { CreateHallDto, UpdateHallDto } from './dto/hall.dto';
  */
 @Controller('halls')
 export class ExhibitionController {
-  constructor(private readonly svc: ExhibitionService) {}
+  constructor(
+    private readonly svc: ExhibitionService,
+    private readonly ai: ExhibitionAiService,
+  ) {}
 
   @Get()
   list() {
     return this.svc.list();
+  }
+
+  /** AI 生成展厅布置(不落库,前端应用进搭建器后由用户确认保存) */
+  @Post('ai-generate')
+  @UseGuards(AuthGuard)
+  @Permission('exhibition:manage')
+  aiGenerate(
+    @Body() dto: GenerateHallDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.ai.generate(dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
   @Get(':id')

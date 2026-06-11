@@ -1,4 +1,5 @@
-import { Color3, MeshBuilder, type Mesh, type Scene } from '@babylonjs/core';
+import earcut from 'earcut';
+import { Color3, MeshBuilder, Vector3, type Mesh, type Scene } from '@babylonjs/core';
 import type { DecorContent, Fixture } from '../types';
 import type { ThemeParams } from '../theme/presets';
 import { pbr } from '../scene/materialFactory';
@@ -6,7 +7,7 @@ import { fixtureRoot } from './fixtureUtils';
 import type { BuiltFixture } from './imageCaseBuilder';
 
 /**
- * 装饰组件(纯氛围):绿植 / 矮盆栽 / 长椅,程序化建模零素材。
+ * 装饰组件(纯氛围):绿植 / 矮盆栽 / 长椅 / 地面引导箭头,程序化建模零素材。
  * 不可点击(不弹详情)、不配射灯 —— 半球光 + IBL 足够。
  */
 export function buildDecor(scene: Scene, fx: Fixture, theme: ThemeParams): BuiltFixture {
@@ -18,6 +19,40 @@ export function buildDecor(scene: Scene, fx: Fixture, theme: ThemeParams): Built
     m.isPickable = false;
     parts.push(m);
   };
+
+  if (kind === 'arrow') {
+    // 地面引导箭头:平贴地面的多边形(CreatePolygon 直接出 XZ 平面网格),
+    // 指向 fixture 正面(局部 -Z);w=长度,d=宽度;点缀色微发光,远处也醒目
+    const L = Math.max(fx.w, 0.8);
+    const W = Math.max(fx.d, 0.3);
+    const sw = W * 0.16; // 杆半宽
+    const hw = W * 0.5; // 头半宽
+    const hd = Math.min(W * 0.9, L * 0.45); // 头长
+    const shape = [
+      new Vector3(-sw, 0, L / 2),
+      new Vector3(sw, 0, L / 2),
+      new Vector3(sw, 0, -L / 2 + hd),
+      new Vector3(hw, 0, -L / 2 + hd),
+      new Vector3(0, 0, -L / 2),
+      new Vector3(-hw, 0, -L / 2 + hd),
+      new Vector3(-sw, 0, -L / 2 + hd),
+    ];
+    const arrow = MeshBuilder.CreatePolygon(
+      `guide-arrow:${fx.id}`,
+      { shape },
+      scene,
+      earcut as unknown as Parameters<typeof MeshBuilder.CreatePolygon>[3],
+    );
+    arrow.position.y = 0.012;
+    const mat = pbr(scene, `guide-arrow-mat:${fx.id}`, {
+      color: theme.accent,
+      roughness: 0.55,
+      emissive: theme.accent.scale(0.35),
+    });
+    arrow.material = mat;
+    add(arrow);
+    return { pickables: [] };
+  }
 
   if (kind === 'bench') {
     // 长椅:木座面 + 双金属腿
@@ -63,7 +98,6 @@ export function buildDecor(scene: Scene, fx: Fixture, theme: ThemeParams): Built
     color: Color3.FromHexString('#3E9655'),
     roughness: 0.9,
   });
-  void theme;
 
   const tall = kind !== 'plant_short';
   const potH = tall ? 0.42 : 0.3;

@@ -421,6 +421,7 @@ export function Text3dEditor({
         <select value={value.mount ?? "wall"} onChange={(e) => onChange({ ...value, mount: e.target.value as Text3dContent["mount"] })} className={inputCls}>
           <option value="wall">贴墙</option>
           <option value="floor">落地</option>
+          <option value="flat">平铺地面(地板字)</option>
         </select>
       </Row>
     </div>

@@ -3,7 +3,9 @@ import { Trash2Icon } from "lucide-react";
 import { Switch } from "@/shared/components/ui/switch";
 import { hallApi } from "../../api";
 import type {
+  CeilingSignContent,
   DecorContent,
+  DoorContent,
   Fixture,
   HallDesignerState,
   HallThemePreset,
@@ -316,6 +318,15 @@ function FixtureProps({
         </>
       )}
 
+      {/* 门:通往展厅(展厅互通,3D 里点门传送) */}
+      {fixture.type === "door" && (
+        <DoorTargetEditor
+          hallId={hallId}
+          value={(source.content as DoorContent) ?? {}}
+          onChange={patchContent}
+        />
+      )}
+
       {/* 内容编辑(手动模式) */}
       {source.mode === "manual" && fixture.type !== "door" && (
         <>
@@ -348,7 +359,18 @@ function FixtureProps({
                 <option value="plant">绿植(高)</option>
                 <option value="plant_short">矮盆栽</option>
                 <option value="bench">长椅</option>
+                <option value="arrow">地面引导箭头</option>
               </select>
+            </Row>
+          )}
+          {fixture.type === "ceiling_sign" && (
+            <Row label="牌面文字">
+              <input
+                value={((source.content as CeilingSignContent) ?? { text: "" }).text ?? ""}
+                onChange={(e) => patchContent({ text: e.target.value })}
+                placeholder="如:荣誉展区"
+                className={inputCls}
+              />
             </Row>
           )}
         </>
@@ -356,5 +378,47 @@ function FixtureProps({
 
       <DeleteButton onClick={onDelete} label="删除组件" />
     </div>
+  );
+}
+
+/** 门的「通往展厅」:选目标厅后,3D 里点这扇门直接传送过去 */
+function DoorTargetEditor({
+  hallId,
+  value,
+  onChange,
+}: {
+  hallId: string;
+  value: DoorContent;
+  onChange: (v: DoorContent) => void;
+}) {
+  const hallsQuery = useQuery({
+    queryKey: ["exhibition", "halls"],
+    queryFn: () => hallApi.list(),
+    staleTime: 60 * 1000,
+  });
+  const others = (hallsQuery.data ?? []).filter((h) => h.id !== hallId);
+  return (
+    <>
+      <SectionTitle>通往展厅</SectionTitle>
+      <select
+        value={value.targetHallId ?? ""}
+        onChange={(e) => {
+          const id = e.target.value || undefined;
+          const name = others.find((h) => h.id === id)?.name;
+          onChange({ ...value, targetHallId: id, targetName: id ? name : undefined });
+        }}
+        className={inputCls}
+      >
+        <option value="">(普通门,不传送)</option>
+        {others.map((h) => (
+          <option key={h.id} value={h.id}>{h.name}{h.published ? "" : "(未发布)"}</option>
+        ))}
+      </select>
+      {value.targetHallId && (
+        <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+          3D 里门头牌会显示「→ {value.targetName}」,观众点门即可前往该展厅。
+        </p>
+      )}
+    </>
   );
 }

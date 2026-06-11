@@ -7,9 +7,11 @@ import {
   LayoutTemplateIcon,
   MedalIcon,
   MousePointer2Icon,
+  MoveRightIcon,
   PackageIcon,
   PenLineIcon,
   PinIcon,
+  SignpostIcon,
   SproutIcon,
   TypeIcon,
 } from "lucide-react";
@@ -28,6 +30,7 @@ const TYPE_ICONS: Record<FixtureType, IconCmp> = {
   door: DoorOpenIcon,
   text_3d: TypeIcon,
   decor: SproutIcon,
+  ceiling_sign: SignpostIcon,
 };
 
 /** palette 条目:类型 + 可选变体预设(装饰的 绿植/矮盆栽/长椅) */
@@ -45,12 +48,14 @@ const SHOW_ITEMS: PaletteItem[] = [
   { type: "honor_wall", label: "荣誉墙", icon: MedalIcon },
   { type: "notice_board", label: "党务公开板", icon: LayoutTemplateIcon },
   { type: "text_3d", label: "立体字", icon: TypeIcon },
+  { type: "ceiling_sign", label: "顶端吊牌", icon: SignpostIcon },
 ];
 
 const DECOR_ICONS: Record<string, IconCmp> = {
   plant: SproutIcon,
   plant_short: FlowerIcon,
   bench: ArmchairIcon,
+  arrow: MoveRightIcon,
 };
 
 const STRUCT_ITEMS: PaletteItem[] = [

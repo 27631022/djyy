@@ -324,6 +324,14 @@ npm run db:seed
   - **装饰组件**(新类型 **`decor`**,契约三处同步):`DecorContent{kind:'plant'|'plant_short'|'bench'}`,`decorBuilder` 程序化建模(绿植=盆+干+错落压扁球叶团,确定性位置;长椅=木座+金属腿),**不可点击不配射灯**。
   - **设计器面板改版**(用户要 tab+扁平):`FixturePalette` 改 Tabs(展示组件 / 门·装饰)+ **整行扁平按钮**(h-8 图标+名+贴墙角标);装饰按**变体**出按钮(绿植/矮盆栽/长椅),`CanvasTool.stamp` 加 `preset{label,w,d,content}` 贯通 makeFixture/幽灵;右栏 decor 出样式下拉。
   - 验证:三端门禁 0 error(react 41 warning 基线);`npm run build` 出 dist;preview 开 3D 用 `__hallDebug` **数值断言**(荣誉墙 z=-6.7/相机 yaw90/w3 切 2 段+过梁/floorHasTexture/植物 6 件椅 3 件)+ 截图核对(砖纹地板、门洞透视、长椅);测试组件已清理(保留用户实验编辑)。⚠ 用户在设计器试画的墙(`w_il6gsqf`)上的门也正确挖洞 —— 真实数据双重验证。
+- **(2026-06-10 续 P2.2)四需求:AI 生成展厅 + 右键旋转/地板字/引导箭头 + 门传送互通 + 顶端吊牌**:
+  - **AI 生成展厅**(按既有 AI 范式):`ai-prompts.ts` 注册 `exhibition.generate`(坐标系/组件规则/布置约束全在提示词里,后台「提示词管理」可调)+ `ai-consumers` 加 `exhibition.generate.text`(chat)/`.vision`(参考图);`ExhibitionAiService` = PromptService 取词 + 文字/选项拼 user 消息 + 参考图(storage→base64 dataURL,>8MB 拒)走 vision;**返回强归一化**(类型白名单/坐标钳±60/id 重排/content 按类型兜底/preset·accent 校验),**不落库** —— 前端 `GenerateHallDialog`(描述 textarea + 尺寸三档 + 色调三选 + 功能 chips 多选 + 可选参考图)应用进画布 = 一步可撤销,确认后正常保存。`POST /halls/ai-generate`(exhibition:manage)。**真调冒烟过**:LLM 返回 4 墙 9 组件、自发用上 ceiling_sign/decor 新类型。
+  - **右键旋转**:2D 画布组件上右键 = 旋转 90°(`fixtureContextMenu` 阻止冒泡,不触发画布右键退出工具)。
+  - **地板字**(text_3d `mount:'flat'` 新值):3D 平躺 —— **`rotation.x=+π/2` 字面朝上,-π/2 是背壳=镜像**(AB 双截图实测敲定);正读站位 = fixture 正面侧(2D 朝向小三角那侧),要换读向把组件转 180°。⚠ 排镜像时一度误判:从组件**背面**看平躺字是 180° 倒字,长得像镜像 —— 先数值断言 `getDirection` 看法线/字顶朝向再下结论。
+  - **地面引导箭头**(decor `kind:'arrow'` 新值):`MeshBuilder.CreatePolygon`(XZ 平面原生,earcut)画箭头多边形贴地 y=0.012,点缀色+微 emissive;w=长度 d=宽度,沿 fixture 朝向指引。
+  - **门传送(展厅互通)**:`DoorContent{targetHallId,targetName}` 契约三处同步;设计器门属性「通往展厅」下拉(列其它厅);3D 门头牌显示「→ 厅名」,`main.ts` onPick 拦截 door+targetHallId → `location.href=?hall=目标`。**模拟点击实测跳转成功**(注:伪造 `notifyObservers({type:32})` 会被前序观察者断链,要用 `scene.simulatePointerDown/Up(pickInfo)` 官方 API 模拟)。
+  - **顶端吊牌**(新类型 `ceiling_sign`):双吊杆(吊顶垂下)+ 点缀色牌身 + **双面文字**(两块单面板背靠背,canvasTexture;牌心高 min(wallH-1.05, 3.2) 保头顶净空);可点击。设计器 palette「展示组件」tab 加入,右栏编辑牌面文字。
+  - 验证:三端门禁 0 error(react 41 warning 基线)+ client build;3D 数值断言(平铺字 rotX=90/箭头 mesh/吊牌 5 件 y=3.2/门 metadata 带目标)+ 截图(箭头+吊牌+正读地板字)+ 传送实测进「测试B厅」+ AI 接口真调;测试数据(4 组件+临时 B 厅)已清理。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor

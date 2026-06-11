@@ -12,6 +12,7 @@ import { buildNoticeBoard } from './noticeBoardBuilder';
 import { buildDoor } from './doorBuilder';
 import { buildText3d } from './text3dBuilder';
 import { buildDecor } from './decorBuilder';
+import { buildCeilingSign } from './ceilingSignBuilder';
 
 /** 全厅 text_3d 文本去重字符(一次请求拿齐字体子集) */
 function collectChars(fixtures: Fixture[]): string {
@@ -71,6 +72,9 @@ export async function buildFixtures(
         break;
       case 'decor':
         built = buildDecor(scene, fx, theme);
+        break;
+      case 'ceiling_sign':
+        built = buildCeilingSign(scene, fx, theme, shell.wallH);
         break;
       default:
         console.warn(`[展厅] 未知组件类型:${fx.type as string}(${fx.id})`);
