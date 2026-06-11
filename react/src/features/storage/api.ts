@@ -24,7 +24,7 @@ export interface UploadFileOptions {
 export const storageApi = {
   /**
    * 上传文件,返回元数据(含 id)。Blob 没有文件名,务必传 filename。
-   * 大文件(证书 PDF 可十几 MB)给 120s 超时。
+   * 超时 300s:展厅宣传片(后端按类型放宽到 300MB)走办公 WiFi 可能要几分钟。
    */
   upload: (file: File | Blob, opts: UploadFileOptions, filename?: string) => {
     const form = new FormData();
@@ -37,7 +37,7 @@ export const storageApi = {
     return api
       .post<StoredFileMeta>("/files", form, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120_000,
+        timeout: 300_000,
       })
       .then((r) => r.data);
   },

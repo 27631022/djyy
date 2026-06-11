@@ -13,7 +13,7 @@ import {
   STORAGE_DRIVER,
   type StorageDriver,
 } from './drivers/storage-driver.interface';
-import { ALLOWED_EXT_MIME, FILE_MAX_BYTES } from './storage.constants';
+import { ALLOWED_EXT_MIME, maxBytesForExt } from './storage.constants';
 
 /** 对外安全投影 —— 不含字节、storageKey、driver 等内部字段 */
 export interface StoredFileMeta {
@@ -92,15 +92,17 @@ export class StorageService {
     if (!buffer || buffer.length === 0) {
       throw new BadRequestException('文件为空');
     }
-    if (buffer.length > FILE_MAX_BYTES) {
-      throw new BadRequestException(
-        `文件过大(${(buffer.length / 1024 / 1024).toFixed(1)}MB),最大支持 ${FILE_MAX_BYTES / 1024 / 1024}MB`,
-      );
-    }
     const { base, ext } = this.splitName(input.originalName);
     if (!ext || !ALLOWED_EXT_MIME[ext]) {
       throw new BadRequestException(
         `不支持的文件类型「.${ext || '?'}」。允许:${Object.keys(ALLOWED_EXT_MIME).join(' / ')}`,
+      );
+    }
+    // 按类型分级限额:视频/3D 模型放宽(EXT_MAX_BYTES),其余 30MB
+    const maxBytes = maxBytesForExt(ext);
+    if (buffer.length > maxBytes) {
+      throw new BadRequestException(
+        `文件过大(${(buffer.length / 1024 / 1024).toFixed(1)}MB),.${ext} 最大支持 ${Math.round(maxBytes / 1024 / 1024)}MB`,
       );
     }
     const mimeType = input.mimeType?.trim() || ALLOWED_EXT_MIME[ext];

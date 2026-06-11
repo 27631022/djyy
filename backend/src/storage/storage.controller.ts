@@ -18,7 +18,6 @@ import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { Permission } from '../permission';
 import { StorageService } from './storage.service';
 import { UploadFileDto } from './dto/upload-file.dto';
-import { FILE_MAX_BYTES } from './storage.constants';
 
 /** multer 注入的文件形状(与 certificate/issue.controller 一致) */
 interface UploadedFileShape {
@@ -49,8 +48,9 @@ function decodeMulterFilename(name: string): string {
  *   GET    /files/:id    仅登录                       流式下载/预览(StreamableFile)
  *   DELETE /files/:id   @Permission('file:delete')   软删 + 删字节
  *
- * 注:multipart 上限由本控制器 + service 校验(FILE_MAX_BYTES),与 main.ts 的
- *     json({limit:'50mb'}) 是两套(那只管 application/json),互不相干。
+ * 注:multipart 上限由 service.put 按扩展名分级校验(视频 300MB / 3D 100MB / 其余 30MB,
+ *     见 storage.constants 的 EXT_MAX_BYTES),与 main.ts 的 json({limit:'50mb'})
+ *     是两套(那只管 application/json),互不相干。
  * 公开下载不在此(降攻击面)—— 证书公开下载走证书自己的 /public/certificates/... 经 DI 调本服务。
  */
 @Controller('files')
@@ -69,11 +69,7 @@ export class StorageController {
     @Req() req: Request,
   ) {
     if (!file) throw new BadRequestException('未收到文件');
-    if (file.size > FILE_MAX_BYTES) {
-      throw new BadRequestException(
-        `文件过大(${(file.size / 1024 / 1024).toFixed(1)}MB),最大支持 ${FILE_MAX_BYTES / 1024 / 1024}MB`,
-      );
-    }
+    // 大小校验收敛到 service.put(按扩展名分级限额:视频 300MB / 3D 100MB / 其余 30MB)
     return this.svc.put(
       {
         buffer: file.buffer,
