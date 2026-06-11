@@ -90,6 +90,42 @@ async function boot(): Promise<void> {
     setupHover(scene, canvas); // 悬停手型+标签:让「能点的东西」可见
     setupImmersiveUi(canvas); // 沉浸漫游按钮 + 锁定准星
 
+    // ── 走近传送(用户直觉:走进门就到另一个厅,而不只是点门)──
+    // 传送门 = 设了 targetHallId 的 door;人走到门洞中心 0.9m 内即跳转。
+    // 顺带根治「外墙传送门走出去掉出世界」:人还没穿出墙就已被传走。
+    const portals = hall.fixtures
+      .filter((f) => f.type === 'door')
+      .map((f) => ({
+        x: f.x,
+        z: f.y, // 归一化后平面 y 即世界 z
+        target: ((f.source?.content ?? {}) as { targetHallId?: string }).targetHallId,
+      }))
+      .filter((p): p is { x: number; z: number; target: string } => !!p.target);
+    let teleporting = false;
+    let lastCheck = 0;
+    const spawn = hall.meta.spawn ?? { x: 0, y: 0, rot: 0 };
+    scene.onBeforeRenderObservable.add(() => {
+      const now = performance.now();
+      if (now - lastCheck < 150) return; // 节流:6~7 次/秒足够
+      lastCheck = now;
+      // 兜底:任何原因摔出世界(无目标的外墙门洞/碰撞缝隙)→ 回出生点,不无限下坠
+      if (camera.position.y < -4) {
+        camera.position.set(spawn.x, 1.7, spawn.y);
+        console.warn('[展厅] 掉出场景,已传回出生点');
+        return;
+      }
+      if (teleporting) return;
+      for (const p of portals) {
+        const dx = camera.position.x - p.x;
+        const dz = camera.position.z - p.z;
+        if (dx * dx + dz * dz < 0.9 * 0.9) {
+          teleporting = true;
+          window.location.href = `${location.pathname}?hall=${encodeURIComponent(p.target)}`;
+          return;
+        }
+      }
+    });
+
     engine.runRenderLoop(() => scene.render());
     scene.executeWhenReady(() => {
       loading.hide();

@@ -66,13 +66,15 @@ export function buildDoor(scene: Scene, fx: Fixture, theme: ThemeParams): BuiltF
   });
   signMat.emissiveColor = new Color3(0.14, 0.14, 0.14);
   signMat.emissiveTexture = signMat.albedoTexture;
+  // ⚠ 牌挂「门洞内上沿」(2.26m,真实出口牌位置),不能挂门框上方(原 2.88):
+  // 门放在实体墙上时,墙体过梁(净高 2.5 以上补墙)会把 2.88 的牌整个吞进墙里看不见。
   const mkSign = (flip: boolean) => {
     const s = MeshBuilder.CreatePlane(
       `door-sign:${fx.id}:${flip ? 'b' : 'f'}`,
       { width: 1.5, height: 0.36 },
       scene,
     );
-    s.position.set(0, 2.88, flip ? 0.012 : -0.012);
+    s.position.set(0, 2.26, flip ? 0.012 : -0.012);
     if (flip) s.rotation.y = Math.PI;
     s.material = signMat;
     s.parent = root;
