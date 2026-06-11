@@ -56,7 +56,16 @@ async function boot(): Promise<void> {
     for (const m of shell.staticMeshes) m.freezeWorldMatrix();
 
     // 质量自适应:集显按 GPU 探测直接流畅档,运行中 FPS 低再降(?quality= 可锁定)
-    setupQuality(scene, engine, fx, quality);
+    const qualityHandle = setupQuality(scene, engine, fx, quality);
+
+    // 兜底看门狗:弱驱动(如 Microsoft Basic)uniform 块超限会让 shader 编译失败、
+    // isReady 永远 false、加载条卡死 —— 12s 未就绪就强制流畅档(砍射灯/管线)重编重试
+    setTimeout(() => {
+      if (!scene.isReady()) {
+        console.warn('[展厅] 场景迟迟未就绪(疑似 shader 编译失败),强制切流畅模式重试');
+        qualityHandle.forceLow();
+      }
+    }, 12_000);
 
     loading.setProgress(90, '准备 VR…');
     await setupXR(scene, shell.floor);

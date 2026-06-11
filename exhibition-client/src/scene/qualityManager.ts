@@ -45,16 +45,18 @@ function showSoftwareRenderBanner(): void {
 
 /**
  * 按 GPU 粗判初始档:
- * - SwiftShader/软渲染 → low + 警示横幅(显卡没启用,任何优化都救不了)
+ * - SwiftShader / Microsoft Basic 等软渲染 → low + 警示横幅(显卡没启用/驱动没装好,任何优化都救不了)
  * - Intel 集显 → low 起步;独显/Apple → high(自适应仍兜底降档)
+ * ⚠ "Microsoft Basic Render/Display" = Windows 通用兜底驱动(没装真显卡驱动),
+ *    本质也是 CPU 软渲染,且 GL 上限极低(UBO 仅 12)→ 必须按软渲染处理。
  */
 export function detectInitialLevel(engine: Engine): QualityLevel {
   const explicit = explicitQuality();
   if (explicit) return explicit;
   const renderer = engine.getGlInfo()?.renderer ?? '';
   console.info(`[展厅] GPU: ${renderer || '(未知)'}`);
-  if (/swiftshader|software|llvmpipe/i.test(renderer)) {
-    console.warn('[展厅] 浏览器在用 CPU 软件渲染(硬件加速未启用),性能会极差');
+  if (/swiftshader|software|llvmpipe|microsoft basic|basic render|basic display/i.test(renderer)) {
+    console.warn('[展厅] 浏览器在用 CPU 软件渲染(硬件加速未开 或 显卡驱动未装好),性能会极差');
     showSoftwareRenderBanner();
     return 'low';
   }
@@ -136,20 +138,32 @@ function showToast(text: string): void {
   }, 2600);
 }
 
+export interface QualityHandle {
+  /** 强制降到 low(兜底:弱驱动 shader 编译失败时砍灯/砍管线重编) */
+  forceLow: () => void;
+}
+
 export function setupQuality(
   scene: Scene,
   engine: Engine,
   fx: PostFx,
   initial: QualityLevel,
-): void {
+): QualityHandle {
   const ctx: QualityCtx = { scene, engine, fx, glowBase: fx.glow.intensity };
 
   let idx = LEVELS.indexOf(initial);
   applyLevel(ctx, initial);
   setupFpsMeter(engine, () => LEVELS[idx]); // 按 F 显隐帧率角标
 
-  if (explicitQuality()) return; // 显式指定 → 锁定,不自适应
-  if (idx >= LEVELS.length - 1) return; // low 起步,无可再降
+  const forceLow = () => {
+    if (LEVELS[idx] === 'low') return;
+    idx = LEVELS.length - 1;
+    applyLevel(ctx, 'low');
+    showToast('已切换流畅模式');
+  };
+
+  if (explicitQuality()) return { forceLow }; // 显式指定 → 锁定,不自适应
+  if (idx >= LEVELS.length - 1) return { forceLow }; // low 起步,无可再降
 
   let slowStreak = 0;
   const timer = setInterval(() => {
@@ -168,4 +182,5 @@ export function setupQuality(
       slowStreak = 0;
     }
   }, 2000);
+  return { forceLow };
 }

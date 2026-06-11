@@ -94,13 +94,16 @@ export function buildShell(
     color: theme.wall,
     roughness: theme.wallRoughness,
   });
-  wallMat.maxSimultaneousLights = 12; // 展品射灯会打到墙
+  // ⚠ 不能贪大:每盏灯占一个 uniform block,加 场景/材质/网格 块后必须 < 显卡
+  // GL_MAX_VERTEX_UNIFORM_BUFFERS(弱驱动只有 12;曾设 12 → shader 编译失败,
+  // 材质永不就绪,另一台办公机卡死在加载进度条)。6 盏足够:射灯有 includedOnlyMeshes。
+  wallMat.maxSimultaneousLights = 6;
   const floorMat = pbr(scene, 'mat:floor', {
     color: Color3.White(), // 基色烤进砖纹贴图,albedo 给白(相乘不偏色)
     roughness: theme.floorRoughness, // 低粗糙度 → IBL 反射,「反光地板」
     metallic: 0.05,
   });
-  floorMat.maxSimultaneousLights = 12; // 射灯地面光池
+  floorMat.maxSimultaneousLights = 6; // 射灯地面光池(上限说明见 wallMat)
   const trimMat = pbr(scene, 'mat:trim', { color: theme.trim, roughness: 0.5, metallic: 0.3 });
   // 吊顶面朝下,光照天然不足 → 补少量自发光(过高会让全场发亮,0.22 时用户反馈偏亮)
   const ceilMat = pbr(scene, 'mat:ceiling', {
