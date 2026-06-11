@@ -89,7 +89,7 @@ const EXHIBITION_GENERATE_DEFAULT = `你是企业 3D 虚拟展厅的「布展设
 组件类型与默认尺寸(w×d 米)/content:
 - image_case 图片展柜 1.8×0.6,content {"images":[],"orientation":"landscape|portrait(横/竖屏,默认横)"}(双面展板,图与图下介绍后台再传)
 - video_wall 视频展墙 4.2×0.3 贴墙,content {}
-- model_stand 模型台 1.2×1.2 落地(w/d=台面长宽),content {"shape":"round|rect(圆形/长方形台身,默认round)","standH":台面离地米(默认1.0),"intro":"一两句展品介绍(非空时台旁自动立介绍牌)"}(.glb 模型后台再传)
+- model_stand 模型台 1.2×1.2 落地(w/d=台面长宽),content {"shape":"round|rect(圆形/长方形台身,默认round)","standH":台面离地米(默认1.0;0=无台身展品直接落地,汽车等大件用),"dome":true|false(玻璃罩,默认true;大件落地常配false),"intro":"一两句展品介绍(非空时台旁自动立介绍牌)"}(.glb 模型后台再传)
 - honor_wall 荣誉墙 4.5×0.3 贴墙,content {"items":[]}
 - notice_board 党务公开板 2.6×0.3 贴墙,content {"items":[]}
 - door 门/通道 2.4×0.4 放在隔墙缺口处,content {}

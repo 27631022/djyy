@@ -470,11 +470,20 @@ export function ModelStandEditor({
       </Row>
       <Row label="台面高(m)">
         <input
-          type="number" step={0.05} min={0.3} max={1.6}
+          type="number" step={0.05} min={0} max={1.6}
           value={value.standH ?? 1.0}
-          onChange={(e) => onChange({ ...value, standH: Math.min(1.6, Math.max(0.3, Number(e.target.value) || 1.0)) })}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            onChange({ ...value, standH: Math.min(1.6, Math.max(0, Number.isFinite(n) ? n : 1.0)) });
+          }}
           className={inputCls}
         />
+      </Row>
+      {(value.standH ?? 1.0) < 0.12 && (
+        <p className="text-[10px] text-[#9CA3AF] -mt-1">高度 0:不出台身,展品直接落地(适合汽车等大件)</p>
+      )}
+      <Row label="玻璃罩">
+        <Switch checked={value.dome !== false} onCheckedChange={(b) => onChange({ ...value, dome: b })} />
       </Row>
       <Row label="模型缩放">
         <input

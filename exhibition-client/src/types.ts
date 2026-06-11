@@ -105,8 +105,10 @@ export interface ModelStandContent {
   upAxis?: 'y' | 'z';
   /** 台体形状:圆形(默认)/ 长方形;台面长宽取 fixture.w/d */
   shape?: 'round' | 'rect';
-  /** 台面离地高度(米),默认 1.0 */
+  /** 台面离地高度(米),默认 1.0;**0 = 不出台身,展品直接落地**(汽车等大件) */
   standH?: number;
+  /** 玻璃罩,默认 true;false 不出罩 */
+  dome?: boolean;
   /** 介绍信息:台旁立介绍牌 + 点击浮层显示 */
   intro?: string;
 }

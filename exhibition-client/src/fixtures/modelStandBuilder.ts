@@ -42,61 +42,84 @@ export function buildModelStand(
   // 台面尺寸:圆台取 w/d 较小者为直径,方台即 w×d
   const plateW = shape === 'round' ? Math.min(w, d) : w;
   const plateD = shape === 'round' ? Math.min(w, d) : d;
-  const standH = clamp(c.standH ?? 1.0, 0.3, 1.6); // 台面(顶面)离地高度
-  const colH = standH - 0.05; // 柱身,上面还有 0.05 台板
+  const standH = clamp(c.standH ?? 1.0, 0, 1.6); // 台面(顶面)离地高度
+  const hasBody = standH >= 0.12; // 低于 12cm 不出台身,展品直接落地(汽车等大件)
+  const wantDome = c.dome !== false; // 玻璃罩可选,默认有
+  const topY = hasBody ? standH : 0; // 展品底面所在高度
   const maxModelH = clamp(Math.min(plateW, plateD) + 0.2, 0.6, 2.2);
 
-  /* ── 台身 ── */
+  /* ── 台身(standH≈0 时整段跳过) ── */
   const mkBody = (name: string, bw: number, bd: number, h: number): Mesh =>
     shape === 'round'
       ? MeshBuilder.CreateCylinder(name, { diameter: Math.min(bw, bd), height: h, tessellation: 48 }, scene)
       : MeshBuilder.CreateBox(name, { width: bw, depth: bd, height: h }, scene);
 
+  // 精致细节:发光圈/灯线(圆台用环;方台用 4 根细边框条 —— 实心发光板在落地模式像块红毯)
+  const mkGlow = (name: string, gw: number, gd: number, y: number, thick: number) => {
+    const mat = emissiveMat(scene, `${name}-mat`, theme.accent.scale(0.85));
+    const place = (m: Mesh, px: number, pz: number) => {
+      m.position.set(px, y, pz);
+      m.material = mat;
+      m.isPickable = false;
+      m.parent = root;
+    };
+    if (shape === 'round') {
+      place(
+        MeshBuilder.CreateTorus(name, { diameter: Math.min(gw, gd), thickness: thick, tessellation: 48 }, scene),
+        0,
+        0,
+      );
+      return;
+    }
+    const t = Math.max(thick, 0.03); // 边框条宽
+    const h = thick * 0.7;
+    place(MeshBuilder.CreateBox(`${name}:n`, { width: gw, depth: t, height: h }, scene), 0, -gd / 2);
+    place(MeshBuilder.CreateBox(`${name}:s`, { width: gw, depth: t, height: h }, scene), 0, gd / 2);
+    place(MeshBuilder.CreateBox(`${name}:w`, { width: t, depth: gd, height: h }, scene), -gw / 2, 0);
+    place(MeshBuilder.CreateBox(`${name}:e`, { width: t, depth: gd, height: h }, scene), gw / 2, 0);
+  };
+
   const colW = plateW - 0.12;
   const colD = plateD - 0.12;
-  const pedestal = mkBody(`stand-pedestal:${fx.id}`, colW, colD, colH);
-  pedestal.position.set(0, colH / 2, 0);
-  pedestal.material = pbr(scene, `stand-pedestal-mat:${fx.id}`, {
-    color: Color3.FromHexString('#E8E5E0'),
-    roughness: 0.4,
-  });
-  pedestal.parent = root;
+  const pickables: Mesh[] = [];
 
-  const top = mkBody(`stand-top:${fx.id}`, plateW, plateD, 0.05);
-  top.position.set(0, standH - 0.025, 0);
-  top.material = pbr(scene, `stand-top-mat:${fx.id}`, {
-    color: theme.trim,
-    metallic: 0.6,
-    roughness: 0.3,
-  });
-  top.parent = root;
+  if (hasBody) {
+    const colH = standH - 0.05; // 柱身,上面还有 0.05 台板
+    const pedestal = mkBody(`stand-pedestal:${fx.id}`, colW, colD, colH);
+    pedestal.position.set(0, colH / 2, 0);
+    pedestal.material = pbr(scene, `stand-pedestal-mat:${fx.id}`, {
+      color: Color3.FromHexString('#E8E5E0'),
+      roughness: 0.4,
+    });
+    pedestal.parent = root;
 
-  // 精致细节:底部发光圈 + 台面下灯线(圆台用环,方台用薄发光板,GlowLayer 拾取)
-  const mkGlow = (name: string, gw: number, gd: number, y: number, thick: number) => {
-    const m =
-      shape === 'round'
-        ? MeshBuilder.CreateTorus(name, { diameter: Math.min(gw, gd), thickness: thick, tessellation: 48 }, scene)
-        : MeshBuilder.CreateBox(name, { width: gw, depth: gd, height: thick * 0.7 }, scene);
-    m.position.set(0, y, 0);
-    m.material = emissiveMat(scene, `${name}-mat`, theme.accent.scale(0.85));
-    m.isPickable = false;
-    m.parent = root;
-  };
+    const top = mkBody(`stand-top:${fx.id}`, plateW, plateD, 0.05);
+    top.position.set(0, standH - 0.025, 0);
+    top.material = pbr(scene, `stand-top-mat:${fx.id}`, {
+      color: theme.trim,
+      metallic: 0.6,
+      roughness: 0.3,
+    });
+    top.parent = root;
+
+    mkGlow(`stand-ring:${fx.id}:top`, colW + 0.04, colD + 0.04, standH - 0.06, 0.018);
+    pickables.push(pedestal, top);
+  }
+  // 底部光圈:有台身绕柱脚,落地展品则圈住展位(都好看,保留)
   mkGlow(`stand-ring:${fx.id}:base`, colW + 0.08, colD + 0.08, 0.02, 0.025);
-  mkGlow(`stand-ring:${fx.id}:top`, colW + 0.04, colD + 0.04, standH - 0.06, 0.018);
 
-  // 玻璃罩(罩住展品区;微透反光)
-  const domeH = maxModelH + 0.12;
-  const dome =
-    shape === 'round'
-      ? MeshBuilder.CreateCylinder(`stand-dome:${fx.id}`, { diameter: Math.min(plateW, plateD) + 0.12, height: domeH, tessellation: 48 }, scene)
-      : MeshBuilder.CreateBox(`stand-dome:${fx.id}`, { width: plateW + 0.12, depth: plateD + 0.12, height: domeH }, scene);
-  dome.position.set(0, standH + domeH / 2, 0);
-  dome.material = glassMat(scene, `stand-dome-mat:${fx.id}`);
-  dome.isPickable = false;
-  dome.parent = root;
-
-  const pickables: Mesh[] = [pedestal, top];
+  // 玻璃罩(罩住展品区;微透反光;可选)
+  if (wantDome) {
+    const domeH = maxModelH + 0.12;
+    const dome =
+      shape === 'round'
+        ? MeshBuilder.CreateCylinder(`stand-dome:${fx.id}`, { diameter: Math.min(plateW, plateD) + 0.12, height: domeH, tessellation: 48 }, scene)
+        : MeshBuilder.CreateBox(`stand-dome:${fx.id}`, { width: plateW + 0.12, depth: plateD + 0.12, height: domeH }, scene);
+    dome.position.set(0, topY + domeH / 2, 0);
+    dome.material = glassMat(scene, `stand-dome-mat:${fx.id}`);
+    dome.isPickable = false;
+    dome.parent = root;
+  }
 
   /* ── 介绍牌(讲台式斜面,正前右侧;intro 非空才建) ── */
   if (c.intro?.trim()) {
@@ -116,7 +139,7 @@ export function buildModelStand(
       { type: 3, size: 0.24 },
       scene,
     );
-    crystal.position.set(0, standH + 0.5, 0);
+    crystal.position.set(0, topY + 0.5, 0);
     crystal.material = pbr(scene, `stand-crystal-mat:${fx.id}`, {
       color: theme.accent,
       metallic: 0.85,
@@ -129,7 +152,7 @@ export function buildModelStand(
     scene.registerBeforeRender(() => {
       t += scene.getEngine().getDeltaTime() / 1000;
       crystal.rotation.y = t * 0.6;
-      crystal.position.y = standH + 0.5 + Math.sin(t * 1.2) * 0.05;
+      crystal.position.y = topY + 0.5 + Math.sin(t * 1.2) * 0.05;
     });
   };
 
@@ -198,7 +221,7 @@ export function buildModelStand(
         // holder 在台面中心做自转;modelRoot 在内偏移,让模型水平居中、底面落台面
         const holder = new TransformNode(`stand-model:${fx.id}`, scene);
         holder.parent = root;
-        holder.position.y = standH;
+        holder.position.y = topY;
         modelRoot.parent = holder;
         modelRoot.scaling.setAll(s);
         modelRoot.position.set(
@@ -224,7 +247,8 @@ export function buildModelStand(
   }
 
   markPickable(pickables, fx);
-  return { pickables, spotTargets: [pedestal, top] };
+  // 落地模式(无台身)时 pickables 只剩介绍牌;射灯目标为空也无碍(展品靠 IBL)
+  return { pickables, spotTargets: [...pickables] };
 }
 
 /* ── 台旁介绍牌:金属斜杆 + 白面板(标题 + 折行介绍文字) ── */

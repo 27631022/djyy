@@ -216,7 +216,8 @@ function defaultContent(type: FixtureType, raw: unknown): unknown {
     case 'model_stand':
       return {
         shape: c.shape === 'rect' ? 'rect' : 'round',
-        ...(c.standH !== undefined ? { standH: num(c.standH, 1.0, 0.3, 1.6) } : {}),
+        ...(c.standH !== undefined ? { standH: num(c.standH, 1.0, 0, 1.6) } : {}),
+        ...(c.dome === false ? { dome: false } : {}),
         ...(typeof c.intro === 'string' && c.intro.trim()
           ? { intro: c.intro.trim().slice(0, 200) }
           : {}),
