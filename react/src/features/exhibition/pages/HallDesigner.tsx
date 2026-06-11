@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -132,6 +132,10 @@ function DesignerInner({ hall }: { hall: ResolvedHall }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [undo, redo, deleteSelection, selection, tool.mode, state.meta.gridM, update]);
 
+  /* 当前缩略图 fileId:保存成功后跟着换 —— 不能一直用挂载时的 hall.thumbnail,
+     否则第二次保存还拿第一次已删掉的旧 id 去删 → 404 噪音(用户实测误以为保存失败) */
+  const thumbIdRef = useRef<string | null>(hall.thumbnail?.split("/").pop() ?? null);
+
   /* 保存:剥已解析 url → PATCH + 平面缩略图 */
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -150,12 +154,13 @@ function DesignerInner({ hall }: { hall: ResolvedHall }) {
         fixtures: stripResolvedUrls(state.fixtures),
         ...(thumbnailFileId ? { thumbnailFileId } : {}),
       });
-      // 旧缩略图变孤儿,顺手删(尽力而为)
-      if (thumbnailFileId && hall.thumbnail) {
-        const oldId = hall.thumbnail.split("/").pop();
+      // 旧缩略图变孤儿,顺手删(尽力而为),并把"当前图"换成这次的
+      if (thumbnailFileId) {
+        const oldId = thumbIdRef.current;
         if (oldId && oldId !== thumbnailFileId) {
           storageApi.remove(oldId).catch((): void => undefined);
         }
+        thumbIdRef.current = thumbnailFileId;
       }
       return saved;
     },
