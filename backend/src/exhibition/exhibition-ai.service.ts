@@ -203,7 +203,7 @@ function num(v: unknown, dflt: number, min: number, max: number): number {
 }
 
 const TYPE_SET = new Set<string>(FIXTURE_TYPES);
-const PRESETS = new Set(['modern_light', 'party_red', 'dark_tech']);
+const PRESETS = new Set(['modern_light', 'party_red', 'dark_tech', 'future_tech']);
 
 function defaultContent(type: FixtureType, raw: unknown): unknown {
   const c = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};

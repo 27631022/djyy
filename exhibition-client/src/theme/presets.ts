@@ -22,6 +22,10 @@ export interface ThemeParams {
   envIntensity: number;
   glowIntensity: number;
   spotIntensity: number; // 展品射灯
+  /** 地板纹理风格:tile 石材砖(默认)/ tech 发光网格(未来科技风) */
+  floorStyle?: 'tile' | 'tech';
+  /** 踢脚线/顶角线自发光色(发光线条,GlowLayer 拾取;未来科技风用) */
+  trimGlow?: Color3;
 }
 
 const PRESETS: Record<string, ThemeParams> = {
@@ -60,6 +64,26 @@ const PRESETS: Record<string, ThemeParams> = {
     envIntensity: 0.7,
     glowIntensity: 0.65,
     spotIntensity: 14,
+  },
+  // 未来科技风:深空蓝黑 + 霓虹青点缀 + 镜面发光网格地板 + 发光线条踢脚
+  future_tech: {
+    name: '未来科技风',
+    clearColor: Color3.FromHexString('#05070D'),
+    wall: Color3.FromHexString('#101521'),
+    wallRoughness: 0.55,
+    floor: Color3.FromHexString('#0A0D14'),
+    floorRoughness: 0.06, // 近镜面,网格线倒影
+    ceiling: Color3.FromHexString('#080A10'),
+    beam: Color3.FromHexString('#161C2A'),
+    stripEmissive: new Color3(0.25, 0.8, 1.0), // 冷光青灯带
+    trim: Color3.FromHexString('#1E2636'),
+    accent: Color3.FromHexString('#00D4FF'),
+    hemiIntensity: 0.3,
+    envIntensity: 0.5,
+    glowIntensity: 1.05,
+    spotIntensity: 13,
+    floorStyle: 'tech',
+    trimGlow: new Color3(0.0, 0.5, 0.65), // 踢脚/顶角发光线
   },
   // 深色科技馆:深灰蓝墙 + 强反射地面 + 冷光灯带
   dark_tech: {

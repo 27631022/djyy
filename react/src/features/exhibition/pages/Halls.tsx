@@ -24,6 +24,7 @@ const PRESETS: { value: HallThemePreset; label: string; desc: string }[] = [
   { value: "modern_light", label: "现代展馆·浅色", desc: "白墙反光地面,党建红点缀(默认)" },
   { value: "party_red", label: "党建红馆", desc: "红主题墙,金色点缀" },
   { value: "dark_tech", label: "深色科技馆", desc: "深灰蓝,冷光灯带" },
+  { value: "future_tech", label: "未来科技风", desc: "深空蓝黑,霓虹青发光网格地板" },
 ];
 
 /** 展厅库:卡片列表 + 新建 → 进 2D 搭建器布展;发布后 3D 客户端可漫游 */

@@ -33,7 +33,7 @@ export interface Wall {
 }
 
 /** 主题预设(v2):客户端 theme/presets.ts 按 preset 取整套材质/灯光参数 */
-export type HallThemePreset = 'modern_light' | 'party_red' | 'dark_tech';
+export type HallThemePreset = 'modern_light' | 'party_red' | 'dark_tech' | 'future_tech';
 
 export interface HallTheme {
   preset?: HallThemePreset; // 默认 'modern_light'(现代展馆·浅色)

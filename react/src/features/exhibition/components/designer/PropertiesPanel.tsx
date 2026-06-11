@@ -86,6 +86,7 @@ const PRESET_LABEL: Record<HallThemePreset, string> = {
   modern_light: "现代展馆·浅色",
   party_red: "党建红馆",
   dark_tech: "深色科技馆",
+  future_tech: "未来科技风",
 };
 
 export function PropertiesPanel({ state, selection, hallId, accent, onUpdate, onDeleteSelection }: PropertiesPanelProps) {

@@ -77,7 +77,7 @@ const EXHIBITION_GENERATE_DEFAULT = `你是企业 3D 虚拟展厅的「布展设
 输出严格 JSON(不要 markdown / 围栏 / 解释):
 {
  "name": "展厅名称(用户没起名就按主题起一个)",
- "meta": { "wallH": 墙高米(默认 4.2,大气可 4.5), "theme": { "preset": "modern_light|party_red|dark_tech 三选一", "accent": "#RRGGBB 点缀色" }, "spawn": { "x":横, "y":纵, "rot":朝向 } },
+ "meta": { "wallH": 墙高米(默认 4.2,大气可 4.5), "theme": { "preset": "modern_light|party_red|dark_tech|future_tech 四选一(future_tech=未来科技风:深空蓝黑+霓虹青发光网格)", "accent": "#RRGGBB 点缀色" }, "spawn": { "x":横, "y":纵, "rot":朝向 } },
  "walls": [ {"id":"w1","x1":..,"y1":..,"x2":..,"y2":..}, ... ],
  "fixtures": [ {"id":"fx1","type":"类型","x":..,"y":..,"rot":..,"w":宽,"d":深,"label":"名称","source":{"mode":"manual","content":{...}}}, ... ]
 }

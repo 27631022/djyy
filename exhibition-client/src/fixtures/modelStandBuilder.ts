@@ -7,7 +7,7 @@ import {
 } from '@babylonjs/core';
 import type { Fixture, ModelStandContent } from '../types';
 import type { ThemeParams } from '../theme/presets';
-import { pbr } from '../scene/materialFactory';
+import { emissiveMat, glassMat, pbr } from '../scene/materialFactory';
 import { fixtureRoot, markPickable } from './fixtureUtils';
 import type { BuiltFixture } from './imageCaseBuilder';
 
@@ -47,6 +47,32 @@ export function buildModelStand(
     roughness: 0.3,
   });
   top.parent = root;
+
+  // 精致细节:底部发光环(点缀色,GlowLayer 拾取)+ 台面下灯线环
+  const mkRing = (diameter: number, y: number, thick: number) => {
+    const ring = MeshBuilder.CreateTorus(
+      `stand-ring:${fx.id}:${y}`,
+      { diameter, thickness: thick, tessellation: 48 },
+      scene,
+    );
+    ring.position.set(0, y, 0);
+    ring.material = emissiveMat(scene, `stand-ring-mat:${fx.id}:${y}`, theme.accent.scale(0.85));
+    ring.isPickable = false;
+    ring.parent = root;
+  };
+  mkRing(0.7, 0.02, 0.025); // 底部光环
+  mkRing(0.66, 0.945, 0.018); // 台面下灯线
+
+  // 玻璃罩(圆柱,罩住展品;微透反光,精致感)
+  const dome = MeshBuilder.CreateCylinder(
+    `stand-dome:${fx.id}`,
+    { diameter: 0.74, height: 0.92, tessellation: 48 },
+    scene,
+  );
+  dome.position.set(0, 1.0 + 0.46, 0);
+  dome.material = glassMat(scene, `stand-dome-mat:${fx.id}`);
+  dome.isPickable = false;
+  dome.parent = root;
 
   const pickables: Mesh[] = [pedestal, top];
 

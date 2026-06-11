@@ -332,6 +332,11 @@ npm run db:seed
   - **门传送(展厅互通)**:`DoorContent{targetHallId,targetName}` 契约三处同步;设计器门属性「通往展厅」下拉(列其它厅);3D 门头牌显示「→ 厅名」,`main.ts` onPick 拦截 door+targetHallId → `location.href=?hall=目标`。**模拟点击实测跳转成功**(注:伪造 `notifyObservers({type:32})` 会被前序观察者断链,要用 `scene.simulatePointerDown/Up(pickInfo)` 官方 API 模拟)。
   - **顶端吊牌**(新类型 `ceiling_sign`):双吊杆(吊顶垂下)+ 点缀色牌身 + **双面文字**(两块单面板背靠背,canvasTexture;牌心高 min(wallH-1.05, 3.2) 保头顶净空);可点击。设计器 palette「展示组件」tab 加入,右栏编辑牌面文字。
   - 验证:三端门禁 0 error(react 41 warning 基线)+ client build;3D 数值断言(平铺字 rotX=90/箭头 mesh/吊牌 5 件 y=3.2/门 metadata 带目标)+ 截图(箭头+吊牌+正读地板字)+ 传送实测进「测试B厅」+ AI 接口真调;测试数据(4 组件+临时 B 厅)已清理。
+- **(2026-06-10 续 P2.3)展柜双面 + 未来科技风主题 + 组件精致化**(用户三需求):
+  - **图片展柜双面**:`imageCaseBuilder` 重构 `mkFace(side)` —— 正面第 1 张图、背面第 2 张(只有一张则两面同图),卡纸/图片/玻璃正反各一套(背面板 `rotation.y=π`);中岛摆放两侧可看。
+  - **未来科技风**(新 preset **`future_tech`**,`HallThemePreset` 三处契约同步):深空蓝黑 + 霓虹青 #00D4FF;`ThemeParams` 加 **`floorStyle:'tile'|'tech'`**(makeFloorTexture 加 tech 分支:深底+发光网格线+交点亮斑,**同一张纹理喂 albedo+emissive** —— 线亮底黑,只有线发光)+ **`trimGlow`**(踢脚线/顶角线 emissive → 全场发光描边,GlowLayer 拾取);地板 roughness 0.06 近镜面网格倒影。接入五处:PRESET_LABEL/新建对话框/AI 生成对话框/AI 提示词(四选一)/ai-service 白名单。实测截图 = TRON 风。
+  - **精致化**:展柜四边金属包边条(点缀色金属+微发光)+ 底座正反点缀灯线;模型台加 **底部发光环 + 台面下灯线环**(Torus emissive)+ **玻璃罩**(圆柱 glassMat 罩展品)。
+  - 验证:三端门禁 0 error + client build;数值断言(floorEmissive/trimGlow/展柜每柜 2 面共 10 面/包边 20 根/光环 2 玻璃罩 1)+ 科技风全景截图;seed 厅主题已恢复 modern_light。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor

@@ -104,7 +104,13 @@ export function buildShell(
     metallic: 0.05,
   });
   floorMat.maxSimultaneousLights = 6; // 射灯地面光池(上限说明见 wallMat)
-  const trimMat = pbr(scene, 'mat:trim', { color: theme.trim, roughness: 0.5, metallic: 0.3 });
+  // trimGlow(未来科技风):踢脚线/顶角线变发光线条(GlowLayer 拾取)
+  const trimMat = pbr(scene, 'mat:trim', {
+    color: theme.trim,
+    roughness: 0.5,
+    metallic: 0.3,
+    emissive: theme.trimGlow,
+  });
   // 吊顶面朝下,光照天然不足 → 补少量自发光(过高会让全场发亮,0.22 时用户反馈偏亮)
   const ceilMat = pbr(scene, 'mat:ceiling', {
     color: theme.ceiling,
@@ -118,13 +124,21 @@ export function buildShell(
   });
   const stripMat = emissiveMat(scene, 'mat:strip', theme.stripEmissive);
 
-  // ── 地板(程序化砖纹:1m 砖 + 缝 + 微明暗,治「纯色不像地板」) ──
+  // ── 地板(程序化:tile 砖纹 / tech 发光网格) ──
   const floorW = spanX + WALL_T * 2;
   const floorD = spanZ + WALL_T * 2;
-  const floorTex = makeFloorTexture(scene, theme.floor);
-  floorTex.uScale = floorW / FLOOR_TEX_TILES; // 1 砖 = 1m
+  const floorTex = makeFloorTexture(scene, theme.floor, {
+    style: theme.floorStyle ?? 'tile',
+    lineColor: theme.accent,
+  });
+  floorTex.uScale = floorW / FLOOR_TEX_TILES; // 1 格 = 1m
   floorTex.vScale = floorD / FLOOR_TEX_TILES;
   floorMat.albedoTexture = floorTex;
+  if (theme.floorStyle === 'tech') {
+    // 同一张纹理喂 emissive:网格线发光(底色近黑几乎不贡献),GlowLayer 拾取
+    floorMat.emissiveTexture = floorTex;
+    floorMat.emissiveColor = new Color3(0.5, 0.5, 0.5);
+  }
   const floor = MeshBuilder.CreateGround('floor', { width: floorW, height: floorD }, scene);
   floor.position.set(cx, 0, cz);
   floor.material = floorMat;

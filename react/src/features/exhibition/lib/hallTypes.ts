@@ -26,7 +26,7 @@ export interface Wall {
   y2: number;
 }
 
-export type HallThemePreset = "modern_light" | "party_red" | "dark_tech";
+export type HallThemePreset = "modern_light" | "party_red" | "dark_tech" | "future_tech";
 
 export interface HallTheme {
   preset?: HallThemePreset;

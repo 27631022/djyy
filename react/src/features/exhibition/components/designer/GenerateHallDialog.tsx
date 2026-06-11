@@ -22,6 +22,7 @@ const PRESET_OPTIONS: { value: HallThemePreset; label: string }[] = [
   { value: "modern_light", label: "现代浅色" },
   { value: "party_red", label: "党建红" },
   { value: "dark_tech", label: "深色科技" },
+  { value: "future_tech", label: "未来科技" },
 ];
 const FEATURE_OPTIONS = ["荣誉展示", "视频展播", "产品/模型展示", "图片展廊", "党建文化", "发展历程"];
 
