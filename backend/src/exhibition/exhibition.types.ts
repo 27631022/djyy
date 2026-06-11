@@ -112,6 +112,8 @@ export interface Text3dContent {
   color?: string; // 默认主题点缀色(accent)
   finish?: 'paint' | 'metal' | 'glow'; // 烤漆 / 金属 / 发光,默认 paint
   mount?: 'floor' | 'wall' | 'flat'; // 落地 / 贴墙 / 平铺地面(地板字),默认 floor
+  font?: 'sans' | 'serif'; // 字体:黑体(默认)/ 宋体
+  weight?: 'regular' | 'bold'; // 粗细:常规(默认)/ 加粗 —— 对应不同字重文件
 }
 /** 装饰内容:程序化变体(arrow=地面引导箭头,沿朝向指引) */
 export interface DecorContent {

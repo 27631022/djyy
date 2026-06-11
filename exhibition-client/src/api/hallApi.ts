@@ -42,9 +42,9 @@ export const hallApi = {
   list: () => getJson<HallSummary[]>('/api/halls'),
   get: (id: string) =>
     getJson<ResolvedHall>(`/api/halls/${encodeURIComponent(id)}`).then(normalizePlanOrientation),
-  /** 中文 3D 文字字体子集(typeface 格式,只含传入字符) */
-  font: (chars: string) =>
+  /** 中文 3D 文字字体子集(typeface 格式,只含传入字符;font=sans/sans-bold/serif/serif-bold) */
+  font: (chars: string, font = 'sans') =>
     getJson<TypefaceFontSubset>(
-      `/api/public/exhibition/font?chars=${encodeURIComponent(chars)}`,
+      `/api/public/exhibition/font?chars=${encodeURIComponent(chars)}&font=${encodeURIComponent(font)}`,
     ),
 };

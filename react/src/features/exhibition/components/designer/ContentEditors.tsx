@@ -391,6 +391,18 @@ export function Text3dEditor({
       <Row label="文字">
         <input value={value.text ?? ""} onChange={(e) => onChange({ ...value, text: e.target.value })} placeholder="如:企业文化展厅" className={inputCls} />
       </Row>
+      <Row label="字体">
+        <select value={value.font ?? "sans"} onChange={(e) => onChange({ ...value, font: e.target.value as Text3dContent["font"] })} className={inputCls}>
+          <option value="sans">黑体(思源黑体)</option>
+          <option value="serif">宋体(思源宋体)</option>
+        </select>
+      </Row>
+      <Row label="粗细">
+        <select value={value.weight ?? "regular"} onChange={(e) => onChange({ ...value, weight: e.target.value as Text3dContent["weight"] })} className={inputCls}>
+          <option value="regular">常规</option>
+          <option value="bold">加粗</option>
+        </select>
+      </Row>
       <Row label="字高(m)">
         <input type="number" step={0.05} min={0.1} max={3} value={value.sizeM ?? 0.6} onChange={(e) => onChange({ ...value, sizeM: Number(e.target.value) || 0.6 })} className={inputCls} />
       </Row>

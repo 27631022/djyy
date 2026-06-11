@@ -93,7 +93,7 @@ const EXHIBITION_GENERATE_DEFAULT = `你是企业 3D 虚拟展厅的「布展设
 - honor_wall 荣誉墙 4.5×0.3 贴墙,content {"items":[]}
 - notice_board 党务公开板 2.6×0.3 贴墙,content {"items":[]}
 - door 门/通道 2.4×0.4 放在隔墙缺口处,content {}
-- text_3d 立体字,content {"text":"文字","sizeM":0.85,"finish":"metal|glow|paint","mount":"wall"};入口放厅名 LOGO、展区放标语
+- text_3d 立体字,content {"text":"文字","sizeM":0.85,"finish":"metal|glow|paint","mount":"wall","font":"sans|serif(黑体/宋体)","weight":"regular|bold"};入口放厅名 LOGO(常用 serif+bold 显庄重)、展区放标语
 - decor 装饰 0.55×0.55,content {"kind":"plant|plant_short|bench|arrow"};角落放绿植、动线放 arrow 引导箭头(w=长度 2.0,d=0.5)
 - ceiling_sign 顶端吊牌 1.8×0.12,content {"text":"分区名"}
 

@@ -9,20 +9,27 @@ import type { BuiltFixture } from './imageCaseBuilder';
 
 type FontDataParam = Parameters<typeof MeshBuilder.CreateText>[2];
 
+/** content 的 font/weight → 后端字体 key(sans / sans-bold / serif / serif-bold) */
+export function fontKeyOf(c: Text3dContent): string {
+  const fam = c.font === 'serif' ? 'serif' : 'sans';
+  return c.weight === 'bold' ? `${fam}-bold` : fam;
+}
+
 /**
- * 立体字(text_3d):后端字体子集(typeface 格式)→ CreateText 挤出。
- * finish:paint 烤漆 / metal 金属 / glow 发光(GlowLayer 拾取 emissive)。
+ * 立体字(text_3d):后端字体子集(typeface 格式,按 font/weight 选字重文件)
+ * → CreateText 挤出。finish:paint 烤漆 / metal 金属 / glow 发光(GlowLayer 拾取)。
  * 回退:字体缺失或挤出失败 → 平面占位字(不阻塞整厅)。
  */
 export function buildText3d(
   scene: Scene,
   fx: Fixture,
-  fontData: TypefaceFontSubset | null,
+  fonts: Map<string, TypefaceFontSubset>,
   theme: ThemeParams,
   wallH: number,
 ): BuiltFixture {
   const root = fixtureRoot(scene, fx);
   const c = (fx.source.content ?? {}) as Text3dContent;
+  const fontData = fonts.get(fontKeyOf(c)) ?? null;
   const text = c.text || fx.label || '';
   const size = c.sizeM ?? 0.6;
   const depth = c.depthM ?? 0.12;

@@ -112,6 +112,8 @@ export interface Text3dContent {
   color?: string;
   finish?: 'paint' | 'metal' | 'glow';
   mount?: 'floor' | 'wall' | 'flat'; // flat = 平铺地面(地板字)
+  font?: 'sans' | 'serif'; // 黑体(默认)/ 宋体
+  weight?: 'regular' | 'bold'; // 常规(默认)/ 加粗
 }
 
 export interface ResolvedHall {

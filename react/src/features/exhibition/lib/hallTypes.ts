@@ -91,6 +91,8 @@ export interface Text3dContent {
   color?: string; // 默认主题点缀色
   finish?: "paint" | "metal" | "glow";
   mount?: "floor" | "wall" | "flat"; // flat = 平铺地面(地板字)
+  font?: "sans" | "serif"; // 黑体(默认)/ 宋体
+  weight?: "regular" | "bold"; // 常规(默认)/ 加粗
 }
 export interface DecorContent {
   kind?: "plant" | "plant_short" | "bench" | "arrow"; // 高绿植 / 矮盆栽 / 长椅 / 地面引导箭头
