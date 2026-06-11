@@ -137,6 +137,26 @@ export function buildModelStand(
     SceneLoader.LoadAssetContainerAsync(`${c.modelUrl}/rel/`, '__self__', scene, undefined, ext)
       .then((container) => {
         container.addAllToScene();
+        // 导出器事故兜底(实测用户卡车 glb):分通道贴图套件被乱接进标准 PBR 槽 ——
+        // ① baseColorFactor≈#040404(因子×贴图=整模发黑);② metallic=1 + 灰度
+        // Roughness 图当 MR 贴图(高金属度吃掉漫反射颜色,室内 IBL 下又黑又灰)。
+        // 触发条件 = 有 albedo 贴图却近黑因子(规范模型不会命中):钳回白 + 改弱金属。
+        for (const mat of container.materials) {
+          const p = mat as unknown as {
+            albedoTexture?: unknown;
+            albedoColor?: Color3;
+            metallic?: number | null;
+            roughness?: number | null;
+            metallicTexture?: unknown;
+          };
+          const col = p.albedoColor;
+          if (p.albedoTexture && col && Math.max(col.r, col.g, col.b) < 0.25) {
+            col.set(1, 1, 1);
+            p.metallicTexture = null;
+            p.metallic = 0.15;
+            p.roughness = 0.7;
+          }
+        }
         const modelRoot = container.createRootMesh();
         // z-up 模型摆正(横倒):先转再量包围盒,后续贴台面/居中算式不变
         if (c.upAxis === 'z') {
