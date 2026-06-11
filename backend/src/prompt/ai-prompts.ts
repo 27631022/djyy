@@ -140,6 +140,15 @@ export const AI_PROMPTS: AiPromptDef[] = [
     default: EXHIBITION_GENERATE_DEFAULT,
   },
   {
+    key: 'model3d.name',
+    label: '3D 生成 · 产物起名',
+    app: '3D 展厅',
+    description:
+      '3D 生成时,用视觉模型看源图给产物起 2~6 字物品名(模型库展示文件名)。只输出名词本身;识别失败时产物回退日期命名。',
+    default:
+      '用 2~6 个汉字概括图中主体物品的名称,只输出名称本身,不要任何标点、引号、空格或解释。例:咖啡机 / 消防头盔 / 重型卡车',
+  },
+  {
     key: 'certificate.extract',
     label: '证书表彰文件解析',
     app: '证书管理',

@@ -69,8 +69,15 @@ export interface LibraryModel {
   createdAt: string;
   source: "upload" | "ai";
   url: string;
+  /** 分类标签 */
+  tags: string[];
+  /** 物品截图(AI 生成的=源图;卡片默认显示,点击才加载 3D) */
+  thumbUrl?: string;
 }
 
 export const modelLibraryApi = {
   list: () => api.get<LibraryModel[]>("/exhibition/model-library").then((r) => r.data),
+  /** 改名(不必带扩展名)/ 打标签(整组替换) */
+  update: (fileId: string, body: { name?: string; tags?: string[] }) =>
+    api.patch<{ ok: true }>(`/exhibition/model-library/${fileId}`, body).then((r) => r.data),
 };

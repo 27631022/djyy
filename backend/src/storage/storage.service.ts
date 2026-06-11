@@ -214,6 +214,27 @@ export class StorageService {
   }
 
   /**
+   * 改原始文件名(展示名/下载名;不动磁盘 storageKey,引用方按 fileId 取流不受影响)。
+   * 供模型库等「就地改名」场景;名字做基本清洗(去路径字符、钳长度)。
+   */
+  async rename(id: string, newName: string, ctx: AuditCtx): Promise<StoredFileMeta> {
+    const row = await this.requireLive(id);
+    const cleaned = newName.replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 100);
+    if (!cleaned) throw new BadRequestException('文件名不能为空');
+    const updated = (await this.prisma.storedFile.update({
+      where: { id },
+      data: { originalName: cleaned },
+    })) as StoredFileRow;
+    await this.audit.log({
+      action: 'file.rename',
+      target: id,
+      ...ctx,
+      detail: JSON.stringify({ from: row.originalName, to: cleaned }),
+    });
+    return this.toMeta(updated);
+  }
+
+  /**
    * 按 业务模块 + 文件夹 + 原始文件名 精确找一个未软删文件(同名多份取最新)。
    * 供「glb 外链贴图按文件名解析兄弟文件」等场景;找不到返回 null 不抛。
    */

@@ -82,6 +82,13 @@ export const AI_CONSUMERS: AiConsumer[] = [
     description:
       '上传一张图片,用 3D 生成模型(异步任务)生成带纹理 + PBR 材质的 3D 模型(.glb),供 3D 展厅加载。需配 model3d(如 doubao-seed3d-2-0)',
   },
+  {
+    key: 'model3d.name.vision',
+    app: '3D 展厅',
+    label: 'AI 3D · 产物起名(看图)',
+    capability: 'vision',
+    description: '3D 生成时用视觉模型概括源图里的物品名(2~6 字),作为模型库展示文件名;失败回退日期命名',
+  },
 ];
 
 export function getConsumer(key: string): AiConsumer | undefined {

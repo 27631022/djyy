@@ -775,6 +775,15 @@ model Hall {
   @@index([published])
 }
 
+// @module: exhibition  模型库条目元数据(分类标签;展示名直接改 StoredFile.originalName)
+// fileId 松引用 StoredFile —— 模型删除后残留行无害(列表 join 不到即忽略)
+model ModelLibraryMeta {
+  fileId    String   @id
+  tags      String   @default("[]") // JSON string[],如 ["设备","党建"]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // ─────────────────────────────────────────────────────────
 // 实体会议室 — 物理空间。一个会议室可挂多张会场图。
 // @module: venue

@@ -12,6 +12,7 @@ import { ExhibitionAssetController } from './exhibition-asset.controller';
 import { ExhibitionFontController } from './exhibition-font.controller';
 import { ExhibitionFontService } from './exhibition-font.service';
 import { ExhibitionModelLibraryController } from './exhibition-model-library.controller';
+import { ExhibitionModelLibraryService } from './exhibition-model-library.service';
 
 /**
  * 企业虚拟展厅模块。
@@ -29,7 +30,12 @@ import { ExhibitionModelLibraryController } from './exhibition-model-library.con
     ExhibitionFontController,
     ExhibitionModelLibraryController,
   ],
-  providers: [ExhibitionService, ExhibitionFontService, ExhibitionAiService],
+  providers: [
+    ExhibitionService,
+    ExhibitionFontService,
+    ExhibitionAiService,
+    ExhibitionModelLibraryService,
+  ],
   exports: [ExhibitionService],
 })
 export class ExhibitionModule {}

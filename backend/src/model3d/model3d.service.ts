@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import { StorageService } from '../storage';
 import { ExternalApiService } from '../external-api';
 import { AuditService } from '../audit';
+import { PromptService } from '../prompt';
 
 interface ActorCtx {
   actorId?: string;
@@ -58,10 +59,27 @@ function pickFileUrl(data: unknown): string | null {
 export class Model3dService {
   private readonly logger = new Logger(Model3dService.name);
 
+  /**
+   * 幂等三件套(同一 arkTaskId 只入库一次 —— 治「一次生成出多个模型」:
+   * 下载入库要十几秒 > 轮询间隔 12s,setInterval 不等上次返回,排队的几个请求
+   * 会各自下载入库;实测一次生成入库 5 份):
+   *  - inFlight:进行中的 下载-入库 Promise,并发/排队请求共享同一个;
+   *  - doneCache:已完成结果缓存,后续轮询直接返回;
+   *  - 重启后两者皆空 → getTask 里再按审计日志(model3d.done)兜底查旧产物。
+   */
+  private readonly inFlight = new Map<string, Promise<Model3dTaskStatus>>();
+  private readonly doneCache = new Map<string, Model3dTaskStatus>();
+  /** createTask 登记的生成上下文(源图 + AI 起名),done 时取用;重启丢失由审计兜底(名字回退日期) */
+  private readonly pending = new Map<
+    string,
+    { imageFileId: string; namePromise: Promise<string | null> }
+  >();
+
   constructor(
     private readonly storage: StorageService,
     private readonly externalApi: ExternalApiService,
     private readonly audit: AuditService,
+    private readonly prompts: PromptService,
   ) {}
 
   /** 解析 3D 生成 provider 配置(apiUrl/apiKey/model)。 */
@@ -123,6 +141,15 @@ export class Model3dService {
     }
     if (!arkTaskId) throw new BadRequestException('AI 未返回任务 id');
 
+    // 登记生成上下文:源图(done 后做缩略图)+ AI 看图起名(异步跑,生成要几分钟,届时早就绪)
+    this.pending.set(arkTaskId, {
+      imageFileId,
+      namePromise: this.suggestName(imageDataUrl).catch((e) => {
+        this.logger.warn(`3D 产物起名失败(回退日期命名):${(e as Error).message}`);
+        return null;
+      }),
+    });
+
     await this.audit.log({
       action: 'model3d.create',
       target: arkTaskId,
@@ -132,9 +159,63 @@ export class Model3dService {
     return { arkTaskId, provider: cfg.provider, model: cfg.model };
   }
 
-  /** 第二步:查任务;成功则下载 .glb → 存 storage → 返回 fileId+url(前端每 ~15s 调一次直到 done/failed)。 */
+  /** AI 看图起名(2~6 字物品名;未配 vision 模型或失败时返回 null,产物回退日期命名) */
+  private async suggestName(imageDataUrl: string): Promise<string | null> {
+    const cfg = await this.externalApi.getConfigForConsumer('model3d.name.vision');
+    if (!cfg?.apiUrl || !cfg.model) return null;
+    const prompt = await this.prompts.get('model3d.name');
+    const resp = await axios.post(
+      `${cfg.apiUrl.replace(/\/+$/, '')}/chat/completions`,
+      {
+        model: cfg.model,
+        messages: [
+          { role: 'system', content: prompt },
+          {
+            role: 'user',
+            content: [{ type: 'image_url', image_url: { url: imageDataUrl } }],
+          },
+        ],
+        temperature: 0.2,
+        max_tokens: 30,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
+        },
+        timeout: 30_000,
+      },
+    );
+    const raw = String(
+      (resp.data as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message
+        ?.content ?? '',
+    );
+    // 只留中英文与数字,钳到 12 字;空了就回退
+    const name = raw.replace(/[^一-龥a-zA-Z0-9]/g, '').slice(0, 12);
+    return name.length >= 2 ? name : null;
+  }
+
+  /**
+   * 第二步:查任务;成功则下载 .glb → 存 storage → 返回 fileId+url(前端轮询直到 done/failed)。
+   * 幂等:同一 arkTaskId 的并发/后续调用共享同一次入库(见类头注释),不会重复出多份模型。
+   */
   async getTask(arkTaskId: string, actor: ActorCtx): Promise<Model3dTaskStatus> {
     if (!arkTaskId) throw new BadRequestException('缺少任务 id');
+    const cached = this.doneCache.get(arkTaskId);
+    if (cached) return cached;
+    const running = this.inFlight.get(arkTaskId);
+    if (running) return running;
+    const p = this.getTaskInner(arkTaskId, actor)
+      .then((r) => {
+        if (r.status !== 'running') this.doneCache.set(arkTaskId, r);
+        return r;
+      })
+      .finally(() => this.inFlight.delete(arkTaskId));
+    this.inFlight.set(arkTaskId, p);
+    return p;
+  }
+
+  private async getTaskInner(arkTaskId: string, actor: ActorCtx): Promise<Model3dTaskStatus> {
     const cfg = await this.resolveCfg();
     const apiUrl = cfg.apiUrl.replace(/\/+$/, '');
     const headers = cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {};
@@ -159,6 +240,10 @@ export class Model3dService {
     if (!['succeeded', 'success', 'done', 'completed'].includes(status)) {
       return { status: 'running' };
     }
+
+    // 服务重启后内存缓存丢:查审计有没有这个任务的入库记录,有就复用,不再重复下载
+    const prior = await this.priorDone(arkTaskId);
+    if (prior) return prior;
 
     // 成功:挖出 3D 文件 URL → 回源下载 → 存 storage
     const fileUrl = pickFileUrl(data);
@@ -188,14 +273,16 @@ export class Model3dService {
         return { status: 'failed', error: '解包生成结果失败:' + (e as Error).message };
       }
     }
-    // 可读文件名(模型库里要靠名字区分):3D生成-YYYYMMDD-HHmm.glb
+    // 文件名:AI 看图起的物品名(createTask 时已异步在跑)-MMDD;失败回退「3D生成」
+    const ctx = this.pending.get(arkTaskId);
+    const objName = (ctx ? await ctx.namePromise : null) ?? '3D生成';
     const ts = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
-    const stamp = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}`;
+    const stamp = `${pad(ts.getMonth() + 1)}${pad(ts.getDate())}`;
     const stored = await this.storage.put(
       {
         buffer: buf,
-        originalName: `3D生成-${stamp}.glb`,
+        originalName: `${objName}-${stamp}.glb`,
         mimeType: 'model/gltf-binary',
         ownerModule: 'model3d',
         folder: 'models',
@@ -204,6 +291,34 @@ export class Model3dService {
       },
       actor,
     );
+
+    // 缩略图 = 生成用的源图副本,与产物同夹、命名「<产物文件名>.thumb.<ext>」——
+    // 模型库列表按名字配对,卡片默认显示物品截图、点击才加载 3D(模型动辄几十 MB)
+    const imageFileId = ctx?.imageFileId ?? (await this.imageFromCreateAudit(arkTaskId));
+    if (imageFileId) {
+      try {
+        const img = await this.storage.getBuffer(imageFileId);
+        if (img.meta.mimeType.startsWith('image/')) {
+          const ext = img.meta.mimeType.includes('png') ? 'png' : 'jpg';
+          await this.storage.put(
+            {
+              buffer: img.buffer,
+              originalName: `${stored.originalName}.thumb.${ext}`,
+              mimeType: img.meta.mimeType,
+              ownerModule: 'model3d',
+              folder: 'models',
+              visibility: 'public',
+              createdById: actor.actorId,
+            },
+            actor,
+          );
+        }
+      } catch (e) {
+        this.logger.warn(`产物缩略图生成失败(不影响模型):${(e as Error).message}`);
+      }
+    }
+    this.pending.delete(arkTaskId);
+
     await this.audit.log({
       action: 'model3d.done',
       target: stored.id,
@@ -211,6 +326,55 @@ export class Model3dService {
       detail: JSON.stringify({ arkTaskId, fileId: stored.id, size: stored.size }),
     });
     return { status: 'done', fileId: stored.id, url: `/api/public/model3d/${stored.id}` };
+  }
+
+  /** 审计里找该任务已入库的产物(服务重启后幂等兜底);产物已被删则返回 null 重新下载 */
+  private async priorDone(arkTaskId: string): Promise<Model3dTaskStatus | null> {
+    try {
+      const { items } = await this.audit.list({ action: 'model3d.done', take: 100 });
+      for (const it of items as { detail?: unknown }[]) {
+        const d = this.parseDetail(it.detail);
+        if (d?.arkTaskId === arkTaskId && typeof d.fileId === 'string') {
+          try {
+            await this.storage.getMeta(d.fileId);
+            return { status: 'done', fileId: d.fileId, url: `/api/public/model3d/${d.fileId}` };
+          } catch {
+            return null; // 旧产物已删,重新下载
+          }
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`审计兜底查询失败(按未入库处理):${(e as Error).message}`);
+    }
+    return null;
+  }
+
+  /** 重启丢上下文时,从 model3d.create 审计里找回源图 fileId(缩略图用) */
+  private async imageFromCreateAudit(arkTaskId: string): Promise<string | null> {
+    try {
+      const { items } = await this.audit.list({ action: 'model3d.create', take: 100 });
+      for (const it of items as { target?: string | null; detail?: unknown }[]) {
+        if (it.target !== arkTaskId) continue;
+        const d = this.parseDetail(it.detail);
+        return typeof d?.imageFileId === 'string' ? d.imageFileId : null;
+      }
+    } catch {
+      /* 查不到就不出缩略图 */
+    }
+    return null;
+  }
+
+  /** 审计 detail 兼容解析(本模块写入时已 stringify 过一层,list 反序列化后仍是字符串) */
+  private parseDetail(detail: unknown): Record<string, unknown> | null {
+    if (detail && typeof detail === 'object') return detail as Record<string, unknown>;
+    if (typeof detail === 'string') {
+      try {
+        return JSON.parse(detail) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    }
+    return null;
   }
 
   private failed(
