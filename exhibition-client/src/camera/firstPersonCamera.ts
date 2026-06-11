@@ -6,7 +6,8 @@ const EYE_H = 1.7;
 const DEG = Math.PI / 180;
 
 /**
- * 第一人称漫游:WASD/方向键 + Q/E 左右转视角 + 鼠标(拖拽 / 点击进指针锁定)。
+ * 第一人称漫游:W/S 前后 + A/D 左右转视角 + Q/E 横移(用户要求 A/D 与 Q/E 对调)
+ * + 方向键(↑↓ 前后、←→ 横移)+ 鼠标(拖拽 / 点击进指针锁定)。
  * 碰撞椭球 + 重力贴地,穿不了墙飞不了天。
  * 朝向换算:spawn.rot 与 fixture 同约定(0=朝-Y);相机 forward=+Z → rotation.y = π - rot。
  */
@@ -32,10 +33,10 @@ export function createFirstPersonCamera(
   cam.angularSensibility = 3200;
   cam.keysUp = [87, 38]; // W ↑
   cam.keysDown = [83, 40]; // S ↓
-  cam.keysLeft = [65, 37]; // A ←
-  cam.keysRight = [68, 39]; // D →
-  cam.keysRotateLeft = [81]; // Q 左转视角
-  cam.keysRotateRight = [69]; // E 右转视角
+  cam.keysLeft = [81, 37]; // Q ← 左横移
+  cam.keysRight = [69, 39]; // E → 右横移
+  cam.keysRotateLeft = [65]; // A 左转视角
+  cam.keysRotateRight = [68]; // D 右转视角
   // 转向速度用内置默认 0.5 rad/s:经 cameraRotation 惯性缓冲放大 1/(1-inertia)=4 倍,
   // 等效 ≈115°/s,正合适 —— 别再调大(实测 2.0 会到 ~450°/s 晕头转向)
   cam.checkCollisions = true;
