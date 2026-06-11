@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import axios, { type AxiosError } from 'axios';
+import JSZip from 'jszip';
 import { StorageService } from '../storage';
 import { ExternalApiService } from '../external-api';
 import { AuditService } from '../audit';
@@ -172,10 +173,29 @@ export class Model3dService {
     } catch (e) {
       return { status: 'failed', error: '下载 3D 文件失败:' + (e as Error).message };
     }
+    // Seed3D 的 file_url 给的是 zip 包(实测内含 pbr/mesh_textured_pbr.glb),不解包
+    // 直接当 .glb 存的话客户端解析报 "PK… is not valid JSON" —— 按魔数识别并抽出 glb
+    if (buf.length > 4 && buf[0] === 0x50 && buf[1] === 0x4b) {
+      try {
+        const zip = await JSZip.loadAsync(buf);
+        const entry = Object.values(zip.files).find((f) => !f.dir && /\.glb$/i.test(f.name));
+        if (!entry) {
+          const names = Object.keys(zip.files).slice(0, 10).join(', ');
+          return { status: 'failed', error: `生成结果 zip 里没找到 .glb(内容:${names})` };
+        }
+        buf = Buffer.from(await entry.async('nodebuffer'));
+      } catch (e) {
+        return { status: 'failed', error: '解包生成结果失败:' + (e as Error).message };
+      }
+    }
+    // 可读文件名(模型库里要靠名字区分):3D生成-YYYYMMDD-HHmm.glb
+    const ts = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const stamp = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}`;
     const stored = await this.storage.put(
       {
         buffer: buf,
-        originalName: `model-${actor.actorId ?? 'user'}.glb`,
+        originalName: `3D生成-${stamp}.glb`,
         mimeType: 'model/gltf-binary',
         ownerModule: 'model3d',
         folder: 'models',

@@ -1,18 +1,23 @@
 import { useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
   FilmIcon,
   ImagePlusIcon,
+  LibraryIcon,
   Loader2Icon,
   PackageIcon,
   PlusIcon,
+  SparklesIcon,
   Trash2Icon,
+  UploadIcon,
   XIcon,
 } from "lucide-react";
 import { Switch } from "@/shared/components/ui/switch";
 import { storageApi } from "@/features/storage";
+import { modelLibraryApi } from "../../api";
 import {
   exhibitionAssetUrl,
   type HonorWallContent,
@@ -330,6 +335,61 @@ function TextureMultiUpload({
   );
 }
 
+/** 「从模型库选择」展开面板:上传库 + AI 生成历史 */
+function ModelLibraryPicker({ onPick }: { onPick: (id: string, name: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const listQuery = useQuery({
+    queryKey: ["exhibition", "model-library"],
+    queryFn: () => modelLibraryApi.list(),
+    enabled: open,
+  });
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-[#D4D4D4] text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+      >
+        <LibraryIcon className="w-3.5 h-3.5" />
+        从模型库选择
+      </button>
+      {open && (
+        <div className="mt-1.5 border border-[#ECECEC] rounded max-h-48 overflow-y-auto divide-y divide-[#F5F5F4]">
+          {listQuery.isLoading ? (
+            <div className="px-2 py-3 text-[11px] text-[#9CA3AF]">加载中…</div>
+          ) : (listQuery.data ?? []).length === 0 ? (
+            <div className="px-2 py-3 text-[11px] text-[#9CA3AF]">
+              模型库为空 —— 到「3D 展厅 → 模型库」上传,或「3D 生成」出一个
+            </div>
+          ) : (
+            (listQuery.data ?? []).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-xs hover:bg-[#FAFAF9]"
+                onClick={() => {
+                  onPick(m.id, m.name);
+                  setOpen(false);
+                }}
+              >
+                {m.source === "ai" ? (
+                  <SparklesIcon className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
+                ) : (
+                  <UploadIcon className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                )}
+                <span className="truncate flex-1" title={m.name}>{m.name}</span>
+                <span className="text-[10px] text-[#9CA3AF] flex-shrink-0">
+                  {new Date(m.createdAt).toLocaleDateString()}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ModelStandEditor({
   value,
   hallId,
@@ -366,6 +426,11 @@ export function ModelStandEditor({
           />
         )}
       </Row>
+      <ModelLibraryPicker
+        onPick={(id, name) =>
+          onChange({ ...value, modelFileId: id, modelName: name, textures: undefined })
+        }
+      />
       {value.modelFileId && (
         <Row label="贴图">
           <div className="flex items-center gap-1.5 flex-wrap">

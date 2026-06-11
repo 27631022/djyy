@@ -60,3 +60,17 @@ export const hallApi = {
   aiGenerate: (body: GenerateHallBody) =>
     api.post<GeneratedHall>("/halls/ai-generate", body, { timeout: 120_000 }).then((r) => r.data),
 };
+
+/** 模型库条目(上传库 + AI 生成历史 合并;id=storage fileId,模型台 modelFileId 直接用) */
+export interface LibraryModel {
+  id: string;
+  name: string;
+  size: number;
+  createdAt: string;
+  source: "upload" | "ai";
+  url: string;
+}
+
+export const modelLibraryApi = {
+  list: () => api.get<LibraryModel[]>("/exhibition/model-library").then((r) => r.data),
+};

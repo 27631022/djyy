@@ -11,6 +11,7 @@ import {
 import { ExhibitionAssetController } from './exhibition-asset.controller';
 import { ExhibitionFontController } from './exhibition-font.controller';
 import { ExhibitionFontService } from './exhibition-font.service';
+import { ExhibitionModelLibraryController } from './exhibition-model-library.controller';
 
 /**
  * 企业虚拟展厅模块。
@@ -26,6 +27,7 @@ import { ExhibitionFontService } from './exhibition-font.service';
     ConnectorController,
     ExhibitionAssetController,
     ExhibitionFontController,
+    ExhibitionModelLibraryController,
   ],
   providers: [ExhibitionService, ExhibitionFontService, ExhibitionAiService],
   exports: [ExhibitionService],

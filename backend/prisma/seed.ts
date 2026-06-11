@@ -180,6 +180,8 @@ async function seedExternalApis() {
     apiUrl: string;
     model: string;
     visionModel?: string;
+    imageModel?: string;
+    model3d?: string;
     rechargeUrl: string;
     priority: number;
     capabilities: string;
@@ -206,9 +208,14 @@ async function seedExternalApis() {
       apiUrl: 'https://ark.cn-beijing.volces.com/api/v3',
       model: 'doubao-1-5-pro-32k-250115',
       visionModel: 'doubao-1-5-vision-pro-32k-250115',
+      imageModel: 'doubao-seedream-5-0-260128',
+      model3d: 'doubao-seed3d-2-0-260328',
       rechargeUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/model',
       priority: 70,
-      capabilities: 'chat,vision,reasoning',
+      // image=Seedream 图生图(AI 头像)、3d=Seed3D 图生 3D(模型台)。
+      // ⚠ 能力路由按标签过滤,且下方 update 每次 reseed 会刷新 capabilities ——
+      // 这里少了标签,reseed 就会把 UI 里勾的能力冲掉,头像/3D 生成随即报「未找到可用模型」
+      capabilities: 'chat,vision,reasoning,image,3d',
     },
     {
       provider: 'qwen',
@@ -272,6 +279,8 @@ async function seedExternalApis() {
         description: i.description,
         rechargeUrl: i.rechargeUrl,
         visionModel: i.visionModel,
+        imageModel: i.imageModel,
+        model3d: i.model3d,
         capabilities: i.capabilities,
         priority: i.priority,
       },

@@ -14,7 +14,7 @@ import { NavigationPage } from "@/features/nav-category";
 import { ExternalApisPage } from "@/features/external-api";
 import { IconLibraryPage } from "@/features/icon-library";
 import { Model3dStudioPage } from "@/features/model3d";
-import { HallsPage, HallDesignerPage } from "@/features/exhibition";
+import { HallsPage, HallDesignerPage, ModelLibraryPage } from "@/features/exhibition";
 import { PromptsPage } from "@/features/prompt";
 import {
   VenueRoomsPage,
@@ -170,6 +170,7 @@ const App = () => (
             {/* 3D 展厅(exhibition) */}
             <Route path="halls" element={<HallsPage />} />
             <Route path="halls/:hallId/design" element={<HallDesignerPage />} />
+            <Route path="model-library" element={<ModelLibraryPage />} />
             {/* 会场管理(venue) */}
             <Route path="venue/rooms" element={<VenueRoomsPage />} />
             <Route path="venue/layouts/:layoutId" element={<VenueLayoutDesignerPage />} />

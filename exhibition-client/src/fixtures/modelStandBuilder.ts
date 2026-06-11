@@ -4,6 +4,7 @@ import {
   MeshBuilder,
   SceneLoader,
   TransformNode,
+  Vector3,
   type Scene,
 } from '@babylonjs/core';
 import type { Fixture, ModelStandContent } from '../types';
@@ -137,6 +138,12 @@ export function buildModelStand(
     SceneLoader.LoadAssetContainerAsync(`${c.modelUrl}/rel/`, '__self__', scene, undefined, ext)
       .then((container) => {
         container.addAllToScene();
+        // 模型自带的地面烘焙阴影片(模型站导出常见,4 顶点大平面 + shadow 材质)
+        // 在展台上显示成一块白色长方形 —— 展台有自己的灯光呈现,直接隐藏。
+        for (const m of container.meshes) {
+          const matName = m.material?.name ?? '';
+          if (/shadow/i.test(m.name) || /shadow/i.test(matName)) m.setEnabled(false);
+        }
         // 导出器事故兜底(实测用户卡车 glb):分通道贴图套件被乱接进标准 PBR 槽 ——
         // ① baseColorFactor≈#040404(因子×贴图=整模发黑);② metallic=1 + 灰度
         // Roughness 图当 MR 贴图(高金属度吃掉漫反射颜色,室内 IBL 下又黑又灰)。
@@ -163,8 +170,25 @@ export function buildModelStand(
           modelRoot.rotation.x = -Math.PI / 2;
           modelRoot.computeWorldMatrix(true);
         }
-        // 量模型自身包围盒(此刻尚未挂 root,世界系=模型系)
-        const { min, max } = modelRoot.getHierarchyBoundingVectors(true);
+        // 量模型自身包围盒(此刻尚未挂 root,世界系=模型系)。
+        // 手动累计而不用 getHierarchyBoundingVectors:① 排除已隐藏的阴影片等
+        // (它往往比模型本体还大,算进去会把模型挤小、还偏心)② 逐网格
+        // computeWorldMatrix(true) 保证 upAxis 旋转后矩阵是新的。
+        const min = new Vector3(Infinity, Infinity, Infinity);
+        const max = new Vector3(-Infinity, -Infinity, -Infinity);
+        for (const m of container.meshes) {
+          if (!(m instanceof Mesh) || !m.isEnabled() || m.getTotalVertices() === 0) continue;
+          m.computeWorldMatrix(true);
+          const bb = m.getBoundingInfo().boundingBox;
+          min.minimizeInPlace(bb.minimumWorld);
+          max.maximizeInPlace(bb.maximumWorld);
+        }
+        if (!Number.isFinite(min.x)) {
+          // 全部网格都被排除的极端兜底:按整树量
+          const hv = modelRoot.getHierarchyBoundingVectors(true);
+          min.copyFrom(hv.min);
+          max.copyFrom(hv.max);
+        }
         const sx = max.x - min.x || 1;
         const sy = max.y - min.y || 1;
         const sz = max.z - min.z || 1;

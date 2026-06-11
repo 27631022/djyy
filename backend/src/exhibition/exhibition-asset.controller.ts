@@ -23,6 +23,9 @@ const WHITE_BMP = Buffer.from([
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|bmp|gif|ktx2?|basis)$/i;
 
+/** 放行的归属模块:exhibition 素材 + model3d(AI 生成的 .glb,模型库直接上展台用) */
+const ALLOWED_MODULES = new Set(['exhibition', 'model3d']);
+
 /**
  * 公开展厅素材口(免登录、持久)—— 3D 客户端直接加载图片 / 视频 / .glb。
  *   GET /public/exhibition/assets/:id            → 流式素材
@@ -40,7 +43,7 @@ export class ExhibitionAssetController {
   @Get(':id')
   async serve(@Param('id') id: string): Promise<StreamableFile> {
     const meta = await this.storage.getMeta(id);
-    if (meta.ownerModule !== 'exhibition') {
+    if (!ALLOWED_MODULES.has(meta.ownerModule)) {
       throw new NotFoundException('不是展厅素材文件');
     }
     return this.streamOf(meta);
@@ -52,15 +55,16 @@ export class ExhibitionAssetController {
     @Param('0') relPath: string,
   ): Promise<StreamableFile> {
     const main = await this.storage.getMeta(id);
-    if (main.ownerModule !== 'exhibition') {
+    if (!ALLOWED_MODULES.has(main.ownerModule)) {
       throw new NotFoundException('不是展厅素材文件');
     }
     if (relPath === '__self__') return this.streamOf(main);
 
-    // 取末段文件名匹配(glb uri 可能带子目录如 textures/foo.jpg,配套上传时已拍平)
+    // 取末段文件名匹配(glb uri 可能带子目录如 textures/foo.jpg,配套上传时已拍平);
+    // 兄弟文件在主文件自己的 模块+文件夹 里找
     const name = relPath.split('/').pop() ?? relPath;
     const sibling = main.folder
-      ? await this.storage.findByName('exhibition', main.folder, name)
+      ? await this.storage.findByName(main.ownerModule, main.folder, name)
       : null;
     if (sibling) return this.streamOf(sibling);
 
