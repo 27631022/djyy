@@ -16,8 +16,9 @@ export const FIXTURE_TYPES = [
   'model_stand', // 模型台(落地)
   'honor_wall', // 荣誉墙(贴墙,连接器 → 证书/荣誉)
   'notice_board', // 党务公开板(贴墙,连接器 → 任务/党务)
-  'door', // 门 / 通道
+  'door', // 门 / 通道(3D 端自动在墙上挖洞 + 过梁)
   'text_3d', // 立体字(入口 LOGO 墙 / 标语,挤出 3D 文字)
+  'decor', // 装饰(绿植/长椅,程序化建模,不可点击)
 ] as const;
 export type FixtureType = (typeof FIXTURE_TYPES)[number];
 

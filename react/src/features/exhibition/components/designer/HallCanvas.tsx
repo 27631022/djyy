@@ -209,7 +209,7 @@ export function HallCanvas({
   function placeStamp(mx: number, my: number) {
     if (tool.mode !== "stamp") return;
     const meta = FIXTURE_META[tool.type];
-    let fx = makeFixture(tool.type, snapTo(mx, 0.1), snapTo(my, 0.1));
+    let fx = makeFixture(tool.type, snapTo(mx, 0.1), snapTo(my, 0.1), 0, tool.preset);
     if (meta.wallMount || tool.type === "text_3d") {
       const snap = snapFixtureToWall(state.walls, tool.type, mx, my, fx.d);
       if (snap) fx = { ...fx, ...snap };
@@ -400,16 +400,18 @@ export function HallCanvas({
     wallPreview = { x1: wallAnchor.x, y1: wallAnchor.y, x2: p.x, y2: p.y, len: Math.hypot(p.x - wallAnchor.x, p.y - wallAnchor.y) };
   }
 
-  /* stamp 幽灵 */
-  let ghost: { x: number; y: number; rot: number; type: Fixture["type"] } | null = null;
+  /* stamp 幽灵(preset 变体带各自尺寸) */
+  let ghost: { x: number; y: number; rot: number; type: Fixture["type"]; w: number; d: number } | null = null;
   if (tool.mode === "stamp" && cursor) {
     const meta = FIXTURE_META[tool.type];
+    const gw = tool.preset?.w ?? meta.w;
+    const gd = tool.preset?.d ?? meta.d;
     let g = { x: snapTo(cursor.x, 0.1), y: snapTo(cursor.y, 0.1), rot: 0 };
     if (meta.wallMount || tool.type === "text_3d") {
-      const snap = snapFixtureToWall(state.walls, tool.type, cursor.x, cursor.y, meta.d);
+      const snap = snapFixtureToWall(state.walls, tool.type, cursor.x, cursor.y, gd);
       if (snap) g = snap;
     }
-    ghost = { ...g, type: tool.type };
+    ghost = { ...g, type: tool.type, w: gw, d: gd };
   }
 
   const spawn = state.meta.spawn;
@@ -604,8 +606,8 @@ export function HallCanvas({
         {/* ── stamp 幽灵 ── */}
         {ghost && (() => {
           const meta = FIXTURE_META[ghost.type];
-          const W = meta.w * M2U;
-          const D = meta.d * M2U;
+          const W = ghost.w * M2U;
+          const D = ghost.d * M2U;
           return (
             <g transform={`translate(${ghost.x * M2U} ${ghost.y * M2U}) rotate(${ghost.rot})`} style={{ pointerEvents: "none" }}>
               <rect x={-W / 2} y={-D / 2} width={W} height={D} rx={3 * upp} fill={meta.color} fillOpacity={0.3} stroke={meta.color} strokeWidth={1.5 * upp} strokeDasharray={`${5 * upp} ${4 * upp}`} />

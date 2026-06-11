@@ -317,6 +317,13 @@ npm run db:seed
   - **React Compiler 踩坑**:① render 期读 `dragRef`(光标样式)→ `react-hooks/refs` error,改 `panning` state;② 「加载→effect 同步 setState」让编译器跳过组件、连带全部 useCallback 报 `preserve-manual-memoization` error → **数据就绪后以 `key={hall.id}` 重挂载内层组件,编辑态全用 useState 初始化器起步**(无加载 effect),画布初始视野也在 useState 初始化器里按内容包围盒适配。模式可复用:**取数页面想零 effect 同步,就拆「外壳查询 + key 重挂载内层」**。
   - 验证:双端门禁 0 error(前端 41 warning 基线持平、后端 0 cycle);preview 端到端冒烟=列表卡片→设计器加载 seed 厅(6 墙 9 组件平面图正确)→palette 点立体字→画布点击放置(9→10)→右栏出 text_3d 编辑器→保存(POST /files 201 + PATCH 200 + toast)→Ctrl+Z 撤销(10→9)→再保存恢复→`/exhibition/?hall=` 200;console 0 error。
   - ⏭ 下轮:门洞挖墙(P4)/ 装饰组件库 / 连接器真数据(P5:荣誉墙→证书、党务板→任务)/ VR 内网 TLS(P7);模型台「从 3D 生成历史挑选」(现仅提示去下载再上传,因公开素材口校验 ownerModule=exhibition)。
+- **(2026-06-10 续 P2.1)用户实测三反馈修复:2D/3D 镜像 + 门洞/地板/绿植 + 面板 tab**:
+  - **★2D/3D 左右镜像(根因+修法记牢)**:平面图是屏幕坐标(y 向下),Babylon 左手系直接 `z=+y` 时俯视 +z 视觉朝上 → **整个世界手性翻转**(平面图放左边,3D 里跑右边)。修法 = 客户端 `hallApi.get` 后**一次性归一化**:`y→-y`(墙/组件/出生点)+ `rot→(180-rot)%360`(组件/出生点),后续 builder(z=+y、root `rotation.y=-rot`、相机 `π-rot`)**零改动**。数学校验:spawn rot=0 → 相机 yaw=0 → forward=+z=平面图上方、右手=+x=平面图右侧 ✓。实测荣誉墙 平面(4,6.7)→3D z=-6.7 ✓。
+  - **门洞挖墙(原 P4 提前)**:`wallBuilder.buildShell` 接收 fixtures,door 组件投影到墙段(垂距≤0.4m)→ 墙切成**实体段(全高带碰撞)+ 门洞过梁**(净高 2.5=门套梁底,其上补墙到顶);踢脚线随实体段,顶角线通长。人可穿行,多门/重叠门洞自动合并。
+  - **程序化地板砖纹**(治「纯色不像地板」):`makeFloorTexture` DynamicTexture 画 1m 石材砖(主题地板色基调 + 每砖确定性微明暗 + 深色砖缝 + 细对角纹),`uScale=跨度/4`;floorMat albedo 给白、基色烤进贴图,粗糙度不变保 IBL 反光。零素材文件。
+  - **装饰组件**(新类型 **`decor`**,契约三处同步):`DecorContent{kind:'plant'|'plant_short'|'bench'}`,`decorBuilder` 程序化建模(绿植=盆+干+错落压扁球叶团,确定性位置;长椅=木座+金属腿),**不可点击不配射灯**。
+  - **设计器面板改版**(用户要 tab+扁平):`FixturePalette` 改 Tabs(展示组件 / 门·装饰)+ **整行扁平按钮**(h-8 图标+名+贴墙角标);装饰按**变体**出按钮(绿植/矮盆栽/长椅),`CanvasTool.stamp` 加 `preset{label,w,d,content}` 贯通 makeFixture/幽灵;右栏 decor 出样式下拉。
+  - 验证:三端门禁 0 error(react 41 warning 基线);`npm run build` 出 dist;preview 开 3D 用 `__hallDebug` **数值断言**(荣誉墙 z=-6.7/相机 yaw90/w3 切 2 段+过梁/floorHasTexture/植物 6 件椅 3 件)+ 截图核对(砖纹地板、门洞透视、长椅);测试组件已清理(保留用户实验编辑)。⚠ 用户在设计器试画的墙(`w_il6gsqf`)上的门也正确挖洞 —— 真实数据双重验证。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor

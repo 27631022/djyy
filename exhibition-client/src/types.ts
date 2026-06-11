@@ -11,8 +11,14 @@ export const FIXTURE_TYPES = [
   'notice_board',
   'door',
   'text_3d',
+  'decor', // 装饰(绿植/长椅等,程序化建模,不可点击)
 ] as const;
 export type FixtureType = (typeof FIXTURE_TYPES)[number];
+
+/** 装饰内容:程序化变体 */
+export interface DecorContent {
+  kind?: 'plant' | 'plant_short' | 'bench'; // 高绿植 / 矮盆栽 / 长椅,默认 plant
+}
 
 export interface Wall {
   id: string;

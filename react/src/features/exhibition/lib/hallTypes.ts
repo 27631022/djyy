@@ -12,6 +12,7 @@ export const FIXTURE_TYPES = [
   "notice_board",
   "door",
   "text_3d",
+  "decor",
 ] as const;
 export type FixtureType = (typeof FIXTURE_TYPES)[number];
 
@@ -90,6 +91,9 @@ export interface Text3dContent {
   finish?: "paint" | "metal" | "glow";
   mount?: "floor" | "wall";
 }
+export interface DecorContent {
+  kind?: "plant" | "plant_short" | "bench"; // 高绿植 / 矮盆栽 / 长椅
+}
 
 /** GET /halls/:id「已解析」响应 */
 export interface ResolvedHall {
@@ -136,8 +140,19 @@ export type Selection =
   | { kind: "spawn" }
   | null;
 
-/** 画布工具:select 选择/移动;wall 连续画墙;stamp 放置组件 */
-export type CanvasTool = { mode: "select" } | { mode: "wall" } | { mode: "stamp"; type: FixtureType };
+/** stamp 放置预设(同一类型的变体:如装饰的 绿植/长椅,带各自尺寸与内容) */
+export interface StampPreset {
+  label?: string;
+  w?: number;
+  d?: number;
+  content?: unknown;
+}
+
+/** 画布工具:select 选择/移动;wall 连续画墙;stamp 放置组件(可带变体预设) */
+export type CanvasTool =
+  | { mode: "select" }
+  | { mode: "wall" }
+  | { mode: "stamp"; type: FixtureType; preset?: StampPreset };
 
 /** 素材公开访问相对 URL(后端公开口,<img>/<video> 可直接用) */
 export function exhibitionAssetUrl(fileId: string): string {

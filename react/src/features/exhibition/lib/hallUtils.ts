@@ -49,30 +49,48 @@ export const FIXTURE_META: Record<FixtureType, FixtureTypeMeta> = {
   notice_board: { type: "notice_board", label: "党务公开板", w: 2.4, d: 0.3, wallMount: true, color: "#EF4444" },
   door: { type: "door", label: "门 / 通道", w: 1.4, d: 0.3, wallMount: true, color: "#6B7280" },
   text_3d: { type: "text_3d", label: "立体字", w: 3.0, d: 0.4, wallMount: true, color: "#C8001E" },
+  decor: { type: "decor", label: "装饰", w: 0.55, d: 0.55, wallMount: false, color: "#16A34A" },
 };
 
-/** 新组件实例(默认 content 按类型给最小可编辑形状) */
-export function makeFixture(type: FixtureType, x: number, y: number, rot = 0): Fixture {
+/** 装饰变体(palette 按变体出按钮,stamp preset 带各自尺寸) */
+export const DECOR_PRESETS: { kind: "plant" | "plant_short" | "bench"; label: string; w: number; d: number }[] = [
+  { kind: "plant", label: "绿植(高)", w: 0.55, d: 0.55 },
+  { kind: "plant_short", label: "矮盆栽", w: 0.5, d: 0.5 },
+  { kind: "bench", label: "长椅", w: 1.2, d: 0.45 },
+];
+
+/** 新组件实例(默认 content 按类型给最小可编辑形状;preset 覆盖尺寸/内容/名称) */
+export function makeFixture(
+  type: FixtureType,
+  x: number,
+  y: number,
+  rot = 0,
+  preset?: { label?: string; w?: number; d?: number; content?: unknown },
+): Fixture {
   const meta = FIXTURE_META[type];
   const content: unknown =
-    type === "image_case"
-      ? { images: [] }
-      : type === "honor_wall" || type === "notice_board"
-        ? { items: [] }
-        : type === "text_3d"
-          ? { text: "标题文字", sizeM: 0.6, depthM: 0.12, finish: "paint", mount: "wall" }
-          : type === "door"
-            ? null
-            : {};
+    preset?.content !== undefined
+      ? preset.content
+      : type === "image_case"
+        ? { images: [] }
+        : type === "honor_wall" || type === "notice_board"
+          ? { items: [] }
+          : type === "text_3d"
+            ? { text: "标题文字", sizeM: 0.6, depthM: 0.12, finish: "paint", mount: "wall" }
+            : type === "decor"
+              ? { kind: "plant" }
+              : type === "door"
+                ? null
+                : {};
   return {
     id: uid("fx"),
     type,
     x: round2(x),
     y: round2(y),
     rot,
-    w: meta.w,
-    d: meta.d,
-    label: meta.label,
+    w: preset?.w ?? meta.w,
+    d: preset?.d ?? meta.d,
+    label: preset?.label ?? meta.label,
     source: { mode: "manual", content },
   };
 }

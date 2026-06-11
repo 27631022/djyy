@@ -42,7 +42,7 @@ async function boot(): Promise<void> {
     const scene = createScene(engine, theme);
 
     loading.setProgress(45, '搭建空间…');
-    const shell = buildShell(scene, hall.walls, hall.meta, theme);
+    const shell = buildShell(scene, hall.walls, hall.meta, theme, hall.fixtures); // fixtures 供门洞挖墙
 
     loading.setProgress(60, '设置相机与光效…');
     const camera = createFirstPersonCamera(scene, canvas, hall.meta, shell);

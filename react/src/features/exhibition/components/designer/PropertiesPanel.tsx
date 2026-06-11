@@ -3,6 +3,7 @@ import { Trash2Icon } from "lucide-react";
 import { Switch } from "@/shared/components/ui/switch";
 import { hallApi } from "../../api";
 import type {
+  DecorContent,
   Fixture,
   HallDesignerState,
   HallThemePreset,
@@ -336,6 +337,19 @@ function FixtureProps({
           )}
           {fixture.type === "text_3d" && (
             <Text3dEditor value={(source.content as Text3dContent) ?? { text: "" }} accent={accent} onChange={patchContent} />
+          )}
+          {fixture.type === "decor" && (
+            <Row label="样式">
+              <select
+                value={((source.content as DecorContent) ?? {}).kind ?? "plant"}
+                onChange={(e) => patchContent({ kind: e.target.value as DecorContent["kind"] })}
+                className={inputCls}
+              >
+                <option value="plant">绿植(高)</option>
+                <option value="plant_short">矮盆栽</option>
+                <option value="bench">长椅</option>
+              </select>
+            </Row>
           )}
         </>
       )}
