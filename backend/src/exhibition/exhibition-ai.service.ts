@@ -209,17 +209,23 @@ function defaultContent(type: FixtureType, raw: unknown): unknown {
   const c = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   switch (type) {
     case 'image_case':
-      return { images: Array.isArray(c.images) ? [] : [] };
+      return {
+        images: [],
+        ...(c.orientation === 'portrait' ? { orientation: 'portrait' } : {}),
+      };
     case 'honor_wall':
     case 'notice_board':
       return { items: [] };
     case 'text_3d':
       return {
         text: typeof c.text === 'string' ? c.text.slice(0, 40) : '展厅标语',
-        sizeM: num(c.sizeM, 0.6, 0.15, 2),
-        depthM: num(c.depthM, 0.12, 0.02, 0.5),
         finish: ['paint', 'metal', 'glow'].includes(String(c.finish)) ? c.finish : 'paint',
         mount: ['floor', 'wall', 'flat'].includes(String(c.mount)) ? c.mount : 'wall',
+        font: ['sans', 'serif'].includes(String(c.font)) ? c.font : 'sans',
+        weight: ['light', 'regular', 'medium', 'bold', 'black'].includes(String(c.weight))
+          ? c.weight
+          : 'regular',
+        ...(c.elevM !== undefined ? { elevM: num(c.elevM, 1.5, 0, 6) } : {}),
       };
     case 'decor':
       return { kind: ['plant', 'plant_short', 'bench', 'arrow'].includes(String(c.kind)) ? c.kind : 'plant' };

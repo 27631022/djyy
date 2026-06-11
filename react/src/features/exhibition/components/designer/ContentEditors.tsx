@@ -93,27 +93,27 @@ function UploadButton({
   );
 }
 
-/* ── 图片展柜:多图 + 图注 ── */
+/* ── 图片展柜:横竖屏 + 正/背面独立图列 + 图下介绍 ── */
 
-export function ImageCaseEditor({
-  value,
+/** 一面的图片列表(上传/图下介绍/排序/移除),正面与背面各挂一份 */
+function ImageList({
+  images,
   hallId,
   onChange,
 }: {
-  value: ImageCaseContent;
+  images: NonNullable<ImageCaseContent["images"]>;
   hallId: string;
-  onChange: (v: ImageCaseContent) => void;
+  onChange: (imgs: ImageCaseContent["images"]) => void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const images = value.images ?? [];
 
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
     if (j < 0 || j >= images.length) return;
     const next = [...images];
     [next[i], next[j]] = [next[j], next[i]];
-    onChange({ images: next });
+    onChange(next);
   };
 
   return (
@@ -131,9 +131,9 @@ export function ImageCaseEditor({
               onChange={(e) => {
                 const next = [...images];
                 next[i] = { ...img, caption: e.target.value };
-                onChange({ images: next });
+                onChange(next);
               }}
-              placeholder="图注(可空)"
+              placeholder="图下介绍(可空,渲染为说明条)"
               className={inputCls}
             />
             <div className="flex gap-1 text-[#9CA3AF]">
@@ -143,7 +143,7 @@ export function ImageCaseEditor({
               <button type="button" className="p-0.5 hover:text-[#1A1A1A] disabled:opacity-30" disabled={i === images.length - 1} onClick={() => move(i, 1)} title="下移">
                 <ArrowDownIcon className="w-3.5 h-3.5" />
               </button>
-              <button type="button" className="p-0.5 hover:text-red-500 ml-auto" onClick={() => onChange({ images: images.filter((_, j) => j !== i) })} title="移除">
+              <button type="button" className="p-0.5 hover:text-red-500 ml-auto" onClick={() => onChange(images.filter((_, j) => j !== i))} title="移除">
                 <Trash2Icon className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -171,12 +171,12 @@ export function ImageCaseEditor({
           if (files.length === 0) return;
           setBusy(true);
           try {
-            const added: ImageCaseContent["images"] = [];
+            const added: NonNullable<ImageCaseContent["images"]> = [];
             for (const f of files) {
               const meta = await uploadAsset(f, hallId);
               added.push({ fileId: meta.id, caption: "" });
             }
-            onChange({ images: [...images, ...added] });
+            onChange([...images, ...added]);
           } catch (err) {
             toast.error(err instanceof Error ? err.message : "上传失败");
           } finally {
@@ -184,6 +184,55 @@ export function ImageCaseEditor({
           }
         }}
       />
+    </div>
+  );
+}
+
+export function ImageCaseEditor({
+  value,
+  hallId,
+  onChange,
+}: {
+  value: ImageCaseContent;
+  hallId: string;
+  onChange: (v: ImageCaseContent) => void;
+}) {
+  const [side, setSide] = useState<"front" | "back">("front");
+  const front = value.images ?? [];
+  const back = value.backImages ?? [];
+
+  return (
+    <div className="space-y-2">
+      <Row label="板式">
+        <select
+          value={value.orientation ?? "landscape"}
+          onChange={(e) => onChange({ ...value, orientation: e.target.value as ImageCaseContent["orientation"] })}
+          className={inputCls}
+        >
+          <option value="landscape">横屏(宽幅)</option>
+          <option value="portrait">竖屏(高幅)</option>
+        </select>
+      </Row>
+      <div className="flex gap-1">
+        {(["front", "back"] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSide(s)}
+            className={`flex-1 px-2 py-1 text-xs rounded border ${side === s ? "border-[var(--party-primary)] text-[var(--party-primary)] bg-[var(--party-primary)]/5" : "border-[#E5E5E5] text-[#6B7280]"}`}
+          >
+            {s === "front" ? "正面" : back.length === 0 ? "背面(沿用正面)" : "背面"}
+          </button>
+        ))}
+      </div>
+      {side === "front" ? (
+        <ImageList images={front} hallId={hallId} onChange={(imgs) => onChange({ ...value, images: imgs ?? [] })} />
+      ) : (
+        <ImageList images={back} hallId={hallId} onChange={(imgs) => onChange({ ...value, backImages: imgs?.length ? imgs : undefined })} />
+      )}
+      <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+        每面展示第 1 张图;背面不传图时沿用正面(正面有第 2 张则背面用第 2 张)。
+      </p>
     </div>
   );
 }
@@ -375,6 +424,30 @@ export function NoticeItemsEditor({
   );
 }
 
+/* ── 颜色预设色板(立体字颜色 / 厅点缀色共用) ── */
+
+const PRESET_COLORS = ["#C8001E", "#F5A623", "#00D4FF", "#1E6FFF", "#1FA35C", "#7C3AED", "#1A1A1A", "#FFFFFF"];
+
+export function ColorSwatches({ value, onPick }: { value?: string; onPick: (hex: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1 pt-1">
+      {PRESET_COLORS.map((hex) => {
+        const active = (value ?? "").toUpperCase() === hex;
+        return (
+          <button
+            key={hex}
+            type="button"
+            title={hex}
+            onClick={() => onPick(hex)}
+            className={`w-5 h-5 rounded transition-transform ${active ? "ring-2 ring-[var(--party-primary)] ring-offset-1 border border-transparent" : "border border-[#D4D4D4] hover:scale-110"}`}
+            style={{ backgroundColor: hex }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── 立体字 ── */
 
 export function Text3dEditor({
@@ -399,27 +472,27 @@ export function Text3dEditor({
       </Row>
       <Row label="粗细">
         <select value={value.weight ?? "regular"} onChange={(e) => onChange({ ...value, weight: e.target.value as Text3dContent["weight"] })} className={inputCls}>
+          <option value="light">细体</option>
           <option value="regular">常规</option>
+          <option value="medium">中粗</option>
           <option value="bold">加粗</option>
+          <option value="black">特粗</option>
         </select>
       </Row>
-      <Row label="字高(m)">
-        <input type="number" step={0.05} min={0.1} max={3} value={value.sizeM ?? 0.6} onChange={(e) => onChange({ ...value, sizeM: Number(e.target.value) || 0.6 })} className={inputCls} />
-      </Row>
-      <Row label="厚度(m)">
-        <input type="number" step={0.02} min={0.02} max={0.6} value={value.depthM ?? 0.12} onChange={(e) => onChange({ ...value, depthM: Number(e.target.value) || 0.12 })} className={inputCls} />
-      </Row>
       <Row label="颜色">
-        <div className="flex items-center gap-1.5">
-          <input
-            type="color"
-            value={value.color ?? accent}
-            onChange={(e) => onChange({ ...value, color: e.target.value })}
-            className="w-8 h-6 p-0 border border-[#E5E5E5] rounded cursor-pointer"
-          />
-          <button type="button" className="text-[10px] text-[#9CA3AF] hover:text-[var(--party-primary)]" onClick={() => onChange({ ...value, color: undefined })}>
-            用主题点缀色
-          </button>
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="color"
+              value={value.color ?? accent}
+              onChange={(e) => onChange({ ...value, color: e.target.value })}
+              className="w-8 h-6 p-0 border border-[#E5E5E5] rounded cursor-pointer"
+            />
+            <button type="button" className="text-[10px] text-[#9CA3AF] hover:text-[var(--party-primary)]" onClick={() => onChange({ ...value, color: undefined })}>
+              用主题点缀色
+            </button>
+          </div>
+          <ColorSwatches value={value.color ?? accent} onPick={(hex) => onChange({ ...value, color: hex })} />
         </div>
       </Row>
       <Row label="质感">
@@ -436,6 +509,9 @@ export function Text3dEditor({
           <option value="flat">平铺地面(地板字)</option>
         </select>
       </Row>
+      <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+        文字整体宽度 = 上方「宽(m)」,高度按比例自动、厚度自动;离地高度在上方「离地(m)」调。
+      </p>
     </div>
   );
 }

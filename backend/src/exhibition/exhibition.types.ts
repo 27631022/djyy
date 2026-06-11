@@ -78,7 +78,12 @@ export interface FixtureSource {
  * 命名约定:`xxxFileId` 字段 → 响应里旁补 `xxx`/对应 url 键(见 FILE_ID_TO_URL)。
  */
 export interface ImageCaseContent {
+  /** 正面图片(展示第 1 张;caption 渲染为图下说明条) */
   images: { fileId?: string; url?: string; thumbnail?: string; caption?: string }[];
+  /** 背面图片(可与正面不同;未设则沿用正面) */
+  backImages?: { fileId?: string; url?: string; thumbnail?: string; caption?: string }[];
+  /** 板式:横屏(默认)/ 竖屏 */
+  orientation?: 'landscape' | 'portrait';
 }
 export interface VideoWallContent {
   videoFileId?: string;
@@ -107,13 +112,17 @@ export interface NoticeBoardContent {
 /** 立体字(v2):客户端经 /api/public/exhibition/font?chars= 取字体子集后 CreateText 挤出 */
 export interface Text3dContent {
   text: string; // 中文/英文均可
-  sizeM?: number; // 字高(米),默认 0.6
-  depthM?: number; // 挤出厚度(米),默认 0.12
+  /** @deprecated 旧字段:文字现按容器宽(fixture.w)同比缩放,不再单独设字高 */
+  sizeM?: number;
+  /** @deprecated 旧字段:挤出厚度现按字高自动(≈字高×0.2) */
+  depthM?: number;
+  elevM?: number; // 离地高度(米,字底距地):wall 默认 1.5,floor/flat 默认 0
   color?: string; // 默认主题点缀色(accent)
   finish?: 'paint' | 'metal' | 'glow'; // 烤漆 / 金属 / 发光,默认 paint
   mount?: 'floor' | 'wall' | 'flat'; // 落地 / 贴墙 / 平铺地面(地板字),默认 floor
   font?: 'sans' | 'serif'; // 字体:黑体(默认)/ 宋体
-  weight?: 'regular' | 'bold'; // 粗细:常规(默认)/ 加粗 —— 对应不同字重文件
+  /** 粗细 5 档:细体/常规/中粗/加粗/特粗(细/中粗/特粗由后端对字形轮廓偏置合成) */
+  weight?: 'light' | 'regular' | 'medium' | 'bold' | 'black';
 }
 /** 装饰内容:程序化变体(arrow=地面引导箭头,沿朝向指引) */
 export interface DecorContent {

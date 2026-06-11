@@ -87,13 +87,13 @@ const EXHIBITION_GENERATE_DEFAULT = `你是企业 3D 虚拟展厅的「布展设
 - 出生点放在入口区,面向主展区。
 
 组件类型与默认尺寸(w×d 米)/content:
-- image_case 图片展柜 1.8×0.6,content {"images":[]}
+- image_case 图片展柜 1.8×0.6,content {"images":[],"orientation":"landscape|portrait(横/竖屏,默认横)"}(双面展板,图与图下介绍后台再传)
 - video_wall 视频展墙 4.2×0.3 贴墙,content {}
 - model_stand 模型台 1.2×1.2 落地,content {}
 - honor_wall 荣誉墙 4.5×0.3 贴墙,content {"items":[]}
 - notice_board 党务公开板 2.6×0.3 贴墙,content {"items":[]}
 - door 门/通道 2.4×0.4 放在隔墙缺口处,content {}
-- text_3d 立体字,content {"text":"文字","sizeM":0.85,"finish":"metal|glow|paint","mount":"wall","font":"sans|serif(黑体/宋体)","weight":"regular|bold"};入口放厅名 LOGO(常用 serif+bold 显庄重)、展区放标语
+- text_3d 立体字,content {"text":"文字","finish":"metal|glow|paint","mount":"wall|floor|flat","font":"sans|serif(黑体/宋体)","weight":"light|regular|medium|bold|black","elevM":离地米(贴墙默认1.5)};文字整体宽=组件 w、高度同比自动,厅名 LOGO 给 w≈5-7(常用 serif+bold 显庄重)、标语 w≈3-5
 - decor 装饰 0.55×0.55,content {"kind":"plant|plant_short|bench|arrow"};角落放绿植、动线放 arrow 引导箭头(w=长度 2.0,d=0.5)
 - ceiling_sign 顶端吊牌 1.8×0.12,content {"text":"分区名"}
 

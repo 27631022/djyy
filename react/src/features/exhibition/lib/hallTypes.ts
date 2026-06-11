@@ -64,7 +64,12 @@ export interface Fixture {
 /* ── 各类型手动内容(存储态:素材 fileId;响应态后端旁补 url 键) ── */
 
 export interface ImageCaseContent {
+  /** 正面图片(展示第 1 张;caption 渲染为图下说明条) */
   images: { fileId?: string; url?: string; caption?: string }[];
+  /** 背面图片(可与正面不同;未设则沿用正面) */
+  backImages?: { fileId?: string; url?: string; caption?: string }[];
+  /** 板式:横屏(默认)/ 竖屏 */
+  orientation?: "landscape" | "portrait";
 }
 export interface VideoWallContent {
   videoFileId?: string;
@@ -86,13 +91,16 @@ export interface NoticeBoardContent {
 }
 export interface Text3dContent {
   text: string;
-  sizeM?: number; // 字高(米),默认 0.6
-  depthM?: number; // 挤出厚度(米),默认 0.12
+  /** @deprecated 文字现按容器宽(fixture.w)同比缩放 */
+  sizeM?: number;
+  /** @deprecated 厚度现按字高自动(≈字高×0.2) */
+  depthM?: number;
+  elevM?: number; // 离地高度(米,字底距地):wall 默认 1.5,floor/flat 默认 0
   color?: string; // 默认主题点缀色
   finish?: "paint" | "metal" | "glow";
   mount?: "floor" | "wall" | "flat"; // flat = 平铺地面(地板字)
   font?: "sans" | "serif"; // 黑体(默认)/ 宋体
-  weight?: "regular" | "bold"; // 常规(默认)/ 加粗
+  weight?: "light" | "regular" | "medium" | "bold" | "black"; // 5 档字重
 }
 export interface DecorContent {
   kind?: "plant" | "plant_short" | "bench" | "arrow"; // 高绿植 / 矮盆栽 / 长椅 / 地面引导箭头

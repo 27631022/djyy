@@ -4,7 +4,7 @@ import { ExhibitionFontService, normalizeFontKey } from './exhibition-font.servi
 /**
  * 公开字体子集口(免登录)—— 3D 客户端 text_3d 组件取 typeface 格式字形。
  *   GET /public/exhibition/font?chars=企业文化展厅&font=serif-bold
- * font 可选:sans(默认)/ sans-bold / serif / serif-bold;未知值回退 sans。
+ * font 可选:{sans|serif} × {-light|常规无后缀|-medium|-bold|-black} 共 10 档;未知值回退 sans。
  * 公开理由同素材口:展厅「开网址即进」,立体字是场景的一部分。
  */
 @Controller('public/exhibition')

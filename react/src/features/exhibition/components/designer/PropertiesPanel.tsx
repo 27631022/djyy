@@ -19,6 +19,7 @@ import type {
 } from "../../lib/hallTypes";
 import { FIXTURE_META, round2, wallLength } from "../../lib/hallUtils";
 import {
+  ColorSwatches,
   HonorItemsEditor,
   ImageCaseEditor,
   ModelStandEditor,
@@ -126,14 +127,20 @@ export function PropertiesPanel({ state, selection, hallId, accent, onUpdate, on
           </select>
         </Row>
         <Row label="点缀色">
-          <div className="flex items-center gap-1.5">
-            <input
-              type="color"
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1.5">
+              <input
+                type="color"
+                value={theme.accent ?? "#C8001E"}
+                onChange={(e) => onUpdate((s) => ({ ...s, meta: { ...s.meta, theme: { ...s.meta.theme, accent: e.target.value } } }))}
+                className="w-8 h-6 p-0 border border-[#E5E5E5] rounded cursor-pointer"
+              />
+              <span className="text-[10px] text-[#9CA3AF]">{theme.accent ?? "#C8001E"}</span>
+            </div>
+            <ColorSwatches
               value={theme.accent ?? "#C8001E"}
-              onChange={(e) => onUpdate((s) => ({ ...s, meta: { ...s.meta, theme: { ...s.meta.theme, accent: e.target.value } } }))}
-              className="w-8 h-6 p-0 border border-[#E5E5E5] rounded cursor-pointer"
+              onPick={(hex) => onUpdate((s) => ({ ...s, meta: { ...s.meta, theme: { ...s.meta.theme, accent: hex } } }))}
             />
-            <span className="text-[10px] text-[#9CA3AF]">{theme.accent ?? "#C8001E"}</span>
           </div>
         </Row>
         <Row label="镜面地板">
@@ -263,7 +270,23 @@ function FixtureProps({
         <Row label="X(m)"><Num value={fixture.x} onChange={(n) => onPatch({ x: n })} /></Row>
         <Row label="Y(m)"><Num value={fixture.y} onChange={(n) => onPatch({ y: n })} /></Row>
         <Row label="宽(m)"><Num value={fixture.w} step={0.1} min={0.2} max={20} onChange={(n) => onPatch({ w: n })} /></Row>
-        <Row label="深(m)"><Num value={fixture.d} step={0.1} min={0.1} max={10} onChange={(n) => onPatch({ d: n })} /></Row>
+        {fixture.type === "text_3d" ? (
+          /* 立体字:深度无意义,这格改「离地高度」(字底距地;贴墙默认 1.5,落地/地板字 0) */
+          <Row label="离地(m)">
+            <Num
+              value={
+                (source.content as Text3dContent | undefined)?.elevM ??
+                (((source.content as Text3dContent | undefined)?.mount ?? "wall") === "wall" ? 1.5 : 0)
+              }
+              step={0.1}
+              min={0}
+              max={8}
+              onChange={(n) => patchContent({ ...((source.content as Text3dContent) ?? { text: "" }), elevM: n })}
+            />
+          </Row>
+        ) : (
+          <Row label="深(m)"><Num value={fixture.d} step={0.1} min={0.1} max={10} onChange={(n) => onPatch({ d: n })} /></Row>
+        )}
       </div>
       <Row label="朝向(°)">
         <div className="flex items-center gap-1">

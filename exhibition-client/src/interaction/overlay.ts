@@ -96,13 +96,14 @@ export class Overlay {
     switch (fx.type) {
       case 'image_case': {
         const ic = (c ?? { images: [] }) as ImageCaseContent;
-        if (!ic.images?.length) {
+        const all = [...(ic.images ?? []), ...(ic.backImages ?? [])]; // 正反面素材都列出
+        if (!all.length) {
           body.innerHTML = `<p style="color:#999;">该展柜尚未上传图片素材。</p>`;
           break;
         }
         const grid = document.createElement('div');
         grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;';
-        for (const img of ic.images) {
+        for (const img of all) {
           if (!img.url) continue;
           const cell = document.createElement('figure');
           cell.style.cssText = 'margin:0;';

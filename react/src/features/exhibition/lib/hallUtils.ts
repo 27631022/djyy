@@ -78,7 +78,8 @@ export function makeFixture(
         : type === "honor_wall" || type === "notice_board"
           ? { items: [] }
           : type === "text_3d"
-            ? { text: "标题文字", sizeM: 0.6, depthM: 0.12, finish: "paint", mount: "wall" }
+            ? { text: "标题文字", finish: "paint", mount: "wall" } // 宽随 fixture.w 同比缩放,厚度自动
+
             : type === "decor"
               ? { kind: "plant" }
               : type === "ceiling_sign"
