@@ -16,6 +16,10 @@ export function buildDoor(scene: Scene, fx: Fixture, theme: ThemeParams): BuiltF
     roughness: 0.45,
   });
 
+  // ⚠ 门套必须「包住」墙体切口(向洞内收 3cm):立柱内侧面若与墙切口断面共面
+  // (都在 x=±w/2),会 z-fighting 闪白(门框内边缘红白打架,实测踩过)。
+  // 内收后切口断面藏进门套体内(门套深 0.22 > 墙厚 0.2,前后各包 1cm),彻底不可见。
+  const INSET = 0.03;
   const mkJamb = (x: number) => {
     const j = MeshBuilder.CreateBox(
       `door-jamb:${fx.id}:${x}`,
@@ -27,15 +31,17 @@ export function buildDoor(scene: Scene, fx: Fixture, theme: ThemeParams): BuiltF
     j.parent = root;
     return j;
   };
-  const j1 = mkJamb(-(w / 2 + 0.07));
-  const j2 = mkJamb(w / 2 + 0.07);
+  const j1 = mkJamb(-(w / 2 + 0.07 - INSET));
+  const j2 = mkJamb(w / 2 + 0.07 - INSET);
 
+  // 横梁底面下移到 2.47(墙体过梁底面在 2.50):同理避免两个底面共面闪烁,
+  // 墙体水平切口线(2.50)藏进红梁体内
   const lintel = MeshBuilder.CreateBox(
     `door-lintel:${fx.id}`,
     { width: w + 0.42, height: 0.16, depth: 0.22 },
     scene,
   );
-  lintel.position.set(0, 2.58, 0);
+  lintel.position.set(0, 2.55, 0);
   lintel.material = jambMat;
   lintel.parent = root;
 

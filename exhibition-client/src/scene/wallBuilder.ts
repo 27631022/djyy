@@ -186,13 +186,15 @@ export function buildShell(
       trims.push(skirt);
     });
 
-    // 门洞过梁:净高之上补墙到顶(人能走过,墙体仍连续)
+    // 门洞过梁:净高之上补墙到顶(人能走过,墙体仍连续)。
+    // 厚度比墙薄 4mm:过梁两端各嵌进墙段 1cm,嵌入区前后面若与墙面共面会闪
+    // (z-fighting),微缩后藏进墙体内,2mm 台阶肉眼不可见。
     openings.forEach(([a, b], k) => {
       if (wallH - DOOR_CLEAR_H < 0.05) return;
       const c = at((a + b) / 2);
       const lintel = MeshBuilder.CreateBox(
         `wall-lintel:${w.id ?? i}:${k}`,
-        { width: b - a + 0.02, height: wallH - DOOR_CLEAR_H, depth: WALL_T },
+        { width: b - a + 0.02, height: wallH - DOOR_CLEAR_H, depth: WALL_T - 0.004 },
         scene,
       );
       lintel.position.set(c.x, DOOR_CLEAR_H + (wallH - DOOR_CLEAR_H) / 2, c.z);
