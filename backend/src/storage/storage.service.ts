@@ -214,6 +214,24 @@ export class StorageService {
   }
 
   /**
+   * 按 业务模块 + 文件夹 + 原始文件名 精确找一个未软删文件(同名多份取最新)。
+   * 供「glb 外链贴图按文件名解析兄弟文件」等场景;找不到返回 null 不抛。
+   */
+  async findByName(
+    ownerModule: string,
+    folder: string,
+    originalName: string,
+  ): Promise<StoredFileMeta | null> {
+    const safeFolder = this.sanitizeFolder(folder);
+    if (!safeFolder) return null;
+    const row = (await this.prisma.storedFile.findFirst({
+      where: { deletedAt: null, ownerModule, folder: safeFolder, originalName },
+      orderBy: { createdAt: 'desc' },
+    })) as StoredFileRow | null;
+    return row ? this.toMeta(row) : null;
+  }
+
+  /**
    * 软删:置 deletedAt + 删真实字节(显式删除是管理员动作,顺手清字节,避免孤儿)。
    * 元数据行保留(审计可追),字节删除 best-effort(失败不阻断)。
    */

@@ -213,6 +213,14 @@ function defaultContent(type: FixtureType, raw: unknown): unknown {
         images: [],
         ...(c.orientation === 'portrait' ? { orientation: 'portrait' } : {}),
       };
+    case 'model_stand':
+      return {
+        shape: c.shape === 'rect' ? 'rect' : 'round',
+        ...(c.standH !== undefined ? { standH: num(c.standH, 1.0, 0.3, 1.6) } : {}),
+        ...(typeof c.intro === 'string' && c.intro.trim()
+          ? { intro: c.intro.trim().slice(0, 200) }
+          : {}),
+      };
     case 'honor_wall':
     case 'notice_board':
       return { items: [] };

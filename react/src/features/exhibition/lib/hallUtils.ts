@@ -79,12 +79,13 @@ export function makeFixture(
           ? { items: [] }
           : type === "text_3d"
             ? { text: "标题文字", finish: "paint", mount: "wall" } // 宽随 fixture.w 同比缩放,厚度自动
-
-            : type === "decor"
-              ? { kind: "plant" }
-              : type === "ceiling_sign"
-                ? { text: "展区指引" }
-                : {}; // door 也给 {}:后续可设「通往展厅」
+            : type === "model_stand"
+              ? { shape: "round", autorotate: true } // 台面长宽=fixture.w/d
+              : type === "decor"
+                ? { kind: "plant" }
+                : type === "ceiling_sign"
+                  ? { text: "展区指引" }
+                  : {}; // door 也给 {}:后续可设「通往展厅」
   return {
     id: uid("fx"),
     type,

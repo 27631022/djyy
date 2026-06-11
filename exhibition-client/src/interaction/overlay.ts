@@ -2,6 +2,7 @@ import type {
   Fixture,
   HonorWallContent,
   ImageCaseContent,
+  ModelStandContent,
   NoticeBoardContent,
   Text3dContent,
   VideoWallContent,
@@ -161,6 +162,19 @@ export class Overlay {
             <div style="color:#999;font-size:13px;white-space:nowrap;">${it.date ?? ''}</div>`;
           body.appendChild(row);
         }
+        break;
+      }
+      case 'model_stand': {
+        const mc = (c ?? {}) as ModelStandContent;
+        const p = document.createElement('p');
+        if (mc.intro?.trim()) {
+          p.style.cssText = 'white-space:pre-wrap;margin:4px 0 8px;';
+          p.textContent = mc.intro.trim();
+        } else {
+          p.style.color = '#999';
+          p.textContent = '该模型台暂无介绍。';
+        }
+        body.appendChild(p);
         break;
       }
       case 'text_3d': {

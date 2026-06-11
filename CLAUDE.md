@@ -337,6 +337,13 @@ npm run db:seed
   - **未来科技风**(新 preset **`future_tech`**,`HallThemePreset` 三处契约同步):深空蓝黑 + 霓虹青 #00D4FF;`ThemeParams` 加 **`floorStyle:'tile'|'tech'`**(makeFloorTexture 加 tech 分支:深底+发光网格线+交点亮斑,**同一张纹理喂 albedo+emissive** —— 线亮底黑,只有线发光)+ **`trimGlow`**(踢脚线/顶角线 emissive → 全场发光描边,GlowLayer 拾取);地板 roughness 0.06 近镜面网格倒影。接入五处:PRESET_LABEL/新建对话框/AI 生成对话框/AI 提示词(四选一)/ai-service 白名单。实测截图 = TRON 风。
   - **精致化**:展柜四边金属包边条(点缀色金属+微发光)+ 底座正反点缀灯线;模型台加 **底部发光环 + 台面下灯线环**(Torus emissive)+ **玻璃罩**(圆柱 glassMat 罩展品)。
   - 验证:三端门禁 0 error + client build;数值断言(floorEmissive/trimGlow/展柜每柜 2 面共 10 面/包边 20 根/光环 2 玻璃罩 1)+ 科技风全景截图;seed 厅主题已恢复 modern_light。
+- **(2026-06-11 P2.4)模型台大修:模型不显示根治 + 圆/方台 + 长宽高 + 介绍牌**(用户四需求):
+  - **「上传模型不显示」三个根因全修**:① 用户 glb 引用**外链贴图散文件**(39 张 jpg 没一起上传)→ Babylon 单图 404 整模加载失败回落占位晶体。修法 = 新增**兄弟文件素材口** `GET /public/exhibition/assets/:id/rel/*`(wildcard `@Param('0')`):`__self__`=主文件本身;其余按「同 ownerModule+folder+原始文件名」精确找配套上传的散文件(`StorageService.findByName`);**缺失的图片类资源回 1×1 白 BMP 兜底**(手工 58 字节构造,不靠记忆 base64)→ 模型永远能加载,缺图处素色;.bin 等非图缺失仍 404(几何缺了就该失败)。客户端加载改 `LoadAssetContainerAsync('…/:id/rel/', '__self__', …)`,glb 内相对 uri 自动落到 /rel/。编辑器配套「上传贴图(可多选)」存 `textures:[{fileId,name}]`(进 content 保 GC 在用)。② **包围盒 bug**:原 `root.getHierarchyBoundingVectors` 把台身/玻璃罩算进模型包围盒 → 小模型永远不被放大。修 = `container.createRootMesh()` 后、挂 root 前量模型自身,逐轴 fit(台面+0.1 × maxH × 台深+0.1)。③ **自转 bug**:glTF `__root__` 带 rotationQuaternion,直接设 `.rotation` 无效 → 包一层 holder TransformNode 转 holder。
+  - **upAxis 摆正**:很多模型 z-up 导出(用户的卡车在 3D 里竖立)→ content 加 `upAxis:'y'|'z'`,z = `modelRoot.rotation.x=-π/2` **先转再量包围盒**,贴台/居中算式零改;编辑器「模型朝向→横倒摆正」。
+  - **圆/方台 + 长宽高**:`shape:'round'|'rect'`(圆柱/长方体台身,玻璃罩/发光圈同步两形态——方台灯线用薄发光板替代 Torus);**台面长宽=fixture.w/d**(3D 端原来完全没用 w/d,固定 0.62m;现 clamp 0.4~6m)+ `standH` 台面离地高(0.3~1.6m,默认 1.0)。
+  - **介绍牌**:`intro` 非空时台旁(正前右侧)立**讲台式斜面介绍牌**(金属斜杆+深背板+白面板 canvasTexture:点缀色顶条+标题+wrapCjk 折行正文,面板上仰 0.6rad 朝上前方);点击台/牌 → overlay 显示介绍全文(textContent 防注入)。
+  - **⚠ 顺手修了潜在数据丢失**:`ExhibitionService.collectFileIdsDeep` 只匹配 `*FileId` 后缀(大小写敏感)→ 展柜图片的裸 `fileId` 键**不被计入在用** → 孤儿 GC 会把展柜全部图片当孤儿购删!修 = `k === 'fileId' || k.endsWith('FileId')`。
+  - 契约三处同步(backend/client/react)+ AI 提示词与归一化(shape/standH/intro);`stripResolvedUrls` 已覆盖 textures[].url。验证:门禁三端 0 error;/rel/ 三行为 HTTP 实测(主文件 200 / 缺图 200 image/bmp / 缺 bin 404);3D 数值断言(模型加载✓尺寸逐轴 fit✓贴台 baseY=1✓圆台 198 顶点/方台 24 顶点✓standH 0.7→topY0.675✓介绍牌两块✓)+ 截图(卡车 upAxis=z 躺平在圆台、介绍牌文字清晰);测试厅+6 张临时截图已删;**用户「职工之家」的模型台顺手修到可用**(0.1m 深→1.6×1.6 + upAxis=z,已在其真实数据上截图验证)。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor

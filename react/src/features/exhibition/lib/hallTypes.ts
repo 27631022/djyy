@@ -80,8 +80,20 @@ export interface VideoWallContent {
 export interface ModelStandContent {
   modelFileId?: string;
   modelUrl?: string;
+  /** 模型原文件名(决定 .glb/.gltf 解析方式;编辑器显示用) */
+  modelName?: string;
+  /** 配套贴图散文件(glb 引用外链贴图时上传;运行时按 同folder+文件名 经 /rel/ 口解析) */
+  textures?: { fileId: string; name: string; url?: string }[];
   scale?: number;
   autorotate?: boolean;
+  /** 模型朝上轴:y=标准(默认);z=横倒摆正(部分建模软件导出 z-up,显示成竖立时选它) */
+  upAxis?: "y" | "z";
+  /** 台体形状:圆形(默认)/ 长方形;台面长宽取 fixture.w/d */
+  shape?: "round" | "rect";
+  /** 台面离地高度(米),默认 1.0 */
+  standH?: number;
+  /** 介绍信息:台旁立介绍牌 + 点击浮层显示 */
+  intro?: string;
 }
 export interface HonorWallContent {
   items: { title: string; level?: string; year?: string | number; imageFileId?: string; imageUrl?: string }[];

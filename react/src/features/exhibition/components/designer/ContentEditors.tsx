@@ -278,7 +278,57 @@ export function VideoWallEditor({
   );
 }
 
-/* ── 模型台:.glb + 缩放/自转 ── */
+/* ── 模型台:.glb/.gltf + 配套贴图 + 形状/台面高/缩放/自转 + 介绍牌 ── */
+
+/** 贴图散文件多选上传(glb 引用外链贴图时配套传,运行时按文件名解析) */
+function TextureMultiUpload({
+  hallId,
+  onDone,
+}: {
+  hallId: string;
+  onDone: (files: { fileId: string; name: string }[]) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => ref.current?.click()}
+        className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-[#D4D4D4] text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] disabled:opacity-50"
+      >
+        {busy ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <ImagePlusIcon className="w-3.5 h-3.5" />}
+        {busy ? "上传中…" : "上传贴图(可多选)"}
+      </button>
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={async (e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          if (!files.length) return;
+          setBusy(true);
+          try {
+            const out: { fileId: string; name: string }[] = [];
+            for (const f of files) {
+              const meta = await uploadAsset(f, hallId);
+              out.push({ fileId: meta.id, name: meta.originalName });
+            }
+            onDone(out);
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "贴图上传失败");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+    </>
+  );
+}
 
 export function ModelStandEditor({
   value,
@@ -289,22 +339,79 @@ export function ModelStandEditor({
   hallId: string;
   onChange: (v: ModelStandContent) => void;
 }) {
+  const textures = value.textures ?? [];
   return (
     <div className="space-y-2">
       <Row label="模型">
         {value.modelFileId ? (
-          <div className="flex items-center gap-1.5 text-xs text-[#1A1A1A]">
-            <PackageIcon className="w-4 h-4 text-emerald-600" />
-            已上传 .glb
-            <button type="button" className="p-1 text-[#9CA3AF] hover:text-red-500" title="移除模型" onClick={() => onChange({ ...value, modelFileId: undefined })}>
+          <div className="flex items-center gap-1.5 text-xs text-[#1A1A1A] min-w-0">
+            <PackageIcon className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span className="truncate" title={value.modelName}>{value.modelName ?? "已上传 .glb"}</span>
+            <button
+              type="button"
+              className="p-1 text-[#9CA3AF] hover:text-red-500 flex-shrink-0"
+              title="移除模型"
+              onClick={() => onChange({ ...value, modelFileId: undefined, modelName: undefined, textures: undefined })}
+            >
               <XIcon className="w-3.5 h-3.5" />
             </button>
           </div>
         ) : (
-          <UploadButton hallId={hallId} accept=".glb,.gltf" label="上传 .glb 模型" icon={<PackageIcon className="w-3.5 h-3.5" />} onDone={(id) => onChange({ ...value, modelFileId: id })} />
+          <UploadButton
+            hallId={hallId}
+            accept=".glb,.gltf"
+            label="上传 .glb 模型"
+            icon={<PackageIcon className="w-3.5 h-3.5" />}
+            onDone={(id, name) => onChange({ ...value, modelFileId: id, modelName: name })}
+          />
         )}
       </Row>
-      <Row label="缩放">
+      {value.modelFileId && (
+        <Row label="贴图">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <TextureMultiUpload hallId={hallId} onDone={(files) => onChange({ ...value, textures: [...textures, ...files] })} />
+            {textures.length > 0 && (
+              <span className="text-[10px] text-[#6B7280]">
+                已传 {textures.length} 张
+                <button type="button" className="ml-1 text-[#9CA3AF] hover:text-red-500 underline" onClick={() => onChange({ ...value, textures: undefined })}>
+                  清空
+                </button>
+              </span>
+            )}
+          </div>
+        </Row>
+      )}
+      {value.modelFileId && (
+        <Row label="模型朝向">
+          <select
+            value={value.upAxis ?? "y"}
+            onChange={(e) => onChange({ ...value, upAxis: e.target.value === "z" ? "z" : "y" })}
+            className={inputCls}
+          >
+            <option value="y">标准(Y 朝上)</option>
+            <option value="z">横倒摆正(模型显示成竖立时选这个)</option>
+          </select>
+        </Row>
+      )}
+      <Row label="台体形状">
+        <select
+          value={value.shape ?? "round"}
+          onChange={(e) => onChange({ ...value, shape: e.target.value === "rect" ? "rect" : "round" })}
+          className={inputCls}
+        >
+          <option value="round">圆形</option>
+          <option value="rect">长方形</option>
+        </select>
+      </Row>
+      <Row label="台面高(m)">
+        <input
+          type="number" step={0.05} min={0.3} max={1.6}
+          value={value.standH ?? 1.0}
+          onChange={(e) => onChange({ ...value, standH: Math.min(1.6, Math.max(0.3, Number(e.target.value) || 1.0)) })}
+          className={inputCls}
+        />
+      </Row>
+      <Row label="模型缩放">
         <input
           type="number" step={0.1} min={0.1} max={20}
           value={value.scale ?? 1}
@@ -313,9 +420,21 @@ export function ModelStandEditor({
         />
       </Row>
       <Row label="自动旋转">
-        <Switch checked={value.autorotate ?? false} onCheckedChange={(b) => onChange({ ...value, autorotate: b })} />
+        <Switch checked={value.autorotate !== false} onCheckedChange={(b) => onChange({ ...value, autorotate: b })} />
       </Row>
-      <p className="text-[10px] text-[#9CA3AF] leading-relaxed">提示:可在「3D 生成」页用 AI 出 .glb 后下载再上传到这里。</p>
+      <div className="space-y-1">
+        <span className="text-xs text-[#6B7280]">介绍信息(非空时台旁立介绍牌)</span>
+        <textarea
+          value={value.intro ?? ""}
+          onChange={(e) => onChange({ ...value, intro: e.target.value })}
+          placeholder="展品名称、来历、亮点等,一两段即可"
+          rows={4}
+          className={`${inputCls} resize-y leading-relaxed`}
+        />
+      </div>
+      <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+        台面长宽用上方「宽/深」调;模型若引用外部贴图散文件(加载出来是白模),把贴图一并上传即可按文件名自动配上。
+      </p>
     </div>
   );
 }

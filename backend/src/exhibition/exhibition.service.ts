@@ -138,7 +138,7 @@ export class ExhibitionService {
     return [...ids];
   }
 
-  /** 递归收集对象树里所有 `xxxFileId` 字段值 */
+  /** 递归收集对象树里所有 `xxxFileId` 字段值(含展柜图片等用的裸 `fileId` 键 —— 漏掉会被孤儿 GC 误删) */
   private collectFileIdsDeep(node: unknown, out: Set<string>): void {
     if (Array.isArray(node)) {
       for (const n of node) this.collectFileIdsDeep(n, out);
@@ -146,7 +146,7 @@ export class ExhibitionService {
     }
     if (node && typeof node === 'object') {
       for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-        if (k.endsWith('FileId') && typeof v === 'string' && v) out.add(v);
+        if ((k === 'fileId' || k.endsWith('FileId')) && typeof v === 'string' && v) out.add(v);
         else this.collectFileIdsDeep(v, out);
       }
     }
