@@ -60,7 +60,7 @@ export function showHint(): void {
     transition:opacity 1s;white-space:nowrap;`;
   hint.textContent = isTouch
     ? '左下摇杆移动 · 拖动屏幕转视角 · 点击展品看详情'
-    : 'WASD 移动 · 按住拖动转视角 · 点击展品看详情';
+    : 'WASD 移动 · Q/E 或拖动转视角 · 点击展品看详情';
   document.body.appendChild(hint);
   setTimeout(() => {
     hint.style.opacity = '0';
