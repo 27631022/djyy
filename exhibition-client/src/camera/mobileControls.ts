@@ -1,11 +1,26 @@
-import { Vector3, type Scene, type UniversalCamera } from '@babylonjs/core';
+import { Vector3, type FreeCameraTouchInput, type Scene, type UniversalCamera } from '@babylonjs/core';
 
 /**
  * 移动端虚拟摇杆:左下角圆盘控制前进/平移(右手拖屏转视角走相机内置 touch 输入)。
  * 摇杆 DOM 截获 pointer 事件不传给画布;cameraDirection 走碰撞系统,不穿墙。
+ *
+ * 手感调校(2026-06-12 用户实测反馈):
+ * - 拖屏转向:内置 touchAngularSensibility 默认 200000 慢到没法用(≈7°/s)→ 调到
+ *   13500(满划速 ≈100°/s);单指改纯转向 singleFingerRotate(默认竖划是前后移动,
+ *   与摇杆功能重复还容易误触,改后竖划=抬头低头,配俯仰限位防翻转)。
+ * - 摇杆速度:cameraDirection 被相机惯性(inertia 0.75)累积放大 1/(1-0.75)=4 倍,
+ *   旧值 2.4*dt 实际 ≈9.6 米/秒(冲刺)→ 0.5*dt(实际 ≈2 米/秒,快走);
+ *   并加二次响应曲线(轻推微调、推满才全速)+ 死区防抖。
  */
 export function setupMobileControls(scene: Scene, camera: UniversalCamera): void {
   if (!('ontouchstart' in window)) return;
+
+  // 拖屏转向:单指 = 纯转视角(横划转向 + 竖划俯仰),灵敏度调到可用区间
+  const touch = camera.inputs.attached.touch as FreeCameraTouchInput | undefined;
+  if (touch) {
+    touch.singleFingerRotate = true;
+    touch.touchAngularSensibility = 13500;
+  }
 
   const pad = document.createElement('div');
   pad.style.cssText = `position:fixed;left:22px;bottom:26px;width:120px;height:120px;
@@ -26,9 +41,11 @@ export function setupMobileControls(scene: Scene, camera: UniversalCamera): void
     const dy = e.clientY - (r.top + r.height / 2);
     const max = r.width / 2;
     const len = Math.hypot(dx, dy) || 1;
-    const cl = Math.min(len, max);
-    vec = { x: (dx / len) * (cl / max), y: (dy / len) * (cl / max) };
-    knob.style.transform = `translate(calc(-50% + ${(vec.x * max) / 2}px), calc(-50% + ${(vec.y * max) / 2}px))`;
+    const raw = Math.min(len, max) / max; // 0~1 偏移量
+    // 死区防抖 + 二次响应曲线:轻推走得很慢便于微调,推满才到全速
+    const mag = raw < 0.12 ? 0 : ((raw - 0.12) / 0.88) ** 2;
+    vec = { x: (dx / len) * mag, y: (dy / len) * mag };
+    knob.style.transform = `translate(calc(-50% + ${((dx / len) * raw * max) / 2}px), calc(-50% + ${((dy / len) * raw * max) / 2}px))`;
   };
   pad.addEventListener('pointerdown', (e) => {
     activeId = e.pointerId;
@@ -52,9 +69,11 @@ export function setupMobileControls(scene: Scene, camera: UniversalCamera): void
   pad.addEventListener('pointercancel', end);
 
   scene.onBeforeRenderObservable.add(() => {
+    // 俯仰限位:单指转向开放抬头低头后,防止翻过头顶/脚底
+    camera.rotation.x = Math.max(-1.1, Math.min(1.1, camera.rotation.x));
     if (!vec.x && !vec.y) return;
     const dt = scene.getEngine().getDeltaTime() / 1000;
-    const speed = 2.4 * dt; // 米/秒
+    const speed = 0.5 * dt; // 经 inertia 4 倍累积后 ≈2 米/秒(快走),勿直接当米/秒读
     const fwd = camera.getDirection(Vector3.Forward());
     fwd.y = 0;
     fwd.normalize();
