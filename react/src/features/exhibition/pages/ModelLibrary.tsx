@@ -1,4 +1,4 @@
-import { createElement, useMemo, useRef, useState } from "react";
+import { createElement, useCallback, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BoxIcon,
@@ -32,18 +32,96 @@ function ModelViewer({ src }: { src: string }) {
   });
 }
 
+/** model-viewer 的 toBlob 等截图 API(官方有,类型声明里没有) */
+interface ModelViewerEl extends HTMLElement {
+  toBlob(opts?: { mimeType?: string; qualityArgument?: number; idealAspect?: boolean }): Promise<Blob>;
+}
+
+/**
+ * 缺预览图的模型:后台用隐形 model-viewer 渲染一帧 → 截图上传为「<模型名>.thumb.png」
+ * (与模型同夹,列表按名字配对)。一次只截一个,失败进跳过集合不死循环。
+ */
+function ThumbCapture({
+  m,
+  onDone,
+  onFail,
+}: {
+  m: LibraryModel;
+  onDone: () => void;
+  onFail: (id: string) => void;
+}) {
+  // callback ref(React 19 支持返回 cleanup):挂载即布置截图,避开 createElement
+  // 手写 props 里传 ref 对象被 React Compiler 判「render 期读 ref」
+  const attach = useCallback(
+    (mv: ModelViewerEl | null) => {
+      if (!mv) return;
+      let alive = true;
+      const capture = async () => {
+        try {
+          // 等首帧稳定(自动相机定位/IBL 就绪)
+          await new Promise((r) => setTimeout(r, 1200));
+          if (!alive) return;
+          const blob = await mv.toBlob({ mimeType: "image/png", idealAspect: false });
+          if (!alive) return;
+          // 空帧守卫:纯透明/纯色 png 只有几 KB,不上传(避免污染成黑图)
+          if (!blob || blob.size < 8000) throw new Error("captured blank frame");
+          const file = new File([blob], `${m.name}.thumb.png`, { type: "image/png" });
+          await storageApi.upload(
+            file,
+            m.source === "ai"
+              ? { ownerModule: "model3d", folder: "models" }
+              : { ownerModule: "exhibition", folder: "model-library" },
+          );
+          if (alive) onDone();
+        } catch {
+          if (alive) onFail(m.id);
+        }
+      };
+      mv.addEventListener("load", capture, { once: true });
+      const timeout = setTimeout(() => {
+        if (alive) onFail(m.id);
+      }, 90_000);
+      return () => {
+        alive = false;
+        clearTimeout(timeout);
+        mv.removeEventListener("load", capture);
+      };
+    },
+    [m.id, m.name, m.source, onDone, onFail],
+  );
+  return createElement("model-viewer", {
+    ref: attach,
+    src: m.url,
+    "camera-orbit": "-30deg 72deg 105%",
+    "field-of-view": "30deg",
+    "interaction-prompt": "none",
+    style: {
+      position: "fixed",
+      left: 0,
+      top: 0,
+      width: "480px",
+      height: "360px",
+      opacity: 0.01,
+      pointerEvents: "none",
+      zIndex: -1,
+    },
+  });
+}
+
 function fmtSize(n: number): string {
   if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
   return `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
-/** 单卡:缩略图默认(AI 产物=生成源图),点击才挂 model-viewer;就地改名;标签编辑 */
+/** 单卡:缩略图默认(自动截的 3D 渲染图),点击才挂 model-viewer;就地改名;标签编辑 */
 function ModelCard({
   m,
+  capturing,
   onChanged,
   onDelete,
 }: {
   m: LibraryModel;
+  capturing: boolean;
   onChanged: () => void;
   onDelete: () => void;
 }) {
@@ -100,7 +178,12 @@ function ModelCard({
             title="点击加载 3D 预览"
           >
             {m.thumbUrl ? (
-              <img src={m.thumbUrl} alt={m.name} className="w-full h-full object-cover" />
+              <img src={m.thumbUrl} alt={m.name} className="w-full h-full object-contain" />
+            ) : capturing ? (
+              <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-[#C9C9C5]">
+                <Loader2Icon className="w-7 h-7 animate-spin" />
+                <span className="text-[11px]">生成预览图…</span>
+              </span>
             ) : (
               <span className="absolute inset-0 flex items-center justify-center text-[#C9C9C5]">
                 <PackageIcon className="w-12 h-12" />
@@ -235,6 +318,20 @@ export default function ModelLibraryPage() {
     queryKey: ["exhibition", "model-library"],
     queryFn: () => modelLibraryApi.list(),
   });
+
+  /* ── 自动补 3D 预览图:缺图的模型逐个用隐形 model-viewer 截一帧 ──
+     窗口可见才跑(隐藏标签页 rAF 暂停会截出空帧);失败进集合跳过不死循环 */
+  const [visibleOk] = useState(() => typeof document !== "undefined" && document.visibilityState === "visible");
+  const [failedIds, setFailedIds] = useState<ReadonlySet<string>>(new Set());
+  const captureTarget = visibleOk
+    ? (listQuery.data ?? []).find((m) => !m.thumbUrl && !failedIds.has(m.id)) ?? null
+    : null;
+  const onCaptureDone = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ["exhibition", "model-library"] });
+  }, [qc]);
+  const onCaptureFail = useCallback((id: string) => {
+    setFailedIds((s) => new Set(s).add(id));
+  }, []);
 
   const removeMut = useMutation({
     mutationFn: (id: string) => storageApi.remove(id),
@@ -388,6 +485,7 @@ export default function ModelLibraryPage() {
                 <ModelCard
                   key={m.id}
                   m={m}
+                  capturing={captureTarget?.id === m.id}
                   onChanged={invalidate}
                   onDelete={() => {
                     if (
@@ -402,6 +500,11 @@ export default function ModelLibraryPage() {
           )}
         </div>
       </div>
+
+      {/* 隐形截图器:一次截一个缺图模型 */}
+      {captureTarget && (
+        <ThumbCapture key={captureTarget.id} m={captureTarget} onDone={onCaptureDone} onFail={onCaptureFail} />
+      )}
     </div>
   );
 }

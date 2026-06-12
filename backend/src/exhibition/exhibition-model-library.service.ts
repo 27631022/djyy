@@ -48,9 +48,10 @@ export class ExhibitionModelLibraryService {
       this.storage.list({ ownerModule: 'exhibition', folder: 'model-library', limit: 200 }),
       this.storage.list({ ownerModule: 'model3d', folder: 'models', limit: 200 }),
     ]);
-    // AI 产物的缩略图按名字配对(同夹的 <name>.thumb.* 文件)
+    // 缩略图按名字配对(同夹的 <模型文件名>.thumb.* —— 模型库前端用 model-viewer
+    // 截的 3D 渲染图,上传/AI 两源都有)
     const thumbOf = new Map<string, string>();
-    for (const f of generated) {
+    for (const f of [...uploaded, ...generated]) {
       const m = THUMB_RE.exec(f.originalName);
       if (m) thumbOf.set(m[1], exhibitionAssetUrl(f.id));
     }
@@ -62,9 +63,7 @@ export class ExhibitionModelLibraryService {
       source,
       url: exhibitionAssetUrl(m.id),
       tags: [],
-      ...(source === 'ai' && thumbOf.has(m.originalName)
-        ? { thumbUrl: thumbOf.get(m.originalName) }
-        : {}),
+      ...(thumbOf.has(m.originalName) ? { thumbUrl: thumbOf.get(m.originalName) } : {}),
     });
     const models = [
       ...uploaded.filter((m) => MODEL_EXT.test(m.originalName)).map((m) => toItem(m, 'upload')),
@@ -98,15 +97,13 @@ export class ExhibitionModelLibraryService {
       const ext = MODEL_EXT.exec(meta.originalName)?.[0] ?? '.glb';
       const base = dto.name.replace(MODEL_EXT, '').trim();
       const renamed = await this.storage.rename(fileId, `${base}${ext}`, ctx);
-      // 同步改缩略图名(配对靠名字);失败不阻断(缩略图丢配对只是回退图标)
-      if (meta.ownerModule === 'model3d') {
-        const thumb = await this.findThumb(meta.originalName);
-        if (thumb) {
-          const thumbExt = /\.thumb\.(\w+)$/i.exec(thumb.originalName)?.[1] ?? 'jpg';
-          await this.storage
-            .rename(thumb.id, `${renamed.originalName}.thumb.${thumbExt}`, ctx)
-            .catch(() => undefined);
-        }
+      // 同步改缩略图名(配对靠名字,在模型自己的 模块+文件夹 里找);失败不阻断
+      const thumb = await this.findThumb(meta.ownerModule, meta.folder ?? '', meta.originalName);
+      if (thumb) {
+        const thumbExt = /\.thumb\.(\w+)$/i.exec(thumb.originalName)?.[1] ?? 'png';
+        await this.storage
+          .rename(thumb.id, `${renamed.originalName}.thumb.${thumbExt}`, ctx)
+          .catch(() => undefined);
       }
     }
 
@@ -130,9 +127,13 @@ export class ExhibitionModelLibraryService {
     return { ok: true };
   }
 
-  private async findThumb(modelName: string): Promise<StoredFileMeta | null> {
-    for (const ext of ['jpg', 'jpeg', 'png', 'webp']) {
-      const f = await this.storage.findByName('model3d', 'models', `${modelName}.thumb.${ext}`);
+  private async findThumb(
+    ownerModule: string,
+    folder: string,
+    modelName: string,
+  ): Promise<StoredFileMeta | null> {
+    for (const ext of ['png', 'jpg', 'jpeg', 'webp']) {
+      const f = await this.storage.findByName(ownerModule, folder, `${modelName}.thumb.${ext}`);
       if (f) return f;
     }
     return null;

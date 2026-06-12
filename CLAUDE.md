@@ -356,6 +356,7 @@ npm run db:seed
   - **改名/标签/搜索**:新表 `ModelLibraryMeta`(fileId 主键 + tags JSON,`// @module: exhibition`,migrate `add_model_library_meta`;松引用,删模型残留行无害);**`StorageService.rename`**(通用改 originalName,审计 file.rename;不动磁盘 storageKey);`PATCH /exhibition/model-library/:fileId` {name?, tags?}(改名自动保留扩展名);前端 `ModelLibrary` 重写 = **左侧综合搜索分栏**(关键词搜名称/标签 + 来源筛选 + 标签分类计数)+ 卡片就地改名(铅笔)+ 标签 chips 增删。`ExhibitionModelLibraryService` 承载逻辑(controller 瘦)。
   - 验证:双端门禁 0 error;浏览器端到端 = 打标签「设备」→ 卡片 chip + 左栏「设备(1)」分类出现、搜「咖啡」过滤到 1 张、缩略图真照片显示;存量数据已整理(重复删、咖啡机/职工之家改名+补缩略图)。⚠ Windows 下 `prisma migrate dev` 会因 nest watch 锁 dll 而 generate 失败 —— 先停 3001 进程再 migrate/generate 后重启。
   - ⏭ 模型台「从模型库选择」面板后续可加缩略图与搜索(现为名字列表);Model3dStudio 生成完成页可提示「已入库,去模型库管理」。
+  - **(2026-06-11 续)缩略图改 3D 渲染截图(用户:别用源照片)**:模型库前端发现缺图模型时,**隐形 model-viewer 渲染一帧 → toBlob(png) → 上传「<模型名>.thumb.png」**(一次截一个;空帧守卫 size<8KB 不上传防黑图;失败进跳过集合不死循环;`document.visibilityState` 初始化器门控)。后端 model3d 不再复制源图作 thumb;配对/改名联动泛化到上传源(thumb 在模型自己的 模块+文件夹 找)。**React Compiler 坑**:`createElement` 手写 props 传 ref 对象报 `Cannot access refs during render` —— 改 **React 19 callback ref(可返回 cleanup)**,连 useEffect 都省了。验证:用户真实浏览器自动截齐 4 张(咖啡机/铁人王进喜铜像渲染图实查);门禁 0 error/41 warning 基线。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor

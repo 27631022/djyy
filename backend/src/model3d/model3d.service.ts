@@ -69,11 +69,8 @@ export class Model3dService {
    */
   private readonly inFlight = new Map<string, Promise<Model3dTaskStatus>>();
   private readonly doneCache = new Map<string, Model3dTaskStatus>();
-  /** createTask 登记的生成上下文(源图 + AI 起名),done 时取用;重启丢失由审计兜底(名字回退日期) */
-  private readonly pending = new Map<
-    string,
-    { imageFileId: string; namePromise: Promise<string | null> }
-  >();
+  /** createTask 登记的生成上下文(AI 起名),done 时取用;重启丢失则名字回退「3D生成」 */
+  private readonly pending = new Map<string, { namePromise: Promise<string | null> }>();
 
   constructor(
     private readonly storage: StorageService,
@@ -141,9 +138,8 @@ export class Model3dService {
     }
     if (!arkTaskId) throw new BadRequestException('AI 未返回任务 id');
 
-    // 登记生成上下文:源图(done 后做缩略图)+ AI 看图起名(异步跑,生成要几分钟,届时早就绪)
+    // 登记生成上下文:AI 看图起名(异步跑,生成要几分钟,届时早就绪)
     this.pending.set(arkTaskId, {
-      imageFileId,
       namePromise: this.suggestName(imageDataUrl).catch((e) => {
         this.logger.warn(`3D 产物起名失败(回退日期命名):${(e as Error).message}`);
         return null;
@@ -292,31 +288,8 @@ export class Model3dService {
       actor,
     );
 
-    // 缩略图 = 生成用的源图副本,与产物同夹、命名「<产物文件名>.thumb.<ext>」——
-    // 模型库列表按名字配对,卡片默认显示物品截图、点击才加载 3D(模型动辄几十 MB)
-    const imageFileId = ctx?.imageFileId ?? (await this.imageFromCreateAudit(arkTaskId));
-    if (imageFileId) {
-      try {
-        const img = await this.storage.getBuffer(imageFileId);
-        if (img.meta.mimeType.startsWith('image/')) {
-          const ext = img.meta.mimeType.includes('png') ? 'png' : 'jpg';
-          await this.storage.put(
-            {
-              buffer: img.buffer,
-              originalName: `${stored.originalName}.thumb.${ext}`,
-              mimeType: img.meta.mimeType,
-              ownerModule: 'model3d',
-              folder: 'models',
-              visibility: 'public',
-              createdById: actor.actorId,
-            },
-            actor,
-          );
-        }
-      } catch (e) {
-        this.logger.warn(`产物缩略图生成失败(不影响模型):${(e as Error).message}`);
-      }
-    }
+    // 缩略图不在这里生成:模型库前端发现缺图时,自动用 model-viewer 渲染一帧
+    // 截图上传(命名「<产物文件名>.thumb.*」同夹配对)—— 用户要的是 3D 渲染图而非源照片
     this.pending.delete(arkTaskId);
 
     await this.audit.log({
@@ -345,21 +318,6 @@ export class Model3dService {
       }
     } catch (e) {
       this.logger.warn(`审计兜底查询失败(按未入库处理):${(e as Error).message}`);
-    }
-    return null;
-  }
-
-  /** 重启丢上下文时,从 model3d.create 审计里找回源图 fileId(缩略图用) */
-  private async imageFromCreateAudit(arkTaskId: string): Promise<string | null> {
-    try {
-      const { items } = await this.audit.list({ action: 'model3d.create', take: 100 });
-      for (const it of items as { target?: string | null; detail?: unknown }[]) {
-        if (it.target !== arkTaskId) continue;
-        const d = this.parseDetail(it.detail);
-        return typeof d?.imageFileId === 'string' ? d.imageFileId : null;
-      }
-    } catch {
-      /* 查不到就不出缩略图 */
     }
     return null;
   }
