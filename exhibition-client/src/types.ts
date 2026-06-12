@@ -13,6 +13,7 @@ export const FIXTURE_TYPES = [
   'text_3d',
   'decor', // 装饰(绿植/长椅/地面引导箭头,程序化建模,不可点击)
   'ceiling_sign', // 顶端吊牌(吊杆 + 双面文字牌)
+  'wall_decor', // 文化墙挂件(贴墙浮雕造型:党务/厂务公开栏、荣誉墙,程序化分层挤出)
 ] as const;
 export type FixtureType = (typeof FIXTURE_TYPES)[number];
 
@@ -30,6 +31,17 @@ export interface DoorContent {
 /** 顶端吊牌 */
 export interface CeilingSignContent {
   text: string;
+}
+
+/** 文化墙挂件:三套浮雕模板(党务公开栏/厂务公开栏/荣誉墙),标题/栏目可改 */
+export interface WallDecorContent {
+  template?: 'party_red' | 'blue_tech' | 'honor_red';
+  title?: string;
+  /** 栏目名(party_red/blue_tech;honor_red 不用) */
+  panels?: string[];
+  /** 相框行 × 列(仅 honor_red,默认 3 × 5) */
+  rows?: number;
+  cols?: number;
 }
 
 export interface Wall {

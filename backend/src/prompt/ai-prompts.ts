@@ -96,6 +96,7 @@ const EXHIBITION_GENERATE_DEFAULT = `你是企业 3D 虚拟展厅的「布展设
 - text_3d 立体字,content {"text":"文字","finish":"metal|glow|paint","mount":"wall|floor|flat","font":"sans|serif(黑体/宋体)","weight":"light|regular|medium|bold|black","elevM":离地米(贴墙默认1.5)};文字整体宽=组件 w、高度同比自动,厅名 LOGO 给 w≈5-7(常用 serif+bold 显庄重)、标语 w≈3-5
 - decor 装饰 0.55×0.55,content {"kind":"plant|plant_short|bench|arrow"};角落放绿植、动线放 arrow 引导箭头(w=长度 2.0,d=0.5)
 - ceiling_sign 顶端吊牌 1.8×0.12,content {"text":"分区名"}
+- wall_decor 文化墙挂件 6.0×0.35 贴墙(浮雕造型文化墙,自带背板/飘带/栏目板,效果隆重),content {"template":"party_red|blue_tech|honor_red 三选一(党务公开栏·红飘带金边 / 厂务公开栏·金属框蓝科技 / 荣誉墙·红金相框阵列,荣誉墙建议 w≈7)","title":"主标题(默认按模板名)","panels":["栏目名",...](党务/厂务模板的栏目板标题 3-6 个;honor_red 不填),"rows":3,"cols":5(仅 honor_red 相框行列)};党建内容区用 party_red/honor_red,生产经营公开区用 blue_tech;与 honor_wall/notice_board 二选一即可,不要同墙重复
 
 布置规则:
 - 贴墙组件(video_wall/honor_wall/notice_board)中心放在距墙面 0.25m 处,rot 取背墙朝内(北墙 y=负侧的组件 rot=180,南墙 rot=0,西墙 rot=90,东墙 rot=270 —— 以「面向室内」为准)。

@@ -14,6 +14,7 @@ export const FIXTURE_TYPES = [
   "text_3d",
   "decor",
   "ceiling_sign",
+  "wall_decor",
 ] as const;
 export type FixtureType = (typeof FIXTURE_TYPES)[number];
 
@@ -127,6 +128,16 @@ export interface DoorContent {
 /** 顶端吊牌 */
 export interface CeilingSignContent {
   text: string;
+}
+/** 文化墙挂件:三套浮雕模板(党务公开栏/厂务公开栏/荣誉墙),标题/栏目可改 */
+export interface WallDecorContent {
+  template?: "party_red" | "blue_tech" | "honor_red";
+  title?: string;
+  /** 栏目名(party_red/blue_tech;honor_red 不用) */
+  panels?: string[];
+  /** 相框行 × 列(仅 honor_red,默认 3 × 5) */
+  rows?: number;
+  cols?: number;
 }
 
 /** GET /halls/:id「已解析」响应 */

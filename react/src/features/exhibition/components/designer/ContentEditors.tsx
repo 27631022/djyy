@@ -26,7 +26,9 @@ import {
   type NoticeBoardContent,
   type Text3dContent,
   type VideoWallContent,
+  type WallDecorContent,
 } from "../../lib/hallTypes";
+import { WALL_DECOR_PRESETS } from "../../lib/hallUtils";
 
 /** 上传到展厅素材区(公开口可直接 <img>/<video> 加载) */
 async function uploadAsset(file: File, hallId: string) {
@@ -613,6 +615,116 @@ export function NoticeItemsEditor({
         <PlusIcon className="w-3.5 h-3.5" />
         添加条目
       </button>
+    </div>
+  );
+}
+
+/* ── 文化墙挂件 ── */
+
+const WALL_DECOR_TPL_LABEL: Record<string, string> = {
+  party_red: "党务公开栏(红飘带金边)",
+  blue_tech: "厂务公开栏(金属框蓝科技)",
+  honor_red: "荣誉墙(红金相框阵列)",
+};
+
+export function WallDecorEditor({
+  value,
+  onChange,
+}: {
+  value: WallDecorContent;
+  onChange: (v: WallDecorContent) => void;
+}) {
+  const tpl = value.template ?? "party_red";
+  const panels = value.panels ?? [];
+  const maxPanels = tpl === "party_red" ? 6 : 8;
+  const patchPanel = (i: number, name: string) => {
+    const next = [...panels];
+    next[i] = name;
+    onChange({ ...value, panels: next });
+  };
+  return (
+    <div className="space-y-2">
+      <Row label="模板">
+        <select
+          value={tpl}
+          onChange={(e) => {
+            // 切模板 = 整体重置为该模板预设(标题/栏目/行列都换默认,避免跨模板残留)
+            const preset = WALL_DECOR_PRESETS.find((p) => p.content.template === e.target.value);
+            onChange(preset ? { ...preset.content } : { template: e.target.value as WallDecorContent["template"] });
+          }}
+          className={inputCls}
+        >
+          {WALL_DECOR_PRESETS.map((p) => (
+            <option key={p.content.template} value={p.content.template}>
+              {WALL_DECOR_TPL_LABEL[p.content.template ?? ""] ?? p.label}
+            </option>
+          ))}
+        </select>
+      </Row>
+      <Row label="主标题">
+        <input
+          value={value.title ?? ""}
+          onChange={(e) => onChange({ ...value, title: e.target.value })}
+          placeholder="如:党务公开栏"
+          className={inputCls}
+        />
+      </Row>
+      {tpl === "honor_red" ? (
+        <>
+          <Row label="相框排数">
+            <input
+              type="number"
+              min={1}
+              max={4}
+              value={value.rows ?? 3}
+              onChange={(e) => onChange({ ...value, rows: Math.min(Math.max(Number(e.target.value) || 3, 1), 4) })}
+              className={inputCls}
+            />
+          </Row>
+          <Row label="每排格数">
+            <input
+              type="number"
+              min={2}
+              max={7}
+              value={value.cols ?? 5}
+              onChange={(e) => onChange({ ...value, cols: Math.min(Math.max(Number(e.target.value) || 5, 2), 7) })}
+              className={inputCls}
+            />
+          </Row>
+          <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+            相框阵列当前为造型展示(空白相框),后续可接入证书系统自动填充荣誉。
+          </p>
+        </>
+      ) : (
+        <div className="space-y-1.5">
+          <div className="text-[11px] text-[#6B7280]">栏目板(从左到右)</div>
+          {panels.map((name, i) => (
+            <div key={i} className="flex gap-1">
+              <input value={name} onChange={(e) => patchPanel(i, e.target.value)} placeholder={`栏目 ${i + 1}`} className={inputCls} />
+              <button
+                type="button"
+                className="p-1 text-[#9CA3AF] hover:text-red-500 flex-shrink-0"
+                onClick={() => onChange({ ...value, panels: panels.filter((_, j) => j !== i) })}
+              >
+                <Trash2Icon className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+          {panels.length < maxPanels && (
+            <button
+              type="button"
+              onClick={() => onChange({ ...value, panels: [...panels, ""] })}
+              className="w-full flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded border border-dashed border-[#D4D4D4] text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+            >
+              <PlusIcon className="w-3.5 h-3.5" />
+              添加栏目
+            </button>
+          )}
+          <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+            栏目留空时按模板默认显示;最多 {maxPanels} 个,板宽随数量自动均分。
+          </p>
+        </div>
+      )}
     </div>
   );
 }

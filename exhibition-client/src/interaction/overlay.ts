@@ -6,7 +6,9 @@ import type {
   NoticeBoardContent,
   Text3dContent,
   VideoWallContent,
+  WallDecorContent,
 } from '../types';
+import { wallDecorPanelsOf, wallDecorTemplate, wallDecorTitleOf } from '../fixtures/wallDecorBuilder';
 
 /**
  * HTML 详情浮层(不用 Babylon GUI —— DOM 文字永远清晰)。
@@ -88,6 +90,7 @@ export class Overlay {
       notice_board: '党务公开板',
       door: '通道',
       text_3d: '标语',
+      wall_decor: '文化墙',
     };
     return names[t] ?? t;
   }
@@ -180,6 +183,32 @@ export class Overlay {
       case 'text_3d': {
         const tc = (c ?? {}) as Text3dContent;
         body.innerHTML = `<p style="font-size:22px;font-weight:bold;color:${this.accent};text-align:center;padding:18px 0;">${tc.text ?? ''}</p>`;
+        break;
+      }
+      case 'wall_decor': {
+        const wc = (c ?? {}) as WallDecorContent;
+        const tpl = wallDecorTemplate(wc);
+        const t = document.createElement('p');
+        t.style.cssText = `font-size:21px;font-weight:bold;color:${this.accent};text-align:center;padding:10px 0 14px;margin:0;`;
+        t.textContent = wallDecorTitleOf(wc);
+        body.appendChild(t);
+        if (tpl === 'honor_red') {
+          const p = document.createElement('p');
+          p.style.cssText = 'color:#999;text-align:center;margin:0 0 8px;';
+          p.textContent = `${wc.rows ?? 3} 排 × ${wc.cols ?? 5} 格荣誉相框(后续可接入证书系统数据)`;
+          body.appendChild(p);
+        } else {
+          const list = document.createElement('div');
+          list.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding-bottom:8px;';
+          for (const name of wallDecorPanelsOf(wc)) {
+            const chip = document.createElement('span');
+            chip.style.cssText = `border:1px solid ${this.accent}33;background:${this.accent}0d;color:${this.accent};
+              border-radius:999px;padding:4px 14px;font-size:13px;`;
+            chip.textContent = name;
+            list.appendChild(chip);
+          }
+          body.appendChild(list);
+        }
         break;
       }
       default:

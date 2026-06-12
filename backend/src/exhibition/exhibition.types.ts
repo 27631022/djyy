@@ -20,6 +20,7 @@ export const FIXTURE_TYPES = [
   'text_3d', // 立体字(入口 LOGO 墙 / 标语,挤出 3D 文字;mount=flat 平铺地面)
   'decor', // 装饰(绿植/长椅/地面引导箭头,程序化建模,不可点击)
   'ceiling_sign', // 顶端吊牌(吊杆 + 双面文字牌)
+  'wall_decor', // 文化墙挂件(贴墙浮雕造型:党务/厂务公开栏、荣誉墙,程序化分层挤出)
 ] as const;
 export type FixtureType = (typeof FIXTURE_TYPES)[number];
 
@@ -150,6 +151,21 @@ export interface DoorContent {
 /** 顶端吊牌 */
 export interface CeilingSignContent {
   text: string;
+}
+/**
+ * 文化墙挂件:贴墙浮雕造型(参考广告公司文化墙版式,程序化分层挤出,零素材)。
+ * 三套模板:party_red 党务公开栏(红飘带+金边)/ blue_tech 厂务公开栏(金属框+蓝科技)/
+ * honor_red 荣誉墙(红飘带+金相框阵列+搁板灯带)。标题/栏目名可改,留空用模板默认。
+ */
+export interface WallDecorContent {
+  template?: 'party_red' | 'blue_tech' | 'honor_red';
+  /** 主标题(默认按模板:党务公开栏 / 厂务公开栏 / 荣誉墙) */
+  title?: string;
+  /** 栏目名(party_red/blue_tech 的栏目板标题;honor_red 不用) */
+  panels?: string[];
+  /** 相框行数 × 列数(仅 honor_red,默认 3 × 5) */
+  rows?: number;
+  cols?: number;
 }
 
 /** 已解析展厅(GET /halls/:id 响应,客户端拿到即用) */

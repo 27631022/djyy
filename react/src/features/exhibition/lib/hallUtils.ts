@@ -4,6 +4,7 @@ import type {
   HallDesignerState,
   HallThemePreset,
   Wall,
+  WallDecorContent,
 } from "./hallTypes";
 
 /** 画布比例:1 米 = 50 SVG 单位(viewBox 坐标 = 米 × M2U) */
@@ -51,6 +52,7 @@ export const FIXTURE_META: Record<FixtureType, FixtureTypeMeta> = {
   text_3d: { type: "text_3d", label: "立体字", w: 3.0, d: 0.4, wallMount: true, color: "#C8001E" },
   decor: { type: "decor", label: "装饰", w: 0.55, d: 0.55, wallMount: false, color: "#16A34A" },
   ceiling_sign: { type: "ceiling_sign", label: "顶端吊牌", w: 1.8, d: 0.12, wallMount: false, color: "#0EA5E9" },
+  wall_decor: { type: "wall_decor", label: "文化墙", w: 6.0, d: 0.35, wallMount: true, color: "#DC2626" },
 };
 
 /** 装饰变体(palette 按变体出按钮,stamp preset 带各自尺寸) */
@@ -59,6 +61,39 @@ export const DECOR_PRESETS: { kind: "plant" | "plant_short" | "bench" | "arrow";
   { kind: "plant_short", label: "矮盆栽", w: 0.5, d: 0.5 },
   { kind: "bench", label: "长椅", w: 1.2, d: 0.45 },
   { kind: "arrow", label: "地面引导箭头", w: 2.0, d: 0.5 },
+];
+
+/**
+ * 文化墙模板预设(palette 按模板出按钮;编辑器切模板也按此重置内容)。
+ * 标题/栏目是默认值,放进 content 供用户直接改;3D 端对缺省值有同一套兜底。
+ */
+export const WALL_DECOR_PRESETS: { label: string; w: number; d: number; content: WallDecorContent }[] = [
+  {
+    label: "党务公开栏",
+    w: 6.0,
+    d: 0.35,
+    content: {
+      template: "party_red",
+      title: "党务公开栏",
+      panels: ["党内制度文件", "党费收缴情况", "上级最新要求", "通知公告"],
+    },
+  },
+  {
+    label: "厂务公开栏",
+    w: 6.0,
+    d: 0.35,
+    content: {
+      template: "blue_tech",
+      title: "厂务公开栏",
+      panels: ["考核指标", "单车核算", "驾驶员ABC管理", "公告栏", "月度数据图表", "工作动态"],
+    },
+  },
+  {
+    label: "荣誉文化墙",
+    w: 7.0,
+    d: 0.4,
+    content: { template: "honor_red", title: "荣誉墙", rows: 3, cols: 5 },
+  },
 ];
 
 /** 新组件实例(默认 content 按类型给最小可编辑形状;preset 覆盖尺寸/内容/名称) */
@@ -85,7 +120,9 @@ export function makeFixture(
                 ? { kind: "plant" }
                 : type === "ceiling_sign"
                   ? { text: "展区指引" }
-                  : {}; // door 也给 {}:后续可设「通往展厅」
+                  : type === "wall_decor"
+                    ? { ...WALL_DECOR_PRESETS[0].content }
+                    : {}; // door 也给 {}:后续可设「通往展厅」
   return {
     id: uid("fx"),
     type,

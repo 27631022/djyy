@@ -1,5 +1,5 @@
 import type { GlowLayer, Scene } from '@babylonjs/core';
-import type { Fixture, ResolvedHall, Text3dContent, TypefaceFontSubset } from '../types';
+import type { Fixture, ResolvedHall, Text3dContent, TypefaceFontSubset, WallDecorContent } from '../types';
 import type { ThemeParams } from '../theme/presets';
 import type { HallShell } from '../scene/wallBuilder';
 import { hallApi } from '../api/hallApi';
@@ -13,21 +13,28 @@ import { buildDoor } from './doorBuilder';
 import { buildText3d, fontKeyOf } from './text3dBuilder';
 import { buildDecor } from './decorBuilder';
 import { buildCeilingSign } from './ceilingSignBuilder';
+import { buildWallDecor, wallDecorFontKey, wallDecorTitleOf } from './wallDecorBuilder';
 
-/** 全厅 text_3d 按「字体 key」分组去重字符(每种字体一次请求) */
+/** 全厅挤出文字(text_3d + 文化墙标题)按「字体 key」分组去重字符(每种字体一次请求) */
 function collectCharsByFont(fixtures: Fixture[]): Map<string, string> {
   const groups = new Map<string, Set<string>>();
-  for (const fx of fixtures) {
-    if (fx.type !== 'text_3d') continue;
-    const c = (fx.source.content ?? {}) as Text3dContent;
-    const key = fontKeyOf(c);
+  const eat = (key: string, text: string) => {
     let set = groups.get(key);
     if (!set) {
       set = new Set();
       groups.set(key, set);
     }
-    for (const ch of c.text ?? fx.label ?? '') {
+    for (const ch of text) {
       if (ch.trim()) set.add(ch);
+    }
+  };
+  for (const fx of fixtures) {
+    if (fx.type === 'text_3d') {
+      const c = (fx.source.content ?? {}) as Text3dContent;
+      eat(fontKeyOf(c), c.text ?? fx.label ?? '');
+    } else if (fx.type === 'wall_decor') {
+      const c = (fx.source.content ?? {}) as WallDecorContent;
+      eat(wallDecorFontKey(c), wallDecorTitleOf(c));
     }
   }
   const out = new Map<string, string>();
@@ -86,6 +93,9 @@ export async function buildFixtures(
         break;
       case 'ceiling_sign':
         built = buildCeilingSign(scene, fx, theme, shell.wallH);
+        break;
+      case 'wall_decor':
+        built = buildWallDecor(scene, fx, fonts, shell.wallH);
         break;
       default:
         console.warn(`[展厅] 未知组件类型:${fx.type as string}(${fx.id})`);

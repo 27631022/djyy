@@ -16,6 +16,7 @@ import type {
   Selection,
   Text3dContent,
   VideoWallContent,
+  WallDecorContent,
 } from "../../lib/hallTypes";
 import { FIXTURE_META, round2, wallLength } from "../../lib/hallUtils";
 import {
@@ -26,6 +27,7 @@ import {
   NoticeItemsEditor,
   Text3dEditor,
   VideoWallEditor,
+  WallDecorEditor,
 } from "./ContentEditors";
 
 interface PropertiesPanelProps {
@@ -396,6 +398,12 @@ function FixtureProps({
                 className={inputCls}
               />
             </Row>
+          )}
+          {fixture.type === "wall_decor" && (
+            <WallDecorEditor
+              value={(source.content as WallDecorContent) ?? {}}
+              onChange={(v) => onPatch({ source: { ...source, content: v } })}
+            />
           )}
         </>
       )}

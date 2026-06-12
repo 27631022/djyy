@@ -240,6 +240,25 @@ function defaultContent(type: FixtureType, raw: unknown): unknown {
       return { kind: ['plant', 'plant_short', 'bench', 'arrow'].includes(String(c.kind)) ? c.kind : 'plant' };
     case 'ceiling_sign':
       return { text: typeof c.text === 'string' ? c.text.slice(0, 20) : '展区' };
+    case 'wall_decor': {
+      const panels = Array.isArray(c.panels)
+        ? c.panels
+            .filter((s): s is string => typeof s === 'string' && !!s.trim())
+            .map((s) => s.trim().slice(0, 12))
+            .slice(0, 8)
+        : [];
+      return {
+        template: ['party_red', 'blue_tech', 'honor_red'].includes(String(c.template))
+          ? c.template
+          : 'party_red',
+        ...(typeof c.title === 'string' && c.title.trim()
+          ? { title: c.title.trim().slice(0, 16) }
+          : {}),
+        ...(panels.length ? { panels } : {}),
+        ...(c.rows !== undefined ? { rows: Math.round(num(c.rows, 3, 1, 4)) } : {}),
+        ...(c.cols !== undefined ? { cols: Math.round(num(c.cols, 5, 2, 7)) } : {}),
+      };
+    }
     default:
       return {};
   }

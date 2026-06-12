@@ -357,6 +357,13 @@ npm run db:seed
   - 验证:双端门禁 0 error;浏览器端到端 = 打标签「设备」→ 卡片 chip + 左栏「设备(1)」分类出现、搜「咖啡」过滤到 1 张、缩略图真照片显示;存量数据已整理(重复删、咖啡机/职工之家改名+补缩略图)。⚠ Windows 下 `prisma migrate dev` 会因 nest watch 锁 dll 而 generate 失败 —— 先停 3001 进程再 migrate/generate 后重启。
   - ⏭ 模型台「从模型库选择」面板后续可加缩略图与搜索(现为名字列表);Model3dStudio 生成完成页可提示「已入库,去模型库管理」。
   - **(2026-06-11 续)缩略图改 3D 渲染截图(用户:别用源照片)**:模型库前端发现缺图模型时,**隐形 model-viewer 渲染一帧 → toBlob(png) → 上传「<模型名>.thumb.png」**(一次截一个;空帧守卫 size<8KB 不上传防黑图;失败进跳过集合不死循环;`document.visibilityState` 初始化器门控)。后端 model3d 不再复制源图作 thumb;配对/改名联动泛化到上传源(thumb 在模型自己的 模块+文件夹 找)。**React Compiler 坑**:`createElement` 手写 props 传 ref 对象报 `Cannot access refs during render` —— 改 **React 19 callback ref(可返回 cleanup)**,连 useEffect 都省了。验证:用户真实浏览器自动截齐 4 张(咖啡机/铁人王进喜铜像渲染图实查);门禁 0 error/41 warning 基线。
+- **(2026-06-11)文化墙挂件 wall_decor:三套程序化浮雕模板**(用户发参考图要「墙上浮雕造型挂件」,问导入 CDR 还是自建编辑器;结论=都不选 —— CDR 私有格式无可靠 JS 解析器(要导也是 CorelDRAW 另存 SVG),自由矢量编辑器 solo 重造打不过设计师成品 → **P1 参数化模板(本期)+ P2 SVG 导入(后续)**):
+  - **新组件类型 `wall_decor`**(契约三处同步):`WallDecorContent{template:'party_red'|'blue_tech'|'honor_red', title?, panels?[], rows?, cols?}`,标题/栏目空用模板默认。**三套模板全程序化挤出零素材**(`wallDecorBuilder.ts`):party_red 党务公开栏=红异形背板(顶左飘带飞角 Gauss 凸起+波浪底)+金细边圈+长城线稿 canvas+缎带头牌栏目板+底部红绸金线;blue_tech 厂务公开栏=金属圆角环框(ExtrudePolygon holes)+蓝斜角饰条/三斜杠+六边形栏目签+底部双波浪;honor_red 荣誉墙=标题★★★+短飘带+两侧弧形立飘带(arcBand,顶端钳在标题行下防交叉)+rows×cols 金相框阵列+红搁板带暖光灯带(emissive→Glow)+双级落地基座(checkCollisions)。
+  - **浮雕原语**(以后做造型件复用):作画平面=墙面(`[x,离地高]`→`Vector3(x,0,-h)`+`rotation.x=π/2`),`plate(轮廓,depth,off距墙)`/`bar`/`borderBoxes`/`labelPlane`(canvas 字)/`makeTitle`(复用 text_3d 字体管线、按**字高**缩放;party/honor=serif-bold、blue=sans-bold;`collectCharsByFont` 已并入 wall_decor 标题)。挤出后体占 z∈[pos-depth,pos],正面朝 -Z 与 CreateText/CreatePlane 同向。
+  - **★IBL 方向性坑(记牢)**:同一红材质 env=1 在北墙正红、**东墙被洗成珊瑚粉**(HDR 环境辐照有方向性;先误判为射灯过曝,关射灯无效,实验 `environmentIntensity=0.45` 实锤)—— 修 = `clampEnv()` 压低彩色件 env(红 0.55~0.6/蓝 0.6)+ 红补 `emissive×0.05` 抬暗侧墙 → 颜色跨墙面稳定;白板/金属不钳(白要吃室内光、金属要反射)。射灯只配两块公开栏(光池落中央浅色板),荣誉墙不配。
+  - **设计器**:palette「展示组件」尾部三按钮(党务公开栏/厂务公开栏/荣誉文化墙,stamp preset 带默认 content);`WALL_DECOR_PRESETS` 在 hallUtils(编辑器**切模板=整体重置**为该模板预设,防跨模板残留键);右栏 `WallDecorEditor`(模板/主标题/栏目板增删改 或 honor 行列数);FIXTURE_META wallMount=true → 贴墙吸附/画布渲染/平面缩略图自动生效。AI:`exhibition.generate` 提示词加组件说明 + 归一化(模板白名单/panels≤8×12 字/rows 1-4/cols 2-7)。overlay 点击显示标题+栏目 chips。
+  - 验证:三端门禁 0 error(react 41 warning 基线)+ client build;隐藏窗手动 render 截图三轮迭代(构图+红色)对照参考图;点击弹详情实测;2D 设计器冒烟(palette 三按钮 + 右栏编辑器渲染);测试厅+15 张截图文件已清。⚠ 截图工作流坑:**preview_resize 会整页 reload 丢 `?hall=` 参数**,resize 要在导航前做。
+  - ⏭ P2(已和用户对齐的路线):**SVG 导入**=CorelDRAW 导 SVG → 后端解析分层(opentype 曲线打平/clipper 清理地基都在)→ 按填充色分层挤出 + 右栏层深度表;栏目板接连接器真数据(荣誉墙→证书)。
 
 ### 🟡 待启动(按优先级)
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor

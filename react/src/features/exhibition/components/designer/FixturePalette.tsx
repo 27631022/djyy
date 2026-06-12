@@ -1,7 +1,9 @@
 import {
   ArmchairIcon,
   DoorOpenIcon,
+  FactoryIcon,
   FilmIcon,
+  FlagIcon,
   FlowerIcon,
   ImageIcon,
   LayoutTemplateIcon,
@@ -13,11 +15,13 @@ import {
   PinIcon,
   SignpostIcon,
   SproutIcon,
+  TrophyIcon,
   TypeIcon,
+  WallpaperIcon,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import type { CanvasTool, FixtureType, HallDesignerState, Selection, StampPreset } from "../../lib/hallTypes";
-import { DECOR_PRESETS, FIXTURE_META } from "../../lib/hallUtils";
+import { DECOR_PRESETS, FIXTURE_META, WALL_DECOR_PRESETS } from "../../lib/hallUtils";
 
 type IconCmp = React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
 
@@ -31,6 +35,7 @@ const TYPE_ICONS: Record<FixtureType, IconCmp> = {
   text_3d: TypeIcon,
   decor: SproutIcon,
   ceiling_sign: SignpostIcon,
+  wall_decor: WallpaperIcon,
 };
 
 /** palette 条目:类型 + 可选变体预设(装饰的 绿植/矮盆栽/长椅) */
@@ -41,6 +46,8 @@ interface PaletteItem {
   preset?: StampPreset;
 }
 
+const WALL_DECOR_ICONS: IconCmp[] = [FlagIcon, FactoryIcon, TrophyIcon];
+
 const SHOW_ITEMS: PaletteItem[] = [
   { type: "image_case", label: "图片展柜", icon: ImageIcon },
   { type: "video_wall", label: "视频展墙", icon: FilmIcon },
@@ -49,6 +56,13 @@ const SHOW_ITEMS: PaletteItem[] = [
   { type: "notice_board", label: "党务公开板", icon: LayoutTemplateIcon },
   { type: "text_3d", label: "立体字", icon: TypeIcon },
   { type: "ceiling_sign", label: "顶端吊牌", icon: SignpostIcon },
+  // 文化墙挂件(浮雕造型,三套模板各一按钮)
+  ...WALL_DECOR_PRESETS.map((p, i) => ({
+    type: "wall_decor" as const,
+    label: p.label,
+    icon: WALL_DECOR_ICONS[i] ?? WallpaperIcon,
+    preset: { label: p.label, w: p.w, d: p.d, content: p.content },
+  })),
 ];
 
 const DECOR_ICONS: Record<string, IconCmp> = {
