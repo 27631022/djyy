@@ -364,8 +364,11 @@ npm run db:seed
   - **设计器**:palette「展示组件」尾部三按钮(党务公开栏/厂务公开栏/荣誉文化墙,stamp preset 带默认 content);`WALL_DECOR_PRESETS` 在 hallUtils(编辑器**切模板=整体重置**为该模板预设,防跨模板残留键);右栏 `WallDecorEditor`(模板/主标题/栏目板增删改 或 honor 行列数);FIXTURE_META wallMount=true → 贴墙吸附/画布渲染/平面缩略图自动生效。AI:`exhibition.generate` 提示词加组件说明 + 归一化(模板白名单/panels≤8×12 字/rows 1-4/cols 2-7)。overlay 点击显示标题+栏目 chips。
   - 验证:三端门禁 0 error(react 41 warning 基线)+ client build;隐藏窗手动 render 截图三轮迭代(构图+红色)对照参考图;点击弹详情实测;2D 设计器冒烟(palette 三按钮 + 右栏编辑器渲染);测试厅+15 张截图文件已清。⚠ 截图工作流坑:**preview_resize 会整页 reload 丢 `?hall=` 参数**,resize 要在导航前做。
   - ⏭ P2(已和用户对齐的路线):**SVG 导入**=CorelDRAW 导 SVG → 后端解析分层(opentype 曲线打平/clipper 清理地基都在)→ 按填充色分层挤出 + 右栏层深度表;栏目板接连接器真数据(荣誉墙→证书)。
-
-### 🟡 待启动(按优先级)
+- **(2026-06-11 续)沉浸漫游跨厅延续 + 手柄按键点选**(用户两反馈:① 沉浸式到第二个厅就退出 ② 手柄漫游想用按键点选窗口):
+  - **统一「瞄准模式」概念**:`isAimActive(canvas)` = 指针锁定 **或** 手柄已连接 **或** 跨厅延续标记 —— 准星、hover 中心拾取标签都按它走(原来只认 pointerLockElement;手柄用户连上即有准星+「⊕ 名称」瞄准标签,**不依赖指针锁定**,因为手柄转视角靠摇杆不靠鼠标)。
+  - **跨厅沉浸延续**:门传送是整页跳转,指针锁定必被浏览器收回,且新页**无用户手势不能自动重锁**(requestPointerLock 需 user activation,手柄按键也不算)—— 折中:`goHall()` 统一传送入口(点门+走近门两处),锁定中先 `persistImmersiveAcrossNav` 写 sessionStorage;新厅准星直接亮(视觉不中断)+ 提示「点击画面恢复鼠标环视」,canvas pointerdown 自动重锁(成功/ESC 才清标记,被拒保留下次再试);手柄用户完全无感。`tryLock()` 包 Promise catch(新 Chrome 被拒会 unhandled rejection)。
+  - **手柄点选**(`interaction/gamepadSelect.ts` 新):移动/视角本就是 `UniversalCamera` 内置手柄输入(左摇杆移动右摇杆视角);补 **A(Xbox)/×(PS)/0 号键 = 瞄准确认**(中心拾取 → 展品弹详情/传送门穿门;详情开着再按=关闭,单键开关)+ **B/○/1 号键 = 关闭**。走 `scene.gamepadManager`(与相机输入共享单例),Xbox360Pad/DualShockPad/GenericPad 三分支;handler 返回值挂 `__hallDebug.gamepad` 供调试。手柄连接时一次性提示键位(sessionStorage 门控)。鼠标点击与手柄 A 共用 `handleFixturePick`(main.ts 抽出)。
+  - 验证:client build ✓;preview 实测 = `gamepad.confirm()` 瞄准荣誉墙开/再按关 ✓、合成 gamepadconnected 事件 → 准星亮+键位提示+中心标签「⊕ 荣誉墙」✓、resume 标记 reload → 准星亮/按钮藏/提示对/标记保留待消费 ✓、console 0 error。⚠ 隐藏预览窗无焦点拿不到指针锁(document not focused),点击重锁只能真浏览器验证 —— 代码路径已全跑通。
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
 2. **访问量/点赞统计**:NavItem.likes/views 接真实计数 + Redis 缓存
 3. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面

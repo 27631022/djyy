@@ -10,9 +10,10 @@ import { createFirstPersonCamera } from './camera/firstPersonCamera';
 import { setupMobileControls } from './camera/mobileControls';
 import { setupPicking } from './interaction/pickingManager';
 import { setupHover } from './interaction/hoverManager';
+import { setupGamepadSelect } from './interaction/gamepadSelect';
 import { Overlay } from './interaction/overlay';
 import { LoadingScreen, showHint } from './ui/loadingScreen';
-import { setupImmersiveUi } from './ui/immersive';
+import { persistImmersiveAcrossNav, setupImmersiveUi } from './ui/immersive';
 import { setupXR } from './xr/webxrHelper';
 
 /**
@@ -70,25 +71,38 @@ async function boot(): Promise<void> {
     loading.setProgress(90, '准备 VR…');
     await setupXR(scene, shell.floor);
 
+    // 跨厅传送统一入口:沉浸态(指针锁定)先记进 sessionStorage,下一厅延续
+    const goHall = (target: string) => {
+      persistImmersiveAcrossNav(canvas);
+      window.location.href = `${location.pathname}?hall=${encodeURIComponent(target)}`;
+    };
+
     // 详情浮层 + 拾取(浮层打开时挂起相机控制)
     const overlay = new Overlay(theme.accent.toHexString());
     overlay.onOpenChange = (open) => {
       if (open) camera.detachControl();
       else camera.attachControl(canvas, true);
     };
-    setupPicking(scene, canvas, (fx) => {
-      // 门设了目标展厅 → 点击直接传送过去(展厅互通)
+    // 鼠标点击 / 手柄 A 键 共用的拾取处理:门 → 传送,其它 → 详情浮层
+    const handleFixturePick = (fx: (typeof hall.fixtures)[number]) => {
       if (fx.type === 'door') {
         const door = (fx.source?.content ?? {}) as { targetHallId?: string };
         if (door.targetHallId) {
-          window.location.href = `${location.pathname}?hall=${encodeURIComponent(door.targetHallId)}`;
+          goHall(door.targetHallId);
           return;
         }
       }
       overlay.show(fx);
+    };
+    setupPicking(scene, canvas, handleFixturePick);
+    // 手柄按键点选:A/× 瞄准确认(开/关详情、穿门),B/○ 关闭(摇杆漫游是相机内置输入)
+    const gamepad = setupGamepadSelect(scene, {
+      onPick: handleFixturePick,
+      isOverlayOpen: () => overlay.isOpen(),
+      closeOverlay: () => overlay.hide(),
     });
-    setupHover(scene, canvas); // 悬停手型+标签:让「能点的东西」可见
-    setupImmersiveUi(canvas); // 沉浸漫游按钮 + 锁定准星
+    setupHover(scene, canvas); // 悬停手型+标签:让「能点的东西」可见(瞄准模式=准星下方)
+    setupImmersiveUi(canvas); // 沉浸漫游按钮 + 准星(锁定/手柄/跨厅延续)
 
     // ── 走近传送(用户直觉:走进门就到另一个厅,而不只是点门)──
     // 传送门 = 设了 targetHallId 的 door;人走到门洞中心 0.9m 内即跳转。
@@ -120,7 +134,7 @@ async function boot(): Promise<void> {
         const dz = camera.position.z - p.z;
         if (dx * dx + dz * dz < 0.9 * 0.9) {
           teleporting = true;
-          window.location.href = `${location.pathname}?hall=${encodeURIComponent(p.target)}`;
+          goHall(p.target);
           return;
         }
       }
@@ -133,7 +147,7 @@ async function boot(): Promise<void> {
     });
 
     // 调试句柄:预览窗隐藏时手动 scene.render() 截 canvas / 生产排查用(场景对象本就在浏览器侧,无安全暴露)
-    (window as unknown as Record<string, unknown>).__hallDebug = { engine, scene, camera };
+    (window as unknown as Record<string, unknown>).__hallDebug = { engine, scene, camera, gamepad };
   } catch (e) {
     console.error('[展厅] 加载失败:', e);
     loading.error(e instanceof Error ? e.message : '加载失败,请确认后端服务已启动');

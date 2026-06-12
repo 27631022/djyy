@@ -1,11 +1,12 @@
 import { PointerEventTypes, type Scene } from '@babylonjs/core';
 import type { Fixture } from '../types';
+import { isAimActive } from '../ui/immersive';
 
 /**
  * 悬停反馈:鼠标移到展品上 → 光标变手型 + 跟随小标签「⊕ 荣誉墙」,
  * 让"哪些东西能点"一目了然(用户反馈:看不出哪里可点)。
- * 指针锁定(沉浸模式)时改用屏幕中心拾取,标签固定在准星下方。
- * 零渲染开销(纯 DOM + 节流射线)。
+ * 瞄准模式(指针锁定 / 手柄连接)时改用屏幕中心拾取,标签固定在准星下方
+ * —— 手柄用户靠它知道 A 键会选中什么。零渲染开销(纯 DOM + 节流射线)。
  */
 export function setupHover(scene: Scene, canvas: HTMLCanvasElement): void {
   const tip = document.createElement('div');
@@ -33,16 +34,16 @@ export function setupHover(scene: Scene, canvas: HTMLCanvasElement): void {
     lastCheck = now;
 
     const engine = scene.getEngine();
-    const locked = document.pointerLockElement === canvas;
-    const px = locked ? engine.getRenderWidth() / 2 : scene.pointerX;
-    const py = locked ? engine.getRenderHeight() / 2 : scene.pointerY;
+    const aim = isAimActive(canvas);
+    const px = aim ? engine.getRenderWidth() / 2 : scene.pointerX;
+    const py = aim ? engine.getRenderHeight() / 2 : scene.pointerY;
     const fx = pickFixture(px, py);
 
     if (fx) {
-      if (!locked) canvas.style.cursor = 'pointer';
+      if (!aim) canvas.style.cursor = 'pointer';
       tip.textContent = `⊕ ${fx.label ?? '查看详情'}`;
       tip.style.display = 'block';
-      if (locked) {
+      if (aim) {
         tip.style.left = '50%';
         tip.style.top = 'calc(50% + 26px)';
       } else {
@@ -60,8 +61,8 @@ export function setupHover(scene: Scene, canvas: HTMLCanvasElement): void {
   scene.onPointerObservable.add((pi) => {
     if (pi.type === PointerEventTypes.POINTERMOVE) update();
   });
-  // 沉浸模式下转视角也要刷新中心拾取
+  // 瞄准模式(锁定/手柄)下转视角不发 pointer 事件,按帧节流刷新中心拾取
   scene.onBeforeRenderObservable.add(() => {
-    if (document.pointerLockElement === canvas) update();
+    if (isAimActive(canvas)) update();
   });
 }
