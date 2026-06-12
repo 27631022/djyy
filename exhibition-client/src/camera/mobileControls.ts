@@ -5,9 +5,10 @@ import { Vector3, type FreeCameraTouchInput, type Scene, type UniversalCamera } 
  * 摇杆 DOM 截获 pointer 事件不传给画布;cameraDirection 走碰撞系统,不穿墙。
  *
  * 手感调校(2026-06-12 用户实测反馈):
- * - 拖屏转向:内置 touchAngularSensibility 默认 200000 慢到没法用(≈7°/s)→ 调到
- *   13500(满划速 ≈100°/s);单指改纯转向 singleFingerRotate(默认竖划是前后移动,
- *   与摇杆功能重复还容易误触,改后竖划=抬头低头,配俯仰限位防翻转)。
+ * - 拖屏转向:内置 touchAngularSensibility 默认 200000 慢到没法用(≈7°/s)→ 先调
+ *   13500(≈100°/s)用户仍嫌慢,再调 8000(100px 持划 ≈170°/s);单指改纯转向
+ *   singleFingerRotate(默认竖划是前后移动,与摇杆功能重复还容易误触,改后
+ *   竖划=抬头低头,配俯仰限位防翻转)。
  * - 摇杆速度:cameraDirection 被相机惯性(inertia 0.75)累积放大 1/(1-0.75)=4 倍,
  *   旧值 2.4*dt 实际 ≈9.6 米/秒(冲刺)→ 0.5*dt(实际 ≈2 米/秒,快走);
  *   并加二次响应曲线(轻推微调、推满才全速)+ 死区防抖。
@@ -19,7 +20,7 @@ export function setupMobileControls(scene: Scene, camera: UniversalCamera): void
   const touch = camera.inputs.attached.touch as FreeCameraTouchInput | undefined;
   if (touch) {
     touch.singleFingerRotate = true;
-    touch.touchAngularSensibility = 13500;
+    touch.touchAngularSensibility = 8000;
   }
 
   const pad = document.createElement('div');
