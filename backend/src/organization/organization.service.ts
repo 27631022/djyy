@@ -46,7 +46,7 @@ export class OrganizationService {
 
   /** 平铺列表 (按 sortOrder 升序),可按 kind 过滤 */
   async findAll(opts: { kind?: OrgKind; includeInactive?: boolean } = {}): Promise<Organization[]> {
-    const where: any = {};
+    const where: { active?: boolean; kind?: OrgKind } = {};
     if (!opts.includeInactive) where.active = true;
     if (opts.kind) where.kind = opts.kind;
     return this.prisma.organization.findMany({

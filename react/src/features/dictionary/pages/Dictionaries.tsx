@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookTextIcon, PlusIcon, SearchIcon, XIcon, TrashIcon,
@@ -35,15 +35,13 @@ export default function DictionariesPage() {
     queryKey: ["dictionaries"],
     queryFn: () => dictionariesApi.list(true),
   });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pickedId, setPickedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
 
-  useEffect(() => {
-    if (dictsQuery.data && dictsQuery.data.length > 0 && !selectedId) {
-      setSelectedId(dictsQuery.data[0].id);
-    }
-  }, [dictsQuery.data, selectedId]);
+  // 选中项 = 用户点选的,否则默认第一个(渲染期派生,免 effect 同步)
+  const selectedId = pickedId ?? dictsQuery.data?.[0]?.id ?? null;
+  const setSelectedId = setPickedId;
 
   const filtered = useMemo(() => {
     if (!dictsQuery.data) return [];
@@ -262,7 +260,8 @@ function DictionaryDetailView({
 
   return (
     <div className="flex-1 min-w-0 flex flex-col">
-      <DictHeader dict={dict} onChanged={afterMutate} onDeleted={onDeleted} />
+      {/* key=dict.id:换字典 = 重挂载(表单/编辑态随之重置,免 effect 同步) */}
+      <DictHeader key={dict.id} dict={dict} onChanged={afterMutate} onDeleted={onDeleted} />
       <ItemsList dict={dict} onChanged={afterMutate} />
     </div>
   );
@@ -280,13 +279,6 @@ function DictHeader({
   const [name, setName] = useState(dict.name);
   const [description, setDescription] = useState(dict.description ?? "");
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setName(dict.name);
-    setDescription(dict.description ?? "");
-    setEditing(false);
-    setError(null);
-  }, [dict.id]);
 
   const dirty = name !== dict.name || description !== (dict.description ?? "");
 

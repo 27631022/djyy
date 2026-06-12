@@ -26,6 +26,7 @@ import {
 import {
   certificateTemplateApi,
   HONOR_LEVEL_LABEL,
+  type CertificateTemplateDto,
   type CreateTemplateInput,
 } from "@/features/certificate";
 import { dictionariesApi, DICT_CODES } from "@/features/dictionary";
@@ -66,11 +67,28 @@ const ZOOM_MAX = 4;
 const clampZoom = (z: number) =>
   Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(z * 100) / 100));
 
+/** 模板 JSON → 设计器初始状态(老模板缺失的预设变量补齐,保留已有自定义) */
+function initialDesignOf(t: CertificateTemplateDto | null): DesignerState {
+  if (!t) return emptyDesignerState();
+  try {
+    const parsed = JSON.parse(t.designJson) as Partial<DesignerState>;
+    const empty = emptyDesignerState(t.width, t.height);
+    return {
+      ...empty,
+      ...parsed,
+      variables: withDefaultVariables(parsed.variables),
+      background: parsed.background ?? empty.background,
+      elements: parsed.elements ?? [],
+    };
+  } catch {
+    return emptyDesignerState(t.width, t.height);
+  }
+}
+
+/** 外壳:取数 + 以 key 重挂载内层 —— 编辑态全部用 useState 初始化器起步,零 effect 同步 */
 export default function CertificateDesignerPage() {
   const { id } = useParams<{ id?: string }>();
   const isNew = !id;
-  const navigate = useNavigate();
-  const qc = useQueryClient();
 
   /* ─── 加载已有模板 ─── */
   const existingQuery = useQuery({
@@ -79,54 +97,45 @@ export default function CertificateDesignerPage() {
     enabled: !isNew,
   });
 
-  /* ─── 设计器状态(走 useHistory,支持 undo/redo) ─── */
-  const history = useHistory<DesignerState>(emptyDesignerState());
-  const { state, setState, record, undo, redo, reset, canUndo, canRedo } =
-    history;
+  if (!isNew && !existingQuery.data) {
+    return (
+      <div className="h-full flex items-center justify-center text-sm text-[#9CA3AF]">
+        {existingQuery.isError ? "模板加载失败" : "加载中…"}
+      </div>
+    );
+  }
+  return <DesignerInner key={id ?? "new"} id={id} template={isNew ? null : existingQuery.data!} />;
+}
+
+function DesignerInner({ id, template }: { id?: string; template: CertificateTemplateDto | null }) {
+  const isNew = !template;
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  /* ─── 设计器状态(走 useHistory,支持 undo/redo;初值直接由模板解析而来) ─── */
+  const initialDesign = useMemo(() => initialDesignOf(template), [template]);
+  const history = useHistory<DesignerState>(initialDesign);
+  const { state, setState, record, undo, redo, canUndo, canRedo } = history;
 
   /* ─── 模板元数据(不进历史) ─── */
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [name, setName] = useState(template?.name ?? "");
+  const [description, setDescription] = useState(template?.description ?? "");
   /** V2 + V3+:荣誉代码,如 "QDJL"(庆典奖励)— 必填,用于发证编号 */
-  const [honorCode, setHonorCode] = useState("");
+  const [honorCode, setHonorCode] = useState(template?.honorCode ?? "");
   /** V3:荣誉类型 — individual(个人)/ collective(集体) */
-  const [honorType, setHonorType] = useState<"individual" | "collective">("individual");
+  const [honorType, setHonorType] = useState<"individual" | "collective">(
+    template?.honorType === "collective" ? "collective" : "individual",
+  );
   /** V3+:荣誉等级 — 字典 cert_honor_level 的 code(默认 company) */
-  const [honorLevel, setHonorLevel] = useState<string>("company");
+  const [honorLevel, setHonorLevel] = useState<string>(template?.honorLevel || "company");
   /** V3+:落款单位 — 必填,用于印章顶弧默认文字 */
-  const [issuingOrgName, setIssuingOrgName] = useState("");
+  const [issuingOrgName, setIssuingOrgName] = useState(template?.issuingOrgName ?? "");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isPreview, setIsPreview] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const canvasStageRef = useRef<CanvasStageHandle>(null);
   const mainRef = useRef<HTMLElement>(null);
   const [zoom, setZoom] = useState(1);
-
-  useEffect(() => {
-    if (!existingQuery.data) return;
-    const t = existingQuery.data;
-    setName(t.name);
-    setDescription(t.description ?? "");
-    setHonorCode(t.honorCode ?? "");
-    setHonorType(t.honorType === "collective" ? "collective" : "individual");
-    setHonorLevel(t.honorLevel || "company");
-    setIssuingOrgName(t.issuingOrgName ?? "");
-    try {
-      const parsed = JSON.parse(t.designJson) as Partial<DesignerState>;
-      const empty = emptyDesignerState(t.width, t.height);
-      reset({
-        ...empty,
-        ...parsed,
-        // 合并:老模板缺失的预设变量(如新增的「表彰年度」)补齐,保留已有自定义
-        variables: withDefaultVariables(parsed.variables),
-        background: parsed.background ?? empty.background,
-        elements: parsed.elements ?? [],
-      });
-    } catch {
-      reset(emptyDesignerState(t.width, t.height));
-    }
-    setSelectedIds([]);
-  }, [existingQuery.data, reset]);
 
   const selected = useMemo<DesignerElement | null>(() => {
     if (selectedIds.length === 0) return null;
@@ -158,9 +167,11 @@ export default function CertificateDesignerPage() {
     [computeFitZoom],
   );
 
-  // 画布尺寸变化(加载模板 / 上传底图 / 改尺寸)时,若超出容器自动缩小适配 —— 解决"图片大了显示不全"
+  // 画布尺寸变化(加载模板 / 上传底图 / 改尺寸)时,若超出容器自动缩小适配 —— 解决"图片大了显示不全"。
+  // rAF 回调里量完布局再 setZoom(初次挂载也靠它完成首次适配,容器尺寸此时才可量)
   useEffect(() => {
-    setZoom(computeFitZoom());
+    const raf = requestAnimationFrame(() => setZoom(computeFitZoom()));
+    return () => cancelAnimationFrame(raf);
   }, [computeFitZoom]);
 
   /* ─── 操作(都先 record 再 setState) ─── */
@@ -472,15 +483,6 @@ export default function CertificateDesignerPage() {
   }
 
   const saving = createMut.isPending || updateMut.isPending;
-  const loading = !isNew && existingQuery.isLoading;
-
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center text-sm text-[#9CA3AF]">
-        加载中…
-      </div>
-    );
-  }
 
   return (
     <div className="h-full flex flex-col bg-[#F0F1F4]">

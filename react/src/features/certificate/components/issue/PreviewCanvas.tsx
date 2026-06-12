@@ -40,7 +40,6 @@ export function PreviewCanvas({
         if (!cancelled) setRenderTick((t) => t + 1);
       } catch (e) {
         // 预览渲染失败不打断流程
-        // eslint-disable-next-line no-console
         console.error("preview render failed", e);
       }
     })();

@@ -106,7 +106,7 @@ export default function CertificateListPage() {
       code ? map.get(code) ?? HONOR_LEVEL_LABEL[code] ?? code : null;
   }, [levelOptions]);
 
-  const certs = listQuery.data ?? [];
+  const certs = useMemo(() => listQuery.data ?? [], [listQuery.data]);
 
   /** templateId 过滤时,顶部 banner 用 */
   const templateName = templateId
@@ -429,7 +429,10 @@ function SearchPanel({
   const typeCounts = useMemo(() => {
     let ind = 0;
     let col = 0;
-    for (const c of certs) (typeOf(c) === "collective" ? (col += 1) : (ind += 1));
+    for (const c of certs) {
+      if (typeOf(c) === "collective") col += 1;
+      else ind += 1;
+    }
     return { ind, col };
   }, [certs]);
 

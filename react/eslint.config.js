@@ -6,7 +6,8 @@ import boundaries from "eslint-plugin-boundaries";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  // icon-zh.ts 是脚本生成文件(gen-icon-zh.cjs),不参与 lint(文件头的 eslint-disable 由生成器输出)
+  { ignores: ["dist", "src/shared/components/icon-zh.ts"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
@@ -95,6 +96,14 @@ export default tseslint.config(
     // 属于注册表模块而非纯组件模块 —— react-refresh 的「只导出组件」对它无意义(这些只读预览无需热更新)。
     // 关掉后,加新字段类型 = 新建一个 fields/<type>.tsx(惯常 PascalCase 组件写法)+ 在 registry 注册一行,无额外噪声。
     files: ["src/features/task/fields/*.tsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  {
+    // Context store:Provider 组件 + useXxx hook 同文件是 React 官方惯例(两者共享同一 createContext),
+    // 拆开只为满足 fast-refresh 反而引入循环引用风险 —— 这类文件改动本就整页刷新,关掉无损。
+    files: ["src/stores/*.tsx"],
     rules: {
       "react-refresh/only-export-components": "off",
     },

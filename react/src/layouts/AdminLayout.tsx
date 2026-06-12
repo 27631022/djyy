@@ -222,13 +222,15 @@ export default function AdminLayout() {
   */
   useEffect(() => {
     const found = findMenuItem(currentPath);
-    if (found) {
-      setActiveCatId(found.category.id);
-      setTabs((prev) => {
-        if (prev.some((t) => t.path === currentPath)) return prev;
-        return [...prev, { path: currentPath, label: found.item.label, icon: found.item.icon }];
-      });
-    }
+    if (!found) return;
+    // URL(外部系统)→ 状态:tab 是逐次累计的「访问历史」,直链/后退也要进 tab,
+    // 无法渲染期派生 —— useLocation 的变化就是订阅回调,此处 setState 属合法同步。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveCatId(found.category.id);
+    setTabs((prev) => {
+      if (prev.some((t) => t.path === currentPath)) return prev;
+      return [...prev, { path: currentPath, label: found.item.label, icon: found.item.icon }];
+    });
   }, [currentPath]);
 
   /* 持久化 */

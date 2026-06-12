@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   UserPlusIcon, SearchIcon, RefreshCwIcon, XIcon,
@@ -556,9 +556,11 @@ function UserDetailDrawer({
               {detailQuery.isLoading ? "加载中…" : "用户不存在或已删除"}
             </div>
           ) : tab === "basic" ? (
-            <BasicInfoTab user={u} onSaved={afterMutate} />
+            /* key=u.id:换用户 = tab 重挂载,表单态从 props 初始化(免 effect 同步) */
+            <BasicInfoTab key={u.id} user={u} onSaved={afterMutate} />
           ) : tab === "org" ? (
             <MembershipsTab
+              key={u.id}
               user={u}
               adminTree={adminTree}
               partyTree={partyTree}
@@ -568,9 +570,9 @@ function UserDetailDrawer({
               onSaved={afterMutate}
             />
           ) : tab === "role" ? (
-            <RolesTab user={u} roles={roles} allOrgsById={allOrgsById} onSaved={afterMutate} />
+            <RolesTab key={u.id} user={u} roles={roles} allOrgsById={allOrgsById} onSaved={afterMutate} />
           ) : (
-            <ExtensionTab user={u} onSaved={afterMutate} />
+            <ExtensionTab key={u.id} user={u} onSaved={afterMutate} />
           )}
         </div>
       </aside>
@@ -586,14 +588,6 @@ function BasicInfoTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
   const [active, setActive] = useState(user.active);
   const [error, setError] = useState<string | null>(null);
   const [showAvatarGen, setShowAvatarGen] = useState(false);
-
-  useEffect(() => {
-    setName(user.name);
-    setEmail(user.email ?? "");
-    setPhone(user.phone ?? "");
-    setActive(user.active);
-    setError(null);
-  }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty =
     name !== user.name ||
@@ -789,12 +783,6 @@ function MembershipsTab({
   const [adminRows, setAdminRows] = useState<Row[]>(initialAdmin);
   const [partyRow, setPartyRow] = useState<Row | null>(initialParty);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setAdminRows(initialAdmin);
-    setPartyRow(initialParty);
-    setError(null);
-  }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = JSON.stringify({ a: adminRows, p: partyRow }) !== JSON.stringify({ a: initialAdmin, p: initialParty });
 
@@ -1022,11 +1010,6 @@ function RolesTab({
   }));
   const [rows, setRows] = useState<RoleRow[]>(initial);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setRows(initial);
-    setError(null);
-  }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = JSON.stringify(rows) !== JSON.stringify(initial);
 
@@ -1299,11 +1282,6 @@ function ExtensionTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
   const initialValues = useMemo(() => ({ ...user.customFields }), [user.customFields]);
   const [values, setValues] = useState<Record<string, string>>(initialValues);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setValues(initialValues);
-    setError(null);
-  }, [user.id, initialValues]);
 
   const dirty = useMemo(
     () => JSON.stringify(normalize(values)) !== JSON.stringify(normalize(initialValues)),

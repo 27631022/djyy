@@ -100,7 +100,7 @@ export default function CertificateTemplatesPage() {
       toast.error(e instanceof Error ? e.message : "复制失败"),
   });
 
-  const templates = listQuery.data ?? [];
+  const templates = useMemo(() => listQuery.data ?? [], [listQuery.data]);
 
   /** 按当前侧栏选中过滤 */
   const filteredTemplates = useMemo(() => {

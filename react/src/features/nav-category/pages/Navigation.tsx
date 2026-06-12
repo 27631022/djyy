@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -25,17 +25,16 @@ export default function NavigationPage() {
     queryFn: () => navApi.listAll(),
   });
 
-  const cats = navQuery.data ?? [];
-  const [activeCatId, setActiveCatId] = useState<string | null>(null);
+  const cats = useMemo(() => navQuery.data ?? [], [navQuery.data]);
+  const [pickedCatId, setPickedCatId] = useState<string | null>(null);
   const [editingCat, setEditingCat] = useState<NavCategoryDto | null>(null);
   const [createCatOpen, setCreateCatOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<NavItemDto | null>(null);
   const [createItemOpen, setCreateItemOpen] = useState(false);
 
-  // 默认选第一个分类
-  useEffect(() => {
-    if (!activeCatId && cats.length > 0) setActiveCatId(cats[0].id);
-  }, [cats, activeCatId]);
+  // 选中分类 = 用户点选的,否则默认第一个(渲染期派生,免 effect 同步)
+  const activeCatId = pickedCatId ?? cats[0]?.id ?? null;
+  const setActiveCatId = setPickedCatId;
 
   const activeCat = useMemo(
     () => cats.find((c) => c.id === activeCatId) ?? null,

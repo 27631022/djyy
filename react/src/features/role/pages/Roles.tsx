@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ShieldIcon, PlusIcon, SearchIcon, XIcon, TrashIcon, AlertCircleIcon,
@@ -40,16 +40,13 @@ export default function RolesPage() {
     queryFn: () => permissionsApi.list(),
     staleTime: 60_000,
   });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pickedId, setPickedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
 
-  /* 默认选中第一个 */
-  useEffect(() => {
-    if (rolesQuery.data && rolesQuery.data.length > 0 && !selectedId) {
-      setSelectedId(rolesQuery.data[0].id);
-    }
-  }, [rolesQuery.data, selectedId]);
+  /* 选中角色 = 用户点选的,否则默认第一个(渲染期派生,免 effect 同步) */
+  const selectedId = pickedId ?? rolesQuery.data?.[0]?.id ?? null;
+  const setSelectedId = setPickedId;
 
   const filtered = useMemo(() => {
     if (!rolesQuery.data) return [];
@@ -276,7 +273,8 @@ function RoleDetailView({
   return (
     <div className="flex-1 min-w-0 flex flex-col">
       {/* Header */}
-      <RoleHeader role={role} onChanged={afterMutate} onDeleted={onDeleted} />
+      {/* key=role.id:换角色 = 重挂载(表单/编辑态随之重置,免 effect 同步) */}
+      <RoleHeader key={role.id} role={role} onChanged={afterMutate} onDeleted={onDeleted} />
 
       {/* Tabs */}
       <div className="flex-shrink-0 px-5 border-b border-[#E9E9E9] flex gap-1">
@@ -306,7 +304,7 @@ function RoleDetailView({
       {/* Body */}
       <div className="flex-1 min-h-0 overflow-auto">
         {tab === "perms" ? (
-          <PermissionsTab role={role} permissions={permissions} onSaved={afterMutate} />
+          <PermissionsTab key={role.id} role={role} permissions={permissions} onSaved={afterMutate} />
         ) : (
           <UsersTab roleId={role.id} />
         )}
@@ -327,13 +325,6 @@ function RoleHeader({
   const [name, setName] = useState(role.name);
   const [description, setDescription] = useState(role.description ?? "");
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setName(role.name);
-    setDescription(role.description ?? "");
-    setEditing(false);
-    setError(null);
-  }, [role.id]);
 
   const dirty = name !== role.name || description !== (role.description ?? "");
 
@@ -468,14 +459,10 @@ function PermissionsTab({
   permissions: Permission[];
   onSaved: () => void;
 }) {
+  // 换角色由父级 key=role.id 重挂载重置;保存成功后 selected 本就等于新服务端状态,无需 effect 回同步
   const initialSet = useMemo(() => new Set(role.permissions.map((p) => p.id)), [role]);
   const [selected, setSelected] = useState<Set<string>>(new Set(initialSet));
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSelected(new Set(role.permissions.map((p) => p.id)));
-    setError(null);
-  }, [role.id, role.permissions]);
 
   const dirty = useMemo(() => {
     if (selected.size !== initialSet.size) return true;

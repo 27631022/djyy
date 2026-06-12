@@ -60,10 +60,15 @@ const KIND_META: Record<OrgKind, { label: string; icon: React.ElementType; color
   admin: { label: "行政机构", icon: BuildingIcon, color: "rgb(26, 107, 200)", bg: "rgb(238, 244, 255)" },
 };
 
+/** axios / Error 错误体 → 人话(NestJS 校验 message 可能是 string[]) */
+function errMsgOf(e: unknown, fallback: string): string {
+  const err = e as { response?: { data?: { message?: string | string[] } }; message?: string } | null;
+  const msg = err?.response?.data?.message ?? err?.message ?? fallback;
+  return Array.isArray(msg) ? msg.join("\n") : msg;
+}
+
 export default function OrganizationsPage() {
   const [kind, setKind] = useState<OrgKind>("admin");
-  const [tree, setTree] = useState<OrgTreeNode[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<EditingState | null>(null);
@@ -72,6 +77,48 @@ export default function OrganizationsPage() {
   const [drag, setDrag] = useState<DragState>({ draggedId: null, draggedKind: null, hover: null });
   const [moving, setMoving] = useState(false);
   const [search, setSearch] = useState("");
+
+  /* ── 树加载:按「参数 key」存结果,loading = 已加载 key ≠ 当前请求 key(渲染期派生,
+        免 effect 内同步 setLoading);reload = tick+1 触发重拉 ── */
+  const [loadTick, setLoadTick] = useState(0);
+  const [loadedTree, setLoadedTree] = useState<{ key: string; tree: OrgTreeNode[] } | null>(null);
+  const reqKey = `${kind}|${showInactive}|${loadTick}`;
+  const tree = useMemo(() => loadedTree?.tree ?? [], [loadedTree]);
+  const loading = loadedTree?.key !== reqKey;
+
+  useEffect(() => {
+    let alive = true;
+    organizationsApi
+      .tree(kind, showInactive)
+      .then((t) => {
+        if (!alive) return;
+        setLoadedTree({ key: reqKey, tree: t });
+        setError(null);
+        // 默认展开全部有子节点的层级
+        const ids = new Set<string>();
+        const walk = (n: OrgTreeNode) => {
+          if (n.children.length > 0) {
+            ids.add(n.id);
+            n.children.forEach(walk);
+          }
+        };
+        t.forEach(walk);
+        setExpanded(ids);
+      })
+      .catch((e: unknown) => {
+        if (!alive) return;
+        setError(errMsgOf(e, "加载失败"));
+        setLoadedTree({ key: reqKey, tree: [] });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [kind, showInactive, reqKey]);
+
+  /** 重拉当前参数的树(写操作成功后调用) */
+  function reload() {
+    setLoadTick((t) => t + 1);
+  }
 
   const flatCount = useMemo(() => {
     const count = (nodes: OrgTreeNode[]): number =>
@@ -128,37 +175,11 @@ export default function OrganizationsPage() {
     return walk(tree);
   }, [tree]);
 
-  async function reload() {
-    setLoading(true);
-    setError(null);
-    try {
-      const t = await organizationsApi.tree(kind, showInactive);
-      setTree(t);
-      const ids = new Set<string>();
-      const walk = (n: OrgTreeNode) => {
-        if (n.children.length > 0) {
-          ids.add(n.id);
-          n.children.forEach(walk);
-        }
-      };
-      t.forEach(walk);
-      setExpanded(ids);
-    } catch (e: any) {
-      setError(e?.response?.data?.message ?? e?.message ?? "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, showInactive]);
-
   function toggle(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
@@ -176,10 +197,9 @@ export default function OrganizationsPage() {
         await organizationsApi.update(editing.target.id, payload);
       }
       setEditing(null);
-      await reload();
-    } catch (e: any) {
-      const msg = e?.response?.data?.message ?? e?.message ?? "保存失败";
-      alert(Array.isArray(msg) ? msg.join("\n") : msg);
+      reload();
+    } catch (e: unknown) {
+      alert(errMsgOf(e, "保存失败"));
     }
   }
 
@@ -188,10 +208,9 @@ export default function OrganizationsPage() {
     try {
       await organizationsApi.remove(confirmDel.id, hard);
       setConfirmDel(null);
-      await reload();
-    } catch (e: any) {
-      const msg = e?.response?.data?.message ?? e?.message ?? "删除失败";
-      alert(msg);
+      reload();
+    } catch (e: unknown) {
+      alert(errMsgOf(e, "删除失败"));
     }
   }
 
@@ -199,10 +218,9 @@ export default function OrganizationsPage() {
   async function handleRestore(node: OrgTreeNode) {
     try {
       await organizationsApi.update(node.id, { active: true });
-      await reload();
-    } catch (e: any) {
-      const msg = e?.response?.data?.message ?? e?.message ?? "恢复失败";
-      alert(msg);
+      reload();
+    } catch (e: unknown) {
+      alert(errMsgOf(e, "恢复失败"));
     }
   }
 
@@ -238,10 +256,9 @@ export default function OrganizationsPage() {
     setMoving(true);
     try {
       await organizationsApi.move(src, hover.id, hover.position);
-      await reload();
-    } catch (e: any) {
-      const msg = e?.response?.data?.message ?? e?.message ?? "移动失败";
-      alert(Array.isArray(msg) ? msg.join("\n") : msg);
+      reload();
+    } catch (e: unknown) {
+      alert(errMsgOf(e, "移动失败"));
     } finally {
       setMoving(false);
     }
@@ -649,7 +666,7 @@ function OrgFormModal({
   editing: EditingState;
   tree: OrgTreeNode[];
   onCancel: () => void;
-  onSave: (input: any) => void;
+  onSave: (input: CreateOrgInput | UpdateOrgInput) => void;
   onMembersChanged: () => void;
 }) {
   const isEdit = editing.mode === "edit";

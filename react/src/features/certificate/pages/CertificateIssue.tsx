@@ -8,7 +8,7 @@
  *
  * 全程字段级 200ms 防抖写 localStorage,刷新不丢。
  */
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -68,32 +68,44 @@ function recipientCountOf(record: HonorRecord): number {
 
 /* ─── 主 Wizard ─── */
 
+/** 外壳:等 auth 拿到 userId 后以 key 重挂载向导 —— 草稿在向导的 useState 初始化器里一次读入,零 effect 同步 */
 export default function CertificateIssuePage() {
+  const { me } = useAuth();
+  if (me === undefined) {
+    return (
+      <div className="h-full flex items-center justify-center text-sm text-[#9CA3AF]">加载中…</div>
+    );
+  }
+  const userId = me?.id ?? null;
+  return <IssueWizard key={userId ?? "anon"} userId={userId} />;
+}
+
+function IssueWizard({ userId }: { userId: string | null }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  /* ─── V3 草稿持久化 ─── */
-  const { me } = useAuth();
-  const userId = me?.id ?? null;
-  const [draft, setDraft] = useState<CertificateDraftV1>(() => emptyDraft());
-  const hydratedRef = useRef(false);
+  /* ─── V3 草稿持久化:挂载时读一次(emptyDraft 的默认值与各字段初值一致) ─── */
+  const [draftBase] = useState<CertificateDraftV1>(
+    () => (userId ? loadDraft(userId) : null) ?? emptyDraft(),
+  );
 
-  const [step, setStep] = useState<WizardStep>(1);
+  const [step, setStep] = useState<WizardStep>(draftBase.step);
 
   /* ─── 步骤 1 状态 ─── */
-  const [extractResult, setExtractResult] = useState<ExtractHonorResponse | null>(null);
+  const [extractResult, setExtractResult] = useState<ExtractHonorResponse | null>(draftBase.extracted);
   /** true 表示用户走「跳过 AI」手动模式,extractResult 保持 null */
   const [manualMode, setManualMode] = useState(false);
 
   /* ─── 步骤 2 状态:多荣誉表彰记录 + 顶层共享字段 ─── */
-  const [records, setRecords] = useState<HonorRecord[]>([]);
-  const [yearLabel, setYearLabel] = useState(defaultYearLabel());
+  const [records, setRecords] = useState<HonorRecord[]>(draftBase.records);
+  const [yearLabel, setYearLabel] = useState(draftBase.yearLabel || defaultYearLabel());
   const [issueDate, setIssueDate] = useState(() => {
+    if (draftBase.issueDate) return draftBase.issueDate;
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
   // 有效期(可空,空 = 永久有效)—— 与年份/日期同在 Step2「共享信息」区编辑
-  const [validUntil, setValidUntil] = useState("");
+  const [validUntil, setValidUntil] = useState(draftBase.validUntil);
 
   /* ─── Step 4(录入对象)子步骤索引(records 内 0-based) ─── */
   // 不持久化:进 step 4 时永远从 0 开始;刷新若 step=4 则也从 0 起,用户可以再点 Next 移动
@@ -103,36 +115,11 @@ export default function CertificateIssuePage() {
     [subStepIdx, records.length],
   );
 
-  /* ─── 草稿 ↔ 内存状态双向同步 ─── */
-  useEffect(() => {
-    if (!userId || hydratedRef.current) return;
-    const saved = loadDraft(userId);
-    hydratedRef.current = true;
-    if (!saved) return;
-    setDraft(saved);
-    setStep(saved.step);
-    if (saved.extracted) setExtractResult(saved.extracted);
-    if (saved.yearLabel) setYearLabel(saved.yearLabel);
-    if (saved.issueDate) setIssueDate(saved.issueDate);
-    if (saved.validUntil) setValidUntil(saved.validUntil);
-    if (Array.isArray(saved.records)) setRecords(saved.records);
-    // step=4(录入对象)刷新时复位到第 1 条 record(避免引用越界)
-    if (saved.step === 4) setSubStepIdx(0);
-  }, [userId]);
-
-  useEffect(() => {
-    if (!hydratedRef.current) return;
-    setDraft((d) => ({
-      ...d,
-      step,
-      extracted: extractResult,
-      yearLabel,
-      issueDate,
-      validUntil,
-      records,
-    }));
-  }, [step, extractResult, yearLabel, issueDate, validUntil, records]);
-
+  /* ─── 草稿 = 各状态的纯派生(防抖落 localStorage;version/updatedAt 沿用底稿) ─── */
+  const draft = useMemo<CertificateDraftV1>(
+    () => ({ ...draftBase, step, extracted: extractResult, yearLabel, issueDate, validUntil, records }),
+    [draftBase, step, extractResult, yearLabel, issueDate, validUntil, records],
+  );
   useDebouncedDraft(userId, draft);
 
   /* ─── 模板列表(共享缓存) ─── */
@@ -140,7 +127,7 @@ export default function CertificateIssuePage() {
     queryKey: ["certificate-templates", { active: true }],
     queryFn: () => certificateTemplateApi.list(true),
   });
-  const allTemplates = templatesQuery.data ?? [];
+  const allTemplates = useMemo(() => templatesQuery.data ?? [], [templatesQuery.data]);
   const templateById = useMemo(() => {
     const map = new Map<string, CertificateTemplateDto>();
     allTemplates.forEach((t) => map.set(t.id, t));

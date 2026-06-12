@@ -91,16 +91,15 @@ export function Step4PreviewIssue({
     [selectedRecord],
   );
 
-  // 切换选中 record 时清掉 hover,避免引用旧 record 的 rid
-  useEffect(() => {
-    setHovered(null);
-  }, [safeSelectedIdx]);
-
-  // 兜底 hover:默认看选中 record 的第 1 个收件人
-  const effectiveHover = hovered ?? {
-    recordIdx: safeSelectedIdx,
-    recipientRid: selectedRecipients[0]?.rid ?? "",
-  };
+  // hover 只在仍指向当前选中 record 时生效(切换选中后旧 hover 自然失效,免 effect 清理);
+  // 兜底:默认看选中 record 的第 1 个收件人
+  const effectiveHover = useMemo(
+    () =>
+      hovered && hovered.recordIdx === safeSelectedIdx
+        ? hovered
+        : { recordIdx: safeSelectedIdx, recipientRid: selectedRecipients[0]?.rid ?? "" },
+    [hovered, safeSelectedIdx, selectedRecipients],
+  );
 
   /* 右列预览数据 — record / template / 变量值都解析好 */
   const preview = useMemo(() => {

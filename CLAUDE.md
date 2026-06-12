@@ -369,6 +369,13 @@ npm run db:seed
   - **跨厅沉浸延续**:门传送是整页跳转,指针锁定必被浏览器收回,且新页**无用户手势不能自动重锁**(requestPointerLock 需 user activation,手柄按键也不算)—— 折中:`goHall()` 统一传送入口(点门+走近门两处),锁定中先 `persistImmersiveAcrossNav` 写 sessionStorage;新厅准星直接亮(视觉不中断)+ 提示「点击画面恢复鼠标环视」,canvas pointerdown 自动重锁(成功/ESC 才清标记,被拒保留下次再试);手柄用户完全无感。`tryLock()` 包 Promise catch(新 Chrome 被拒会 unhandled rejection)。
   - **手柄点选**(`interaction/gamepadSelect.ts` 新):移动/视角本就是 `UniversalCamera` 内置手柄输入(左摇杆移动右摇杆视角);补 **A(Xbox)/×(PS)/0 号键 = 瞄准确认**(中心拾取 → 展品弹详情/传送门穿门;详情开着再按=关闭,单键开关)+ **B/○/1 号键 = 关闭**。走 `scene.gamepadManager`(与相机输入共享单例),Xbox360Pad/DualShockPad/GenericPad 三分支;handler 返回值挂 `__hallDebug.gamepad` 供调试。手柄连接时一次性提示键位(sessionStorage 门控)。鼠标点击与手柄 A 共用 `handleFixturePick`(main.ts 抽出)。
   - 验证:client build ✓;preview 实测 = `gamepad.confirm()` 瞄准荣誉墙开/再按关 ✓、合成 gamepadconnected 事件 → 准星亮+键位提示+中心标签「⊕ 荣誉墙」✓、resume 标记 reload → 准星亮/按钮藏/提示对/标记保留待消费 ✓、console 0 error。⚠ 隐藏预览窗无焦点拿不到指针锁(document not focused),点击重锁只能真浏览器验证 —— 代码路径已全跑通。
+- **(2026-06-12)react lint 警告清零(41 → 0)+ backend 0 警告**(用户贴全部警告要求清理):四类修法(都是可复用范式)——
+  - ①「`query.data ?? []`」包 useMemo(7 处:CertificateIssue/List/Templates/Navigation/Organizations)。
+  - ② set-state-in-effect 三板斧:**默认选中改渲染期派生**(`picked ?? data[0]?.id ?? null`,Dictionaries/Roles/Navigation,setPicked 原名透出调用点零改);**详情/表单子组件改 key 重挂载**(`key={id}` + useState 初始化器读 props,DictHeader/RoleHeader/PermissionsTab/Users 四个 tab,删同步 effect);**取数页改「外壳 + key 重挂载内层」**(CertificateDesigner=外壳 useQuery → `<Inner key={id} template>`,initialDesignOf 解析 JSON 进 useHistory 初值;CertificateIssue=外壳等 auth → `<IssueWizard key={userId}>`,草稿 loadDraft 在 useState 初始化器一次读入、**draft 改纯 useMemo 派生**喂 useDebouncedDraft,删双向同步 effect)。Step4PreviewIssue hover 改「带 recordIdx 派生有效性」。
+  - ③ Organizations 手搓 fetch 重构:「**参数 key 缓存 + 派生 loading**」—— `loadedTree:{key,tree}`,`loading = loaded.key !== reqKey(kind|showInactive|tick)`,reload=tick+1,setState 全进 promise 回调;`errMsgOf(e,fallback)` 统一错误提取清 6 处 `catch(e:any)`。auth.tsx 重写:初始 me 由 token 有无决定(无 token 不闪加载态)、bootstrap 拉 /auth/me 的 setState 全在 then/catch、login/logout/refresh 上 useCallback。CertificateDesigner 自适应缩放改 **rAF 回调内 setZoom**(量完布局再 set,顺带更正确)。
+  - ④ 合法特例:AdminLayout「URL→累计访问 tab」是路由订阅(直链/后退也要进 tab,无法渲染期派生)→ 行级 disable + 理由注释;stores/auth fast-refresh(Provider+hook 同文件是 React 惯例)与生成文件 icon-zh.ts → eslint config 豁免块(有 task/fields 先例)。
+  - **新基线 = react 0 error/0 warning、backend 0 error/0 warning/0 cycle**。冒烟全过:组织(双树切换 57/52 节点、派生 loading)/字典(默认选中+切学历)/角色(权限 tab+切角色)/用户(三 tab)/导航/证书模板列表/设计器(模板载入+缩放)/发证向导/证书列表,console 0 error。
+  - ⚠ 经验:**React Compiler 对带病组件 bailout 会静默吞掉下游警告,修一处会「冒出」新警告**(Step4 修完冒出 effectiveHover 表达式、Organizations 重构冒出 4 条 tree)—— 修完必须复跑 lint 直到收敛,不能只看原清单。
 - **(2026-06-12)移动端触屏手感调校**(用户实测:摇杆太快不好控、拖屏转向太慢):`mobileControls.ts` 两处根因 —— ① 摇杆 `cameraDirection` 被相机惯性(inertia 0.75)**累积放大 1/(1-0.75)=4 倍**,旧 2.4*dt 实际 ≈9.6 米/秒冲刺 → 改 0.5*dt(实际 ≈2 米/秒快走)+ **死区 0.12 + 二次响应曲线**(轻推微调推满全速;knob 视觉仍线性跟手指);② 拖屏转向走内置 touch 输入,`touchAngularSensibility` 默认 **200000 慢到 ≈7°/s** → 调 13500(满划 ≈100°/s),并开 `singleFingerRotate`(单指=纯转向,竖划改抬头低头 —— 原默认竖划是前后移动,与摇杆重复易误触)+ 每帧俯仰限位 ±1.1 防翻转。⚠ 写手感参数注释时必须说明 4 倍惯性放大,数值不能当米/秒直读。preview 的 mobile 仿真不带 touch 事件(`ontouchstart` 不存在),移动端分支只能真机验证;桌面端 early-return 零影响已实测。
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
 2. **访问量/点赞统计**:NavItem.likes/views 接真实计数 + Redis 缓存
@@ -414,7 +421,7 @@ npm run db:seed
 
 - **写代码前一定先看现有同类模块**(`site-setting/`、`nav-category/` 是最新最完整的范本)
 - **跨模块只走 barrel**:`import from "@/features/x"` 或 `import from "../user"`,绝不 `from "../user/user.service"` —— ESLint 会报错,也违反约定 3
-- **每次修改后跑 check**:react `npm run check`,backend `npm run check` + `npm run check:circular`,0 error / 0 cycle 才能 commit
+- **每次修改后跑 check**:react `npm run check`,backend `npm run check` + `npm run check:circular`,**0 error / 0 warning / 0 cycle** 才能 commit(2026-06-12 警告已清零,新基线不许涨;合法特例须行级 disable + 理由注释,或进 eslint config 豁免块)
 - **新表加 `// @module: <name>`** 注释,声明归属
 - **commit message 详细一些**,要写"为什么这么做",这是跨会话记忆的主要载体
 - **不要主动删除孤儿文件**,先确认无人引用且用户同意
