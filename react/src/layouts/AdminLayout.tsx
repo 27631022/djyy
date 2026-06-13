@@ -6,7 +6,7 @@ import {
   BuildingIcon, ShieldIcon, UserIcon, BookTextIcon,
   EyeIcon, ThumbsUpIcon, MessageSquareIcon,
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
-  AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon,
+  AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon, ClipboardCheckIcon,
   PanelLeftCloseIcon, PanelLeftOpenIcon,
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon,
   ArmchairIcon, PlusIcon, LandmarkIcon, PackageIcon,
@@ -65,6 +65,7 @@ const CATEGORIES: Category[] = [
       { path: "/admin/venue/rooms",              label: "会议室 / 会场图", icon: LayoutGridIcon, group: "会场管理", perm: "venue:manage" },
       { path: "/admin/venue/seating",            label: "会议管理",        icon: ArmchairIcon,   group: "会场管理", perm: "venue:manage" },
       { path: "/admin/venue/seating/new/wizard", label: "新建会议",        icon: PlusIcon,       group: "会场管理", perm: "venue:manage" },
+      { path: "/admin/assessment/schemes",       label: "考核表",          icon: ClipboardCheckIcon, group: "考核管理", perm: "assessment:manage" },
     ],
   },
   {

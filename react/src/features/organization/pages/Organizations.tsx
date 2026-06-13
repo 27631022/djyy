@@ -31,6 +31,7 @@ import {
   type OrgTreeNode,
   type OrgType,
   type OrgKind,
+  type OrgLink,
   type OrgMember,
   type CreateOrgInput,
   type UpdateOrgInput,
@@ -676,7 +677,10 @@ function OrgFormModal({
   const isAdmin = editing.kind === "admin";
   // 行政机构编辑态:抽屉内分「基本属性 / 成员」两个 tab(成员改动即时生效)
   const showMembers = isAdmin && isEdit && !!init;
-  const [activeTab, setActiveTab] = useState<"basic" | "members">("basic");
+  // 关联机构 tab:党组织↔行政机构(N:M;党委/党总支当前 1:1),编辑态双向手动维护
+  const showLinks = isEdit && !!init;
+  const hasTabs = showMembers || showLinks;
+  const [activeTab, setActiveTab] = useState<"basic" | "members" | "links">("basic");
   const TYPE_OPTIONS = isParty ? PARTY_TYPE_OPTIONS : ADMIN_TYPE_OPTIONS;
   const defaultType: OrgType = isParty ? "branch" : "level2";
 
@@ -771,30 +775,35 @@ function OrgFormModal({
           </button>
         </div>
 
-        {showMembers && (
+        {hasTabs && (
           <div className="flex-shrink-0 flex gap-1 px-5 pt-2 border-b border-[#E9E9E9]">
-            {([["basic", "基本属性"], ["members", "成员"]] as const).map(([id, label]) => {
-              const on = activeTab === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setActiveTab(id)}
-                  className="px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
-                  style={{
-                    borderColor: on ? kindMeta.color : "transparent",
-                    color: on ? kindMeta.color : "#6B7280",
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
+            {(() => {
+              const tabs: ["basic" | "members" | "links", string][] = [["basic", "基本属性"]];
+              if (showMembers) tabs.push(["members", "成员"]);
+              if (showLinks) tabs.push(["links", "关联机构"]);
+              return tabs.map(([id, label]) => {
+                const on = activeTab === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setActiveTab(id)}
+                    className="px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+                    style={{
+                      borderColor: on ? kindMeta.color : "transparent",
+                      color: on ? kindMeta.color : "#6B7280",
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              });
+            })()}
           </div>
         )}
 
         <div className="flex-1 min-h-0 flex flex-col">
-          {(!showMembers || activeTab === "basic") && (
+          {(!hasTabs || activeTab === "basic") && (
           <div className="flex-1 overflow-auto p-5 flex flex-col gap-3.5">
           {editing.mode === "create" && (
             <p className="text-xs text-[#6B7280] bg-[#F7F8FA] px-3 py-2 rounded">
@@ -1000,6 +1009,15 @@ function OrgFormModal({
               />
             </div>
           )}
+
+          {showLinks && init && activeTab === "links" && (
+            <div
+              className="flex-1 min-h-0 flex flex-col"
+              onKeyDown={(e) => { if (e.key === "Enter") e.stopPropagation(); }}
+            >
+              <OrgLinksPanel orgId={init.id} orgKind={editing.kind} onChanged={onMembersChanged} />
+            </div>
+          )}
         </div>
 
         <div className="flex-shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[#E9E9E9]">
@@ -1033,6 +1051,130 @@ function Field({ label, required, children }: { label: string; required?: boolea
         {required && <span className="text-[var(--party-primary)] ml-0.5">*</span>}
       </label>
       {children}
+    </div>
+  );
+}
+
+/* ─── 党组织↔行政机构 关联(编辑抽屉「关联机构」tab;手动维护 N:M,党委/党总支当前 1:1)─── */
+function linkErrMsg(e: unknown): string {
+  if (e && typeof e === "object" && "response" in e) {
+    const m = (e as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+    if (typeof m === "string") return m;
+  }
+  return e instanceof Error ? e.message : "操作失败";
+}
+
+function OrgLinksPanel({
+  orgId,
+  orgKind,
+  onChanged,
+}: {
+  orgId: string;
+  orgKind: OrgKind;
+  onChanged: () => void;
+}) {
+  const qc = useQueryClient();
+  const otherKind: OrgKind = orgKind === "party" ? "admin" : "party";
+  const otherLabel = otherKind === "admin" ? "行政机构" : "党组织";
+  const [pick, setPick] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  const linksQuery = useQuery({ queryKey: ["org-links", orgId], queryFn: () => organizationsApi.links(orgId) });
+  const treeQuery = useQuery({
+    queryKey: ["organizations", "tree", otherKind],
+    queryFn: () => organizationsApi.tree(otherKind),
+    staleTime: 60_000,
+  });
+
+  const options = useMemo(() => {
+    const out: { id: string; name: string; depth: number }[] = [];
+    const walk = (ns: OrgTreeNode[], d: number) =>
+      ns.forEach((n) => {
+        out.push({ id: n.id, name: n.name, depth: d });
+        walk(n.children, d + 1);
+      });
+    walk(treeQuery.data ?? [], 0);
+    return out;
+  }, [treeQuery.data]);
+
+  const add = useMutation({
+    mutationFn: (otherOrgId: string) => organizationsApi.addLink(orgId, otherOrgId),
+    onSuccess: () => {
+      setPick("");
+      setErr(null);
+      qc.invalidateQueries({ queryKey: ["org-links", orgId] });
+      onChanged();
+    },
+    onError: (e) => setErr(linkErrMsg(e)),
+  });
+  const remove = useMutation({
+    mutationFn: (linkId: string) => organizationsApi.removeLink(linkId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org-links", orgId] });
+      onChanged();
+    },
+    onError: (e) => setErr(linkErrMsg(e)),
+  });
+
+  const links: OrgLink[] = linksQuery.data ?? [];
+
+  return (
+    <div className="flex-1 overflow-auto p-5 flex flex-col gap-3">
+      <p className="text-xs text-[#6B7280] bg-[#F7F8FA] px-3 py-2 rounded">
+        关联对应的{otherLabel}。考核取业务数据时据此换算（{orgKind === "party" ? "党委 → 行政单位" : "行政单位 → 党组织"}）。党委 / 党总支通常 1:1。
+      </p>
+
+      <div>
+        <h4 className="text-xs font-semibold text-[#4B5563] mb-2">已关联的{otherLabel}</h4>
+        {links.length === 0 ? (
+          <p className="text-xs text-[#9CA3AF] py-3 text-center bg-[#FAFBFC] rounded">尚未关联</p>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {links.map((l) => (
+              <div key={l.linkId} className="flex items-center gap-2 px-3 py-2 rounded-md border border-[#EEF0F3]">
+                <BuildingIcon className="w-3.5 h-3.5 text-[#9CA3AF] flex-shrink-0" />
+                <span className="flex-1 text-sm text-[#1A1A1A] truncate">{l.org.name}</span>
+                <button
+                  type="button"
+                  onClick={() => remove.mutate(l.linkId)}
+                  className="text-[#9CA3AF] hover:text-red-600 p-1 rounded"
+                  title="解除关联"
+                >
+                  <XIcon className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h4 className="text-xs font-semibold text-[#1A1A1A] mb-2">添加关联</h4>
+        <div className="flex items-center gap-2">
+          <select
+            value={pick}
+            onChange={(e) => setPick(e.target.value)}
+            className="flex-1 px-2.5 py-2 text-sm rounded-md border border-[#E9E9E9] bg-white focus:outline-none focus:border-[var(--party-primary)]"
+          >
+            <option value="">— 选择{otherLabel} —</option>
+            {options.map((o) => (
+              <option key={o.id} value={o.id}>
+                {"　".repeat(o.depth) + o.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={!pick || add.isPending}
+            onClick={() => add.mutate(pick)}
+            className="px-3 py-2 text-sm text-white rounded-md font-medium disabled:opacity-50 flex items-center gap-1 flex-shrink-0"
+            style={{ backgroundColor: "var(--party-primary)" }}
+          >
+            <PlusIcon className="w-3.5 h-3.5" /> 添加
+          </button>
+        </div>
+        {err && <p className="text-xs text-red-600 mt-1.5">{err}</p>}
+      </div>
     </div>
   );
 }

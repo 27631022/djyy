@@ -41,6 +41,7 @@ import {
   CertificateExternalPage,
   CertificateVerifyPage,
 } from "@/features/certificate";
+import { SchemeListPage, SchemeEditorPage } from "@/features/assessment";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
 import { Toaster } from "@/shared/components/ui/sonner";
@@ -178,6 +179,9 @@ const App = () => (
             <Route path="venue/seating/:planId" element={<VenueSeatingPlanPage />} />
             <Route path="venue/seating/:planId/arrange" element={<VenueSeatingArrangePage />} />
             <Route path="venue/seating/:planId/wizard" element={<VenueSeatingWizardPage />} />
+            {/* 考核系统(assessment) */}
+            <Route path="assessment/schemes" element={<SchemeListPage />} />
+            <Route path="assessment/schemes/:id" element={<SchemeEditorPage />} />
           </Route>
         </Routes>
         <Toaster position="top-center" richColors closeButton />

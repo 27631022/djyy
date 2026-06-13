@@ -108,4 +108,12 @@ export default tseslint.config(
       "react-refresh/only-export-components": "off",
     },
   },
+  {
+    // 考核计分工具 / 数据源注册表:scoring/<type> 与 data-sources/ 导出的是「定义对象 + 查询函数」,
+    // 属注册表模块而非纯组件模块(同 task/fields/*.tsx 先例)。关掉「只导出组件」对它无意义。
+    files: ["src/features/assessment/scoring/*.{ts,tsx}", "src/features/assessment/data-sources/*.{ts,tsx}"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
 );

@@ -115,6 +115,12 @@ export interface UpdateOrgInput extends Partial<CreateOrgInput> {
 
 export type MovePosition = "before" | "after" | "inside";
 
+/** 党组织↔行政机构关联(返回对侧机构 + linkId) */
+export interface OrgLink {
+  linkId: string;
+  org: Organization;
+}
+
 export const organizationsApi = {
   list: (kind?: OrgKind, includeInactive = false) =>
     api
@@ -155,4 +161,12 @@ export const organizationsApi = {
 
   remove: (id: string, hard = false) =>
     api.delete(`/organizations/${id}`, { params: hard ? { hard: "true" } : {} }),
+
+  /** 党组织↔行政机构关联:列出某组织(任一侧)的关联(对侧机构 + linkId) */
+  links: (id: string) => api.get<OrgLink[]>(`/organizations/${id}/links`).then((r) => r.data),
+  /** 关联一个党组织 + 一个行政机构(otherOrgId = 对侧组织 id) */
+  addLink: (id: string, otherOrgId: string) =>
+    api.post<{ id: string }>(`/organizations/${id}/links`, { otherOrgId }).then((r) => r.data),
+  /** 解除关联 */
+  removeLink: (linkId: string) => api.delete(`/organizations/links/${linkId}`),
 };
