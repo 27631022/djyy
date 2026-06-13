@@ -875,3 +875,51 @@ model SeatingAssignment {
   @@index([position])
   @@index([attendeeId])
 }
+
+// ─────────────────────────────────────────────────────────
+// 党组织 ↔ 行政机构 关联 (N:M;党委/党总支当前 1:1;手动维护)
+// 考核(assessment)等模块据此把党组织对象解析到行政机构去取业务数据。
+// 松引用:两端都是 Organization,只存 id 不建 @relation。
+// ─────────────────────────────────────────────────────────
+// @module: organization
+model PartyAdminLink {
+  id          String   @id @default(cuid())
+  partyOrgId  String // 党组织 org id (kind=party)
+  adminOrgId  String // 行政机构 org id (kind=admin)
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([partyOrgId, adminOrgId])
+  @@index([partyOrgId])
+  @@index([adminOrgId])
+}
+
+// ─────────────────────────────────────────────────────────
+// 考核系统 (assessment) — 通用考核平台
+// P1:考核体系(可复用模板)= 锁定指标树 + 定级规则 + 设置。
+// 指标树存 JSON 快照 (IndicatorNode[],见 backend/src/assessment/indicator-tree.ts),不拆表。
+// Round/Target/IndicatorScore/Goal 等打分相关表留待 P2。
+// ─────────────────────────────────────────────────────────
+// @module: assessment
+// 一张「考核表」= 考核年度 + 考核内容(指标树)+ 考核对象(快照)。不做模板,复用=整体复制改年度。
+model AssessmentScheme {
+  id             String   @id @default(cuid())
+  name           String // 「2026年度党建责任制考核(单位)」
+  year           Int
+  track          String   @default("party") // party(党建,对象=党组织) | admin(行政/业绩,对象=行政机构/员工)
+  targetLevel    String   @default("committee") // 党建:committee(党委,1:1二级单位)/branch/member;行政:unit/dept/employee
+  indicatorsJson String   @default("[]") // 3 级指标树快照 IndicatorNode[]
+  // 考核对象快照 [{orgId,name}] —— 一次性从组织树读出后冻结,与组织机构解耦(单位每年会调整/合并)
+  targetsJson    String   @default("[]")
+  gradeRulesJson String   @default("{}") // {thresholds:[{grade,min}], vetoGrade}
+  settingsJson   String   @default("{}") // {baseFullScore:100, bonusCap, deductionCap, vetoZero}
+  status         String   @default("draft") // draft | active | archived
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([year])
+  @@index([status])
+  @@index([targetLevel])
+}

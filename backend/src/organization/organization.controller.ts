@@ -55,6 +55,25 @@ export class OrganizationController {
     return this.service.listMembers(id, recursive === 'true');
   }
 
+  /** GET /api/organizations/:id/links  党↔行政关联(返回对侧机构 + linkId) */
+  @Get(':id/links')
+  links(@Param('id') id: string) {
+    return this.service.listLinksFor(id);
+  }
+
+  /** POST /api/organizations/:id/links  Body {otherOrgId} 关联一个党组织+一个行政机构 */
+  @Post(':id/links')
+  addLink(@Param('id') id: string, @Body() body: { otherOrgId: string }) {
+    return this.service.linkByOrgIds(id, body.otherOrgId);
+  }
+
+  /** DELETE /api/organizations/links/:linkId  解除关联 */
+  @Delete('links/:linkId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeLink(@Param('linkId') linkId: string) {
+    await this.service.unlinkOrg(linkId);
+  }
+
   @Post()
   create(@Body() dto: CreateOrganizationDto) {
     return this.service.create(dto);

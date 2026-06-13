@@ -341,6 +341,73 @@ export class OrganizationService {
     return this.update(orgId, { meta: JSON.stringify(obj) });
   }
 
+  // ─── 党组织 ↔ 行政机构 关联(N:M;党委/党总支当前 1:1;手动维护)───
+  // assessment 等模块据此把党组织考核对象解析到行政机构去取业务数据(任务完成率/证书荣誉等)。
+  // 松引用:两端都是 Organization,只存 id 不建 @relation。
+
+  /** 列出某组织(任一侧)的关联:党组织→其关联的行政机构;行政机构→其关联的党组织。各带 linkId。 */
+  async listLinksFor(orgId: string): Promise<{ linkId: string; org: Organization }[]> {
+    const org = await this.findOne(orgId);
+    const isParty = org.kind === 'party';
+    const links = await this.prisma.partyAdminLink.findMany({
+      where: isParty ? { partyOrgId: orgId } : { adminOrgId: orgId },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!links.length) return [];
+    const otherIds = links.map((l) => (isParty ? l.adminOrgId : l.partyOrgId));
+    const others = await this.prisma.organization.findMany({ where: { id: { in: otherIds } } });
+    const byId = new Map(others.map((o) => [o.id, o] as const));
+    return links
+      .map((l) => ({ linkId: l.id, org: byId.get(isParty ? l.adminOrgId : l.partyOrgId) }))
+      .filter((x): x is { linkId: string; org: Organization } => !!x.org);
+  }
+
+  /** 关联「一个党组织 + 一个行政机构」(传入两端任意顺序,按 kind 自动归位)。 */
+  async linkByOrgIds(orgId: string, otherOrgId: string, createdById?: string) {
+    if (orgId === otherOrgId) throw new BadRequestException('不能把组织关联到自己');
+    const a = await this.findOne(orgId);
+    const b = await this.findOne(otherOrgId);
+    let partyOrgId: string;
+    let adminOrgId: string;
+    if (a.kind === 'party' && b.kind === 'admin') {
+      partyOrgId = a.id;
+      adminOrgId = b.id;
+    } else if (a.kind === 'admin' && b.kind === 'party') {
+      partyOrgId = b.id;
+      adminOrgId = a.id;
+    } else {
+      throw new BadRequestException('关联必须是「一个党组织 + 一个行政机构」');
+    }
+    const dup = await this.prisma.partyAdminLink.findUnique({
+      where: { partyOrgId_adminOrgId: { partyOrgId, adminOrgId } },
+    });
+    if (dup) throw new ConflictException('该关联已存在');
+    return this.prisma.partyAdminLink.create({
+      data: { partyOrgId, adminOrgId, createdById: createdById ?? null },
+    });
+  }
+
+  /** 解除关联(按 linkId)。 */
+  async unlinkOrg(linkId: string): Promise<void> {
+    const existing = await this.prisma.partyAdminLink.findUnique({ where: { id: linkId } });
+    if (!existing) throw new NotFoundException('关联不存在');
+    await this.prisma.partyAdminLink.delete({ where: { id: linkId } });
+  }
+
+  /** 消费方(assessment):党组织 → 关联的行政机构列表(1:1 时即唯一对应单位)。 */
+  async getLinkedAdminOrgs(partyOrgId: string): Promise<Organization[]> {
+    const links = await this.prisma.partyAdminLink.findMany({ where: { partyOrgId } });
+    if (!links.length) return [];
+    return this.prisma.organization.findMany({ where: { id: { in: links.map((l) => l.adminOrgId) } } });
+  }
+
+  /** 消费方:行政机构 → 关联的党组织列表。 */
+  async getLinkedPartyOrgs(adminOrgId: string): Promise<Organization[]> {
+    const links = await this.prisma.partyAdminLink.findMany({ where: { adminOrgId } });
+    if (!links.length) return [];
+    return this.prisma.organization.findMany({ where: { id: { in: links.map((l) => l.partyOrgId) } } });
+  }
+
   /** 软删除:置 active=false。如果想硬删,在前端二次确认后调 hardDelete */
   async softDelete(id: string): Promise<Organization> {
     await this.findOne(id);

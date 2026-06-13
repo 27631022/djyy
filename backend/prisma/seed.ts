@@ -318,6 +318,11 @@ async function seedRolesAndPermissions() {
     { code: 'exhibition:manage',         name: '展厅管理(布展)',          category: 'operation' },
     // 会场管理(venue)— manage:会议室/会场图设计 + 选座
     { code: 'venue:manage',              name: '会场管理(会议室/会场图/选座)', category: 'operation' },
+    // 考核系统(assessment)— manage:管体系/发起;score:责任部门打分;view:查看成绩;export:导出
+    { code: 'assessment:manage',         name: '考核管理(体系/发起)',     category: 'operation' },
+    { code: 'assessment:score',          name: '考核打分(责任部门)',     category: 'operation' },
+    { code: 'assessment:view',           name: '查看考核成绩',           category: 'operation' },
+    { code: 'assessment:export',         name: '导出考核数据',           category: 'operation' },
   ];
   for (const p of permissions) {
     await prisma.permission.upsert({
@@ -332,7 +337,7 @@ async function seedRolesAndPermissions() {
     // 企业管理员:全套企业管理权限(不含 角色授权 admin:role:write / 插件 / 删除证书 / 删除文件 等高危权限,留 platform_admin)。
     // 一级 vs 二级 = 同角色不同 scope:分配时 scope=all(一级,全集团)或 scope=subtree(二级,自动锚到派发人所在单位的子树)。
     // 任务域已按 scope 强制;组织/用户管理的范围限制后续按需加。
-    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage'] },
+    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage', 'assessment:manage', 'assessment:score', 'assessment:view', 'assessment:export'] },
     { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
     { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
     // 任务派发:给各级机关部门的派发人;配合 UserRole.scope(本组织+下级 / 自定义单位)限定派发范围
