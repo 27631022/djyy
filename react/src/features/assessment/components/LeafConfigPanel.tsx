@@ -230,13 +230,23 @@ function TrialPreview({
   const [boolVal, setBoolVal] = useState(true);
   const [numVal, setNumVal] = useState("85");
   const [others, setOthers] = useState("90, 80, 70");
+  const [labelVal, setLabelVal] = useState("");
 
+  const optLabels = (Array.isArray(params.options) ? params.options : [])
+    .map((o) =>
+      o && typeof o === "object" && typeof (o as { label?: unknown }).label === "string"
+        ? (o as { label: string }).label.trim()
+        : "",
+    )
+    .filter(Boolean);
+  const effLabel = labelVal || optLabels[0] || "";
   const thisVal = numVal === "" ? null : Number(numVal);
   const otherVals = others
     .split(/[,，\s]+/)
     .map((s) => Number(s))
     .filter((n) => Number.isFinite(n));
-  const raw: number | boolean | null = inputType === "bool" ? boolVal : thisVal;
+  const raw: number | boolean | string | null =
+    inputType === "bool" ? boolVal : inputType === "label" ? effLabel || null : thisVal;
   const rawValues =
     crossTarget && typeof thisVal === "number" ? [thisVal, ...otherVals] : crossTarget ? otherVals : undefined;
 
@@ -267,6 +277,21 @@ function TrialPreview({
             未完成
           </button>
         </div>
+      ) : inputType === "label" ? (
+        <label className="block">
+          <span className="text-[11px] text-[#6B7280]">样例评价名次</span>
+          {optLabels.length > 0 ? (
+            <select value={effLabel} onChange={(e) => setLabelVal(e.target.value)} className={PROP_INPUT}>
+              {optLabels.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="text-[12px] text-[#9CA3AF]">先在上方对照表加「名次→分」</div>
+          )}
+        </label>
       ) : (
         <div className="space-y-1.5">
           <label className="block">

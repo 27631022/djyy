@@ -161,6 +161,54 @@ Round/Target/IndicatorScore/Goal 留 P2。
 
 验证:门禁双绿;浏览器(AI 按钮 + 考核表设置按钮在位、选叶子→LeafConfigPanel、点按钮 / 点空白处均返回主体设置、0 console error)。⚠ AI 质量取决于所配 chat 模型 + 提示词;文件仅支持可复制文本的 Word/PDF(扫描件/图片 OCR 未做)。
 
+## P1.6 修订(2026-06-13)— 定级规则预设(按名次划档)+ 兑现标准工具评估
+
+### 1. 三套定级预设(用户真实定级办法)
+
+按名次划档(`GradeRules.mode='rank'`),计算在 P2 引擎(需全体名次);P1 配置 + 预设 + 可读展示。
+
+| 预设 | 适用考核关系 | 档次 | 规则 |
+|---|---|---|---|
+| 党委(直属党总支)综合考核定级 | `party.company.committee` | 先进 / 良好 / 一般 / 较差 | 排名前 15% 且未亏损→先进;后 15%→一般;连续 2 年「一般」或当年重大不良影响→较差;其余→良好 |
+| 党支部综合考核定级 | `party.agency.branch` / `party.grassroots.branch` | 先进 / 达标 / 基本达标 / 未达标 | 前 15%→先进;后 15%→基本达标;连续 2 年「基本达标」或当年重大不良影响→未达标;其余→达标 |
+| 党员综合考核定级 | `party.branch.member` | 优秀 / 合格 / 基本合格 / 不合格 | 前 30%→优秀;后 5%→基本合格;连续 2 年「基本合格」或当年重大不良影响→不合格;其余→合格 |
+
+- **数据模型**:`GradeRules` 扩 `mode:'score'|'rank'` + `tiers:GradeTier[]`(`band` = top/bottom/rest/downgrade;`pct`/`requireNoLoss`/`fromGrade`/`years`/`onMajorIncident`)。后端 `gradeRulesJson` 本就存裸 JSON、DTO `gradeRules?:Record<string,unknown>` 不剥字段 → **零后端改动**。
+- **前端**:`gradePresets.ts`(`GRADE_PRESETS` + `presetForRelation` + `tierRuleText` + `cloneRules`)+ `GradeRulesEditor.tsx`(套用预设下拉 3 + 自定义总分阈值;**按当前考核关系自动推荐** banner 一键套用;名次档可读编辑——档次名/比例/连续年数可改,未亏损·重大不良影响条件随预设)。`SchemeEditor` 的 `SettingsPanel` 用 `GradeRulesEditor` 取代原内联总分阈值编辑器。
+- **加新定级预设** = `gradePresets.ts` 加一条(关联考核关系 key 即自动推荐)。
+
+### 2. 兑现标准(定级 → 业绩分)工具评估
+
+用户兑现标准:党委 先进 24 / 良好 20 / 一般 18 / 较差 16;党支部 先进·红旗 24 / 达标 20 / 基本达标 18 / 未达标 16(均「定级档次 → 固定业绩分」)。
+
+- **结论:现有 10 个计分工具无一直接吃「定级档次(文字)」做映射**。`threshold_tiers` 吃数字、按总分阈值而非档次,语义不符(同档不同分会被拆开)。
+- **当前可用** = `manual`:人工按党建定级在业绩表「党建评价」指标录入对应分(无需新工具,今天即可)。
+- **自动化干净解法** = 新增 `grade_map`(评价定分)计分工具 + label 数据源。→ 用户确认后于 P1.7 实现(见下)。
+
+验证:前端门禁 0 error/0 warning;浏览器端到端(党委考核表 → 定级规则区出「建议套用:党委…」banner → 套用 → 4 档渲染含未亏损/前后%/连续2年 → 保存 → 重读 gradeRulesJson=mode:rank + 4 tiers 持久化、0 console error)。
+
+## P1.7 修订(2026-06-13)— 通用「评价定分(对照表)」计分工具 `grade_map`
+
+用户要把兑现做成可大量复用的通用工具:**30+ 评价名次 → 各自固定分,评上某档即得该档分**(不按名次细分,「抓两头带中间」不让过度内卷)。
+
+### 引擎扩展:label 输入类型
+
+- 计分引擎首个**非数值输入**:`ScoreInput`/`DataSourceOutput` 加 `'label'`(评价名次/等次,字符串);`RawMetric` 扩 `string`;`asNumber` 对字符串返回 null(其余工具遇 label 输入安全得 0);`isInputCompatible` 加 `label↔label`;`trial()` 对 label 工具透传字符串 raw(`toRaw` 不动)。
+
+### 计分工具 `grade_map`(评价定分 · 对照表)
+
+- params `{ options: [{ label, score }] }`;`compute` = 按 label 查表给固定分(命中→`clamp(score,0,max(fullScore,score))`;未命中→0)。`normalizeParams` 要求 ≥1 项,否则 400。
+- 前端:`scoring/registry.tsx` 加 def(`makeDefaults` 预置 先进24/良好20/一般18/较差16 起步,可改名增删)+ `widgets.tsx` 的 `LabelScoreEditor`(名次+固定分 行编辑)+ `LeafConfigPanel` 的 TrialPreview 加 label 分支(下拉选名次试算)。计分工具 10→**11**。
+
+### 配套 label 数据源
+
+- `dept_grade`(部门评定等次,**ready**):责任部门/考核人直接评一个名次/等次,配 grade_map 给固定分。
+- `assessment.grade`(他考核定级档次,**P2**):取另一考核的定级档次(党建定级→业绩兑现)。
+
+> 加新计分工具仍是「注册表加一条」:后端 `SCORING_SPECS` + 前端 `scoring/registry` 各一份;label 类工具配 label 数据源即可。本工具同时解决了「定级兑现」与「按等次直接定分」两类需求,复用面广。
+
+验证:双端门禁 0 error/0 warning/0 cycle;API(grade_map 试算 良好→20 / 先进→24 / 未知→0、空对照表→400、`dept_grade`+`grade_map` 保存 200、`dept_fill`(number)+`grade_map`→400 不匹配)+ 浏览器(选 `dept_grade` → 计分工具仅剩「评价定分(对照表)」、选中出 4 行对照表 + 摘要「4 个名次→固定分」、试算下拉 先进=24/良好=20、0 console error)。
+
 ## P2+ 后续
 
 - **P2 打分闭环 + 业务数据源**:Round/Target/IndicatorScore(含 `evidenceFileIds` 佐证)/Goal 表;发起考核(选体系 + 点选党委,记 1:1 行政单位)→ 按叶子数据源/责任部门 fan-out → `dept_fill` 责任部门录入、`self_report` 单位自评+佐证 → `computeRound` 两遍引擎(crossTarget 先聚合全体值)→ 汇总/定级/排名。业务数据源接入(经 `OrganizationService.getLinkedAdminOrgs` 把党委→行政单位,查 `TaskService.getStatsByOrg` 新增 / `CertificateIssueService.countByOrg` 新增 + recipientUserId→memberships 反查)。

@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Save, SlidersHorizontal, Wand2, X } from "lucide-react";
+import { ArrowLeft, Save, SlidersHorizontal, Wand2 } from "lucide-react";
 import {
   assessmentApi,
   assessmentErrorMessage,
@@ -15,7 +15,6 @@ import {
   type AssessmentTarget,
   type AssessmentTrack,
   type GradeRules,
-  type GradeThreshold,
   type IndicatorNode,
   type SchemeSettings,
 } from "../api";
@@ -24,6 +23,7 @@ import { findNode, isLeafNode, updateNode } from "../treeOps";
 import { IndicatorTreeEditor } from "../components/IndicatorTreeEditor";
 import { LeafConfigPanel } from "../components/LeafConfigPanel";
 import { SubjectObjectsPanel } from "../components/SubjectObjectsPanel";
+import { GradeRulesEditor } from "../components/GradeRulesEditor";
 
 const INPUT =
   "px-2.5 py-1.5 text-sm border border-[#dce4ef] rounded-md bg-white focus:outline-none focus:border-[var(--party-primary)]";
@@ -265,12 +265,6 @@ function SettingsPanel({
   grade: GradeRules;
   onGrade: (g: GradeRules) => void;
 }) {
-  const thresholds = grade.thresholds ?? [];
-  const setThreshold = (i: number, patch: Partial<GradeThreshold>) =>
-    onGrade({ ...grade, thresholds: thresholds.map((t, j) => (j === i ? { ...t, ...patch } : t)) });
-  const addThreshold = () => onGrade({ ...grade, thresholds: [...thresholds, { grade: "", min: 0 }] });
-  const delThreshold = (i: number) => onGrade({ ...grade, thresholds: thresholds.filter((_, j) => j !== i) });
-
   return (
     <div className="space-y-4">
       <SubjectObjectsPanel
@@ -292,44 +286,7 @@ function SettingsPanel({
         <div className="text-[11px] text-[#9CA3AF] mt-1">顶层「计权」指标分值之和应等于此值(默认 100)</div>
       </label>
 
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-[13px] font-semibold text-[#172033]">定级规则</div>
-          <button
-            type="button"
-            onClick={addThreshold}
-            className="flex items-center gap-1 text-[12px] text-[var(--party-primary)] hover:underline"
-          >
-            <Plus className="w-3.5 h-3.5" /> 加一档
-          </button>
-        </div>
-        <div className="flex gap-1.5 mb-1">
-          <span className="flex-1 text-[10px] text-[#9CA3AF]">等级名</span>
-          <span className="w-24 text-[10px] text-[#9CA3AF]">总分 ≥</span>
-          <span className="w-6" />
-        </div>
-        {thresholds.map((t, i) => (
-          <div key={i} className="flex items-center gap-1.5 mb-1.5">
-            <input
-              value={t.grade}
-              placeholder="优秀"
-              onChange={(e) => setThreshold(i, { grade: e.target.value })}
-              className={`${INPUT} flex-1 !py-1`}
-            />
-            <input
-              type="number"
-              value={t.min}
-              onChange={(e) => setThreshold(i, { min: Number(e.target.value) || 0 })}
-              className={`${INPUT} w-24 !py-1`}
-            />
-            <button type="button" onClick={() => delThreshold(i)} className="p-1 rounded text-[#9CA3AF] hover:text-red-600 hover:bg-red-50">
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ))}
-        {thresholds.length === 0 && <div className="text-[12px] text-[#9CA3AF]">未设定级阈值(如:优秀≥90、良好≥80、合格≥60)</div>}
-      </div>
-
+      <GradeRulesEditor grade={grade} onGrade={onGrade} relationKey={settings.relationKey} />
     </div>
   );
 }

@@ -2,7 +2,7 @@
  * 数据源 / 采集方式 注册表(前端镜像后端 data-sources.ts 的元数据)。
  * 仅用于:LeafConfigPanel 的数据源下拉 + 标签展示。取数在后端。
  */
-export type DataSourceOutput = "rate" | "number" | "bool" | "count";
+export type DataSourceOutput = "rate" | "number" | "bool" | "count" | "label";
 export type DataSourceCollection =
   | "dept_fill"
   | "target"
@@ -30,6 +30,8 @@ export const DATA_SOURCES: DataSourceMeta[] = [
   { id: "business.certificate.honor", label: "荣誉积分", description: "证书荣誉按级别积分(自动取数,P2 接入)", collection: "business", outputType: "count", ready: false },
   { id: "survey", label: "群众打分/测评", description: "群众投票评分、民主测评满意率(采集 P4)", collection: "survey", outputType: "rate", ready: false },
   { id: "assessment.result", label: "他考核结果", description: "取另一考核某对象的总分(党建占业绩 20% 这类跨路线组合)", collection: "assessment", outputType: "number", ready: false },
+  { id: "dept_grade", label: "部门评定等次", description: "责任部门/考核人直接评定一个名次/等次(先进/良好/达标…),配「评价定分」给固定分", collection: "dept_fill", outputType: "label", ready: true },
+  { id: "assessment.grade", label: "他考核定级档次", description: "取另一考核某对象的定级档次(党建定级→业绩兑现:先进=24/良好=20…),配「评价定分」(P2 接入)", collection: "assessment", outputType: "label", ready: false },
 ];
 
 export const DATA_SOURCE_MAP: Record<string, DataSourceMeta> = Object.fromEntries(
@@ -45,6 +47,7 @@ export const OUTPUT_LABELS: Record<DataSourceOutput, string> = {
   number: "数值",
   bool: "是/否",
   count: "计数",
+  label: "评价等次",
 };
 
 export const COLLECTION_LABELS: Record<DataSourceCollection, string> = {

@@ -15,7 +15,7 @@
  *
  * 加新数据源 = 这里加一条 DATA_SOURCE_SPECS + 前端 data-sources/ 加镜像项;business 类取数在 service 注入对应模块 service 实现。
  */
-export type DataSourceOutput = 'rate' | 'number' | 'bool' | 'count';
+export type DataSourceOutput = 'rate' | 'number' | 'bool' | 'count' | 'label';
 export type DataSourceCollection = 'dept_fill' | 'target' | 'self_report' | 'business' | 'survey' | 'assessment';
 
 export interface DataSourceSpec {
@@ -99,6 +99,23 @@ const DATA_SOURCE_SPECS: Record<string, DataSourceSpec> = {
     description: '取另一考核某对象的总分(如党建结果喂业绩考核「党建占 20%」)',
     collection: 'assessment',
     outputType: 'number',
+    ready: false,
+  },
+  // 评价等次(label):配「评价定分(对照表)」工具用
+  dept_grade: {
+    id: 'dept_grade',
+    label: '部门评定等次',
+    description: '责任部门/考核人直接评定一个名次/等次(先进/良好/达标…),配「评价定分」给固定分',
+    collection: 'dept_fill',
+    outputType: 'label',
+    ready: true,
+  },
+  'assessment.grade': {
+    id: 'assessment.grade',
+    label: '他考核定级档次',
+    description: '取另一考核某对象的定级档次(如党建定级→业绩兑现:先进=24/良好=20…),配「评价定分」(P2 接入)',
+    collection: 'assessment',
+    outputType: 'label',
     ready: false,
   },
 };

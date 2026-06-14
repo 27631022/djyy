@@ -46,6 +46,11 @@ export const SCORING_HELP: Record<string, HelpText> = {
     scenario: "减分项:问题、事故、违纪等,按项累扣、设上限。",
     example: "一般不良影响每项扣 5/10 分,累计封顶 10 分。",
   },
+  grade_map: {
+    scenario:
+      "评价名次/等次 → 固定分:评上某一档,谁都是这个档、谁都是这个分(不按名次细分,「抓两头带中间」不让过度内卷)。常用于把定级档次兑现成业绩分,或直接按等次给分。",
+    example: "党建定级兑现业绩:先进=24、良好=20、一般=18、较差=16;不管谁排第一,只要同为「良好」都是 20 分。",
+  },
 };
 
 export const DATA_SOURCE_HELP: Record<string, HelpText> = {
@@ -84,5 +89,13 @@ export const DATA_SOURCE_HELP: Record<string, HelpText> = {
   "assessment.result": {
     scenario: "把一个考核的结果当作另一个考核的指标输入(跨路线组合)。",
     example: "党建考核总分作为业绩考核「党建工作评价」指标(占业绩 20%)的输入。",
+  },
+  dept_grade: {
+    scenario: "责任部门/考核人直接评定一个名次/等次(不录具体数值),配「评价定分」按等次给固定分。",
+    example: "考核人评某支部为「达标」→ 评价定分对照表 达标=20 → 得 20 分。",
+  },
+  "assessment.grade": {
+    scenario: "取另一考核的定级档次(文字),配「评价定分」兑现成本考核的分(跨考核;P2 接入)。",
+    example: "业绩考核「党建评价」取党建考核的定级:先进→24、良好→20、一般→18、较差→16。",
   },
 };

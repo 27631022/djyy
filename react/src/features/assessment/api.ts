@@ -24,8 +24,33 @@ export interface GradeThreshold {
   grade: string;
   min: number;
 }
+
+/** 名次划档:top=排名前 pct%,bottom=排名后 pct%,rest=其余(默认档),downgrade=触底档(条件触发) */
+export type GradeBand = "top" | "bottom" | "rest" | "downgrade";
+export interface GradeTier {
+  grade: string;
+  band: GradeBand;
+  /** top/bottom 的百分比 */
+  pct?: number;
+  /** 仅 top:需未亏损,否则降为「其余」档 */
+  requireNoLoss?: boolean;
+  /** downgrade:连续 years 年处于 fromGrade 档 → 落本档 */
+  fromGrade?: string;
+  years?: number;
+  /** downgrade:当年发生对单位重大不良影响 → 落本档 */
+  onMajorIncident?: boolean;
+}
+
+/**
+ * 定级规则。两种口径:
+ *   mode='score' 按总分阈值划档(thresholds:[{grade,min}]);
+ *   mode='rank'  按名次划档(tiers:[GradeTier]),支持「前/后 N%」「未亏损」「连续N年同档/当年重大不良影响触底」。
+ * 计算在 P2 引擎(需全体名次);P1 只配置 + 预设 + 可读展示。
+ */
 export interface GradeRules {
+  mode?: "score" | "rank";
   thresholds?: GradeThreshold[];
+  tiers?: GradeTier[];
   vetoGrade?: string;
 }
 export interface SchemeSettings {
@@ -143,7 +168,7 @@ export interface TrialInput {
   scoringType: string;
   params?: Record<string, unknown>;
   fullScore?: number;
-  raw?: number | boolean | null;
+  raw?: number | boolean | string | null;
   rawValues?: number[];
 }
 

@@ -7,7 +7,7 @@ import { BadRequestException } from '@nestjs/common';
  *
  * 加新计分工具 = 这里加一条 SCORING_SPECS + 前端 scoring/<type>.tsx 加一份镜像实现。
  */
-export type ScoreInput = 'rate' | 'number' | 'bool' | 'count';
+export type ScoreInput = 'rate' | 'number' | 'bool' | 'count' | 'label';
 
 export interface ScoreCtx {
   /** 该叶子满分(= 指标分值) */
@@ -22,7 +22,7 @@ export interface ScoreCtx {
   count?: number;
 }
 
-export type RawMetric = number | boolean | null;
+export type RawMetric = number | boolean | string | null;
 
 export interface ScoringSpec {
   type: string;
@@ -47,11 +47,11 @@ function pickNum(o: unknown, k: string, d = 0): number {
   return d;
 }
 
-/** 原始度量取数值(bool→1/0;null/NaN→null) */
+/** 原始度量取数值(bool→1/0;字符串/null/NaN→null) */
 function asNumber(raw: RawMetric): number | null {
-  if (raw === null || raw === undefined) return null;
   if (typeof raw === 'boolean') return raw ? 1 : 0;
-  return Number.isFinite(raw) ? raw : null;
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  return null;
 }
 
 interface ScoreTier {
@@ -65,6 +65,10 @@ interface OverTier {
 interface RankTier {
   topN: number;
   topPct: number;
+  score: number;
+}
+interface GradeOption {
+  label: string;
   score: number;
 }
 
@@ -294,6 +298,37 @@ const SCORING_SPECS: Record<string, ScoringSpec> = {
     },
   },
 
+  // 评价定分(对照表):评价名次/等次 → 固定分(评上某档即得该档分,不按名次细分;"抓两头带中间")。
+  // 复用面广:党委/党支部/党员定级兑现、各类等次评价。input=评价名次(label),param.options=名次→分对照表。
+  grade_map: {
+    type: 'grade_map',
+    label: '评价定分(对照表)',
+    inputType: 'label',
+    crossTarget: false,
+    normalizeParams(raw) {
+      const arr = Array.isArray(raw.options) ? raw.options : [];
+      const options: GradeOption[] = arr
+        .map((o) => {
+          const r = (o ?? {}) as Record<string, unknown>;
+          return {
+            label: typeof r.label === 'string' ? r.label.trim() : '',
+            score: pickNum(r, 'score'),
+          };
+        })
+        .filter((o) => o.label.length > 0);
+      if (options.length === 0) throw new BadRequestException('评价定分:至少配置一个「名次→分」');
+      return { options };
+    },
+    compute(raw, ctx) {
+      if (typeof raw !== 'string') return 0;
+      const label = raw.trim();
+      const options = (ctx.params.options as GradeOption[]) ?? [];
+      const hit = options.find((o) => o.label === label);
+      if (!hit) return 0;
+      return clamp(hit.score, 0, Math.max(ctx.fullScore, hit.score));
+    },
+  },
+
 };
 
 export const SCORING_TYPES = Object.keys(SCORING_SPECS);
@@ -319,6 +354,8 @@ export function isInputCompatible(inputType: ScoreInput, outputType: string): bo
       return outputType === 'count' || outputType === 'number';
     case 'number':
       return outputType === 'number' || outputType === 'rate' || outputType === 'count';
+    case 'label':
+      return outputType === 'label';
     default:
       return false;
   }

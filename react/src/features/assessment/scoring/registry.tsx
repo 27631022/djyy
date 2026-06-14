@@ -6,12 +6,13 @@ import {
   Percent,
   PlusCircle,
   Scaling,
+  Table2,
   ToggleRight,
   TrendingUp,
   Trophy,
 } from "lucide-react";
 import type { ScoringStrategyDef } from "./types";
-import { NumberField, OrderSelect, PropRow, TiersEditor } from "./widgets";
+import { LabelScoreEditor, NumberField, OrderSelect, PropRow, TiersEditor } from "./widgets";
 import { num, pickNum, pickRows } from "./shared";
 
 /**
@@ -233,6 +234,33 @@ const deduction: ScoringStrategyDef = {
   summary: (p) => `每项 -${num(p.perUnit, 1)},封顶 ${num(p.cap, 0) || "不限"}`,
 };
 
+const grade_map: ScoringStrategyDef = {
+  type: "grade_map",
+  label: "评价定分(对照表)",
+  icon: Table2,
+  order: 35,
+  inputType: "label",
+  crossTarget: false,
+  makeDefaults: () => ({
+    options: [
+      { label: "先进", score: 24 },
+      { label: "良好", score: 20 },
+      { label: "一般", score: 18 },
+      { label: "较差", score: 16 },
+    ],
+  }),
+  Properties: ({ params, patch }) => (
+    <PropRow label="名次 → 固定分 对照表" hint="评上某档即得该档分,不按名次细分">
+      <LabelScoreEditor rows={pickRows(params, "options")} onChange={(rows) => patch({ options: rows })} />
+    </PropRow>
+  ),
+  summary: (p) => `${pickRows(p, "options").filter((r) => typeof r.label === "string" && r.label.trim()).length} 个名次 → 固定分`,
+  validate: (p) =>
+    pickRows(p, "options").some((r) => typeof r.label === "string" && r.label.trim())
+      ? null
+      : "至少配置一个「名次→分」",
+};
+
 const ALL: ScoringStrategyDef[] = [
   manual,
   proportional,
@@ -244,6 +272,7 @@ const ALL: ScoringStrategyDef[] = [
   minmax,
   bonus,
   deduction,
+  grade_map,
 ];
 
 export const SCORING_STRATEGIES: Record<string, ScoringStrategyDef> = Object.fromEntries(
@@ -269,6 +298,8 @@ export function isInputCompatible(inputType: string, outputType: string): boolea
       return outputType === "count" || outputType === "number";
     case "number":
       return outputType === "number" || outputType === "rate" || outputType === "count";
+    case "label":
+      return outputType === "label";
     default:
       return false;
   }

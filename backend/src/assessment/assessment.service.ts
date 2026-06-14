@@ -295,7 +295,13 @@ export class AssessmentService {
     const params = spec.normalizeParams(input.params ?? {});
     const fullScore =
       typeof input.fullScore === 'number' && input.fullScore >= 0 ? input.fullScore : 100;
-    const raw = toRaw(input.raw);
+    // label 工具(评价定分)吃字符串名次;其余转 number|boolean|null
+    const raw =
+      spec.inputType === 'label'
+        ? typeof input.raw === 'string'
+          ? input.raw
+          : null
+        : toRaw(input.raw);
     const ctx: ScoreCtx = { fullScore, params };
     if (spec.crossTarget) {
       const all = (input.rawValues ?? []).filter(

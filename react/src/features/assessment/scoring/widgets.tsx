@@ -49,6 +49,59 @@ export function OrderSelect({
   );
 }
 
+/** 「名次 → 固定分」对照表编辑器(评价定分工具用):每行 = 一个评价名次 + 该名次的固定分。 */
+export function LabelScoreEditor({
+  rows,
+  onChange,
+}: {
+  rows: Record<string, unknown>[];
+  onChange: (rows: Record<string, unknown>[]) => void;
+}) {
+  const set = (i: number, patch: Record<string, unknown>) =>
+    onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  return (
+    <div className="space-y-1.5">
+      <div className="flex gap-1.5">
+        <span className="flex-1 text-[10px] text-[#9CA3AF]">评价名次 / 等次</span>
+        <span className="w-16 text-[10px] text-[#9CA3AF]">固定分</span>
+        <span className="w-6 flex-shrink-0" />
+      </div>
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <input
+            placeholder="如:先进 / 优秀 / 达标"
+            value={typeof r.label === "string" ? r.label : ""}
+            onChange={(e) => set(i, { label: e.target.value })}
+            className={`${PROP_INPUT} flex-1`}
+          />
+          <input
+            type="number"
+            placeholder="20"
+            value={typeof r.score === "number" ? String(r.score) : ""}
+            onChange={(e) => set(i, { score: e.target.value === "" ? undefined : Number(e.target.value) })}
+            className={`${PROP_INPUT} w-16`}
+          />
+          <button
+            type="button"
+            title="删除该项"
+            onClick={() => onChange(rows.filter((_, j) => j !== i))}
+            className="p-1 rounded text-[#9CA3AF] hover:text-red-600 hover:bg-red-50 flex-shrink-0"
+          >
+            <XIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...rows, {}])}
+        className="w-full flex items-center justify-center gap-1 py-1.5 rounded-md border border-dashed border-[#dce4ef] text-[12px] text-[#667085] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+      >
+        <PlusIcon className="w-3.5 h-3.5" /> 添加名次
+      </button>
+    </div>
+  );
+}
+
 export interface TierColumn {
   key: string;
   label: string;
