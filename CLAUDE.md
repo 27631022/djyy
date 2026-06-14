@@ -413,6 +413,11 @@ npm run db:seed
     - **按指标走(像计分工具),默认系数 1**:`LeafConfigPanel` 计分工具下方一个「难易系数」开关 + 「配置各单位难易系数(已设 N 个)」按钮 → **独立弹窗 `DifficultyCoefDialog`**:① 测算表(`DifficultyEditor`,人数档→系数,可编辑/多套)② **导出考核单位 CSV → Excel 填员工数 → 导入** → **按员工数测算**(`coefForCount`,写 settings.headcounts + 各单位系数)③ 每个单位一行 `单位 | 员工数 | 系数` **直接可看可改**(手动微调)。`difficulty.ts`=`DEFAULT_HEADCOUNT_TABLE`(6 档 100以下→2…2000以上→1)+ coefForCount + tableSummary + newTableId;CSV 自带 BOM(`String.fromCharCode(0xfeff)`,避 no-irregular-whitespace)+ 自写 splitCsvLine/parseCsv(无 papaparse 依赖),下载走 `shared/lib/download` downloadBlob。
     - **计算口径(P2)**:**本指标「得分」× 该单位系数,再排名/汇总**(不是乘原始度量;如宣传积分:各单位得分×系数→排名)。
     - 验证:双端门禁 0/0/0;API(临时表保存 200、difficultyOn=true / difficultyCoefs{o1:1.8,o2:1} / settings.headcounts 回读正确)+ 浏览器(选叶子→启用→弹窗列 35 个考核对象、启用测算表、某单位填员工数 180→测算得 1.8、手改 1.5、导出无报错、关闭后按钮显示「已设 1 个」、0 console error;未存盘不动用户表)。
+  - **(2026-06-14 P2.1 后端)打分闭环引擎打通**(P2 第一刀,后端 API 实测):2 张表 `AssessmentRound`(发起考核时**快照**考核表:indicators/targets/settings/gradeRules,与日后改表解耦)+ `IndicatorScore`(轮次×对象×叶子,rawValue=原始度量 JSON),迁移 `add_assessment_round`。
+    - **引擎 `round-engine.ts`(纯函数可测)`computeRoundResults`**:取数(rawValue)→ 计分(scoring-strategies)→ **×难易系数**(crossTarget 排名类:系数乘在「参与排名的值」上再排名,如宣传积分;非排名类:乘在算出的得分上)→ 加权汇总(normal 叶子累加;bonus/deduction **块按该块 weight 上限封顶**,total=normal+bonus−deduct clamp≥0)→ 按总分排名 → 名次划档定级(rank 模式 top/bottom/rest;**触底档「较差」需重大不良影响/连续N年 → P3**;score 模式按阈值)。
+    - 服务 `createRound/listRounds/getRound/saveScores/computeRound/removeRound` + 6 接口(`POST schemes/:id/rounds` 发起、`GET rounds`、`GET rounds/:id`、`POST rounds/:id/scores` 录入、`POST rounds/:id/compute` 计算、`DELETE rounds/:id`);权限:发起/计算=`assessment:manage`、录入=`assessment:score`。`saveScores` upsert `rawValue=JSON.stringify`(number/bool/label),`computeRound` 回写 `resultsJson`+status=done。
+    - **API 端到端实测全对**:3 单位场景(利润 target/proportional、宣传积分 rank_linear+难易系数 A×2、加分块封顶5、减分块封顶10、定级 先进/良好/一般)→ 乙100/先进、甲80.67/良好、丙66.67/一般,难易系数把甲宣传 10×2=20 拉到与丙并列。门禁后端 0/0/0。
+    - ⏭ P2 后续:② 前端(发起考核 + 矩阵录入 + 结果页)③ 业务数据源(task 完成率/cert 荣誉,经 `getLinkedAdminOrgs` 党委→行政取数)④ 自评佐证+核定 ⑤ 桌面端填报。
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
 2. **访问量/点赞统计**:NavItem.likes/views 接真实计数 + Redis 缓存
 3. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面

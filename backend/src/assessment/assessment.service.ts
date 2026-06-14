@@ -7,9 +7,10 @@ import { OrganizationService } from '../organization';
 import { CreateSchemeDto } from './dto/create-scheme.dto';
 import { UpdateSchemeDto } from './dto/update-scheme.dto';
 import { TrialScoreDto } from './dto/trial-score.dto';
-import { flattenLeaves, normalizeIndicatorTree } from './indicator-tree';
+import { flattenLeaves, normalizeIndicatorTree, type IndicatorNode } from './indicator-tree';
 import { getDataSourceSpec } from './data-sources';
 import { getScoringSpec, isInputCompatible, type ScoreCtx } from './scoring-strategies';
+import { computeRoundResults } from './round-engine';
 import {
   RELATIONS,
   adminSubjectsOf,
@@ -44,6 +45,16 @@ function normalizeTargets(raw: unknown): { orgId?: string; userId?: string; name
     out.push(t);
   }
   return out;
+}
+
+/** 安全 JSON.parse(坏串回退) */
+function safeJson<T>(s: string | null | undefined, fallback: T): T {
+  if (!s) return fallback;
+  try {
+    return JSON.parse(s) as T;
+  } catch {
+    return fallback;
+  }
 }
 
 /** 把试算入参的 raw(unknown)转成原始度量 number|boolean|null */
@@ -286,6 +297,115 @@ export class AssessmentService {
       detail: { from: id, name: copy.name },
     });
     return copy;
+  }
+
+  // ─── P2 打分闭环:考核轮次 ───
+
+  private async getRoundOrThrow(id: string) {
+    const round = await this.prisma.assessmentRound.findUnique({ where: { id } });
+    if (!round) throw new NotFoundException('考核轮次不存在');
+    return round;
+  }
+
+  /** 发起考核:把考核表(指标/对象/设置/定级)快照进一个新轮次。 */
+  async createRound(schemeId: string, dto: { name?: string; year?: number }, ctx: ActorCtx) {
+    const s = await this.findOne(schemeId);
+    const round = await this.prisma.assessmentRound.create({
+      data: {
+        schemeId: s.id,
+        name: dto.name?.trim() || `${s.name} · ${dto.year ?? s.year}`,
+        year: dto.year ?? s.year,
+        track: s.track,
+        indicatorsJson: s.indicatorsJson,
+        targetsJson: s.targetsJson,
+        settingsJson: s.settingsJson,
+        gradeRulesJson: s.gradeRulesJson,
+        createdById: ctx.actorId ?? null,
+      },
+    });
+    await this.audit.log({
+      ...ctx,
+      action: 'assessment.round.create',
+      target: round.id,
+      detail: { schemeId, name: round.name },
+    });
+    return round;
+  }
+
+  listRounds(schemeId?: string) {
+    return this.prisma.assessmentRound.findMany({
+      where: schemeId ? { schemeId } : undefined,
+      orderBy: [{ year: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
+  async getRound(id: string) {
+    const round = await this.getRoundOrThrow(id);
+    const scores = await this.prisma.indicatorScore.findMany({ where: { roundId: id } });
+    return { round, scores };
+  }
+
+  async removeRound(id: string, ctx: ActorCtx) {
+    await this.getRoundOrThrow(id);
+    await this.prisma.assessmentRound.delete({ where: { id } }); // cascade scores
+    await this.audit.log({ ...ctx, action: 'assessment.round.delete', target: id });
+    return { ok: true };
+  }
+
+  /** 录入/更新一批指标原始值(责任部门打分)。rawValue 存 JSON 串(number/bool/label)。 */
+  async saveScores(roundId: string, entries: unknown, ctx: ActorCtx) {
+    await this.getRoundOrThrow(roundId);
+    if (!Array.isArray(entries)) throw new BadRequestException('scores 必须是数组');
+    const norm: { targetRef: string; leafCode: string; data: { rawValue?: string | null; note?: string | null } }[] =
+      [];
+    for (const item of entries) {
+      if (!item || typeof item !== 'object') continue;
+      const o = item as Record<string, unknown>;
+      const targetRef = typeof o.targetRef === 'string' ? o.targetRef.trim() : '';
+      const leafCode = typeof o.leafCode === 'string' ? o.leafCode.trim() : '';
+      if (!targetRef || !leafCode) continue;
+      const data: { rawValue?: string | null; note?: string | null } = {};
+      if ('rawValue' in o)
+        data.rawValue = o.rawValue === undefined || o.rawValue === null ? null : JSON.stringify(o.rawValue);
+      if (typeof o.note === 'string') data.note = o.note;
+      norm.push({ targetRef, leafCode, data });
+    }
+    const ops = norm.map((n) =>
+      this.prisma.indicatorScore.upsert({
+        where: { roundId_targetRef_leafCode: { roundId, targetRef: n.targetRef, leafCode: n.leafCode } },
+        create: { roundId, targetRef: n.targetRef, leafCode: n.leafCode, ...n.data },
+        update: n.data,
+      }),
+    );
+    await this.prisma.$transaction(ops);
+    await this.audit.log({ ...ctx, action: 'assessment.round.save_scores', target: roundId, detail: { count: ops.length } });
+    return { ok: true, count: ops.length };
+  }
+
+  /** 计算轮次:取数→计分→×难易系数→排名→加权汇总→定级,产出写 resultsJson。 */
+  async computeRound(roundId: string, ctx: ActorCtx) {
+    const round = await this.getRoundOrThrow(roundId);
+    const indicators = safeJson<IndicatorNode[]>(round.indicatorsJson, []);
+    const targetsRaw = safeJson<{ orgId?: string; userId?: string; name: string }[]>(round.targetsJson, []);
+    const targets = targetsRaw
+      .map((t) => ({ ref: (t.orgId ?? t.userId ?? '').toString(), name: t.name }))
+      .filter((t) => t.ref);
+    const gradeRules = safeJson<Record<string, unknown>>(round.gradeRulesJson, {});
+
+    const scores = await this.prisma.indicatorScore.findMany({ where: { roundId } });
+    const raw: Record<string, Record<string, unknown>> = {};
+    for (const sc of scores) {
+      if (!raw[sc.targetRef]) raw[sc.targetRef] = {};
+      raw[sc.targetRef][sc.leafCode] = sc.rawValue == null ? null : safeJson<unknown>(sc.rawValue, null);
+    }
+
+    const results = computeRoundResults(indicators, targets, gradeRules, raw, new Date().toISOString());
+    await this.prisma.assessmentRound.update({
+      where: { id: roundId },
+      data: { resultsJson: JSON.stringify(results), status: 'done' },
+    });
+    await this.audit.log({ ...ctx, action: 'assessment.round.compute', target: roundId, detail: { targets: targets.length } });
+    return results;
   }
 
   /** 试算:用一个计分工具 + 参数 + 样例原始值算得分(配置时即时预览;权威,前端不重复实现公式)。 */

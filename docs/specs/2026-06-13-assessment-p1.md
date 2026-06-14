@@ -237,7 +237,8 @@ Round/Target/IndicatorScore/Goal 留 P2。
 
 ## P2+ 后续
 
-- **P2 打分闭环 + 业务数据源**:Round/Target/IndicatorScore(含 `evidenceFileIds` 佐证)/Goal 表;发起考核(选体系 + 点选党委,记 1:1 行政单位)→ 按叶子数据源/责任部门 fan-out → `dept_fill` 责任部门录入、`self_report` 单位自评+佐证 → `computeRound` 两遍引擎(crossTarget 先聚合全体值)→ 汇总/定级/排名。业务数据源接入(经 `OrganizationService.getLinkedAdminOrgs` 把党委→行政单位,查 `TaskService.getStatsByOrg` 新增 / `CertificateIssueService.countByOrg` 新增 + recipientUserId→memberships 反查)。
+- **✅ P2.1 后端引擎(2026-06-14 已落地,API 实测)**:`AssessmentRound`(发起考核快照 indicators/targets/settings/gradeRules,与改表解耦)+ `IndicatorScore`(轮次×对象×叶子,rawValue JSON)两表 + migrate `add_assessment_round`。纯函数引擎 `round-engine.computeRoundResults`:取数→计分→**×难易系数**(crossTarget 系数乘排名值再排名,非 crossTarget 乘得分)→ 加权汇总(normal 累加 / bonus·deduction 块按上限封顶,total clamp≥0)→ 排名 → 名次划档定级(rank top/bottom/rest;触底档 P3;score 阈值)。6 接口 `POST schemes/:id/rounds`/`GET rounds`/`GET rounds/:id`/`POST rounds/:id/scores`(`assessment:score`)/`POST rounds/:id/compute`/`DELETE rounds/:id`。实测 3 单位场景算分/排名/定级/难易系数/块封顶全对。**剩 ② 前端(发起+矩阵录入+结果页)③ 业务数据源 ④ 自评佐证 ⑤ 桌面端**。
+- **P2 业务数据源(③)**:经 `OrganizationService.getLinkedAdminOrgs` 把党委→行政单位,查 `TaskService.getStatsByOrg` 新增 / `CertificateIssueService.countByOrg` 新增 + recipientUserId→memberships 反查。`self_report` 单位自评+佐证(`IndicatorScore.evidenceFileIds` 已留列)。
 - **P2 可见性模型(提前谋划,用户 2026-06-13 提)**:叶子已存 `ownerOrgId`(责任部门)+ `ownerUserId`(考核责任人)。填报闭环按此控权——**部门考核管理员**(`assessment:score` + 本部门)看本部门全部指标填报情况;**责任人**只看/填自己负责的指标。填报后期**集成到桌面客户端**(Tauri,复用 task 的 `useDesktopInboxAlerts` 轮询 + 原生通知范式)。
 - **P3** 自评+佐证+核定;**P4** 支部/党员层 + `survey` 群众打分;**行政路线** `track='admin'` 开启(同引擎,主要配置);**P5** 历年对比/导出/看板。
 - ⚠ 本期未做 `seedAssessmentScheme` 起步体系(避免整库 reseed 覆盖 externalApi 能力);用户在设计器直接建。

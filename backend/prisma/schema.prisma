@@ -923,3 +923,47 @@ model AssessmentScheme {
   @@index([status])
   @@index([targetLevel])
 }
+
+// @module: assessment
+// 考核轮次 = 一次实际发起的考核。创建时把考核表(指标树/对象/设置/定级规则)快照进来,与日后改表解耦。
+// computeRound 产出写 resultsJson(各对象 得分/合计/排名/定级)。
+model AssessmentRound {
+  id             String   @id @default(cuid())
+  schemeId       String
+  name           String
+  year           Int
+  track          String   @default("party")
+  indicatorsJson String   @default("[]") // 快照:指标树
+  targetsJson    String   @default("[]") // 快照:考核对象 [{orgId|userId,name}]
+  settingsJson   String   @default("{}") // 快照:baseFullScore/headcounts/difficultyTables…
+  gradeRulesJson String   @default("{}") // 快照:定级规则
+  resultsJson    String   @default("{}") // computeRound 产出:{computedAt, targets:[{ref,name,total,rank,grade,leafScores}]}
+  status         String   @default("open") // open(填报中) | done(已计算)
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  scores IndicatorScore[]
+
+  @@index([schemeId])
+  @@index([year])
+  @@index([status])
+}
+
+// @module: assessment
+// 指标得分:轮次 × 考核对象 × 叶子指标。rawValue=原始度量(JSON 串,number/bool/label);score=计算后(computeRound 回填,可选)。
+model IndicatorScore {
+  id              String          @id @default(cuid())
+  roundId         String
+  round           AssessmentRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  targetRef       String // orgId 或 userId
+  leafCode        String
+  rawValue        String? // 原始度量 JSON(number/bool/"label");缺省=未填
+  note            String?
+  evidenceFileIds String? // JSON 数组(self_report 佐证 fileId,P3)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([roundId, targetRef, leafCode])
+  @@index([roundId])
+}

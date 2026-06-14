@@ -22,6 +22,8 @@ import { AssessmentExtractionService } from './assessment-extraction.service';
 import { CreateSchemeDto } from './dto/create-scheme.dto';
 import { UpdateSchemeDto } from './dto/update-scheme.dto';
 import { TrialScoreDto } from './dto/trial-score.dto';
+import { CreateRoundDto } from './dto/create-round.dto';
+import { SaveScoresDto } from './dto/save-scores.dto';
 
 interface UploadedFileShape {
   originalname: string;
@@ -119,5 +121,57 @@ export class AssessmentController {
       actorName: me.name,
       ip: req.ip,
     });
+  }
+
+  // ─── P2 打分闭环:考核轮次 ───
+
+  /** POST /assessment/schemes/:id/rounds  发起考核(快照考核表) */
+  @Post('schemes/:id/rounds')
+  @Permission('assessment:manage')
+  createRound(
+    @Param('id') id: string,
+    @Body() dto: CreateRoundDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.createRound(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** GET /assessment/rounds?schemeId=  轮次列表 */
+  @Get('rounds')
+  listRounds(@Query('schemeId') schemeId?: string) {
+    return this.svc.listRounds(schemeId);
+  }
+
+  /** GET /assessment/rounds/:id  轮次详情(快照 + 已录原始值) */
+  @Get('rounds/:id')
+  getRound(@Param('id') id: string) {
+    return this.svc.getRound(id);
+  }
+
+  /** DELETE /assessment/rounds/:id  删除轮次(级联得分) */
+  @Delete('rounds/:id')
+  @Permission('assessment:manage')
+  removeRound(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.removeRound(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** POST /assessment/rounds/:id/scores  批量录入指标原始值(责任部门打分) */
+  @Post('rounds/:id/scores')
+  @Permission('assessment:score')
+  saveScores(
+    @Param('id') id: string,
+    @Body() dto: SaveScoresDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.saveScores(id, dto.scores, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** POST /assessment/rounds/:id/compute  计算轮次(取数→计分→难易系数→排名→汇总→定级) */
+  @Post('rounds/:id/compute')
+  @Permission('assessment:manage')
+  computeRound(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.computeRound(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 }
