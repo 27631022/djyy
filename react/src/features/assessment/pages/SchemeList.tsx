@@ -8,8 +8,8 @@ import {
   assessmentApi,
   assessmentErrorMessage,
   parseIndicators,
-  TARGET_LEVELS_BY_TRACK,
-  TARGET_LEVEL_LABELS,
+  parseSettings,
+  RELATION_LABELS,
   TRACK_LABELS,
   type AssessmentScheme,
   type AssessmentTrack,
@@ -125,6 +125,9 @@ function SchemeCard({
   onDelete: () => void;
 }) {
   const leaves = countLeaves(parseIndicators(scheme));
+  const st = parseSettings(scheme);
+  const subjectName = st.subjectName;
+  const relationLabel = st.relationKey ? RELATION_LABELS[st.relationKey] : undefined;
   const targetCount = (() => {
     try {
       const v: unknown = JSON.parse(scheme.targetsJson);
@@ -142,7 +145,8 @@ function SchemeCard({
         <div className="min-w-0">
           <div className="font-semibold text-[#172033] truncate">{scheme.name}</div>
           <div className="text-[12px] text-[#6B7280] mt-1">
-            {scheme.year} 年 · {TRACK_LABELS[scheme.track]} · {TARGET_LEVEL_LABELS[scheme.targetLevel] ?? scheme.targetLevel}
+            {scheme.year} 年 · {relationLabel ?? TRACK_LABELS[scheme.track]}
+            {subjectName ? ` · ${subjectName}` : ""}
           </div>
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -191,15 +195,12 @@ function NewSchemeDialog({
   const [name, setName] = useState("");
   const [year, setYear] = useState(new Date().getFullYear());
   const [track, setTrack] = useState<AssessmentTrack>("party");
-  const [targetLevel, setTargetLevel] = useState("committee");
 
   const create = useMutation({
-    mutationFn: () => assessmentApi.createScheme({ name: name.trim(), year, track, targetLevel }),
+    mutationFn: () => assessmentApi.createScheme({ name: name.trim(), year, track }),
     onSuccess: (s) => onCreated(s.id),
     onError: (e) => toast.error(assessmentErrorMessage(e, "创建失败")),
   });
-
-  const levels = TARGET_LEVELS_BY_TRACK[track];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -221,11 +222,7 @@ function NewSchemeDialog({
               <div className="text-[13px] font-medium text-[#374151] mb-1">路线</div>
               <select
                 value={track}
-                onChange={(e) => {
-                  const t = e.target.value as AssessmentTrack;
-                  setTrack(t);
-                  setTargetLevel(TARGET_LEVELS_BY_TRACK[t][0].value);
-                }}
+                onChange={(e) => setTrack(e.target.value as AssessmentTrack)}
                 className={INPUT}
               >
                 <option value="party">党建考核</option>
@@ -233,16 +230,9 @@ function NewSchemeDialog({
               </select>
             </label>
           </div>
-          <label className="block">
-            <div className="text-[13px] font-medium text-[#374151] mb-1">考核对象层级</div>
-            <select value={targetLevel} onChange={(e) => setTargetLevel(e.target.value)} className={INPUT}>
-              {levels.map((l) => (
-                <option key={l.value} value={l.value}>
-                  {l.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="text-[12px] text-[#9CA3AF]">
+            考核关系(谁考核谁)与考核对象在下一步「考核表设置」里按你的考核区域选择。
+          </div>
         </div>
         <DialogFooter>
           <button

@@ -1,9 +1,8 @@
-import { useMemo, useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Save, X } from "lucide-react";
-import { organizationsApi, type OrgTreeNode } from "@/features/organization";
+import { ArrowLeft, Plus, Save, SlidersHorizontal, Wand2, X } from "lucide-react";
 import {
   assessmentApi,
   assessmentErrorMessage,
@@ -11,8 +10,7 @@ import {
   parseIndicators,
   parseSettings,
   parseTargets,
-  TARGET_LEVEL_LABELS,
-  TRACK_LABELS,
+  RELATION_LABELS,
   type AssessmentScheme,
   type AssessmentTarget,
   type AssessmentTrack,
@@ -25,7 +23,7 @@ import { useHistory } from "../hooks/useHistory";
 import { findNode, isLeafNode, updateNode } from "../treeOps";
 import { IndicatorTreeEditor } from "../components/IndicatorTreeEditor";
 import { LeafConfigPanel } from "../components/LeafConfigPanel";
-import { OrgPicker } from "../components/OrgPicker";
+import { SubjectObjectsPanel } from "../components/SubjectObjectsPanel";
 
 const INPUT =
   "px-2.5 py-1.5 text-sm border border-[#dce4ef] rounded-md bg-white focus:outline-none focus:border-[var(--party-primary)]";
@@ -58,6 +56,7 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
     const s = parseSettings(scheme);
     return { baseFullScore: s.baseFullScore ?? 100, ...s };
   });
+  const [track, setTrack] = useState<AssessmentTrack>(scheme.track);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
 
   const baseFullScore = settings.baseFullScore ?? 100;
@@ -69,6 +68,7 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
       assessmentApi.updateScheme(scheme.id, {
         name: name.trim() || scheme.name,
         year,
+        track,
         status,
         indicators: tree.state,
         targets,
@@ -80,6 +80,19 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
       qc.invalidateQueries({ queryKey: ["assessment"] });
     },
     onError: (e) => toast.error(assessmentErrorMessage(e, "保存失败")),
+  });
+
+  // AI 生成指标(导入考核办法文件)—— 预留接口,需配 AI 模型
+  const fileRef = useRef<HTMLInputElement>(null);
+  const aiExtract = useMutation({
+    mutationFn: (file: File) => assessmentApi.extractIndicators(file),
+    onSuccess: (res) => {
+      tree.record();
+      tree.setState(res.indicators);
+      setSelectedCode(null);
+      toast.success(`AI 已生成 ${res.source.leafCount} 项末端指标,请核对分值与计分工具后保存`);
+    },
+    onError: (e) => toast.error(assessmentErrorMessage(e, "AI 生成指标失败")),
   });
 
   function patchLeaf(patch: Partial<IndicatorNode>) {
@@ -106,7 +119,8 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
           className="text-lg font-semibold text-[#172033] bg-transparent border-b border-transparent focus:border-[var(--party-primary)] focus:outline-none px-1 flex-1 min-w-0"
         />
         <span className="px-2 py-0.5 rounded-full text-[12px] bg-party-soft text-[var(--party-primary)] font-medium flex-shrink-0">
-          {TRACK_LABELS[scheme.track]} · {TARGET_LEVEL_LABELS[scheme.targetLevel] ?? scheme.targetLevel}
+          {settings.relationKey ? (RELATION_LABELS[settings.relationKey] ?? "考核关系") : "未设考核主体"}
+          {settings.subjectName ? ` · ${settings.subjectName}` : ""}
         </span>
         <span className="px-2 py-0.5 rounded-full text-[12px] bg-[#f1f5f9] text-[#475467] flex-shrink-0" title="考核对象数(快照)">
           考核对象 {targets.length}
@@ -123,6 +137,26 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
           <option value="active">启用</option>
           <option value="archived">归档</option>
         </select>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".docx,.pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) aiExtract.mutate(f);
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={aiExtract.isPending}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-[var(--party-primary)] text-[var(--party-primary)] bg-white hover:bg-party-soft disabled:opacity-60 flex-shrink-0"
+          title="上传考核办法 Word/PDF,AI 自动生成指标树并配好数据源/计分工具(预留接口,需配 AI 模型)"
+        >
+          <Wand2 className="w-4 h-4" /> {aiExtract.isPending ? "AI 解析中…" : "AI 生成指标"}
+        </button>
         <button
           type="button"
           onClick={() => save.mutate()}
@@ -152,6 +186,18 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
         </div>
 
         <div className="rounded-xl border border-[#eef2f7] bg-white overflow-auto p-4 min-h-0">
+          <button
+            type="button"
+            onClick={() => setSelectedCode(null)}
+            className={`mb-3 w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors ${
+              selectedCode
+                ? "text-[#475467] bg-[#f1f5f9] hover:bg-[#e6ebf2]"
+                : "text-[var(--party-primary)] bg-party-soft"
+            }`}
+            title="考核主体 / 考核对象 / 基础满分 / 定级规则(点指标树空白处也可返回)"
+          >
+            <SlidersHorizontal className="w-4 h-4" /> 考核表设置(主体 / 对象 / 定级)
+          </button>
           {selectedLeaf ? (
             <>
               <div className="text-[13px] text-[#9CA3AF] mb-3">
@@ -165,15 +211,23 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
               <p className="text-[#9CA3AF]">
                 这是一个分支节点(含子指标)。它的分值应等于其「计权」子项之和。给它加子指标,或在叶子上配置数据源与计分工具。
               </p>
-              <p className="text-[#9CA3AF]">特殊块:把 kind 设为「加分项 / 减分项 / 一票否决」,该块不计入计权合计。</p>
+              <p className="text-[#9CA3AF]">特殊块:把 kind 设为「加分项 / 减分项」,该块不计入计权合计。</p>
             </div>
           ) : (
             <SettingsPanel
-              track={scheme.track}
+              settings={settings}
+              onSubject={(p) => {
+                setTrack(p.track);
+                setSettings((s) => ({
+                  ...s,
+                  relationKey: p.relationKey,
+                  subjectOrgId: p.subjectOrgId || undefined,
+                  subjectName: p.subjectName || undefined,
+                  scopeOrgId: p.deptScopeOrgId,
+                }));
+              }}
               targets={targets}
               onTargets={setTargets}
-              scopeOrgId={settings.scopeOrgId}
-              onScopeOrgId={(v) => setSettings((s) => ({ ...s, scopeOrgId: v }))}
               baseFullScore={baseFullScore}
               onBaseFullScore={(v) => setSettings((s) => ({ ...s, baseFullScore: v }))}
               grade={grade}
@@ -187,21 +241,25 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
 }
 
 function SettingsPanel({
-  track,
+  settings,
+  onSubject,
   targets,
   onTargets,
-  scopeOrgId,
-  onScopeOrgId,
   baseFullScore,
   onBaseFullScore,
   grade,
   onGrade,
 }: {
-  track: AssessmentTrack;
+  settings: SchemeSettings;
+  onSubject: (p: {
+    relationKey: string;
+    subjectOrgId: string;
+    subjectName: string;
+    deptScopeOrgId?: string;
+    track: AssessmentTrack;
+  }) => void;
   targets: AssessmentTarget[];
   onTargets: (v: AssessmentTarget[]) => void;
-  scopeOrgId: string | undefined;
-  onScopeOrgId: (v: string | undefined) => void;
   baseFullScore: number;
   onBaseFullScore: (v: number) => void;
   grade: GradeRules;
@@ -215,17 +273,13 @@ function SettingsPanel({
 
   return (
     <div className="space-y-4">
-      <div className="text-[13px] text-[#9CA3AF]">未选指标 · 考核表设置</div>
-
-      <div>
-        <div className="text-[13px] font-semibold text-[#172033] mb-1">考核主体(责任部门所在单位)</div>
-        <OrgPicker kind="admin" value={scopeOrgId} onChange={onScopeOrgId} placeholder="选公司机关 / 某二级单位…" />
-        <div className="text-[11px] text-[#9CA3AF] mt-1">
-          决定责任部门按层级精确显示:公司考二级单位选「公司机关」→ 责任部门只显示机关部门;二级考三级选该二级单位。
-        </div>
-      </div>
-
-      <TargetObjectsPicker track={track} value={targets} onChange={onTargets} />
+      <SubjectObjectsPanel
+        relationKey={settings.relationKey}
+        subjectOrgId={settings.subjectOrgId}
+        onSubject={onSubject}
+        targets={targets}
+        onTargets={onTargets}
+      />
 
       <label className="block">
         <div className="text-[13px] font-semibold text-[#172033] mb-1">基础满分</div>
@@ -276,81 +330,6 @@ function SettingsPanel({
         {thresholds.length === 0 && <div className="text-[12px] text-[#9CA3AF]">未设定级阈值(如:优秀≥90、良好≥80、合格≥60)</div>}
       </div>
 
-    </div>
-  );
-}
-
-/** 考核对象多选(从组织树读出 → 快照 [{orgId,name}],与组织机构解耦)。 */
-function TargetObjectsPicker({
-  track,
-  value,
-  onChange,
-}: {
-  track: AssessmentTrack;
-  value: AssessmentTarget[];
-  onChange: (v: AssessmentTarget[]) => void;
-}) {
-  const kind = track === "party" ? "party" : "admin";
-  const { data } = useQuery({
-    queryKey: ["organizations", "tree", kind],
-    queryFn: () => organizationsApi.tree(kind),
-    staleTime: 60_000,
-  });
-  const [q, setQ] = useState("");
-  const flat = useMemo(() => {
-    const out: { id: string; name: string; depth: number }[] = [];
-    const walk = (ns: OrgTreeNode[], d: number) =>
-      ns.forEach((n) => {
-        out.push({ id: n.id, name: n.name, depth: d });
-        walk(n.children, d + 1);
-      });
-    walk(data ?? [], 0);
-    return out;
-  }, [data]);
-  const selected = new Set(value.map((v) => v.orgId));
-  const kw = q.trim();
-  const filtered = kw ? flat.filter((o) => o.name.includes(kw)) : flat;
-
-  function toggle(o: { id: string; name: string }) {
-    if (selected.has(o.id)) onChange(value.filter((v) => v.orgId !== o.id));
-    else onChange([...value, { orgId: o.id, name: o.name }]);
-  }
-
-  return (
-    <div>
-      <div className="text-[13px] font-semibold text-[#172033] mb-1">
-        考核对象 <span className="text-[#9CA3AF] font-normal">已选 {value.length}</span>
-      </div>
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder={kind === "party" ? "搜索党组织…" : "搜索单位/部门…"}
-        className={`${INPUT} w-full mb-1.5`}
-      />
-      <div className="max-h-[260px] overflow-auto border border-[#eef2f7] rounded-md">
-        {filtered.length === 0 ? (
-          <div className="text-center text-[12px] text-[#9CA3AF] py-6">无匹配</div>
-        ) : (
-          filtered.map((o) => (
-            <label
-              key={o.id}
-              className="flex items-center gap-2 px-2 py-1 hover:bg-[#f6f8fb] cursor-pointer"
-              style={{ paddingLeft: 8 + o.depth * 14 }}
-            >
-              <input
-                type="checkbox"
-                checked={selected.has(o.id)}
-                onChange={() => toggle(o)}
-                className="accent-[var(--party-primary)]"
-              />
-              <span className="text-[13px] text-[#374151]">{o.name}</span>
-            </label>
-          ))
-        )}
-      </div>
-      <div className="text-[11px] text-[#9CA3AF] mt-1">
-        从{kind === "party" ? "党组织" : "行政机构"}树选取;选定后冻结为快照,与日后组织调整解耦。
-      </div>
     </div>
   );
 }

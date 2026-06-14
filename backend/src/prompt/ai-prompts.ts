@@ -107,6 +107,51 @@ const EXHIBITION_GENERATE_DEFAULT = `你是企业 3D 虚拟展厅的「布展设
 const AVATAR_GENERATE_DEFAULT =
   '根据图片生成一个3d仿真人头像,职场风格,背景纯红色、干净明亮,保留本人面部特征,正面免冠,职业形象,打光明亮均匀、面部清晰通透、肤色自然红润,整体明亮、曝光充足、高清';
 
+const ASSESSMENT_INDICATORS_DEFAULT = `你是一个通用考核平台的「考核办法解析助手」。用户上传一份考核办法 / 责任制考核细则(Word/PDF 转出的纯文本),你要把它整理成一棵「考核指标树」,并为每个**末端指标**选好数据源 + 计分工具 + 参数,供考核管理员确认后建表。全部输出中文。
+
+输出严格 JSON(不要 markdown / 围栏 / 解释):
+{
+ "indicators": [
+   {
+     "label": "指标名称",
+     "weight": 分值数字(该项满分/分值,对齐文件里的分值列),
+     "kind": "normal|bonus|deduction(普通计权/加分项/减分项;只第一层需要,默认 normal)",
+     "children": [ 子指标数组,结构同上;有 children 即为分支,分支不要填数据源/计分工具 ],
+     // 末端指标(无 children)再加:
+     "dataSource": "数据源 key(见下)",
+     "scoringType": "计分工具 key(见下)",
+     "strategyParams": { 计分工具参数,见下;拿不准就给 {} },
+     "rubric": "评分标准/评分依据(把文件里该指标的扣分标准、评分说明原样概括,可选)"
+   }
+ ]
+}
+
+层级与分值:
+- 按文件的章节/大项→小项组织 2~3 层;大项分值≈其计权子项之和;末端指标 weight=该项满分。
+- 加分项/减分项放到独立的第一层节点(kind=bonus / deduction),其下挂具体加减分细则。
+
+数据源 key(末端指标「数据从哪来」,按情况选):
+- dept_fill 责任部门人工填写数值或分数(最常用,主观打分/台账核查都用它)
+- target 设年度目标值 + 录实际 → 自动算完成率(利润、产值等有目标的量化指标)
+- self_report 被考核单位自评 + 上传佐证材料
+- business.task.completionRate 日常派发任务完成率(系统自动,占位)
+- business.task.overdueRate 任务逾期率(系统自动,占位)
+- business.publicity 宣传稿件数(系统自动,占位)
+- business.certificate.honor 荣誉表彰积分(系统自动,占位)
+- survey 群众满意度 / 民主测评(占位)
+
+计分工具 key + 参数(把「分数怎么算」配好;务必和数据源匹配):
+- manual 人工打分,参数 {"max":封顶分(留空=满分)} —— 配 dept_fill / self_report,主观或看台账打分
+- proportional 完成率比例(满分×完成率),参数 {"cap":100} —— 配 target(完成率)
+- overachieve_tiers 超额阶梯加分,参数 {"base":完成100%得分,"tiers":[{"over":20,"bonus":1},{"over":50,"bonus":1}]}(总分封顶=本项分值)—— 配 target
+- threshold_tiers 阶梯赋分,参数 {"tiers":[{"min":95,"score":满分},{"min":90,"score":8}]}(按阈值降序给分)—— 配 dept_fill / survey
+- binary 是否完成,参数 {"onTrue":满分,"onFalse":0} —— 配 dept_fill
+- bonus 加分,参数 {"perUnit":每项加分,"cap":封顶} —— 加分项细则用,配 dept_fill / business.certificate.honor
+- deduction 扣分,参数 {"perUnit":每项扣分,"cap":封顶} —— 减分项细则用,配 dept_fill
+- rank_tiers 排名阶梯 / rank_linear 排名线性 / minmax 极差标准化 —— 横向比较多单位时用,配 dept_fill / business.*
+
+匹配原则:大多数"看材料/台账打分"的指标用 dept_fill + manual(把扣分标准写进 rubric);有明确目标值的用 target + proportional;加分项用 bonus、减分项用 deduction。拿不准时一律退回 dept_fill + manual,不要乱配。`;
+
 /** 全部受管提示词(默认值)。新增提示词 = 加一条 + 业务模块改用 promptService.get。 */
 export const AI_PROMPTS: AiPromptDef[] = [
   {
@@ -156,6 +201,14 @@ export const AI_PROMPTS: AiPromptDef[] = [
     description:
       '上传表彰文件 → 提取多种荣誉/受表彰人/年份/颁发日期的系统提示(文本 + 图片 OCR 共用)。要求严格输出 JSON。',
     default: CERT_EXTRACT_DEFAULT,
+  },
+  {
+    key: 'assessment.generate_indicators',
+    label: 'AI 生成考核指标',
+    app: '考核管理',
+    description:
+      '上传考核办法/责任制文件 → 生成指标树(分值/层级)并为末端指标选好数据源+计分工具+参数的系统提示。要求严格输出 JSON;计分工具/数据源清单在提示里,可按需调。',
+    default: ASSESSMENT_INDICATORS_DEFAULT,
   },
 ];
 

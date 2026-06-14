@@ -106,7 +106,12 @@ export function IndicatorTreeEditor({
           <Redo2 className="w-4 h-4" />
         </button>
       </div>
-      <div className="flex-1 overflow-auto p-2">
+      <div
+        className="flex-1 overflow-auto p-2"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onSelect(null);
+        }}
+      >
         {nodes.length === 0 ? (
           <div className="text-center text-[13px] text-[#9CA3AF] py-10">点「顶层指标」开始搭建考核指标体系</div>
         ) : (

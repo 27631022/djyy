@@ -35,12 +35,67 @@ export interface SchemeSettings {
   vetoZero?: boolean;
   /** 考核主体单位 org id —— 其下属「部门」(isDept)即责任部门候选。决定责任部门按层级精确显示 */
   scopeOrgId?: string;
+  /** 考核关系 key(见后端 assess-relations,如 admin.unit2.unit3)*/
+  relationKey?: string;
+  /** 考核主体 org id(谁来考核,如 塔运司 / 塔运司党委 / 公司党委)*/
+  subjectOrgId?: string;
+  /** 考核主体名称(冻结,免重查 myScope 也能渲染徽标)*/
+  subjectName?: string;
 }
 
-/** 考核对象快照(一次性从组织树读出后冻结,与组织机构解耦) */
+/** 考核对象快照(一次性从组织树读出后冻结,与组织机构解耦)。单位用 orgId、人员(党员/员工)用 userId。 */
 export interface AssessmentTarget {
+  orgId?: string;
+  userId?: string;
+  name: string;
+}
+
+/* ─── 考核关系 / 我的考核区域(后端 assess-relations 镜像)─── */
+
+export type RelationLevel = "company" | "unit2" | "unit3";
+export type ObjectKind = "org" | "user";
+
+export interface ScopeSubject {
   orgId: string;
   name: string;
+  /** 责任部门归属行政机构 id(选定主体后写入 settings.scopeOrgId)*/
+  deptScopeOrgId?: string;
+}
+export interface ScopeRelation {
+  key: string;
+  track: AssessmentTrack;
+  level: RelationLevel;
+  label: string;
+  subjectLabel: string;
+  objectLabel: string;
+  objectKind: ObjectKind;
+  subjects: ScopeSubject[];
+}
+export interface MyScope {
+  relations: ScopeRelation[];
+}
+/** 主体 → 考核对象候选(单位 orgId / 人员 userId)*/
+export interface RelationObject {
+  orgId?: string;
+  userId?: string;
+  name: string;
+  kind: ObjectKind;
+}
+
+/** 考核对象引用键(orgId 或 userId)*/
+export function targetRef(t: { orgId?: string; userId?: string }): string {
+  return t.orgId ?? t.userId ?? "";
+}
+
+/** AI 生成指标(导入考核办法文件)结果 —— 不落库,前端应用到设计器供人工确认 */
+export interface ExtractIndicatorsResult {
+  indicators: IndicatorNode[];
+  source: {
+    fileName: string;
+    leafCount: number;
+    usedProvider: string;
+    usedModel: string;
+  };
 }
 
 export interface AssessmentScheme {
@@ -95,6 +150,17 @@ export interface TrialInput {
 export const TRACK_LABELS: Record<AssessmentTrack, string> = {
   party: "党建考核",
   admin: "行政/业绩考核",
+};
+
+/** 考核关系 key → 全名(后端 assess-relations 镜像,徽标/列表展示用)*/
+export const RELATION_LABELS: Record<string, string> = {
+  "party.company.committee": "公司党委考核基层党委",
+  "party.agency.branch": "机关党委考核党支部",
+  "party.grassroots.branch": "基层党委考核党支部",
+  "party.branch.member": "党支部考核党员",
+  "admin.company.unit2": "公司考核二级单位",
+  "admin.unit2.unit3": "二级单位考核三级单位",
+  "admin.unit3.employee": "三级单位考核员工",
 };
 
 export const TARGET_LEVEL_LABELS: Record<string, string> = {
@@ -177,4 +243,19 @@ export const assessmentApi = {
     api.post<AssessmentScheme>(`/assessment/schemes/${id}/duplicate`, {}).then((r) => r.data),
   trial: (input: TrialInput) =>
     api.post<TrialResult>("/assessment/scoring/trial", input).then((r) => r.data),
+  /** 我的考核区域(按登录账号收敛的考核关系 + 主体)*/
+  myScope: () => api.get<MyScope>("/assessment/my-scope").then((r) => r.data),
+  /** 主体 → 考核对象候选(批量选用)*/
+  relationObjects: (relationKey: string, subjectOrgId: string) =>
+    api
+      .get<RelationObject[]>(`/assessment/relations/${encodeURIComponent(relationKey)}/objects`, {
+        params: { subjectOrgId },
+      })
+      .then((r) => r.data),
+  /** AI 生成指标:上传考核办法 Word/PDF → 指标树草稿(预留接口,需配 AI 模型)*/
+  extractIndicators: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.post<ExtractIndicatorsResult>("/assessment/extract", fd).then((r) => r.data);
+  },
 };

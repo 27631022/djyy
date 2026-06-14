@@ -1,11 +1,34 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { Permission } from '../permission';
 import { AssessmentService } from './assessment.service';
+import { AssessmentExtractionService } from './assessment-extraction.service';
 import { CreateSchemeDto } from './dto/create-scheme.dto';
 import { UpdateSchemeDto } from './dto/update-scheme.dto';
 import { TrialScoreDto } from './dto/trial-score.dto';
+
+interface UploadedFileShape {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
 
 /**
  * 考核体系 API(P1)。
@@ -18,7 +41,10 @@ import { TrialScoreDto } from './dto/trial-score.dto';
 @Controller('assessment')
 @UseGuards(AuthGuard)
 export class AssessmentController {
-  constructor(private readonly svc: AssessmentService) {}
+  constructor(
+    private readonly svc: AssessmentService,
+    private readonly extraction: AssessmentExtractionService,
+  ) {}
 
   @Get('schemes')
   list() {
@@ -64,5 +90,34 @@ export class AssessmentController {
   @Post('scoring/trial')
   trial(@Body() dto: TrialScoreDto) {
     return this.svc.trial(dto);
+  }
+
+  /** GET /assessment/my-scope  我的考核区域(按登录账号收敛的考核关系 + 主体) */
+  @Get('my-scope')
+  myScope(@CurrentUser() me: AuthPayload) {
+    return this.svc.myScope(me.sub);
+  }
+
+  /** GET /assessment/relations/:key/objects?subjectOrgId=  主体 → 考核对象候选(批量选用) */
+  @Get('relations/:key/objects')
+  relationObjects(@Param('key') key: string, @Query('subjectOrgId') subjectOrgId: string) {
+    return this.svc.relationObjects(key, subjectOrgId);
+  }
+
+  /** POST /assessment/extract  上传考核办法文件 → AI 生成指标树草稿(预留接口,不落库) */
+  @Post('extract')
+  @Permission('assessment:manage')
+  @UseInterceptors(FileInterceptor('file'))
+  extract(
+    @UploadedFile() file: UploadedFileShape | undefined,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    if (!file) throw new BadRequestException('未收到文件');
+    return this.extraction.extractIndicators(file, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
   }
 }

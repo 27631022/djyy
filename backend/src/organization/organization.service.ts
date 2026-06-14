@@ -408,6 +408,13 @@ export class OrganizationService {
     return this.prisma.organization.findMany({ where: { id: { in: links.map((l) => l.partyOrgId) } } });
   }
 
+  /** 全量党组织↔行政机构关联(供 assessment 构建「考核区域」索引)。 */
+  async getAllLinks(): Promise<{ partyOrgId: string; adminOrgId: string }[]> {
+    return this.prisma.partyAdminLink.findMany({
+      select: { partyOrgId: true, adminOrgId: true },
+    });
+  }
+
   /** 软删除:置 active=false。如果想硬删,在前端二次确认后调 hardDelete */
   async softDelete(id: string): Promise<Organization> {
     await this.findOne(id);

@@ -100,6 +100,67 @@ Round/Target/IndicatorScore/Goal 留 P2。
 - **API 端到端冒烟 17/17**:计分引擎 7 例(完成率5.1/阶梯4/排名第1=6第3=3/极差5/二值2/扣分1.5)、体系 CRUD、不兼容组合拦截 400、组织关联 增删查 + 重复 409。
 - **浏览器冒烟**:登录→考核体系页→新建→编辑器→加顶层指标→配置叶子(目标值+完成率比例,分值6)→**试算显示 得分 5.1/6**→保存→回读持久化(参数被后端规整为 `{cap:100}`)→0 console error。
 
+## P1.4 修订(2026-06-13)— 考核主体重构为「考核关系」+ 区域收敛 + 考核对象自动带出
+
+用户反馈:原「考核主体(责任部门所在单位)+ 自由组织树多选对象」不贴切,且对象「一个一个点太麻烦」。改为**枚举式考核关系 + 按登录账号收敛 + 对象自动带出 + 批量选**。
+
+### 1. 考核关系注册表(`backend/src/assessment/assess-relations.ts`,纯逻辑)
+
+7 条「谁考核谁」,每条声明 `track / level(company|unit2|unit3) / label / 主体推导 / 对象推导 / 责任部门归属`:
+
+| key | level | 主体 | 考核对象 |
+|---|---|---|---|
+| `party.company.committee` 公司党委考核基层党委 | company | 党委 root | root 的 committee/general 子级(机关党委 + 34 基层党委)|
+| `party.agency.branch` 机关党委考核党支部 | company | 机关党委(name 含「机关」)| 其 branch 党支部 |
+| `party.grassroots.branch` 基层党委考核党支部 | unit2 | root 下非机关 committee/general | 其 branch 党支部 |
+| `party.branch.member` 党支部考核党员 | unit3 | 各 branch | 其直接成员(党员)|
+| `admin.company.unit2` 公司考核二级单位 | company | 行政 root(level1)| level3 非部门非虚拟单位 |
+| `admin.unit2.unit3` 二级单位考核三级单位 | unit2 | level3 非部门单位 | 其非虚拟子级(level4)|
+| `admin.unit3.employee` 三级单位考核员工 | unit3 | level4 非虚拟 | 其直接成员(员工)|
+
+结构判定不写死深度:`isUnit2`/`isUnit3`(type+isDept+isVirtual)、`isCommittee`/`isBranch`;党组织→行政机构用 `PartyAdminLink` 优先、去后缀名(去「党委/党支部/委员会…」)兜底匹配。加新关系 = RELATIONS 加一条。
+
+### 2. 按登录账号收敛(`GET /assessment/my-scope`)
+
+- `RoleService.getScopesForPermission(actorId,'assessment:manage')`:platform_admin / scope=all → **全部 7 关系 + 全部主体**。
+- 否则按 `UserService` 的 admin/party membership,经 `adminSubjectsOf`/`partySubjectsOf` 判所在层级(公司机关身处=company、二级单位子树=unit2、level4/党支部=unit3),只回该层级关系 + 主体限本人单位。即「在公司机关不显示二级/三级关系;身处二级单位不显示公司级 / 三级以下」。
+- 每个主体附 `deptScopeOrgId`(选定后写 `settings.scopeOrgId`,责任部门按层级精确显示沿用 P1.2)。
+
+### 3. 考核对象自动带出 + 批量(`GET /assessment/relations/:key/objects?subjectOrgId=`)
+
+按主体推导候选:单位走结构(返回 orgId),党员/员工走 `OrganizationService.listMembers` 直接成员(返回 userId)。前端 `SubjectObjectsPanel.tsx` = 考核关系下拉(带 level 标签)→ 主体下拉(公司级单主体自动选、不显下拉)→ `ObjectsPicker`(候选清单 + 搜索 + **全选/反选/清空**)。`AssessmentTarget` 扩 `userId?`(单位 orgId、人员 userId),`targetRef` 取键;切主体清空已选;track 由关系推导存库;徽标/卡片改显「关系名 · 主体名」。
+
+### 4. 删改
+
+删旧 `TargetObjectsPicker`(扁平全树多选)+ 新建对话框「考核对象层级」select(即「不贴切」处);`OrgPicker`/`TARGET_LEVEL*` 改由关系驱动。`assessment.module` 注入 Role/User/Organization;`OrganizationService.getAllLinks()` 新增。
+
+### 5. 验证
+
+- 门禁:后端 0 error/0 warning/0 cycle、前端 0 error/0 warning。
+- **API 端到端**:platform_admin my-scope=7 关系;公司党委→35 基层党委(含机关党委);公司→35 二级单位;塔运司→领导班子/综合办公室/特车运输大队;党支部(机关党支部)→李峰/孙彩霞(user);领导班子→李峰(user);机关党委→11 党支部。
+- **浏览器**:7 关系下拉(带层级标签)、二级单位多主体选塔运司→3 三级单位、全选→已选 3、保存回读 track=admin + relationKey + subjectName + 3 对象带 orgId;公司级 `party.company.committee` 自动主体「昆仑物流党委」无需选;党支部考核党员候选=李峰/孙彩霞(user);0 console error。
+- ⚠ 非 platform_admin 收敛路径暂无具 `assessment:manage` 的单位账号可演示(逻辑就位,P2 授权后验证)。测试用旧示例表已改存新模型(党建 / 公司党委考核基层党委 / 35 基层党委)。
+
+## P1.5 修订(2026-06-13)— AI 生成指标(预留接口)+ 考核表设置可随时返回
+
+### 1. AI 导入考核办法 → 生成指标(照 task.extract 范式,已可用)
+
+- **后端**:`POST /assessment/extract`(multipart Word/PDF,`@Permission('assessment:manage')`)→ `AssessmentExtractionService`:mammoth(docx)/pdf-parse(pdf)转文本 → `callLlm`(chat,JSON 模式)→ 归一化成 `IndicatorNode[]`。
+- **提示词**:`prompt/ai-prompts.ts` 的 `assessment.generate_indicators`(后台「提示词管理」可改),内含**数据源 + 计分工具清单 + 参数形态**,要求 LLM 为每个末端指标选 dataSource/scoringType 并配 strategyParams。**模型路由**:`external-api/ai-consumers.ts` 的 `assessment.indicators.extract.text`(capability=chat)。
+- **归一化是安全网**(`normalizeExtractedIndicators`,best-effort 不抛错):code 自动 `n1..`;kind 只第一层取、下级继承;末端指标的 dataSource/scoringType 用注册表 `getDataSourceSpec`/`getScoringSpec` 校验,非法或 outputType↔inputType 不兼容 → 回退 `dept_fill + manual`;参数走 `spec.normalizeParams`。即使 AI 乱填也产出合法可保存的树。
+- **不落库**:返回 `{indicators, source}`,前端「AI 生成指标」按钮上传文件 → `tree.record()+tree.setState(indicators)` 一次可撤销 → 人工核对分值/计分工具后再「保存」。
+- `assessment.module` 注入 `ExternalApiModule + PromptModule`。
+- **真测**:自造考核办法 docx(强党建60/经营业绩40/加分项上限10/减分项上限10)→ deepseek-v4-flash 返 7 末端,层级/kind(normal·bonus·deduction 继承)/分值/数据源/计分工具/参数全部正确(政治铸魂→dept_fill+manual max15、利润→target+proportional、安全生产→deduction perUnit5 cap20、荣誉→bonus perUnit2 cap10、通报批评→deduction perUnit5 cap10);无文件→400「未收到文件」、.txt→400「不支持的文件类型」。
+
+### 2. 考核主体 / 考核对象设置可随时返回
+
+原先选中任一指标后,右栏切到指标配置,**考核主体/对象设置面板就消失**且无返回入口。修:
+- 右配置栏顶部常驻「**考核表设置(主体 / 对象 / 定级)**」按钮(未选指标时高亮=当前;选中指标时点它 `setSelectedCode(null)` 返回)。
+- **点指标树空白处也返回**:`IndicatorTreeEditor` 滚动容器 `onClick` 判 `e.target === e.currentTarget` 时 `onSelect(null)`。
+- 顺手清掉分支说明里的「一票否决」陈旧字样。
+
+验证:门禁双绿;浏览器(AI 按钮 + 考核表设置按钮在位、选叶子→LeafConfigPanel、点按钮 / 点空白处均返回主体设置、0 console error)。⚠ AI 质量取决于所配 chat 模型 + 提示词;文件仅支持可复制文本的 Word/PDF(扫描件/图片 OCR 未做)。
+
 ## P2+ 后续
 
 - **P2 打分闭环 + 业务数据源**:Round/Target/IndicatorScore(含 `evidenceFileIds` 佐证)/Goal 表;发起考核(选体系 + 点选党委,记 1:1 行政单位)→ 按叶子数据源/责任部门 fan-out → `dept_fill` 责任部门录入、`self_report` 单位自评+佐证 → `computeRound` 两遍引擎(crossTarget 先聚合全体值)→ 汇总/定级/排名。业务数据源接入(经 `OrganizationService.getLinkedAdminOrgs` 把党委→行政单位,查 `TaskService.getStatsByOrg` 新增 / `CertificateIssueService.countByOrg` 新增 + recipientUserId→memberships 反查)。

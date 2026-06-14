@@ -89,6 +89,14 @@ export const AI_CONSUMERS: AiConsumer[] = [
     capability: 'vision',
     description: '3D 生成时用视觉模型概括源图里的物品名(2~6 字),作为模型库展示文件名;失败回退日期命名',
   },
+  {
+    key: 'assessment.indicators.extract.text',
+    app: '考核管理',
+    label: 'AI 生成指标 · 导入考核办法',
+    capability: 'chat',
+    description:
+      '解析上传的考核办法 / 责任制文件(Word/PDF),自动生成指标树(分值/层级),并为每个末端指标选好数据源 + 计分工具 + 参数,供人工确认',
+  },
 ];
 
 export function getConsumer(key: string): AiConsumer | undefined {
