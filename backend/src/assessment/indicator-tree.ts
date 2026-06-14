@@ -32,6 +32,10 @@ export interface IndicatorNode {
   ownerOrgId?: string;
   ownerUserId?: string;
   rubric?: string;
+  /** 本指标是否启用难易系数(默认否=各对象系数 1) */
+  difficultyOn?: boolean;
+  /** 各考核对象在本指标的难易系数(targetRef→系数;缺省=1)。P2:本指标得分 × 该对象系数,再排名/汇总 */
+  difficultyCoefs?: Record<string, number>;
 }
 
 export function isLeaf(n: IndicatorNode): boolean {
@@ -109,6 +113,14 @@ export function normalizeIndicatorTree(raw: unknown): IndicatorNode[] {
       if (typeof o.ownerOrgId === 'string' && o.ownerOrgId.trim()) node.ownerOrgId = o.ownerOrgId.trim();
       if (typeof o.ownerUserId === 'string' && o.ownerUserId.trim()) node.ownerUserId = o.ownerUserId.trim();
       if (typeof o.rubric === 'string' && o.rubric.trim()) node.rubric = o.rubric.trim();
+      if (o.difficultyOn === true) node.difficultyOn = true;
+      if (o.difficultyCoefs && typeof o.difficultyCoefs === 'object' && !Array.isArray(o.difficultyCoefs)) {
+        const coefs: Record<string, number> = {};
+        for (const [k, v] of Object.entries(o.difficultyCoefs as Record<string, unknown>)) {
+          if (typeof v === 'number' && Number.isFinite(v)) coefs[k] = v;
+        }
+        if (Object.keys(coefs).length) node.difficultyCoefs = coefs;
+      }
       return node;
     });
   };

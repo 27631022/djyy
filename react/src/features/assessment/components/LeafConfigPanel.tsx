@@ -1,27 +1,38 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Info } from "lucide-react";
+import { Info, Scale } from "lucide-react";
 import { organizationsApi } from "@/features/organization";
-import { assessmentApi, type IndicatorNode } from "../api";
+import { assessmentApi, type AssessmentTarget, type IndicatorNode, type SchemeSettings } from "../api";
 import { DATA_SOURCES, OUTPUT_LABELS, getDataSource } from "../data-sources/registry";
 import { SCORING_STRATEGY_LIST, getStrategy, isInputCompatible } from "../scoring/registry";
 import { PROP_INPUT } from "../scoring/shared";
 import { DATA_SOURCE_HELP, SCORING_HELP, type HelpText } from "../help";
+import { DifficultyCoefDialog } from "./DifficultyCoefDialog";
 import { OrgPicker } from "./OrgPicker";
 
-/** 叶子指标配置:数据源 + 计分工具(各带 ⓘ 说明)+ 参数 + 责任部门/责任人 + 评分标准 + 试算预览。 */
+/** 叶子指标配置:数据源 + 计分工具(各带 ⓘ 说明)+ 参数 + 难易系数 + 责任部门/责任人 + 评分标准 + 试算预览。 */
 export function LeafConfigPanel({
   node,
   onChange,
   scopeOrgId,
+  targets = [],
+  settings = {},
+  onSettings = () => {},
 }: {
   node: IndicatorNode;
   onChange: (patch: Partial<IndicatorNode>) => void;
   /** 考核主体单位:责任部门候选限定到其下属部门(按考核层级精确显示) */
   scopeOrgId?: string;
+  /** 考核对象(难易系数按对象逐个配)*/
+  targets?: AssessmentTarget[];
+  /** 考核表设置(难易系数测算表 + 员工数,弹窗读写)*/
+  settings?: SchemeSettings;
+  onSettings?: (patch: Partial<SchemeSettings>) => void;
 }) {
   const ds = getDataSource(node.dataSource);
   const strat = getStrategy(node.scoringType);
+  const [diffOpen, setDiffOpen] = useState(false);
+  const coefCount = Object.keys(node.difficultyCoefs ?? {}).length;
   const [dsHelp, setDsHelp] = useState(false);
   const [stratHelp, setStratHelp] = useState(false);
 
@@ -121,6 +132,37 @@ export function LeafConfigPanel({
       )}
 
       {strat && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-[13px] font-semibold text-[#172033]">难易系数(默认系数 1)</div>
+            <label className="flex items-center gap-1.5 text-[12px] text-[#475467] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!node.difficultyOn}
+                onChange={(e) => onChange({ difficultyOn: e.target.checked || undefined })}
+                className="accent-[var(--party-primary)]"
+              />
+              本指标启用
+            </label>
+          </div>
+          {node.difficultyOn ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setDiffOpen(true)}
+                className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md text-[13px] border border-[var(--party-primary)] text-[var(--party-primary)] bg-white hover:bg-party-soft"
+              >
+                <Scale className="w-4 h-4" /> 配置各单位难易系数{coefCount ? `(已设 ${coefCount} 个)` : ""}
+              </button>
+              <div className="text-[11px] text-[#9CA3AF] mt-1">导出单位 → 填员工数 → 导入测算 → 微调;得分 × 系数,再排名/汇总。</div>
+            </>
+          ) : (
+            <div className="text-[11px] text-[#9CA3AF]">仅个别指标需要(如宣传积分、荣誉积分);默认各单位系数 1。</div>
+          )}
+        </div>
+      )}
+
+      {strat && (
         <TrialPreview
           scoringType={strat.type}
           params={node.strategyParams ?? {}}
@@ -158,6 +200,19 @@ export function LeafConfigPanel({
           className={`${PROP_INPUT} resize-y`}
         />
       </div>
+
+      <DifficultyCoefDialog
+        open={diffOpen}
+        onClose={() => setDiffOpen(false)}
+        indicatorLabel={node.label}
+        targets={targets}
+        tables={settings.difficultyTables ?? []}
+        onTables={(t) => onSettings({ difficultyTables: t })}
+        headcounts={settings.headcounts ?? {}}
+        onHeadcounts={(h) => onSettings({ headcounts: h })}
+        coefs={node.difficultyCoefs ?? {}}
+        onCoefs={(c) => onChange({ difficultyCoefs: c })}
+      />
     </div>
   );
 }

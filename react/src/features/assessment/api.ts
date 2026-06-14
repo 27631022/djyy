@@ -18,6 +18,25 @@ export interface IndicatorNode {
   ownerOrgId?: string;
   ownerUserId?: string;
   rubric?: string;
+  /** 本指标是否启用难易系数(默认否=各对象系数 1) */
+  difficultyOn?: boolean;
+  /** 各考核对象在本指标的难易系数(targetRef→系数;缺省=1)。手填或按员工数测算表生成。P2:本指标得分 × 该对象系数,再排名/汇总 */
+  difficultyCoefs?: Record<string, number>;
+}
+
+/** 难易系数(积分系数):按对象规模(如员工人数)给不同倍率,拉平大小单位。可做多套(basis 区分)。 */
+export type DifficultyBasis = "headcount";
+export interface DifficultyTier {
+  /** 人数上限(含);null = 该档及以上(最大单位,上不封顶) */
+  maxCount: number | null;
+  /** 积分系数(倍率) */
+  coef: number;
+}
+export interface DifficultyTable {
+  id: string;
+  label: string;
+  basis: DifficultyBasis;
+  tiers: DifficultyTier[];
 }
 
 export interface GradeThreshold {
@@ -66,6 +85,10 @@ export interface SchemeSettings {
   subjectOrgId?: string;
   /** 考核主体名称(冻结,免重查 myScope 也能渲染徽标)*/
   subjectName?: string;
+  /** 难易系数测算表(人数→系数;可多套,各指标的弹窗里选用) */
+  difficultyTables?: DifficultyTable[];
+  /** 各考核对象员工数(targetRef→人数;导出单位→填→导入,供难易系数测算,全表共享) */
+  headcounts?: Record<string, number>;
 }
 
 /** 考核对象快照(一次性从组织树读出后冻结,与组织机构解耦)。单位用 orgId、人员(党员/员工)用 userId。 */

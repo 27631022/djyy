@@ -209,6 +209,32 @@ Round/Target/IndicatorScore/Goal 留 P2。
 
 验证:双端门禁 0 error/0 warning/0 cycle;API(grade_map 试算 良好→20 / 先进→24 / 未知→0、空对照表→400、`dept_grade`+`grade_map` 保存 200、`dept_fill`(number)+`grade_map`→400 不匹配)+ 浏览器(选 `dept_grade` → 计分工具仅剩「评价定分(对照表)」、选中出 4 行对照表 + 摘要「4 个名次→固定分」、试算下拉 先进=24/良好=20、0 console error)。
 
+## P1.8 修订(2026-06-13)— 难易系数(积分系数)
+
+用户单位:大单位宣传人员多,荣誉积分天然占优、排名靠前。按**员工人数**给不同**积分系数**拉平(小单位倍率高)。
+
+| 员工人数档 | 积分系数 |
+|---|---|
+| 2000 以上 | 1 |
+| 1001-2000 | 1.2 |
+| 501-1000 | 1.4 |
+| 301-500 | 1.6 |
+| 101-300 | 1.8 |
+| 100 以下 | 2 |
+
+**核心认知(经三轮校正定型)**:难易系数是「**某指标 × 某单位**」的一个**具体数,管理端和基层都要直观看到**(如宣传积分上「公司机关党委 = 1.8」);上面这张「多少人→多少系数」的档表只是 **测算工具(辅助手段之一)**;员工数由用户 **导出单位 → 填 → 导入**,不自动从组织取。
+
+- **数据模型(全 JSON 裸存,零迁移)**:叶子 `IndicatorNode.difficultyOn`(本指标启用)+ `difficultyCoefs: {targetRef→系数}`(各单位具体系数,缺省=1,**权威可见值**)。`SchemeSettings.headcounts: {targetRef→员工数}`(导入,全表共享)+ `difficultyTables[]`(测算表 `{id,label,basis:'headcount',tiers:[{maxCount,coef}]}`,共享)。后端 `normalizeIndicatorTree` 保留 difficultyOn/difficultyCoefs(唯一后端改动);**去掉**旧 `difficultyId` 引用式设计。
+- **按指标走(像计分工具),默认系数 1**:`LeafConfigPanel` 计分工具下方「难易系数」开关 + 「配置各单位难易系数(已设 N 个)」按钮 → 独立弹窗 `DifficultyCoefDialog`:
+  1. 测算表(`DifficultyEditor`,人数档→系数,可编辑/多套);
+  2. **导出考核单位 CSV → Excel 填员工数 → 导入** → **按员工数测算**(`coefForCount` 写 settings.headcounts + 各单位系数);
+  3. 每个单位一行 `单位 | 员工数 | 系数`,**直接可看可改**(手动微调)。
+- **前端工具**:`difficulty.ts`(`DEFAULT_HEADCOUNT_TABLE` 6 档 + `coefForCount`(count≤上限命中,null 兜底)+ `tierRangeLabel`/`tableSummary`/`newTableId`);CSV 自带 BOM(`String.fromCharCode(0xfeff)`,避 no-irregular-whitespace)+ 自写 `splitCsvLine`/`parseCsv`(无 papaparse 依赖);下载走 `shared/lib/download` 的 `downloadBlob`。
+- **计算口径(P2)**:**本指标「得分」× 该单位系数,再排名/汇总**(不是乘原始度量)。如宣传积分:各单位先算得分 → × 系数 → 再排名。
+- **加新口径** = `BASIS_LABELS` 加一项 + 默认表(如党员人数、营收规模)。
+
+验证:双端门禁 0/0/0;API(临时表保存 200、`difficultyOn=true` / `difficultyCoefs{o1:1.8,o2:1}` / `settings.headcounts` 回读正确)+ 浏览器(选叶子→启用→弹窗列 35 个考核对象、启用测算表、某单位填员工数 180→测算得 1.8、手改 1.5、导出无报错、关闭后按钮「已设 1 个」、0 console error;未存盘,不动用户考核表)。
+
 ## P2+ 后续
 
 - **P2 打分闭环 + 业务数据源**:Round/Target/IndicatorScore(含 `evidenceFileIds` 佐证)/Goal 表;发起考核(选体系 + 点选党委,记 1:1 行政单位)→ 按叶子数据源/责任部门 fan-out → `dept_fill` 责任部门录入、`self_report` 单位自评+佐证 → `computeRound` 两遍引擎(crossTarget 先聚合全体值)→ 汇总/定级/排名。业务数据源接入(经 `OrganizationService.getLinkedAdminOrgs` 把党委→行政单位,查 `TaskService.getStatsByOrg` 新增 / `CertificateIssueService.countByOrg` 新增 + recipientUserId→memberships 反查)。

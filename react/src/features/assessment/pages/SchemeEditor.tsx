@@ -203,7 +203,14 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
               <div className="text-[13px] text-[#9CA3AF] mb-3">
                 叶子指标 · <span className="text-[#172033] font-medium">{selectedLeaf.label}</span>(满分 {selectedLeaf.weight || 0})
               </div>
-              <LeafConfigPanel node={selectedLeaf} onChange={patchLeaf} scopeOrgId={settings.scopeOrgId} />
+              <LeafConfigPanel
+                node={selectedLeaf}
+                onChange={patchLeaf}
+                scopeOrgId={settings.scopeOrgId}
+                targets={targets}
+                settings={settings}
+                onSettings={(patch) => setSettings((s) => ({ ...s, ...patch }))}
+              />
             </>
           ) : selectedNode ? (
             <div className="text-[13px] text-[#475467] space-y-2">

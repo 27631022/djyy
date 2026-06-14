@@ -408,6 +408,11 @@ npm run db:seed
     - **2 个 label 数据源**(`data-sources.ts` + 前端镜像):`dept_grade`(部门评定等次,**ready**——责任部门/考核人直接评一个名次/等次)、`assessment.grade`(他考核定级档次,**P2**——党建定级→业绩兑现)。
     - **加新计分工具仍是「注册表加一条」**:后端 SCORING_SPECS + 前端 scoring/registry 各加一份;label 类工具配 label 数据源即可。
     - 验证:双端门禁 0 error/0 warning/0 cycle;**API**(grade_map 试算 良好→20/先进→24/未知→0、空对照表→400、dept_grade+grade_map 保存 200、dept_fill(number)+grade_map→400 不匹配)+ **浏览器**(选 dept_grade → 计分工具仅剩 grade_map、选中出 4 行对照表 + 摘要「4 个名次→固定分」、试算下拉选 先进=24/良好=20、0 console error)。
+  - **(2026-06-13 续 P1.8)难易系数(积分系数)= 按指标 × 按单位的具体可见值**(经用户三轮校正定型):大单位宣传人多、荣誉积分天然占优,按员工数给倍率拉平。**关键认知**:难易系数是「**某指标 × 某单位**」的一个**具体数、管理端和基层都要直观看到**(宣传积分上公司机关党委=1.8…);「多少人→多少系数」的档表只是**测算工具(辅助手段之一)**;员工数由用户**导出单位→填→导入**(不自动从组织取)。
+    - **数据模型(全 JSON 裸存,零迁移)**:叶子 `IndicatorNode.difficultyOn`(本指标启用)+ `difficultyCoefs:{targetRef→系数}`(各单位具体系数,缺省=1,**权威可见值**);`SchemeSettings.headcounts:{targetRef→员工数}`(导入,全表共享)+ `difficultyTables[]`(测算表,共享)。后端 `indicator-tree.normalizeIndicatorTree` 保留 difficultyOn/difficultyCoefs。**去掉**旧的 `difficultyId` 引用式设计。
+    - **按指标走(像计分工具),默认系数 1**:`LeafConfigPanel` 计分工具下方一个「难易系数」开关 + 「配置各单位难易系数(已设 N 个)」按钮 → **独立弹窗 `DifficultyCoefDialog`**:① 测算表(`DifficultyEditor`,人数档→系数,可编辑/多套)② **导出考核单位 CSV → Excel 填员工数 → 导入** → **按员工数测算**(`coefForCount`,写 settings.headcounts + 各单位系数)③ 每个单位一行 `单位 | 员工数 | 系数` **直接可看可改**(手动微调)。`difficulty.ts`=`DEFAULT_HEADCOUNT_TABLE`(6 档 100以下→2…2000以上→1)+ coefForCount + tableSummary + newTableId;CSV 自带 BOM(`String.fromCharCode(0xfeff)`,避 no-irregular-whitespace)+ 自写 splitCsvLine/parseCsv(无 papaparse 依赖),下载走 `shared/lib/download` downloadBlob。
+    - **计算口径(P2)**:**本指标「得分」× 该单位系数,再排名/汇总**(不是乘原始度量;如宣传积分:各单位得分×系数→排名)。
+    - 验证:双端门禁 0/0/0;API(临时表保存 200、difficultyOn=true / difficultyCoefs{o1:1.8,o2:1} / settings.headcounts 回读正确)+ 浏览器(选叶子→启用→弹窗列 35 个考核对象、启用测算表、某单位填员工数 180→测算得 1.8、手改 1.5、导出无报错、关闭后按钮显示「已设 1 个」、0 console error;未存盘不动用户表)。
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
 2. **访问量/点赞统计**:NavItem.likes/views 接真实计数 + Redis 缓存
 3. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面
