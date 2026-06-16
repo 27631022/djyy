@@ -8,6 +8,7 @@ import type {
   DoorContent,
   Fixture,
   HallDesignerState,
+  HallTheme,
   HallThemePreset,
   HonorWallContent,
   ImageCaseContent,
@@ -85,11 +86,65 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <div className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wide pt-1">{children}</div>;
 }
 
+/** 灯光强度滑块:显示当前值 + 是否已覆盖预设(●) */
+function LightSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  overridden,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  overridden: boolean;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <div className="text-xs">
+      <div className="flex items-center justify-between mb-0.5">
+        <span className="text-[#6B7280]">
+          {label}
+          {overridden && (
+            <span className="ml-1 text-[var(--party-primary)]" title="已覆盖预设默认">
+              ●
+            </span>
+          )}
+        </span>
+        <span className="text-[10px] text-[#9CA3AF] tabular-nums">
+          {step < 1 ? value.toFixed(2) : value.toFixed(0)}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full h-1 accent-[var(--party-primary)] cursor-pointer"
+      />
+    </div>
+  );
+}
+
 const PRESET_LABEL: Record<HallThemePreset, string> = {
   modern_light: "现代展馆·浅色",
   party_red: "党建红馆",
   dark_tech: "深色科技馆",
   future_tech: "未来科技风",
+};
+
+/** 各预设灯光强度默认值(镜像 exhibition-client/src/theme/presets.ts,仅供设计器显示「预设默认」起点) */
+const PRESET_LIGHT_DEFAULTS: Record<HallThemePreset, { hemi: number; env: number; spot: number }> = {
+  modern_light: { hemi: 0.42, env: 0.72, spot: 10 },
+  party_red: { hemi: 0.42, env: 0.7, spot: 14 },
+  dark_tech: { hemi: 0.3, env: 0.55, spot: 16 },
+  future_tech: { hemi: 0.3, env: 0.5, spot: 13 },
 };
 
 export function PropertiesPanel({ state, selection, hallId, accent, onUpdate, onDeleteSelection }: PropertiesPanelProps) {
@@ -98,6 +153,19 @@ export function PropertiesPanel({ state, selection, hallId, accent, onUpdate, on
     const meta = state.meta;
     const theme = meta.theme ?? {};
     const spawn = meta.spawn ?? { x: 0, y: 0, rot: 0 };
+    const lightDef = PRESET_LIGHT_DEFAULTS[theme.preset ?? "modern_light"];
+    const lightOverridden =
+      theme.hemiIntensity != null || theme.envIntensity != null || theme.spotIntensity != null;
+    const setLight = (patch: Partial<HallTheme>) =>
+      onUpdate((s) => ({ ...s, meta: { ...s.meta, theme: { ...s.meta.theme, ...patch } } }));
+    const resetLight = () =>
+      onUpdate((s) => {
+        const t: HallTheme = { ...(s.meta.theme ?? {}) };
+        delete t.hemiIntensity;
+        delete t.envIntensity;
+        delete t.spotIntensity;
+        return { ...s, meta: { ...s.meta, theme: t } };
+      });
     return (
       <div className="space-y-2.5">
         <SectionTitle>展厅设置</SectionTitle>
@@ -151,6 +219,44 @@ export function PropertiesPanel({ state, selection, hallId, accent, onUpdate, on
             onCheckedChange={(b) => onUpdate((s) => ({ ...s, meta: { ...s.meta, theme: { ...s.meta.theme, mirrorFloor: b } } }))}
           />
         </Row>
+
+        <SectionTitle>氛围灯光</SectionTitle>
+        <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+          覆盖主题预设的灯光强度。⚠ 集成显卡(办公机)默认以「流畅档」运行、会关闭展品射灯,
+          此时仅「环境光 / 环境反射」生效 —— 调氛围优先调这两项。
+        </p>
+        <LightSlider
+          label="环境光"
+          value={theme.hemiIntensity ?? lightDef.hemi}
+          min={0}
+          max={1}
+          step={0.02}
+          overridden={theme.hemiIntensity != null}
+          onChange={(n) => setLight({ hemiIntensity: n })}
+        />
+        <LightSlider
+          label="环境反射"
+          value={theme.envIntensity ?? lightDef.env}
+          min={0}
+          max={1}
+          step={0.02}
+          overridden={theme.envIntensity != null}
+          onChange={(n) => setLight({ envIntensity: n })}
+        />
+        <LightSlider
+          label="展品射灯"
+          value={theme.spotIntensity ?? lightDef.spot}
+          min={0}
+          max={30}
+          step={1}
+          overridden={theme.spotIntensity != null}
+          onChange={(n) => setLight({ spotIntensity: n })}
+        />
+        {lightOverridden && (
+          <button type="button" onClick={resetLight} className="text-[10px] text-[var(--party-primary)] hover:underline">
+            复位为预设默认
+          </button>
+        )}
 
         <SectionTitle>进场出生点</SectionTitle>
         <Row label="X(m)">

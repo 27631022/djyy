@@ -33,6 +33,10 @@ export interface HallTheme {
   preset?: HallThemePreset;
   accent?: string; // 点缀色,默认党建红 #C8001E
   mirrorFloor?: boolean;
+  /** 灯光强度覆盖主题预设(缺省=预设值)。hemi/env 在集显 low 档仍生效;spot 在 low 档被禁用 */
+  hemiIntensity?: number; // 环境光 0–1
+  envIntensity?: number; // 环境反射 0–1
+  spotIntensity?: number; // 展品射灯 0–30
 }
 
 export interface HallMeta {

@@ -61,6 +61,11 @@ export interface HallTheme {
   floorMat?: string;
   wallMat?: string;
   lighting?: string;
+  /** 灯光强度覆盖主题预设默认(缺省=用预设值)。
+   *  ⚠ hemi/env 是集显 low 档下唯一仍生效的光;spot(展品射灯)在 low 档被禁用,此项不生效。 */
+  hemiIntensity?: number; // 环境(半球)光,建议 0–1
+  envIntensity?: number; // IBL 环境反射强度,建议 0–1
+  spotIntensity?: number; // 展品射灯强度,建议 0–30
 }
 
 export interface HallMeta {

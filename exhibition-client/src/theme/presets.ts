@@ -116,5 +116,15 @@ export function resolveTheme(theme?: HallTheme): ThemeParams {
       /* 非法色值忽略,用预设 accent */
     }
   }
+  // 灯光强度覆盖:meta.theme 提供则盖预设默认。clamp 防脏数据 —— 只影响着色亮度,
+  // 不触及 maxSimultaneousLights / 灯数,与 UBO 安全正交。
+  const num = (v: unknown, lo: number, hi: number): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : null;
+  const hemi = num(theme?.hemiIntensity, 0, 3);
+  if (hemi !== null) t.hemiIntensity = hemi;
+  const env = num(theme?.envIntensity, 0, 3);
+  if (env !== null) t.envIntensity = env;
+  const spot = num(theme?.spotIntensity, 0, 60);
+  if (spot !== null) t.spotIntensity = spot;
   return t;
 }
