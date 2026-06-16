@@ -75,9 +75,26 @@ export interface LibraryModel {
   thumbUrl?: string;
 }
 
+/** 优化档位:原(只缩贴图保几何,画质最好)/ 中(减面 50%)/ 小(减面 75%);档名即产物文件名后缀 */
+export type OptimizePreset = "orig" | "medium" | "small";
+
+export interface OptimizeResult {
+  newFileId: string;
+  newName: string;
+  beforeVertices: number;
+  afterVertices: number;
+  beforeSize: number;
+  afterSize: number;
+}
+
 export const modelLibraryApi = {
   list: () => api.get<LibraryModel[]>("/exhibition/model-library").then((r) => r.data),
   /** 改名(不必带扩展名)/ 打标签(整组替换) */
   update: (fileId: string, body: { name?: string; tags?: string[] }) =>
     api.patch<{ ok: true }>(`/exhibition/model-library/${fileId}`, body).then((r) => r.data),
+  /** 一键优化:减面 + 缩贴图,另存为「<原名>-opt.glb」(源保留);返回前后顶点/体积 */
+  optimize: (fileId: string, preset: OptimizePreset = "medium") =>
+    api
+      .post<OptimizeResult>(`/exhibition/model-library/${fileId}/optimize`, { preset })
+      .then((r) => r.data),
 };

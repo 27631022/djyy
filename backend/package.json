@@ -20,6 +20,9 @@
     "check:circular": "madge --circular --extensions ts src"
   },
   "dependencies": {
+    "@gltf-transform/core": "^4.4.0",
+    "@gltf-transform/extensions": "^4.4.0",
+    "@gltf-transform/functions": "^4.4.0",
     "@nestjs/common": "^10.4.15",
     "@nestjs/config": "^3.3.0",
     "@nestjs/core": "^10.4.15",
@@ -33,11 +36,13 @@
     "clipper-lib": "^6.4.2",
     "jszip": "^3.10.1",
     "mammoth": "^1.12.0",
+    "meshoptimizer": "^1.1.1",
     "multer": "^2.1.1",
     "opentype.js": "^2.0.0",
     "pdf-parse": "^2.4.5",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -13,12 +13,20 @@ import {
   TagIcon,
   Trash2Icon,
   UploadIcon,
+  Wand2Icon,
   XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import "@google/model-viewer";
 import { storageApi } from "@/features/storage";
-import { modelLibraryApi, type LibraryModel } from "../api";
+import { modelLibraryApi, type LibraryModel, type OptimizePreset } from "../api";
+
+/** 优化档位(前端展示;后端 PRESETS 同名)。源文件不动=「原」,优化产出「<原名>-中/-小.glb」 */
+const OPTIMIZE_PRESETS: { key: OptimizePreset; label: string; hint: string }[] = [
+  { key: "orig", label: "原", hint: "只缩贴图、保几何 —— 画质最好,适合机械/建筑等硬表面模型" },
+  { key: "medium", label: "中", hint: "减面约一半 + 贴图缩到 1K —— 画质与体积平衡(推荐)" },
+  { key: "small", label: "小", hint: "减面约 3/4 + 贴图缩到 1K —— 最省、最流畅(可能影响精细棱角)" },
+];
 
 /** model-viewer 是 web component;createElement 渲染避开 JSX 自定义元素类型声明(照 Model3dStudio) */
 function ModelViewer({ src }: { src: string }) {
@@ -130,6 +138,7 @@ function ModelCard({
   const [nameDraft, setNameDraft] = useState("");
   const [tagDraft, setTagDraft] = useState("");
   const [addingTag, setAddingTag] = useState(false);
+  const [showPresets, setShowPresets] = useState(false);
 
   const updateMut = useMutation({
     mutationFn: (body: { name?: string; tags?: string[] }) => modelLibraryApi.update(m.id, body),
@@ -140,6 +149,21 @@ function ModelCard({
       setTagDraft("");
     },
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "保存失败"),
+  });
+
+  const optimizeMut = useMutation({
+    mutationFn: (preset: OptimizePreset) => modelLibraryApi.optimize(m.id, preset),
+    onSuccess: (r) => {
+      onChanged();
+      setShowPresets(false);
+      const wan = (n: number) => (n >= 1e4 ? (n / 1e4).toFixed(0) + "万" : n + "");
+      const pct = Math.round((1 - r.afterSize / r.beforeSize) * 100);
+      toast.success(
+        `已生成「${r.newName}」:${wan(r.beforeVertices)}→${wan(r.afterVertices)}面 · ${fmtSize(r.beforeSize)}→${fmtSize(r.afterSize)}(省 ${pct}%)`,
+        { duration: 6000 },
+      );
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "优化失败"),
   });
 
   const baseName = m.name.replace(/\.(glb|gltf)$/i, "");
@@ -286,15 +310,50 @@ function ModelCard({
             </button>
           )}
         </div>
-        <div className="mt-auto pt-1.5 flex justify-end">
-          <button
-            type="button"
-            className="flex items-center gap-1 px-2 py-1 text-xs rounded text-[#9CA3AF] hover:text-red-500 hover:bg-red-50"
-            onClick={onDelete}
-          >
-            <Trash2Icon className="w-3.5 h-3.5" />
-            删除
-          </button>
+        <div className="mt-auto pt-1.5">
+          {optimizeMut.isPending ? (
+            <div className="flex items-center justify-center gap-1.5 py-1 text-xs text-[var(--party-primary)]">
+              <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
+              优化中…(约几秒)
+            </div>
+          ) : showPresets ? (
+            <div className="flex items-center gap-1">
+              {OPTIMIZE_PRESETS.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  title={p.hint}
+                  onClick={() => optimizeMut.mutate(p.key)}
+                  className="flex-1 px-1 py-1 text-[11px] rounded border border-[#E5E5E5] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+                >
+                  {p.label}
+                </button>
+              ))}
+              <button type="button" className="p-1 text-[#C9C9C5] hover:text-[#52525B]" onClick={() => setShowPresets(false)} title="取消">
+                <XIcon className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                className="flex items-center gap-1 px-2 py-1 text-xs rounded text-[var(--party-primary)] hover:bg-party-soft"
+                onClick={() => setShowPresets(true)}
+                title="减面 + 缩贴图,生成更流畅的优化版(集显近距离不卡);源文件保留"
+              >
+                <Wand2Icon className="w-3.5 h-3.5" />
+                优化
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-1 px-2 py-1 text-xs rounded text-[#9CA3AF] hover:text-red-500 hover:bg-red-50"
+                onClick={onDelete}
+              >
+                <Trash2Icon className="w-3.5 h-3.5" />
+                删除
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

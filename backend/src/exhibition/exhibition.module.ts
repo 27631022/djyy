@@ -13,6 +13,7 @@ import { ExhibitionFontController } from './exhibition-font.controller';
 import { ExhibitionFontService } from './exhibition-font.service';
 import { ExhibitionModelLibraryController } from './exhibition-model-library.controller';
 import { ExhibitionModelLibraryService } from './exhibition-model-library.service';
+import { ExhibitionModelOptimizeService } from './exhibition-model-optimize.service';
 
 /**
  * 企业虚拟展厅模块。
@@ -35,6 +36,7 @@ import { ExhibitionModelLibraryService } from './exhibition-model-library.servic
     ExhibitionFontService,
     ExhibitionAiService,
     ExhibitionModelLibraryService,
+    ExhibitionModelOptimizeService,
   ],
   exports: [ExhibitionService],
 })
