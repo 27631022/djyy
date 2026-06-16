@@ -16,6 +16,10 @@ import type { BuiltFixture } from './imageCaseBuilder';
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+/** 重模型阈值:导入模型顶点超此数(如高模卡车 300 万)时,加载后撤玻璃罩 + 钳贴图各向异性,
+ *  缓解集显近距离 fill(透明罩 overdraw + 逐像素各向异性是 UHD630 走近卡顿的 GPU 大头)。 */
+const HEAVY_VERTEX_THRESHOLD = 500_000;
+
 /**
  * 模型台:台身(圆形/长方形,台面长宽=fixture.w/d、台面高=content.standH)+ 玻璃罩
  * + .glb/.gltf 模型(无模型时「悬浮晶体」占位)+ 可选台旁介绍牌(content.intro)。
@@ -108,7 +112,9 @@ export function buildModelStand(
   // 底部光圈:有台身绕柱脚,落地展品则圈住展位(都好看,保留)
   mkGlow(`stand-ring:${fx.id}:base`, colW + 0.08, colD + 0.08, 0.02, 0.025);
 
-  // 玻璃罩(罩住展品区;微透反光;可选)
+  // 玻璃罩(罩住展品区;微透反光;可选)。ref 外提:重模型加载后按面数判定撤掉
+  // (透明罩占满屏的 overdraw 是集显近距离 fill 大户;落地大件本就不该套展柜罩)。
+  let domeMesh: Mesh | null = null;
   if (wantDome) {
     const domeH = maxModelH + 0.12;
     const dome =
@@ -119,6 +125,7 @@ export function buildModelStand(
     dome.material = glassMat(scene, `stand-dome-mat:${fx.id}`);
     dome.isPickable = false;
     dome.parent = root;
+    domeMesh = dome;
   }
 
   /* ── 介绍牌(讲台式斜面,正前右侧;intro 非空才建) ── */
@@ -212,8 +219,12 @@ export function buildModelStand(
         // computeWorldMatrix(true) 保证 upAxis 旋转后矩阵是新的。
         const min = new Vector3(Infinity, Infinity, Infinity);
         const max = new Vector3(-Infinity, -Infinity, -Infinity);
+        const modelMeshes: Mesh[] = [];
+        let modelVertices = 0;
         for (const m of container.meshes) {
           if (!(m instanceof Mesh) || !m.isEnabled() || m.getTotalVertices() === 0) continue;
+          modelMeshes.push(m);
+          modelVertices += m.getTotalVertices();
           m.computeWorldMatrix(true);
           const bb = m.getBoundingInfo().boundingBox;
           min.minimizeInPlace(bb.minimumWorld);
@@ -242,7 +253,30 @@ export function buildModelStand(
           -min.y * s,
           -((min.z + max.z) / 2) * s,
         );
-        markPickable(container.meshes.filter((m): m is Mesh => m instanceof Mesh), fx);
+        // ⚠ 拾取代理(治「走近模型卡顿」之 CPU 因素):导入模型动辄百万面,若把子网格设为
+        // 可拾取,hover/点击/手柄的 scene.pick 会对它做精确 ray-triangle 求交(实测 65ms/次,
+        // 比包围盒慢 3000+ 倍)→ 主线程冻结。改为:模型子网格全部不可拾取(仍渲染),用一个
+        // 不可见的包围盒代理 box 承接拾取。⚠ 必须 visibility=0 而非 isVisible=false ——
+        // 后者会被 scene.pick 默认过滤掉(ray.core.js:不传 predicate 时 !isVisible 即 skip),
+        // 代理永远命中不了、模型反而彻底点不中。代理自带 metadata.fixture,三处拾取沿父链第一跳
+        // 即得 fixture,点击选中/详情浮层/手柄 A 键语义不变,求交降到 ~0.02ms。
+        for (const m of modelMeshes) m.isPickable = false;
+        const proxy = MeshBuilder.CreateBox(
+          `stand-model-proxy:${fx.id}`,
+          { width: sx * s, height: sy * s, depth: sz * s },
+          scene,
+        );
+        proxy.position.set(0, (sy * s) / 2, 0); // 模型底面落 holder 局部 y=0 → 中心在半高
+        proxy.parent = holder; // 跟 holder 自转,代理 OBB 恒贴模型
+        proxy.visibility = 0; // 视觉不可见,但 isVisible 仍 true → 仍参与拾取
+        markPickable([proxy], fx);
+
+        // 重模型(顶点超阈值,卡车 300 万必中)近距离 GPU 缓解:撤玻璃罩(透明罩 overdraw)
+        // + 贴图各向异性钳 1(逐像素各向异性近距离斜视很贵)。不改资产、不动小展品。
+        if (modelVertices > HEAVY_VERTEX_THRESHOLD) {
+          domeMesh?.dispose(false, true);
+          for (const t of container.textures) t.anisotropicFilteringLevel = 1;
+        }
         if (c.autorotate !== false) {
           let t = 0;
           scene.registerBeforeRender(() => {
