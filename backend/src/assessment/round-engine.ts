@@ -48,6 +48,61 @@ const round2 = (x: number) => Math.round(x * 100) / 100;
 const toNum = (v: unknown): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'boolean' ? (v ? 1 : 0) : 0;
 
+/** 单个末端指标:对全体对象算 ●得分(含难易系数;crossTarget 系数乘在排名值上再排名)。返回 ref→●得分。 */
+export function scoreOneLeaf(
+  leaf: IndicatorNode,
+  targets: { ref: string }[],
+  rawOf: (ref: string) => unknown,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  const type = leaf.scoringType ?? '';
+  const spec = getScoringSpec(type);
+  const fullScore = Number.isFinite(leaf.weight) ? leaf.weight : 0;
+  const params = leaf.strategyParams ?? {};
+  const coefOf = (ref: string) => (leaf.difficultyOn ? leaf.difficultyCoefs?.[ref] ?? 1 : 1);
+  if (!spec) {
+    for (const t of targets) out[t.ref] = 0;
+    return out;
+  }
+  if (spec.crossTarget) {
+    const eff = targets.map((t) => ({ ref: t.ref, v: toNum(rawOf(t.ref)) * coefOf(t.ref) }));
+    const all = eff.map((e) => e.v);
+    const order = params.order === 'asc' ? 'asc' : 'desc';
+    for (const { ref, v } of eff) {
+      const ahead = all.filter((x) => (order === 'asc' ? x < v : x > v)).length;
+      const ctx: ScoreCtx = { fullScore, params, allValues: all, count: all.length || 1, rank: 1 + ahead };
+      out[ref] = round2(computeScore(type, v, ctx));
+    }
+  } else {
+    for (const t of targets) {
+      const rv = (rawOf(t.ref) ?? null) as RawMetric;
+      let s = computeScore(type, rv, { fullScore, params });
+      if (leaf.difficultyOn) s *= coefOf(t.ref);
+      out[t.ref] = round2(s);
+    }
+  }
+  return out;
+}
+
+export interface PreviewRow {
+  ref: string;
+  name: string;
+  score: number;
+  rank: number;
+}
+/** 单指标实时预览:给各对象实际值 → 按 ●得分 降序的 ●# 单项排名(无状态,录入页右栏用)。 */
+export function previewIndicator(
+  leaf: IndicatorNode,
+  units: { ref: string; name: string; raw: unknown }[],
+): PreviewRow[] {
+  const rawMap = new Map(units.map((u) => [u.ref, u.raw] as const));
+  const scores = scoreOneLeaf(leaf, units, (ref) => rawMap.get(ref));
+  const rows: PreviewRow[] = units.map((u) => ({ ref: u.ref, name: u.name, score: scores[u.ref] ?? 0, rank: 0 }));
+  const sorted = [...rows].sort((a, b) => b.score - a.score);
+  sorted.forEach((r, i) => (r.rank = i + 1));
+  return sorted;
+}
+
 export function computeRoundResults(
   indicators: IndicatorNode[],
   targets: { ref: string; name: string }[],
@@ -59,38 +114,10 @@ export function computeRoundResults(
   const scoreOf: Record<string, Record<string, number>> = {};
   for (const t of targets) scoreOf[t.ref] = {};
 
-  // ── 逐叶子算分 ──
+  // ── 逐叶子算分(复用 scoreOneLeaf)──
   for (const leaf of leaves) {
-    const type = leaf.scoringType ?? '';
-    const spec = getScoringSpec(type);
-    const fullScore = Number.isFinite(leaf.weight) ? leaf.weight : 0;
-    const params = leaf.strategyParams ?? {};
-    const coefOf = (ref: string) => (leaf.difficultyOn ? leaf.difficultyCoefs?.[ref] ?? 1 : 1);
-
-    if (!spec) {
-      for (const t of targets) scoreOf[t.ref][leaf.code] = 0;
-      continue;
-    }
-
-    if (spec.crossTarget) {
-      // 系数乘在参与排名的值上,再排名
-      const eff = targets.map((t) => ({ ref: t.ref, v: toNum(raw[t.ref]?.[leaf.code]) * coefOf(t.ref) }));
-      const all = eff.map((e) => e.v);
-      const order = params.order === 'asc' ? 'asc' : 'desc';
-      for (const { ref, v } of eff) {
-        const ahead = all.filter((x) => (order === 'asc' ? x < v : x > v)).length;
-        const ctx: ScoreCtx = { fullScore, params, allValues: all, count: all.length || 1, rank: 1 + ahead };
-        scoreOf[ref][leaf.code] = round2(computeScore(type, v, ctx));
-      }
-    } else {
-      for (const t of targets) {
-        const rv = (raw[t.ref]?.[leaf.code] ?? null) as RawMetric;
-        const ctx: ScoreCtx = { fullScore, params };
-        let s = computeScore(type, rv, ctx);
-        if (leaf.difficultyOn) s *= coefOf(t.ref);
-        scoreOf[t.ref][leaf.code] = round2(s);
-      }
-    }
+    const ls = scoreOneLeaf(leaf, targets, (ref) => raw[ref]?.[leaf.code]);
+    for (const t of targets) scoreOf[t.ref][leaf.code] = ls[t.ref] ?? 0;
   }
 
   // ── 逐对象加权汇总 ──

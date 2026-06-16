@@ -1,7 +1,7 @@
 import type { ElementType, ReactNode } from "react";
 
 /** 计分工具吃的「原始度量」类型(↔ 数据源 outputType) */
-export type ScoreInput = "rate" | "number" | "bool" | "count" | "label";
+export type ScoreInput = "rate" | "number" | "bool" | "count" | "label" | "deductions";
 
 export interface StrategyPropsEditorProps {
   params: Record<string, unknown>;

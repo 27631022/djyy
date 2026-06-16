@@ -1,5 +1,6 @@
 import {
   ArrowDownWideNarrow,
+  ClipboardX,
   ListOrdered,
   MinusCircle,
   PencilLine,
@@ -22,7 +23,7 @@ import { num, pickNum, pickRows } from "./shared";
 
 const manual: ScoringStrategyDef = {
   type: "manual",
-  label: "人工打分",
+  label: "人工打分(加分制)",
   icon: PencilLine,
   order: 10,
   inputType: "number",
@@ -32,7 +33,18 @@ const manual: ScoringStrategyDef = {
       <NumberField value={pickNum(params, "max")} onChange={(v) => patch({ max: v })} placeholder="满分" />
     </PropRow>
   ),
-  summary: () => "责任部门直接录 0~满分,配合评分标准",
+  summary: () => "0 分起评,给多少分得多少(配合评分标准)",
+};
+
+// 扣分制:满分起评,逐条「存在问题 → 扣分」(录入控件 = 明细弹窗,见 RoundDetail);无参数
+const manual_deduct: ScoringStrategyDef = {
+  type: "manual_deduct",
+  label: "人工打分(扣分制)",
+  icon: ClipboardX,
+  order: 11,
+  inputType: "deductions",
+  crossTarget: false,
+  summary: () => "满分起评,逐条记录问题扣分(得分 = 分值 − 总扣分)",
 };
 
 const proportional: ScoringStrategyDef = {
@@ -263,6 +275,7 @@ const grade_map: ScoringStrategyDef = {
 
 const ALL: ScoringStrategyDef[] = [
   manual,
+  manual_deduct,
   proportional,
   overachieve_tiers,
   threshold_tiers,
@@ -300,6 +313,8 @@ export function isInputCompatible(inputType: string, outputType: string): boolea
       return outputType === "number" || outputType === "rate" || outputType === "count";
     case "label":
       return outputType === "label";
+    case "deductions":
+      return outputType === "number";
     default:
       return false;
   }

@@ -22,6 +22,7 @@ import { AssessmentExtractionService } from './assessment-extraction.service';
 import { CreateSchemeDto } from './dto/create-scheme.dto';
 import { UpdateSchemeDto } from './dto/update-scheme.dto';
 import { TrialScoreDto } from './dto/trial-score.dto';
+import { PreviewIndicatorDto } from './dto/preview-indicator.dto';
 import { CreateRoundDto } from './dto/create-round.dto';
 import { SaveScoresDto } from './dto/save-scores.dto';
 
@@ -92,6 +93,12 @@ export class AssessmentController {
   @Post('scoring/trial')
   trial(@Body() dto: TrialScoreDto) {
     return this.svc.trial(dto);
+  }
+
+  /** POST /assessment/scoring/preview  单指标实时预览:各对象 ●得分 + ●# 单项排名(登录即可) */
+  @Post('scoring/preview')
+  previewIndicator(@Body() dto: PreviewIndicatorDto) {
+    return this.svc.previewIndicator(dto);
   }
 
   /** GET /assessment/my-scope  我的考核区域(按登录账号收敛的考核关系 + 主体) */

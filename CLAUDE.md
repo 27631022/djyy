@@ -418,6 +418,22 @@ npm run db:seed
     - 服务 `createRound/listRounds/getRound/saveScores/computeRound/removeRound` + 6 接口(`POST schemes/:id/rounds` 发起、`GET rounds`、`GET rounds/:id`、`POST rounds/:id/scores` 录入、`POST rounds/:id/compute` 计算、`DELETE rounds/:id`);权限:发起/计算=`assessment:manage`、录入=`assessment:score`。`saveScores` upsert `rawValue=JSON.stringify`(number/bool/label),`computeRound` 回写 `resultsJson`+status=done。
     - **API 端到端实测全对**:3 单位场景(利润 target/proportional、宣传积分 rank_linear+难易系数 A×2、加分块封顶5、减分块封顶10、定级 先进/良好/一般)→ 乙100/先进、甲80.67/良好、丙66.67/一般,难易系数把甲宣传 10×2=20 拉到与丙并列。门禁后端 0/0/0。
     - ⏭ P2 后续:② 前端(发起考核 + 矩阵录入 + 结果页)③ 业务数据源(task 完成率/cert 荣誉,经 `getLinkedAdminOrgs` 党委→行政取数)④ 自评佐证+核定 ⑤ 桌面端填报。
+  - **(2026-06-14 P2.2 前端)打分闭环 UI 打通**(P2 第二刀,浏览器端到端实测):
+    - `features/assessment` 加 `RoundList`/`RoundDetail` 两页 + api 轮次类型/方法(createRound/listRounds/getRound/saveRoundScores/computeRound/deleteRound + parseRound*)。菜单「考核管理→考核打分」(`/admin/assessment/rounds`,`assessment:manage`)+ 路由 `rounds`/`rounds/:id`;`SchemeList` 卡片加「**发起考核**」按钮(createRound→跳轮次详情)。
+    - **`RoundDetail` = 对象 × 指标矩阵录入**(sticky 表头/首列;每格按叶子计分工具 inputType 渲染:number/rate→数字、bool→是/否下拉、label→等次下拉(取 grade_map options))→「保存录入」(saveRoundScores upsert)→「计算得分」(先存后算 computeRound)→ **结果表**(名次/计权/加分/减分/合计/定级,按 resultsJson 渲染)。零 effect 范式:外壳 useQuery + `key={round.id}` 重挂载内层、useState 初始化器读已录值。
+    - 验证:前端门禁 0 error/0 warning;浏览器端到端(考核表→发起考核→跳轮次→矩阵 5 指标×35 对象=175 格→填值→计算→结果 35 行 + 35 个定级徽标 先进/良好/一般、0 console error;测试轮次已删)。
+    - ⏭ 剩 ③ 业务数据源 ④ 自评佐证+核定 ⑤ 桌面端填报。
+  - **(2026-06-14 P2.3 录入页重做为「按指标」+ 统一分数符号)**(用户校正:之前的矩阵是「汇总排名」,核心应是**每项指标单独打分/积分/加权/排名**;手动打分可填**得分原因**;分数叫法统一):
+    - **★ 统一符号约定(全平台只用这套,弃用「积分/汇总得分」)**:**实际值**(数据源录入的实际完成情况,不带"分")→ **● 得分**(末端单项指标的最终分,实际值经计分工具×难易系数算出)→ **Σ 小计**(一个分组范围内各得分之和)→ **★ 总分**(顶层合计=各组计权+加分−减分)。排名同符号 + `#`:**●# 单项排名 / Σ# 分组排名 / ★# 总排名**(#N=第N名)。
+    - **录入页 `RoundDetail` 改三栏(按指标)**:左=指标列表(按分组)/ 中=选中指标逐单位录入「实际值 + 得分原因(选填)」+ 显示数据源/计分工具/评分标准 / 右=**该指标 ●# 单项排名实时刷新**。计分工具不单独占列,显示在指标头 +「怎么算来的」。另留「汇总排名」tab(★ 总分/★# 总排名/定级)。
+    - **无状态预览端点** `POST /assessment/scoring/preview`(单指标×全体对象→●得分+●#,复用引擎 `round-engine.scoreOneLeaf`/`previewIndicator`,**前端不重复实现公式**);右栏实时排名由它驱动。`computeRoundResults` 重构为调 `scoreOneLeaf`(行为不变,3 单位复测一致)。
+    - 验证:双端门禁 0/0/0;API(preview:排名线性+难易系数 甲10×2=20 拉到与丙并列 / 完成率比例 丙100%→#1;compute 重构后 乙100·甲80.67·丙66.67 不变)+ 浏览器(发起→三栏→选指标→录实际值→右栏实时重排 塔运司2#1/新疆1.5#2/公司机关1#3→计算→汇总 35 行+定级、0 console error;测试数据已删)。
+    - ⏭ **步骤 2**:每种数据源/计分工具的录入控件做成 `FillInput` 注册表(照 task/fields,加类型=加一文件)。**步骤 3**:引擎补「每分组各出 Σ 小计 + 各节点排名」+ 按 ownerOrgId/ownerUserId **可见性过滤**(只回我负责的指标)。**步骤 4**:汇总页加分组小计。再 ③ 业务数据源 ④ 自评佐证 ⑤ 桌面端。
+  - **(2026-06-16 P2.4 人工打分双模式:加分制 / 扣分制 + 扣分明细)**(用户:数据源两种——满分定格、有问题往下扣 / 0 分起评、给谁打分谁加(原有);选「两个并列打分方式 + 多条明细累加」):
+    - **两个并列计分工具**,同挂「部门填写」二选一:`manual` 改名**「人工打分(加分制)」**(0 分起评录得分,逻辑不变)+ 新增 `manual_deduct`**「人工打分(扣分制)」**(满分起评,● 得分 = 分值 − 总扣分,扣到 0)。新 `inputType:'deductions'` + `isInputCompatible('deductions','number')=true` → 在「部门填写(number)」下与加分制并列。**加新工具仍是注册表加一条**(后端 `SCORING_SPECS` + 前端 `scoring/registry`)。
+    - **扣分明细(留痕台账)**:rawValue 存 `{items:[{issue,points}]}`,引擎 `sumDeductions` 归约成总扣分(`RawMetric` 扩 `DeductRaw`,compute 容忍 number 或明细对象)。**后端 service/dto 零改**——`saveScores` 本就 `JSON.stringify(rawValue)`、preview/compute 透传 unknown raw,compute 自行归约。
+    - **录入控件 = `RoundDetail` 的 `DeductionDialog` 弹窗**(多行明细一格放不下):对象行显「共扣 N 分 · M 条 / 录入扣分明细」→ 弹窗逐条录「问题+扣分」+ 底部实时「共扣 X → ● 得分」;明细即原因,扣分制隐藏「得分原因」列;右栏 ●# 排名照常(preview 透传明细对象)。**这是 Step 2 `FillInput` 注册表的雏形**(本期先为扣分制落一个录入控件,Step 2 再泛化成 per-数据源契约)。
+    - 验证:双端门禁 0/0/0;**API**(preview manual_deduct 满分15:A 扣 3+2→10 / B 扣 8→7 / C 不扣→15,排名 C#1/A#2/B#3)+ **浏览器**(设计器「部门填写」下加分制·扣分制**并列**=注册表实证;录入弹窗「党员大会缺2次 扣5」→实时95、「安全事故 扣20」→80;右栏 ●# 重排 公司机关党委 95#34 / 塔运司 80#35;0 console error;冒烟副本表已删)。
 1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
 2. **访问量/点赞统计**:NavItem.likes/views 接真实计数 + Redis 缓存
 3. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面

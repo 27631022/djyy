@@ -7,10 +7,11 @@ import { OrganizationService } from '../organization';
 import { CreateSchemeDto } from './dto/create-scheme.dto';
 import { UpdateSchemeDto } from './dto/update-scheme.dto';
 import { TrialScoreDto } from './dto/trial-score.dto';
+import { PreviewIndicatorDto } from './dto/preview-indicator.dto';
 import { flattenLeaves, normalizeIndicatorTree, type IndicatorNode } from './indicator-tree';
 import { getDataSourceSpec } from './data-sources';
 import { getScoringSpec, isInputCompatible, type ScoreCtx } from './scoring-strategies';
-import { computeRoundResults } from './round-engine';
+import { computeRoundResults, previewIndicator } from './round-engine';
 import {
   RELATIONS,
   adminSubjectsOf,
@@ -441,5 +442,34 @@ export class AssessmentService {
       inputType: spec.inputType,
       crossTarget: spec.crossTarget,
     };
+  }
+
+  /**
+   * 单指标实时预览(录入页右栏):给一个计分工具 + 参数 + 难易系数 + 各对象实际值
+   * → 返回按 ●得分 降序的 ●# 单项排名。无状态(不落库),复用引擎,前端不重复实现公式。
+   */
+  previewIndicator(dto: PreviewIndicatorDto) {
+    const spec = getScoringSpec(dto.scoringType);
+    if (!spec) throw new BadRequestException(`未知计分工具 "${dto.scoringType}"`);
+    const leaf: IndicatorNode = {
+      code: '_preview',
+      label: '',
+      kind: 'normal',
+      weight: typeof dto.fullScore === 'number' && dto.fullScore >= 0 ? dto.fullScore : 0,
+      scoringType: dto.scoringType,
+      strategyParams: spec.normalizeParams(dto.params ?? {}),
+      difficultyOn: dto.difficultyOn === true,
+      difficultyCoefs:
+        dto.difficultyCoefs && typeof dto.difficultyCoefs === 'object' ? dto.difficultyCoefs : undefined,
+    };
+    const units = (Array.isArray(dto.units) ? dto.units : [])
+      .map((u) => (u && typeof u === 'object' ? (u as Record<string, unknown>) : null))
+      .filter((u): u is Record<string, unknown> => !!u && typeof u.ref === 'string')
+      .map((u) => ({
+        ref: u.ref as string,
+        name: typeof u.name === 'string' ? u.name : (u.ref as string),
+        raw: u.raw,
+      }));
+    return { results: previewIndicator(leaf, units) };
   }
 }

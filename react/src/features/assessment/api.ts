@@ -278,6 +278,105 @@ export function assessmentErrorMessage(e: unknown, fallback: string): string {
   return e instanceof Error ? e.message : fallback;
 }
 
+/* ─── P2 打分闭环:考核轮次 ─── */
+
+export interface AssessmentRound {
+  id: string;
+  schemeId: string;
+  name: string;
+  year: number;
+  track: AssessmentTrack;
+  indicatorsJson: string;
+  targetsJson: string;
+  settingsJson: string;
+  gradeRulesJson: string;
+  resultsJson: string;
+  status: string; // open(填报中) | done(已计算)
+  createdById: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface IndicatorScoreRow {
+  id: string;
+  roundId: string;
+  targetRef: string;
+  leafCode: string;
+  rawValue: string | null;
+  note: string | null;
+  evidenceFileIds: string | null;
+}
+export interface RoundTargetResult {
+  ref: string;
+  name: string;
+  leafScores: Record<string, number>;
+  normalScore: number;
+  bonus: number;
+  deduct: number;
+  total: number;
+  rank: number;
+  grade: string;
+}
+export interface RoundResults {
+  computedAt?: string;
+  targets?: RoundTargetResult[];
+}
+/** 扣分明细(人工扣分制):逐条「存在问题 → 扣分」,引擎归约成总扣分 */
+export interface DeductItem {
+  issue?: string;
+  points?: number;
+}
+export interface DeductRaw {
+  items: DeductItem[];
+}
+export type ScoreRaw = number | boolean | string | null | DeductRaw;
+export interface ScoreEntry {
+  targetRef: string;
+  leafCode: string;
+  rawValue?: ScoreRaw;
+  note?: string;
+}
+
+/** 单指标实时预览(录入页右栏 ●# 单项排名) */
+export interface PreviewRow {
+  ref: string;
+  name: string;
+  score: number;
+  rank: number;
+}
+export interface PreviewIndicatorInput {
+  scoringType: string;
+  params?: Record<string, unknown>;
+  fullScore?: number;
+  difficultyOn?: boolean;
+  difficultyCoefs?: Record<string, number>;
+  units: { ref: string; name: string; raw: ScoreRaw }[];
+}
+
+export function parseRoundIndicators(r: AssessmentRound): IndicatorNode[] {
+  try {
+    const v: unknown = JSON.parse(r.indicatorsJson);
+    return Array.isArray(v) ? (v as IndicatorNode[]) : [];
+  } catch {
+    return [];
+  }
+}
+export function parseRoundTargets(r: AssessmentRound): AssessmentTarget[] {
+  try {
+    const v: unknown = JSON.parse(r.targetsJson);
+    return Array.isArray(v) ? (v as AssessmentTarget[]) : [];
+  } catch {
+    return [];
+  }
+}
+export function parseRoundResults(r: AssessmentRound): RoundResults {
+  try {
+    const v: unknown = JSON.parse(r.resultsJson);
+    return v && typeof v === "object" ? (v as RoundResults) : {};
+  } catch {
+    return {};
+  }
+}
+
 export const assessmentApi = {
   listSchemes: () => api.get<AssessmentScheme[]>("/assessment/schemes").then((r) => r.data),
   getScheme: (id: string) => api.get<AssessmentScheme>(`/assessment/schemes/${id}`).then((r) => r.data),
@@ -306,4 +405,21 @@ export const assessmentApi = {
     fd.append("file", file);
     return api.post<ExtractIndicatorsResult>("/assessment/extract", fd).then((r) => r.data);
   },
+  /** ── P2 考核轮次:发起 / 列表 / 详情 / 录入 / 计算 / 删除 ── */
+  createRound: (schemeId: string, input: { name?: string; year?: number }) =>
+    api.post<AssessmentRound>(`/assessment/schemes/${schemeId}/rounds`, input).then((r) => r.data),
+  listRounds: (schemeId?: string) =>
+    api
+      .get<AssessmentRound[]>("/assessment/rounds", { params: schemeId ? { schemeId } : undefined })
+      .then((r) => r.data),
+  getRound: (id: string) =>
+    api.get<{ round: AssessmentRound; scores: IndicatorScoreRow[] }>(`/assessment/rounds/${id}`).then((r) => r.data),
+  saveRoundScores: (id: string, scores: ScoreEntry[]) =>
+    api.post<{ ok: boolean; count: number }>(`/assessment/rounds/${id}/scores`, { scores }).then((r) => r.data),
+  computeRound: (id: string) =>
+    api.post<RoundResults>(`/assessment/rounds/${id}/compute`, {}).then((r) => r.data),
+  deleteRound: (id: string) => api.delete<{ ok: boolean }>(`/assessment/rounds/${id}`).then((r) => r.data),
+  /** 单指标实时预览:各对象 ●得分 + ●# 单项排名(无状态,录入页右栏用)*/
+  previewIndicator: (input: PreviewIndicatorInput) =>
+    api.post<{ results: PreviewRow[] }>("/assessment/scoring/preview", input).then((r) => r.data),
 };

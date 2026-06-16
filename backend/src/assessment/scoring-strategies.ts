@@ -7,7 +7,7 @@ import { BadRequestException } from '@nestjs/common';
  *
  * 加新计分工具 = 这里加一条 SCORING_SPECS + 前端 scoring/<type>.tsx 加一份镜像实现。
  */
-export type ScoreInput = 'rate' | 'number' | 'bool' | 'count' | 'label';
+export type ScoreInput = 'rate' | 'number' | 'bool' | 'count' | 'label' | 'deductions';
 
 export interface ScoreCtx {
   /** 该叶子满分(= 指标分值) */
@@ -22,7 +22,15 @@ export interface ScoreCtx {
   count?: number;
 }
 
-export type RawMetric = number | boolean | string | null;
+/** 扣分明细(人工扣分制):逐条「存在问题 → 扣分」,引擎归约成总扣分 */
+export interface DeductItem {
+  issue?: string;
+  points?: number;
+}
+export interface DeductRaw {
+  items: DeductItem[];
+}
+export type RawMetric = number | boolean | string | null | DeductRaw;
 
 export interface ScoringSpec {
   type: string;
@@ -47,11 +55,22 @@ function pickNum(o: unknown, k: string, d = 0): number {
   return d;
 }
 
-/** 原始度量取数值(bool→1/0;字符串/null/NaN→null) */
+/** 原始度量取数值(bool→1/0;字符串/对象/null/NaN→null) */
 function asNumber(raw: RawMetric): number | null {
   if (typeof raw === 'boolean') return raw ? 1 : 0;
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
   return null;
+}
+
+/** 扣分制:总扣分 = 各明细 points 之和(也容忍直接给一个总扣分 number) */
+function sumDeductions(raw: RawMetric): number {
+  if (typeof raw === 'number') return Math.max(0, raw);
+  if (raw && typeof raw === 'object' && Array.isArray(raw.items)) {
+    let d = 0;
+    for (const it of raw.items) d += Math.max(0, pickNum(it, 'points', 0));
+    return d;
+  }
+  return 0;
 }
 
 interface ScoreTier {
@@ -73,10 +92,10 @@ interface GradeOption {
 }
 
 const SCORING_SPECS: Record<string, ScoringSpec> = {
-  // 人工打分:责任部门直接录入 0..满分(同屏显示评分标准 rubric)
+  // 人工打分(加分制):0 分起评,责任部门直接录得分 0..满分(同屏显示评分标准 rubric)
   manual: {
     type: 'manual',
-    label: '人工打分',
+    label: '人工打分(加分制)',
     inputType: 'number',
     crossTarget: false,
     normalizeParams(raw) {
@@ -90,6 +109,21 @@ const SCORING_SPECS: Record<string, ScoringSpec> = {
       if (v === null) return 0;
       const max = num(ctx.params.max, ctx.fullScore);
       return clamp(v, 0, max);
+    },
+  },
+
+  // 人工打分(扣分制):分值满分起评,逐条记录「存在问题 → 扣分」,得分 = 分值 − 总扣分(扣到 0 为止)
+  manual_deduct: {
+    type: 'manual_deduct',
+    label: '人工打分(扣分制)',
+    inputType: 'deductions',
+    crossTarget: false,
+    normalizeParams() {
+      return {};
+    },
+    compute(raw, ctx) {
+      const d = sumDeductions(raw);
+      return clamp(ctx.fullScore - d, 0, ctx.fullScore);
     },
   },
 
@@ -356,6 +390,9 @@ export function isInputCompatible(inputType: ScoreInput, outputType: string): bo
       return outputType === 'number' || outputType === 'rate' || outputType === 'count';
     case 'label':
       return outputType === 'label';
+    case 'deductions':
+      // 扣分制由责任部门录入,沿用「部门填写(number)」源 → 与加分制在同一数据源下并列可选
+      return outputType === 'number';
     default:
       return false;
   }

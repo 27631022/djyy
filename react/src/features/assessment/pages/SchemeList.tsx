@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ClipboardCheck, Copy, Plus, Trash2 } from "lucide-react";
+import { ClipboardCheck, Copy, Play, Plus, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import {
   assessmentApi,
@@ -59,6 +59,16 @@ export default function SchemeList() {
     onError: (e) => toast.error(assessmentErrorMessage(e, "复制失败")),
   });
 
+  const start = useMutation({
+    mutationFn: (id: string) => assessmentApi.createRound(id, {}),
+    onSuccess: (round) => {
+      toast.success("已发起考核,去录入打分");
+      qc.invalidateQueries({ queryKey: ["assessment", "rounds"] });
+      navigate(`/admin/assessment/rounds/${round.id}`);
+    },
+    onError: (e) => toast.error(assessmentErrorMessage(e, "发起失败")),
+  });
+
   return (
     <div className="p-4 md:p-6 max-w-[1100px] mx-auto">
       <div className="flex items-center justify-between mb-5">
@@ -95,6 +105,7 @@ export default function SchemeList() {
               onOpen={() => navigate(`/admin/assessment/schemes/${s.id}`)}
               onDuplicate={() => dup.mutate(s.id)}
               onDelete={() => del.mutate(s.id)}
+              onStartRound={() => start.mutate(s.id)}
             />
           ))}
         </div>
@@ -118,11 +129,13 @@ function SchemeCard({
   onOpen,
   onDuplicate,
   onDelete,
+  onStartRound,
 }: {
   scheme: AssessmentScheme;
   onOpen: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onStartRound: () => void;
 }) {
   const leaves = countLeaves(parseIndicators(scheme));
   const st = parseSettings(scheme);
@@ -178,6 +191,19 @@ function SchemeCard({
         <span className="px-2 py-0.5 rounded-full text-[11px] bg-party-soft text-[var(--party-primary)]">{leaves} 个指标</span>
         <span className="px-2 py-0.5 rounded-full text-[11px] bg-[#f1f5f9] text-[#475467]">{targetCount} 个对象</span>
         <span className="px-2 py-0.5 rounded-full text-[11px] bg-[#f1f5f9] text-[#475467]">{STATUS_LABEL[scheme.status] ?? scheme.status}</span>
+      </div>
+      <div className="mt-3 pt-3 border-t border-[#f1f5f9] flex justify-end">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onStartRound();
+          }}
+          className="flex items-center gap-1 text-[12px] font-medium text-[var(--party-primary)] hover:underline"
+          title="按本表发起一次考核,生成轮次去录入打分"
+        >
+          <Play className="w-3.5 h-3.5" /> 发起考核
+        </button>
       </div>
     </div>
   );
