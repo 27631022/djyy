@@ -31,8 +31,8 @@ export function buildImageCase(
 
   // 板式尺寸:竖屏板更高(0.55~2.75),横屏沿用旧比例(0.75~2.65)
   const portrait = c.orientation === 'portrait';
-  const boardH = portrait ? 2.2 : 1.9;
-  const boardCY = c.elevM ?? (portrait ? 1.65 : 1.7); // 展板中心离地高度(可调)
+  const boardH = c.frameH ?? (portrait ? 2.2 : 1.9); // 画框(展板)高度,可调
+  const boardCY = (c.baseElevM ?? (portrait ? 0.55 : 0.75)) + boardH / 2; // 下边缘离地高度 + 半高 = 板中心
   const showBase = c.showBase !== false; // 默认有底座;false = 贴墙/悬空式
   const matteH = boardH - 0.14;
   const matteTop = boardCY + matteH / 2;

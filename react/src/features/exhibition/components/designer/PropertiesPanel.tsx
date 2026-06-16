@@ -393,17 +393,17 @@ function FixtureProps({
             />
           </Row>
         ) : fixture.type === "image_case" ? (
-          /* 图片展柜:深度无意义,这格改「展板高度」(展板中心离地;横屏 1.7 / 竖屏 1.65) */
-          <Row label="高(m)">
+          /* 图片展柜:深度无意义,这格改「下边缘离地高度」(横屏 0.75 / 竖屏 0.55);画框高度在内容编辑器 */
+          <Row label="离地(m)">
             <Num
               value={
-                (source.content as ImageCaseContent | undefined)?.elevM ??
-                ((source.content as ImageCaseContent | undefined)?.orientation === "portrait" ? 1.65 : 1.7)
+                (source.content as ImageCaseContent | undefined)?.baseElevM ??
+                ((source.content as ImageCaseContent | undefined)?.orientation === "portrait" ? 0.55 : 0.75)
               }
               step={0.05}
-              min={0.4}
+              min={0}
               max={3}
-              onChange={(n) => patchContent({ ...((source.content as ImageCaseContent) ?? { images: [] }), elevM: n })}
+              onChange={(n) => patchContent({ ...((source.content as ImageCaseContent) ?? { images: [] }), baseElevM: n })}
             />
           </Row>
         ) : (

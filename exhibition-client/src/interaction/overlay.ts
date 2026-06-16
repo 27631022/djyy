@@ -19,6 +19,8 @@ export class Overlay {
   private root: HTMLDivElement;
   private card: HTMLDivElement;
   private accent: string;
+  /** 图片展柜轮播:← → 翻页(打开时设置,关闭清空) */
+  private arrowNav: ((dir: number) => void) | null = null;
   onOpenChange?: (open: boolean) => void;
 
   constructor(accent: string) {
@@ -38,7 +40,10 @@ export class Overlay {
       if (e.target === this.root) this.hide();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.isOpen()) this.hide();
+      if (!this.isOpen()) return;
+      if (e.key === 'Escape') this.hide();
+      else if (e.key === 'ArrowLeft') this.arrowNav?.(-1);
+      else if (e.key === 'ArrowRight') this.arrowNav?.(1);
     });
   }
 
@@ -49,11 +54,58 @@ export class Overlay {
   hide(): void {
     this.root.style.display = 'none';
     this.card.innerHTML = '';
+    this.arrowNav = null;
     this.onOpenChange?.(false);
+  }
+
+  /** 视频全屏播放:固定覆盖层(可靠)+ 尝试原生全屏;× 或 Esc 关闭 */
+  private playVideoFullscreen(url: string, poster?: string): void {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = `position:fixed;inset:0;z-index:60;background:#000;
+      display:flex;align-items:center;justify-content:center;`;
+    const v = document.createElement('video');
+    v.src = url;
+    v.controls = true;
+    v.autoplay = true;
+    v.playsInline = true;
+    if (poster) v.poster = poster;
+    v.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
+    const x = document.createElement('button');
+    x.textContent = '×';
+    x.style.cssText = `position:absolute;top:16px;right:18px;border:none;background:rgba(255,255,255,.85);
+      width:40px;height:40px;border-radius:50%;font-size:22px;line-height:1;cursor:pointer;color:#222;`;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    const close = () => {
+      v.pause();
+      wrap.remove();
+      document.removeEventListener('keydown', onKey);
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined);
+      this.onOpenChange?.(false);
+    };
+    x.onclick = close;
+    document.addEventListener('keydown', onKey);
+    wrap.append(v, x);
+    document.body.appendChild(wrap);
+    this.onOpenChange?.(true);
+    void v.play?.().catch(() => undefined);
+    // 能原生全屏更好(沉浸),不能就用上面的固定覆盖层
+    void wrap.requestFullscreen?.().catch(() => undefined);
   }
 
   show(fx: Fixture): void {
     document.exitPointerLock?.();
+    // 视频展墙:点击直接全屏播放(不走详情卡)
+    if (fx.type === 'video_wall') {
+      const vc = (fx.source.content ?? {}) as VideoWallContent;
+      if (vc.videoUrl) {
+        this.playVideoFullscreen(vc.videoUrl, vc.poster);
+        return;
+      }
+    }
+    this.arrowNav = null;
+    this.card.style.maxWidth = 'min(880px,92vw)';
     this.card.innerHTML = '';
     this.card.appendChild(this.header(fx.label ?? this.typeName(fx.type)));
     const body = document.createElement('div');
@@ -100,22 +152,50 @@ export class Overlay {
     switch (fx.type) {
       case 'image_case': {
         const ic = (c ?? { images: [] }) as ImageCaseContent;
-        const all = [...(ic.images ?? []), ...(ic.backImages ?? [])]; // 正反面素材都列出
+        const all = [...(ic.images ?? []), ...(ic.backImages ?? [])].filter((x) => x.url); // 正反面素材
         if (!all.length) {
           body.innerHTML = `<p style="color:#999;">该展柜尚未上传图片素材。</p>`;
           break;
         }
-        const grid = document.createElement('div');
-        grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;';
-        for (const img of all) {
-          if (!img.url) continue;
-          const cell = document.createElement('figure');
-          cell.style.cssText = 'margin:0;';
-          cell.innerHTML = `<img src="${img.url}" style="width:100%;border-radius:8px;display:block;" />` +
-            (img.caption ? `<figcaption style="font-size:13px;color:#888;margin-top:6px;">${img.caption}</figcaption>` : '');
-          grid.appendChild(cell);
+        this.card.style.maxWidth = 'min(1200px,96vw)'; // 大屏轮播
+        let idx = 0;
+        const stage = document.createElement('div');
+        stage.style.cssText = `position:relative;display:flex;align-items:center;justify-content:center;
+          background:#0c0c10;border-radius:10px;min-height:46vh;overflow:hidden;`;
+        const img = document.createElement('img');
+        img.style.cssText = 'max-width:100%;max-height:72vh;object-fit:contain;display:block;';
+        stage.appendChild(img);
+        const cap = document.createElement('div');
+        cap.style.cssText = 'text-align:center;color:#666;font-size:14px;margin-top:10px;min-height:20px;';
+        const counter = document.createElement('div');
+        counter.style.cssText = 'text-align:center;color:#aaa;font-size:12px;margin-top:4px;';
+        const render = () => {
+          img.src = all[idx].url ?? '';
+          cap.textContent = all[idx].caption ?? '';
+          counter.textContent = all.length > 1 ? `${idx + 1} / ${all.length}` : '';
+        };
+        const go = (dir: number) => {
+          idx = (idx + dir + all.length) % all.length;
+          render();
+        };
+        const mkArrow = (dir: number, sym: string) => {
+          const b = document.createElement('button');
+          b.textContent = sym;
+          b.style.cssText = `position:absolute;${dir < 0 ? 'left' : 'right'}:10px;top:50%;transform:translateY(-50%);
+            border:none;width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.85);
+            font-size:26px;line-height:1;cursor:pointer;color:#222;box-shadow:0 2px 10px rgba(0,0,0,.35);`;
+          b.onclick = (e) => {
+            e.stopPropagation();
+            go(dir);
+          };
+          return b;
+        };
+        if (all.length > 1) {
+          stage.append(mkArrow(-1, '‹'), mkArrow(1, '›'));
+          this.arrowNav = go; // ← → 键翻页
         }
-        body.appendChild(grid);
+        render();
+        body.append(stage, cap, counter);
         break;
       }
       case 'video_wall': {

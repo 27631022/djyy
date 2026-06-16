@@ -36,8 +36,8 @@ async function uploadAsset(file: File, hallId: string) {
   return storageApi.upload(file, { ownerModule: "exhibition", folder: hallId });
 }
 
-/** 从视频抓一帧做封面(素材口同源,canvas 不被污染);取约 10% 处一帧,返回 JPEG Blob */
-async function captureVideoFrame(url: string): Promise<Blob> {
+/** 从视频抓一帧做封面(素材口同源,canvas 不被污染);atSec 指定秒数,缺省取约 10% 处。返回 JPEG Blob */
+async function captureVideoFrame(url: string, atSec?: number): Promise<Blob> {
   const v = document.createElement("video");
   v.src = url;
   v.muted = true;
@@ -49,7 +49,11 @@ async function captureVideoFrame(url: string): Promise<Blob> {
   });
   await new Promise<void>((res) => {
     v.onseeked = () => res();
-    v.currentTime = Math.min(1, (Number.isFinite(v.duration) ? v.duration : 2) * 0.1);
+    const dur = Number.isFinite(v.duration) ? v.duration : 2;
+    v.currentTime =
+      atSec != null && Number.isFinite(atSec)
+        ? Math.max(0, Math.min(atSec, Math.max(0, dur - 0.05))) // 钳到视频时长内
+        : Math.min(1, dur * 0.1);
   });
   const cv = document.createElement("canvas");
   cv.width = v.videoWidth || 1280;
@@ -250,8 +254,19 @@ export function ImageCaseEditor({
       <Row label="显示底座">
         <Switch checked={value.showBase !== false} onCheckedChange={(b) => onChange({ ...value, showBase: b })} />
       </Row>
+      <Row label="画框高(m)">
+        <input
+          type="number" step={0.05} min={0.6} max={3.5}
+          value={value.frameH ?? (value.orientation === "portrait" ? 2.2 : 1.9)}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            onChange({ ...value, frameH: Math.min(3.5, Math.max(0.6, Number.isFinite(n) ? n : 1.9)) });
+          }}
+          className={inputCls}
+        />
+      </Row>
       {value.showBase === false && (
-        <p className="text-[10px] text-[#9CA3AF] -mt-1">不出底座:展板按上方「高(m)」悬空/贴墙摆放。</p>
+        <p className="text-[10px] text-[#9CA3AF] -mt-1">不出底座:展板按几何行「离地(m)」高度悬空/贴墙摆放。</p>
       )}
       <div className="flex gap-1">
         {(["front", "back"] as const).map((s) => (
@@ -289,11 +304,12 @@ export function VideoWallEditor({
   onChange: (v: VideoWallContent) => void;
 }) {
   const [capturing, setCapturing] = useState(false);
+  const [captureSec, setCaptureSec] = useState(0);
   const capturePoster = async () => {
     if (!value.videoFileId) return;
     setCapturing(true);
     try {
-      const blob = await captureVideoFrame(exhibitionAssetUrl(value.videoFileId));
+      const blob = await captureVideoFrame(exhibitionAssetUrl(value.videoFileId), captureSec);
       const meta = await uploadAsset(new File([blob], "poster.jpg", { type: "image/jpeg" }), hallId);
       onChange({ ...value, posterFileId: meta.id });
     } catch (e) {
@@ -327,23 +343,32 @@ export function VideoWallEditor({
         ) : (
           <div className="flex items-center gap-1.5 flex-wrap">
             {value.videoFileId && (
-              <button
-                type="button"
-                disabled={capturing}
-                onClick={() => void capturePoster()}
-                title="抓取视频中的一帧画面做封面"
-                className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-[#D4D4D4] text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] disabled:opacity-50"
-              >
-                {capturing ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <FilmIcon className="w-3.5 h-3.5" />}
-                {capturing ? "截取中…" : "从视频截取"}
-              </button>
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-[#6B7280]">第</span>
+                <input
+                  type="number" min={0} step={1} value={captureSec}
+                  onChange={(e) => setCaptureSec(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                  className="w-12 px-1.5 py-1 text-xs rounded border border-[#E5E5E5] focus:border-[var(--party-primary)] focus:outline-none"
+                />
+                <span className="text-[11px] text-[#6B7280]">秒</span>
+                <button
+                  type="button"
+                  disabled={capturing}
+                  onClick={() => void capturePoster()}
+                  title="抓取视频该时刻的一帧画面做封面"
+                  className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-[#D4D4D4] text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] disabled:opacity-50"
+                >
+                  {capturing ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <FilmIcon className="w-3.5 h-3.5" />}
+                  {capturing ? "截取中…" : "截取"}
+                </button>
+              </div>
             )}
             <UploadButton hallId={hallId} accept="image/*" label="上传图片" icon={<ImagePlusIcon className="w-3.5 h-3.5" />} onDone={(id) => onChange({ ...value, posterFileId: id })} />
           </div>
         )}
       </Row>
       <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
-        封面 = 视频播放前/墙面显示的图。可「从视频截取」一帧,也可上传专门的图片。
+        封面 = 视频播放前/墙面显示的图;可选第几秒「从视频截取」一帧,也可上传专门图片。3D 里点击视频会直接全屏播放。
       </p>
     </div>
   );
