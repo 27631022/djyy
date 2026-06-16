@@ -9,7 +9,7 @@ import {
 } from '@babylonjs/core';
 import type { Fixture, ModelStandContent } from '../types';
 import type { ThemeParams } from '../theme/presets';
-import { emissiveMat, glassMat, pbr } from '../scene/materialFactory';
+import { clampMaterialLights, emissiveMat, glassMat, pbr } from '../scene/materialFactory';
 import { fixtureRoot, markPickable } from './fixtureUtils';
 import { canvasTexture, wrapCjk } from './placeholder';
 import type { BuiltFixture } from './imageCaseBuilder';
@@ -161,6 +161,19 @@ export function buildModelStand(
     SceneLoader.LoadAssetContainerAsync(`${c.modelUrl}/rel/`, '__self__', scene, undefined, ext)
       .then((container) => {
         container.addAllToScene();
+        // ⚠ glb 常内嵌一整套影棚打光 / 相机(工业、设备类模型尤甚):addAllToScene
+        // 会把它们一并导入场景,灯数暴涨触发 GL_MAX_VERTEX_UNIFORM_BUFFERS(弱驱动仅
+        // 12)→ 顶点着色器编译失败、永远 ready 不了 → 卡在加载读条(实测「职工之家」
+        // 卡车 glb 自带 10 盏聚光灯,加环境光 = LIGHTCOUNT 11 撑爆 12 上限)。展厅有
+        // 自己的环境光 + 展品射灯,模型自带光/相机一律弃用(它们还是全局光,绕过
+        // includedOnlyMeshes 与画质档位管理,有害无益)。
+        for (const l of container.lights) l.dispose();
+        for (const cam of container.cameras) cam.dispose();
+        // ⚠ glTFLoader 在加载完成时会把全场材质的 maxSimultaneousLights 抬到
+        // scene.lights.length(展厅 = 环境光 + 每展品 1 射灯,职工之家 11 盏),
+        // 顶点 UBO 超 GL_MAX_VERTEX_UNIFORM_BUFFERS(弱驱动 12)→ 着色器编译失败、卡读条。
+        // 这段 bump 在本 promise resolve 前已跑完,此处(addAllToScene 后)钳回安全上限。
+        clampMaterialLights(scene);
         // 模型自带的地面烘焙阴影片(模型站导出常见,4 顶点大平面 + shadow 材质)
         // 在展台上显示成一块白色长方形 —— 展台有自己的灯光呈现,直接隐藏。
         for (const m of container.meshes) {

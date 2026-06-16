@@ -32,6 +32,29 @@ export function emissiveMat(scene: Scene, name: string, color: Color3): PBRMater
   return m;
 }
 
+/**
+ * 每材质同时受光上限:顶点着色器 UBO = Scene + Mesh + Material(3 块)+ N 盏灯,
+ * 必须 < 显卡 GL_MAX_VERTEX_UNIFORM_BUFFERS(弱办公驱动仅 12)。6 盏 → 9 块,留 3 块余量。
+ */
+export const MAX_LIGHTS_PER_MATERIAL = 6;
+
+/**
+ * 把全场材质的 maxSimultaneousLights 钳回安全上限。
+ * ⚠ 必须在 glTF 模型加载完成后调用:@babylonjs/loaders 的 glTFLoader 在 READY 前
+ *   会遍历 scene.materials 把每个材质抬到 max(原值, scene.lights.length)(见其源码
+ *   「Making sure we enable enough lights」),展厅灯一多就把全场材质(连墙/地板/WebXR)
+ *   设成十几盏 → 顶点 UBO 超限 → 着色器编译失败、卡在加载条。我们用 includedOnlyMeshes
+ *   控制每网格受光,材质从不需要全场灯,统一钳回即可。
+ */
+export function clampMaterialLights(scene: Scene, cap = MAX_LIGHTS_PER_MATERIAL): void {
+  for (const mat of scene.materials) {
+    const m = mat as unknown as { maxSimultaneousLights?: number };
+    if (typeof m.maxSimultaneousLights === 'number' && m.maxSimultaneousLights > cap) {
+      m.maxSimultaneousLights = cap;
+    }
+  }
+}
+
 /** 微反光玻璃(画框/展柜罩) */
 export function glassMat(scene: Scene, name: string): PBRMaterial {
   const m = new PBRMaterial(name, scene);
