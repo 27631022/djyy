@@ -32,7 +32,8 @@ export function buildImageCase(
   // 板式尺寸:竖屏板更高(0.55~2.75),横屏沿用旧比例(0.75~2.65)
   const portrait = c.orientation === 'portrait';
   const boardH = portrait ? 2.2 : 1.9;
-  const boardCY = portrait ? 1.65 : 1.7;
+  const boardCY = c.elevM ?? (portrait ? 1.65 : 1.7); // 展板中心离地高度(可调)
+  const showBase = c.showBase !== false; // 默认有底座;false = 贴墙/悬空式
   const matteH = boardH - 0.14;
   const matteTop = boardCY + matteH / 2;
   const matteBot = boardCY - matteH / 2;
@@ -56,25 +57,28 @@ export function buildImageCase(
   });
   const glass = glassMat(scene, `imgcase-glass-mat:${fx.id}`);
 
-  // 底座 + 正反两条点缀灯线
-  const plinth = MeshBuilder.CreateBox(
-    `imgcase-plinth:${fx.id}`,
-    { width: w, height: 0.12, depth: 0.45 },
-    scene,
-  );
-  plinth.position.set(0, 0.06, 0);
-  plinth.material = frameMat;
-  plinth.parent = root;
-  for (const s of [-1, 1]) {
-    const strip = MeshBuilder.CreateBox(
-      `imgcase-pstrip:${fx.id}:${s}`,
-      { width: w - 0.08, height: 0.02, depth: 0.012 },
+  // 底座 + 正反两条点缀灯线(showBase=false 时不出,贴墙/悬空式)
+  let plinth: Mesh | null = null;
+  if (showBase) {
+    plinth = MeshBuilder.CreateBox(
+      `imgcase-plinth:${fx.id}`,
+      { width: w, height: 0.12, depth: 0.45 },
       scene,
     );
-    strip.position.set(0, 0.105, s * 0.225);
-    strip.material = edgeMat;
-    strip.isPickable = false;
-    strip.parent = root;
+    plinth.position.set(0, 0.06, 0);
+    plinth.material = frameMat;
+    plinth.parent = root;
+    for (const s of [-1, 1]) {
+      const strip = MeshBuilder.CreateBox(
+        `imgcase-pstrip:${fx.id}:${s}`,
+        { width: w - 0.08, height: 0.02, depth: 0.012 },
+        scene,
+      );
+      strip.position.set(0, 0.105, s * 0.225);
+      strip.material = edgeMat;
+      strip.isPickable = false;
+      strip.parent = root;
+    }
   }
 
   // 板体
@@ -106,7 +110,7 @@ export function buildImageCase(
   mkEdge(EDGE, boardH + EDGE * 2, w / 2 + EDGE / 2, boardCY); // 右
 
   /** 一面展示(side=-1 正面 / +1 背面):卡纸 + 图片(+图下说明条)+ 玻璃 */
-  const pickables: Mesh[] = [board, plinth];
+  const pickables: Mesh[] = plinth ? [board, plinth] : [board];
   const spotTargets: Mesh[] = [board];
   const mkFace = (side: -1 | 1, entry?: { url?: string; caption?: string }) => {
     const flip = side === 1;

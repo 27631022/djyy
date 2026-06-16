@@ -392,6 +392,20 @@ function FixtureProps({
               onChange={(n) => patchContent({ ...((source.content as Text3dContent) ?? { text: "" }), elevM: n })}
             />
           </Row>
+        ) : fixture.type === "image_case" ? (
+          /* 图片展柜:深度无意义,这格改「展板高度」(展板中心离地;横屏 1.7 / 竖屏 1.65) */
+          <Row label="高(m)">
+            <Num
+              value={
+                (source.content as ImageCaseContent | undefined)?.elevM ??
+                ((source.content as ImageCaseContent | undefined)?.orientation === "portrait" ? 1.65 : 1.7)
+              }
+              step={0.05}
+              min={0.4}
+              max={3}
+              onChange={(n) => patchContent({ ...((source.content as ImageCaseContent) ?? { images: [] }), elevM: n })}
+            />
+          </Row>
         ) : (
           <Row label="深(m)"><Num value={fixture.d} step={0.1} min={0.1} max={10} onChange={(n) => onPatch({ d: n })} /></Row>
         )}

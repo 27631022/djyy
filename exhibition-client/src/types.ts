@@ -102,6 +102,10 @@ export interface ImageCaseContent {
   backImages?: { fileId?: string; url?: string; thumbnail?: string; caption?: string }[];
   /** 板式:横屏(默认)/ 竖屏 */
   orientation?: 'landscape' | 'portrait';
+  /** 显示底座(落地座台);false = 不出底座(贴墙/悬空式) */
+  showBase?: boolean;
+  /** 展板中心离地高度(米);缺省 横屏 1.7 / 竖屏 1.65 */
+  elevM?: number;
 }
 export interface VideoWallContent {
   videoFileId?: string;

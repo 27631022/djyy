@@ -29,10 +29,37 @@ import {
   type WallDecorContent,
 } from "../../lib/hallTypes";
 import { WALL_DECOR_PRESETS } from "../../lib/hallUtils";
+import { groupModels, TIER_ORDER, fmtSize } from "../../lib/modelTiers";
 
 /** 上传到展厅素材区(公开口可直接 <img>/<video> 加载) */
 async function uploadAsset(file: File, hallId: string) {
   return storageApi.upload(file, { ownerModule: "exhibition", folder: hallId });
+}
+
+/** 从视频抓一帧做封面(素材口同源,canvas 不被污染);取约 10% 处一帧,返回 JPEG Blob */
+async function captureVideoFrame(url: string): Promise<Blob> {
+  const v = document.createElement("video");
+  v.src = url;
+  v.muted = true;
+  v.crossOrigin = "anonymous";
+  v.preload = "auto";
+  await new Promise<void>((res, rej) => {
+    v.onloadeddata = () => res();
+    v.onerror = () => rej(new Error("视频加载失败"));
+  });
+  await new Promise<void>((res) => {
+    v.onseeked = () => res();
+    v.currentTime = Math.min(1, (Number.isFinite(v.duration) ? v.duration : 2) * 0.1);
+  });
+  const cv = document.createElement("canvas");
+  cv.width = v.videoWidth || 1280;
+  cv.height = v.videoHeight || 720;
+  const ctx = cv.getContext("2d");
+  if (!ctx) throw new Error("canvas 不可用");
+  ctx.drawImage(v, 0, 0, cv.width, cv.height);
+  return await new Promise<Blob>((res, rej) =>
+    cv.toBlob((b) => (b ? res(b) : rej(new Error("截图失败"))), "image/jpeg", 0.9),
+  );
 }
 
 /* ── 小部件 ── */
@@ -220,6 +247,12 @@ export function ImageCaseEditor({
           <option value="portrait">竖屏(高幅)</option>
         </select>
       </Row>
+      <Row label="显示底座">
+        <Switch checked={value.showBase !== false} onCheckedChange={(b) => onChange({ ...value, showBase: b })} />
+      </Row>
+      {value.showBase === false && (
+        <p className="text-[10px] text-[#9CA3AF] -mt-1">不出底座:展板按上方「高(m)」悬空/贴墙摆放。</p>
+      )}
       <div className="flex gap-1">
         {(["front", "back"] as const).map((s) => (
           <button
@@ -255,6 +288,20 @@ export function VideoWallEditor({
   hallId: string;
   onChange: (v: VideoWallContent) => void;
 }) {
+  const [capturing, setCapturing] = useState(false);
+  const capturePoster = async () => {
+    if (!value.videoFileId) return;
+    setCapturing(true);
+    try {
+      const blob = await captureVideoFrame(exhibitionAssetUrl(value.videoFileId));
+      const meta = await uploadAsset(new File([blob], "poster.jpg", { type: "image/jpeg" }), hallId);
+      onChange({ ...value, posterFileId: meta.id });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "截取封面失败");
+    } finally {
+      setCapturing(false);
+    }
+  };
   return (
     <div className="space-y-2">
       <Row label="视频">
@@ -278,9 +325,26 @@ export function VideoWallEditor({
             </button>
           </div>
         ) : (
-          <UploadButton hallId={hallId} accept="image/*" label="上传封面(可空)" icon={<ImagePlusIcon className="w-3.5 h-3.5" />} onDone={(id) => onChange({ ...value, posterFileId: id })} />
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {value.videoFileId && (
+              <button
+                type="button"
+                disabled={capturing}
+                onClick={() => void capturePoster()}
+                title="抓取视频中的一帧画面做封面"
+                className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-[#D4D4D4] text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] disabled:opacity-50"
+              >
+                {capturing ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <FilmIcon className="w-3.5 h-3.5" />}
+                {capturing ? "截取中…" : "从视频截取"}
+              </button>
+            )}
+            <UploadButton hallId={hallId} accept="image/*" label="上传图片" icon={<ImagePlusIcon className="w-3.5 h-3.5" />} onDone={(id) => onChange({ ...value, posterFileId: id })} />
+          </div>
         )}
       </Row>
+      <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+        封面 = 视频播放前/墙面显示的图。可「从视频截取」一帧,也可上传专门的图片。
+      </p>
     </div>
   );
 }
@@ -337,7 +401,10 @@ function TextureMultiUpload({
   );
 }
 
-/** 「从模型库选择」展开面板:上传库 + AI 生成历史 */
+/**
+ * 「从模型库选择」展开面板:缩略图网格(像模型库页),每个模型直接点 大/中/小 导入对应版本。
+ * 集显电脑选「小/中」更流畅;只有一档的就一个按钮。
+ */
 function ModelLibraryPicker({ onPick }: { onPick: (id: string, name: string) => void }) {
   const [open, setOpen] = useState(false);
   const listQuery = useQuery({
@@ -345,6 +412,7 @@ function ModelLibraryPicker({ onPick }: { onPick: (id: string, name: string) => 
     queryFn: () => modelLibraryApi.list(),
     enabled: open,
   });
+  const groups = groupModels(listQuery.data ?? []);
   return (
     <div>
       <button
@@ -356,35 +424,58 @@ function ModelLibraryPicker({ onPick }: { onPick: (id: string, name: string) => 
         从模型库选择
       </button>
       {open && (
-        <div className="mt-1.5 border border-[#ECECEC] rounded max-h-48 overflow-y-auto divide-y divide-[#F5F5F4]">
+        <div className="mt-1.5 border border-[#ECECEC] rounded p-2 max-h-72 overflow-y-auto">
           {listQuery.isLoading ? (
-            <div className="px-2 py-3 text-[11px] text-[#9CA3AF]">加载中…</div>
-          ) : (listQuery.data ?? []).length === 0 ? (
-            <div className="px-2 py-3 text-[11px] text-[#9CA3AF]">
+            <div className="px-1 py-3 text-[11px] text-[#9CA3AF]">加载中…</div>
+          ) : groups.length === 0 ? (
+            <div className="px-1 py-3 text-[11px] text-[#9CA3AF]">
               模型库为空 —— 到「3D 展厅 → 模型库」上传,或「3D 生成」出一个
             </div>
           ) : (
-            (listQuery.data ?? []).map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-xs hover:bg-[#FAFAF9]"
-                onClick={() => {
-                  onPick(m.id, m.name);
-                  setOpen(false);
-                }}
-              >
-                {m.source === "ai" ? (
-                  <SparklesIcon className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
-                ) : (
-                  <UploadIcon className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                )}
-                <span className="truncate flex-1" title={m.name}>{m.name}</span>
-                <span className="text-[10px] text-[#9CA3AF] flex-shrink-0">
-                  {new Date(m.createdAt).toLocaleDateString()}
-                </span>
-              </button>
-            ))
+            <div className="grid grid-cols-2 gap-2">
+              {groups.map((g) => (
+                <div key={g.key} className="border border-[#ECECEC] rounded-lg overflow-hidden">
+                  <div className="aspect-[4/3] bg-[#F5F5F4] flex items-center justify-center">
+                    {g.rep.thumbUrl ? (
+                      <img src={g.rep.thumbUrl} alt={g.base} className="w-full h-full object-contain" />
+                    ) : (
+                      <PackageIcon className="w-8 h-8 text-[#C9C9C5]" />
+                    )}
+                  </div>
+                  <div className="p-1.5 space-y-1">
+                    <div className="flex items-center gap-1 min-w-0">
+                      {g.source === "ai" ? (
+                        <SparklesIcon className="w-3 h-3 text-violet-500 flex-shrink-0" />
+                      ) : (
+                        <UploadIcon className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                      )}
+                      <span className="text-[11px] truncate" title={g.base}>{g.base}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {TIER_ORDER.map((t) => {
+                        const f = g.tiers[t];
+                        if (!f) return null;
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            title={`导入「${t}」版 · ${fmtSize(f.size)}`}
+                            onClick={() => {
+                              onPick(f.id, f.name);
+                              setOpen(false);
+                            }}
+                            className="flex-1 px-1 py-0.5 rounded border border-[#E5E5E5] text-[#52525B] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] hover:bg-party-soft leading-tight"
+                          >
+                            <span className="block text-[11px] font-medium">{t}</span>
+                            <span className="block text-[9px] opacity-70">{fmtSize(f.size)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
