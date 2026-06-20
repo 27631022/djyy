@@ -13,8 +13,8 @@ export interface StorageDriver {
   readonly name: 'local' | 'synology' | 's3';
   /** 写入字节(含自动创建多级父目录) */
   put(key: string, body: Buffer, contentType: string): Promise<void>;
-  /** 读取为流 —— 下载 / 公开页代理用 */
-  getStream(key: string): Promise<Readable>;
+  /** 读取为流 —— 下载 / 公开页代理用。range 给定时只读该字节区间(HTTP Range / 视频拖动) */
+  getStream(key: string, range?: { start: number; end: number }): Promise<Readable>;
   /** 读取为 Buffer —— 批量打包 ZIP 用 */
   getBuffer(key: string): Promise<Buffer>;
   /** 删除真实字节(找不到视为成功,幂等) */

@@ -10,7 +10,7 @@
  * consumerKey 命名约定:`<模块>.<功能>.<子类>`,如 'certificate.extract.text'。
  * 一旦上线就别改 key —— AiRoute 表用它做绑定主键。
  */
-export type AiCapability = 'chat' | 'vision' | 'reasoning' | 'image' | '3d';
+export type AiCapability = 'chat' | 'vision' | 'reasoning' | 'image' | '3d' | 'tts';
 
 export interface AiConsumer {
   /** 稳定标识,AiRoute.consumerKey 引用它。上线后勿改。 */
@@ -90,12 +90,36 @@ export const AI_CONSUMERS: AiConsumer[] = [
     description: '3D 生成时用视觉模型概括源图里的物品名(2~6 字),作为模型库展示文件名;失败回退日期命名',
   },
   {
+    key: 'report.invoice.extract.vision',
+    app: '报送管理',
+    label: 'AI 识别 · 发票图片(拍照/扫描)',
+    capability: 'vision',
+    description:
+      '识别上传的采购发票**图片**(拍照 / 扫描件),抽取发票号 / 销售方 / 金额 / 税额 / 采买明细。需视觉模型(本地 gemma,或豆包 / 通义千问云端视觉)。',
+  },
+  {
+    key: 'report.invoice.extract.text',
+    app: '报送管理',
+    label: 'AI 识别 · 发票PDF(电子发票)',
+    capability: 'chat',
+    description:
+      '识别上传的**文本型 PDF 电子发票**(可复制文字),抽取发票号 / 销售方 / 金额 / 税额 / 采买明细。用纯文本 LLM 即可(如 DeepSeek),无需视觉能力。',
+  },
+  {
     key: 'assessment.indicators.extract.text',
     app: '考核管理',
     label: 'AI 生成指标 · 导入考核办法',
     capability: 'chat',
     description:
       '解析上传的考核办法 / 责任制文件(Word/PDF),自动生成指标树(分值/层级),并为每个末端指标选好数据源 + 计分工具 + 参数,供人工确认',
+  },
+  {
+    key: 'exhibition.narration.tts',
+    app: '3D 展厅',
+    label: 'AI 语音 · 解说员配音',
+    capability: 'tts',
+    description:
+      '在线解说员「党建小益」:把每个展品的解说词文本合成成语音(TTS),走到展品前点击时播报。需配 ttsModel(语音合成模型)+ ttsVoice(音色)',
   },
 ];
 

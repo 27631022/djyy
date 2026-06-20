@@ -56,6 +56,42 @@ export interface HallMeta {
   theme?: HallTheme;
   /** 进场出生点(平面图坐标,米;rot 度,0=朝-Y);缺省时客户端取墙体包围盒中心 */
   spawn?: { x: number; y: number; rot?: number };
+  /** 在线解说员「党建小益」(全展厅统一一个数字人) */
+  guide?: HallGuide;
+}
+
+/**
+ * 在线解说员(数字人「党建小益」)—— 全展厅统一一个。
+ * 走到展品前点击 → 小益转向展品、播解说音频、底部字幕。
+ * 3D 形象用 modelFileId 指向 storage 里的 rigged glb;空 = 客户端用内置程序化占位形象。
+ */
+export interface HallGuide {
+  enabled?: boolean; // 是否启用解说员(默认关)
+  name?: string; // 解说员名称,默认「党建小益」
+  modelFileId?: string; // 3D 形象 glb(从模型库选/上传);空 = 内置占位形象
+  modelName?: string; // 形象模型原文件名(编辑器显示用)
+  modelUrl?: string; // 响应态旁补(见 FILE_ID_TO_URL)
+  scale?: number; // 模型缩放,默认 1
+  voice?: string; // 云 TTS 音色覆盖(空则用 provider 默认 ttsVoice)
+  /** 音色参考音频 storage fileId —— 本地 IndexTTS2 声音克隆用(党建小益的声音),空则用 IndexTTS2 自带示例音色 */
+  voiceRefFileId?: string;
+  /** 形象类型:'model'(3D glb,默认)/ 'sprite'(2.5D 立绘看板 —— 朝相机的透明 PNG 立绘) */
+  kind?: 'model' | 'sprite';
+  /** 2.5D 立绘:默认/闭嘴帧(sprite 模式必填,空则回退内置占位形象) */
+  spriteFileId?: string;
+  spriteUrl?: string; // 响应态旁补(见 FILE_ID_TO_URL)
+  /** 2.5D 立绘:说话/张嘴帧(讲解时按音频振幅切到这张做口型;空则不切) */
+  spriteTalkFileId?: string;
+  spriteTalkUrl?: string;
+  /** 2.5D 立绘:眨眼帧(可选;有则周期眨眼) */
+  spriteBlinkFileId?: string;
+  spriteBlinkUrl?: string;
+  /** 2.5D 立绘:手臂层(单独一张、同画布对齐的透明 PNG;以肩为轴做挥手/伸手手势) */
+  spriteArmFileId?: string;
+  spriteArmUrl?: string;
+  armPivotX?: number; // 肩点 X(0..1,从左,默认 0.62)
+  armPivotY?: number; // 肩点 Y(0..1,从上,默认 0.42)
+  armFlip?: boolean; // 手臂旋转方向反向(图里手臂在另一侧时)
 }
 
 /** 组件实例(规格 5.2) */
@@ -68,7 +104,16 @@ export interface Fixture {
   w: number; // 占地宽(米)
   d: number; // 占地深(米)
   label?: string;
+  /** 在线解说员讲解词 + AI 生成音频(走到展品前点击时由「党建小益」播报) */
+  narration?: NarrationContent;
   source: FixtureSource;
+}
+
+/** 展品解说:解说词文本 + AI(TTS)生成的音频(存 storage fileId,响应态旁补 audioUrl) */
+export interface NarrationContent {
+  text?: string; // 解说词(供 AI 合成语音 + 字幕显示)
+  audioFileId?: string; // AI 生成的解说音频 storage fileId
+  audioUrl?: string; // 响应态旁补(见 FILE_ID_TO_URL)
 }
 
 /** 数据来源:手动上传 或 连接器对接系统(规格 5.2 / 5.4) */
@@ -102,6 +147,12 @@ export interface VideoWallContent {
   videoUrl?: string;
   posterFileId?: string;
   poster?: string;
+  /** 屏幕下边缘离地高度(米);缺省 1.1 */
+  baseElevM?: number;
+  /** 屏幕(相框)高度(米);缺省按 16:9 自动(min(w*9/16, 2.6)) */
+  frameH?: number;
+  /** 两面显示(背面同屏);默认 false */
+  doubleSided?: boolean;
 }
 export interface ModelStandContent {
   modelFileId?: string;
@@ -158,6 +209,10 @@ export interface DecorContent {
 export interface DoorContent {
   targetHallId?: string;
   targetName?: string; // 冗余目标厅名(门头牌显示「→ 厅名」)
+  /** 门头牌正面文字(缺省回退 targetName / fixture.label) */
+  frontText?: string;
+  /** 门头牌背面文字(两面可显示不同字;缺省回退正面) */
+  backText?: string;
 }
 /** 顶端吊牌 */
 export interface CeilingSignContent {
@@ -209,6 +264,11 @@ export const FILE_ID_TO_URL: Record<string, string> = {
   videoFileId: 'videoUrl',
   posterFileId: 'poster',
   modelFileId: 'modelUrl',
+  audioFileId: 'audioUrl', // 解说音频(Fixture.narration / 也可用于其它语音素材)
+  spriteFileId: 'spriteUrl', // 解说员 2.5D 立绘(默认/闭嘴帧)
+  spriteTalkFileId: 'spriteTalkUrl', // 立绘说话/张嘴帧
+  spriteBlinkFileId: 'spriteBlinkUrl', // 立绘眨眼帧
+  spriteArmFileId: 'spriteArmUrl', // 立绘手臂层
 };
 
 /** 素材公开访问相对路径(免登录客户端可加载;dev 经 vite proxy 同源) */

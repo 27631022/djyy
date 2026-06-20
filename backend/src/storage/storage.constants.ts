@@ -6,10 +6,10 @@ export const FILE_MAX_BYTES = 30 * 1024 * 1024; // 30 MB
  * 按扩展名放宽(用户实测:展厅宣传片 mp4 直接 400)。其余类型仍走 FILE_MAX_BYTES。
  */
 export const EXT_MAX_BYTES: Record<string, number> = {
-  mp4: 300 * 1024 * 1024, // 300 MB:展厅宣传片
-  webm: 300 * 1024 * 1024,
-  glb: 100 * 1024 * 1024, // 100 MB:Seed3D 产物/手动模型
-  gltf: 100 * 1024 * 1024,
+  mp4: 500 * 1024 * 1024, // 500 MB:展厅宣传片
+  webm: 500 * 1024 * 1024,
+  glb: 500 * 1024 * 1024, // 500 MB:Seed3D 产物/手动模型(Maya 角色带贴图/动画偏大)
+  gltf: 500 * 1024 * 1024,
 };
 
 /** 某扩展名的实际上限 */
@@ -43,4 +43,8 @@ export const ALLOWED_EXT_MIME: Record<string, string> = {
   // 视频(3D 展厅视频展墙)
   mp4: 'video/mp4',
   webm: 'video/webm',
+  // 音频(3D 展厅解说员「党建小益」TTS 配音产物;sniffAudio 只产这三种)
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
 };

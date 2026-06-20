@@ -21,6 +21,9 @@ export class Overlay {
   private accent: string;
   /** 图片展柜轮播:← → 翻页(打开时设置,关闭清空) */
   private arrowNav: ((dir: number) => void) | null = null;
+  /** 全屏视频层(与详情卡分开的 DOM);开着时 isOpen()=true,手柄/Esc 可退出 */
+  private fsWrap: HTMLDivElement | null = null;
+  private fsClose: (() => void) | null = null;
   onOpenChange?: (open: boolean) => void;
 
   constructor(accent: string) {
@@ -47,11 +50,23 @@ export class Overlay {
     });
   }
 
+  /** 详情卡 或 全屏视频 任一显示即为「开」(手柄判定/翻页都看它) */
   isOpen(): boolean {
-    return this.root.style.display !== 'none';
+    return this.root.style.display !== 'none' || this.fsWrap !== null;
+  }
+
+  /** 当前是否有可翻页的图集(供手柄左右键判断) */
+  canPage(): boolean {
+    return this.arrowNav !== null;
+  }
+
+  /** 翻页(手柄左右 / 外部调用;键盘左右在构造里已接) */
+  page(dir: number): void {
+    this.arrowNav?.(dir);
   }
 
   hide(): void {
+    this.fsClose?.(); // 先关全屏视频(若开着)
     this.root.style.display = 'none';
     this.card.innerHTML = '';
     this.arrowNav = null;
@@ -78,6 +93,9 @@ export class Overlay {
       if (e.key === 'Escape') close();
     };
     const close = () => {
+      if (!this.fsWrap) return; // 幂等(hide 与 × 可能都调)
+      this.fsWrap = null;
+      this.fsClose = null;
       v.pause();
       wrap.remove();
       document.removeEventListener('keydown', onKey);
@@ -88,6 +106,8 @@ export class Overlay {
     document.addEventListener('keydown', onKey);
     wrap.append(v, x);
     document.body.appendChild(wrap);
+    this.fsWrap = wrap;
+    this.fsClose = close;
     this.onOpenChange?.(true);
     void v.play?.().catch(() => undefined);
     // 能原生全屏更好(沉浸),不能就用上面的固定覆盖层
@@ -163,7 +183,8 @@ export class Overlay {
         stage.style.cssText = `position:relative;display:flex;align-items:center;justify-content:center;
           background:#0c0c10;border-radius:10px;min-height:46vh;overflow:hidden;`;
         const img = document.createElement('img');
-        img.style.cssText = 'max-width:100%;max-height:72vh;object-fit:contain;display:block;';
+        img.style.cssText =
+          'max-width:100%;max-height:72vh;object-fit:contain;display:block;will-change:opacity,transform;transition:opacity .2s ease,transform .2s ease;';
         stage.appendChild(img);
         const cap = document.createElement('div');
         cap.style.cssText = 'text-align:center;color:#666;font-size:14px;margin-top:10px;min-height:20px;';
@@ -174,9 +195,28 @@ export class Overlay {
           cap.textContent = all[idx].caption ?? '';
           counter.textContent = all.length > 1 ? `${idx + 1} / ${all.length}` : '';
         };
+        // 翻页动画:当前图朝反向滑出+淡出 → 换图 → 从另一侧滑入+淡入(预载防白屏,animating 防连点重入)
+        let animating = false;
         const go = (dir: number) => {
+          if (animating || all.length < 2) return;
+          animating = true;
           idx = (idx + dir + all.length) % all.length;
-          render();
+          const pre = new Image();
+          pre.src = all[idx].url ?? ''; // 预载下一张
+          img.style.opacity = '0';
+          img.style.transform = `translateX(${dir * -28}px)`;
+          window.setTimeout(() => {
+            render();
+            img.style.transition = 'none';
+            img.style.transform = `translateX(${dir * 28}px)`;
+            void img.offsetWidth; // 强制 reflow 让入场从新位置开始
+            img.style.transition = 'opacity .2s ease,transform .2s ease';
+            img.style.opacity = '1';
+            img.style.transform = 'translateX(0)';
+            window.setTimeout(() => {
+              animating = false;
+            }, 210);
+          }, 190);
         };
         const mkArrow = (dir: number, sym: string) => {
           const b = document.createElement('button');

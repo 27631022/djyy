@@ -161,13 +161,14 @@ export class StorageService {
     return this.toMeta(await this.requireLive(id));
   }
 
-  /** 取字节流(下载 / 公开页代理) */
+  /** 取字节流(下载 / 公开页代理);range 给定时只读该字节区间(HTTP Range / 视频拖动) */
   async getStream(
     id: string,
+    range?: { start: number; end: number },
   ): Promise<{ meta: StoredFileMeta; stream: Readable }> {
     const row = await this.requireLive(id);
     try {
-      const stream = await this.driver.getStream(row.storageKey);
+      const stream = await this.driver.getStream(row.storageKey, range);
       return { meta: this.toMeta(row), stream };
     } catch (e) {
       throw this.mapReadError(e);

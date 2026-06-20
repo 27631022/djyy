@@ -27,6 +27,7 @@ import { PromptModule } from './prompt';
 import { ExhibitionModule } from './exhibition';
 import { VenueModule } from './venue';
 import { AssessmentModule } from './assessment';
+import { ReportModule } from './report';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { AssessmentModule } from './assessment';
     ExhibitionModule,
     VenueModule,
     AssessmentModule,
+    ReportModule,
   ],
   providers: [
     // 全局权限守卫:仅 @Permission() 装饰的接口实际校验,其他不影响

@@ -185,7 +185,9 @@ export function buildShell(
       wall.rotation.y = rotY;
       wall.material = wallMat;
       wall.checkCollisions = true;
-      wall.isPickable = false;
+      // 可拾取:作为遮挡体,挡住「墙背后展品」被射线穿墙点中(拾取/悬停取最近命中,
+      // 墙无 fixture 元数据 → 命中墙=无操作)。墙段不多,拾取开销可忽略。
+      wall.isPickable = true;
       staticMeshes.push(wall);
 
       const skirt = MeshBuilder.CreateBox(

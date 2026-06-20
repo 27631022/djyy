@@ -275,10 +275,22 @@ export function defaultHallState(preset: HallThemePreset = "modern_light"): Hall
 }
 
 /**
- * 保存前清洗:剥掉后端「已解析」旁补的 url 键(url/imageUrl/videoUrl/poster/modelUrl),
+ * 保存前清洗:剥掉后端「已解析」旁补的 url 键
+ * (url/imageUrl/videoUrl/poster/modelUrl/audioUrl + 解说员立绘 spriteUrl/spriteTalkUrl/spriteBlinkUrl),
  * 只把 fileId 存回去,避免响应态键被固化进 JSON。
  */
-const RESOLVED_URL_KEYS = new Set(["url", "imageUrl", "videoUrl", "poster", "modelUrl"]);
+const RESOLVED_URL_KEYS = new Set([
+  "url",
+  "imageUrl",
+  "videoUrl",
+  "poster",
+  "modelUrl",
+  "audioUrl",
+  "spriteUrl",
+  "spriteTalkUrl",
+  "spriteBlinkUrl",
+  "spriteArmUrl",
+]);
 
 export function stripResolvedUrls<T>(node: T): T {
   if (Array.isArray(node)) return node.map((n) => stripResolvedUrls(n)) as unknown as T;

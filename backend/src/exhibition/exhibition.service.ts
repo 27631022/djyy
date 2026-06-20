@@ -9,10 +9,12 @@ import {
   type Fixture,
   type HallMeta,
   type HallSummary,
+  type NarrationContent,
   type ResolvedHall,
   type Wall,
 } from './exhibition.types';
 import { CONNECTORS, resolveConnectorPlaceholder } from './connectors';
+import { ExhibitionLibraryService } from './exhibition-library.service';
 
 interface AuditCtx {
   actorId?: string;
@@ -32,6 +34,7 @@ export class ExhibitionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly library: ExhibitionLibraryService,
   ) {}
 
   /** 展厅目录(规格 5.5 GET /halls)。P1 返回全部含未发布,带 published 供前端筛。 */
@@ -127,14 +130,18 @@ export class ExhibitionService {
    */
   async collectInUseFileIds(): Promise<string[]> {
     const rows = await this.prisma.hall.findMany({
-      select: { thumbnailFileId: true, envModelFileId: true, fixturesJson: true },
+      select: { thumbnailFileId: true, envModelFileId: true, fixturesJson: true, metaJson: true },
     });
     const ids = new Set<string>();
     for (const r of rows) {
       if (r.thumbnailFileId) ids.add(r.thumbnailFileId);
       if (r.envModelFileId) ids.add(r.envModelFileId);
       this.collectFileIdsDeep(this.parseJson<unknown>(r.fixturesJson, []), ids);
+      // meta 里也有 fileId(解说员 guide.modelFileId 等)—— 漏扫会被孤儿 GC 误删
+      this.collectFileIdsDeep(this.parseJson<unknown>(r.metaJson, {}), ids);
     }
+    // 素材中心:形象包引用的 fileId + 各素材库文件夹的全部文件,也算在用(否则被孤儿 GC 误删)
+    for (const id of await this.library.collectInUseFileIds()) ids.add(id);
     return [...ids];
   }
 
@@ -161,21 +168,25 @@ export class ExhibitionService {
       name: row.name,
       thumbnail: row.thumbnailFileId ? exhibitionAssetUrl(row.thumbnailFileId) : null,
       published: row.published,
-      meta: this.parseJson<HallMeta>(row.metaJson, {}),
+      // resolveAssets 旁补 meta 里的 fileId(解说员 guide.modelFileId → modelUrl);其余字段透传
+      meta: this.resolveAssets(this.parseJson<HallMeta>(row.metaJson, {})) as HallMeta,
       envModelUrl: row.envModelFileId ? exhibitionAssetUrl(row.envModelFileId) : null,
       walls: this.parseJson<Wall[]>(row.wallsJson, []),
       fixtures: fixtures.map((fx) => this.resolveFixture(fx)),
     };
   }
 
-  /** 解析单个组件:connector → 取数(P1 占位);manual → 把 content 里 fileId 旁补 url */
+  /** 解析单个组件:connector → 取数(P1 占位);manual → 把 content 里 fileId 旁补 url;解说音频旁补 audioUrl */
   private resolveFixture(fx: Fixture): Fixture {
     const source = fx.source ?? { mode: 'manual' as const };
     const content =
       source.mode === 'connector'
         ? resolveConnectorPlaceholder(source.connectorId)
         : this.resolveAssets(source.content);
-    return { ...fx, source: { ...source, content } };
+    const narration = fx.narration
+      ? (this.resolveAssets(fx.narration) as NarrationContent)
+      : undefined;
+    return { ...fx, narration, source: { ...source, content } };
   }
 
   /** 递归:遇到 `xxxFileId` 字段(非空字符串)→ 旁补对应 url 键(见 FILE_ID_TO_URL) */

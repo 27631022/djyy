@@ -95,7 +95,7 @@ export default tseslint.config(
     // 字段类型注册表:fields/<type>.tsx 导出的是「字段类型定义对象」(内含该类型的预览 / 属性渲染),
     // 属于注册表模块而非纯组件模块 —— react-refresh 的「只导出组件」对它无意义(这些只读预览无需热更新)。
     // 关掉后,加新字段类型 = 新建一个 fields/<type>.tsx(惯常 PascalCase 组件写法)+ 在 registry 注册一行,无额外噪声。
-    files: ["src/features/task/fields/*.tsx"],
+    files: ["src/features/task/fields/*.tsx", "src/features/report/fields/*.tsx"],
     rules: {
       "react-refresh/only-export-components": "off",
     },

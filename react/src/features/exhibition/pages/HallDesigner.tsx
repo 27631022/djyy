@@ -149,7 +149,7 @@ function DesignerInner({ hall }: { hall: ResolvedHall }) {
       }
       const saved = await hallApi.update(hallId, {
         name: name.trim() || "未命名展厅",
-        meta: state.meta,
+        meta: stripResolvedUrls(state.meta), // 剥 guide.modelUrl 等已解析键
         walls: state.walls,
         fixtures: stripResolvedUrls(state.fixtures),
         ...(thumbnailFileId ? { thumbnailFileId } : {}),

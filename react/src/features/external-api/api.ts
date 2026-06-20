@@ -20,6 +20,10 @@ export interface ExternalApiDto {
   visionModel: string | null;
   /** 图像生成/图生图模型(SeedEdit 等,出图)。空 = 不支持生图 */
   imageModel: string | null;
+  /** 语音合成(TTS)模型。空 = 不支持配音 */
+  ttsModel: string | null;
+  /** TTS 音色标识(provider 各自的音色名)。空 = 用默认 */
+  ttsVoice: string | null;
   /** 平台充值/计费控制台 URL */
   rechargeUrl: string | null;
   /** 业务优先级 0-100,数字大的优先,默认 50 */
@@ -68,6 +72,8 @@ export interface UpdateExternalApiInput {
   model?: string;
   visionModel?: string;
   imageModel?: string;
+  ttsModel?: string;
+  ttsVoice?: string;
   rechargeUrl?: string;
   priority?: number;
   capabilities?: string;

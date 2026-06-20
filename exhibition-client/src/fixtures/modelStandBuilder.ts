@@ -261,12 +261,17 @@ export function buildModelStand(
         // 代理永远命中不了、模型反而彻底点不中。代理自带 metadata.fixture,三处拾取沿父链第一跳
         // 即得 fixture,点击选中/详情浮层/手柄 A 键语义不变,求交降到 ~0.02ms。
         for (const m of modelMeshes) m.isPickable = false;
+        // 拾取代理:至少覆盖「展台面」大小(不超出展台footprint,避免挡到墙上的画框/公开栏);
+        // 原来只贴模型本体那一小块,小模型得走很近才点中,现在对着展台就能点中。
+        const pw = Math.max(sx * s, plateW);
+        const pd = Math.max(sz * s, plateD);
+        const ph = Math.max(sy * s, 0.5);
         const proxy = MeshBuilder.CreateBox(
           `stand-model-proxy:${fx.id}`,
-          { width: sx * s, height: sy * s, depth: sz * s },
+          { width: pw, height: ph, depth: pd },
           scene,
         );
-        proxy.position.set(0, (sy * s) / 2, 0); // 模型底面落 holder 局部 y=0 → 中心在半高
+        proxy.position.set(0, ph / 2, 0); // 盒底落 holder 局部 y=0(展台面)
         proxy.parent = holder; // 跟 holder 自转,代理 OBB 恒贴模型
         proxy.visibility = 0; // 视觉不可见,但 isVisible 仍 true → 仍参与拾取
         markPickable([proxy], fx);

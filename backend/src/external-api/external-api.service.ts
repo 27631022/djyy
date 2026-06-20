@@ -46,6 +46,8 @@ export interface ExternalApiPublic {
   visionModel: string | null;
   imageModel: string | null;
   model3d: string | null;
+  ttsModel: string | null;
+  ttsVoice: string | null;
   rechargeUrl: string | null;
   priority: number;
   capabilities: string;
@@ -64,6 +66,8 @@ export interface ActiveProviderConfig {
   apiKey: string;
   apiUrl: string;
   model: string;
+  /** TTS 音色(仅 tts 能力时有意义;来自 ExternalApi.ttsVoice,可空) */
+  voice?: string;
   /** 'cloud' | 'internal' */
   kind: string;
   source: 'db';
@@ -163,6 +167,8 @@ function toPublic(
     visionModel: row.visionModel,
     imageModel: row.imageModel,
     model3d: row.model3d,
+    ttsModel: row.ttsModel,
+    ttsVoice: row.ttsVoice,
     rechargeUrl: row.rechargeUrl,
     priority: row.priority,
     capabilities: row.capabilities,
@@ -181,6 +187,7 @@ function capabilityLabel(tag: string): string {
   if (tag === 'reasoning') return '推理';
   if (tag === 'image') return '图像生成';
   if (tag === '3d') return '3D生成';
+  if (tag === 'tts') return '语音合成';
   return tag;
 }
 
@@ -259,6 +266,23 @@ export class ExternalApiService {
     if (!consumer) return null;
     const { row } = await this.pickForConsumer(consumer);
     return row ? this.toActiveConfig(row, consumer.capability) : null;
+  }
+
+  /**
+   * 取指定 provider 在某能力下的可用配置(active + 有 key/内网 + 具备该能力);不可用返回 null。
+   * 供业务做「优先 A、失败回退 B」的显式备选链(如发票图片识别:豆包优先、千问其次)。
+   */
+  async getConfigForProviderCapability(
+    provider: string,
+    tag: AiCapability,
+  ): Promise<ActiveProviderConfig | null> {
+    const row = await this.prisma.externalApi.findUnique({ where: { provider } });
+    if (!row || !this.isEligible(row)) return null;
+    const caps = (row.capabilities ?? '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase());
+    if (!caps.includes(tag)) return null;
+    return this.toActiveConfig(row, tag);
   }
 
   /** 路由总览:每个消费功能解析出 当前命中 + 备选链 + 绑定/告警(管理页展示用) */
@@ -389,6 +413,7 @@ export class ExternalApiService {
     if (tag === 'vision') return r.visionModel || r.model || '';
     if (tag === 'image') return r.imageModel || '';
     if (tag === '3d') return r.model3d || '';
+    if (tag === 'tts') return r.ttsModel || '';
     return r.model || '';
   }
 
@@ -401,6 +426,7 @@ export class ExternalApiService {
       apiKey: r.apiKey ?? '',
       apiUrl: r.apiUrl ?? '',
       model: this.modelForCapability(r, tag),
+      voice: r.ttsVoice ?? undefined,
       kind: r.kind,
       source: 'db',
     };
@@ -511,6 +537,8 @@ export class ExternalApiService {
         visionModel: dto.visionModel,
         imageModel: dto.imageModel,
         model3d: dto.model3d,
+        ttsModel: dto.ttsModel,
+        ttsVoice: dto.ttsVoice,
         rechargeUrl: dto.rechargeUrl,
         priority: dto.priority ?? 50,
         capabilities: dto.capabilities ?? 'chat',
@@ -566,6 +594,8 @@ export class ExternalApiService {
         visionModel: dto.visionModel ?? undefined,
         imageModel: dto.imageModel ?? undefined,
         model3d: dto.model3d ?? undefined,
+        ttsModel: dto.ttsModel ?? undefined,
+        ttsVoice: dto.ttsVoice ?? undefined,
         rechargeUrl: dto.rechargeUrl ?? undefined,
         priority: dto.priority ?? undefined,
         capabilities: dto.capabilities ?? undefined,

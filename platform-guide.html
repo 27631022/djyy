@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>党建益友 · 平台说明文档</title>
+<style>
+  :root {
+    --red: #C8001E;
+    --red-light: #fdf0f2;
+    --red-mid: #f5c6ce;
+    --gold: #F5A623;
+    --gold-light: #fffbf0;
+    --text: #1a1a2e;
+    --text-mute: #6b7280;
+    --border: #e5e7eb;
+    --bg: #f8f9fa;
+    --white: #ffffff;
+    --green: #16a34a;
+    --blue: #2563eb;
+    --sidebar-w: 240px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color: var(--text); background: var(--bg); }
+
+  /* ── TOP NAV ── */
+  .top-nav { background: var(--red); color: #fff; display: flex; align-items: center; padding: 0 24px; height: 56px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+  .top-nav .logo { font-size: 18px; font-weight: 700; letter-spacing: .05em; margin-right: 40px; display: flex; align-items: center; gap: 8px; }
+  .top-nav .logo span { background: var(--gold); color: #fff; border-radius: 4px; padding: 2px 7px; font-size: 12px; font-weight: 600; }
+  .tab-btn { padding: 0 18px; height: 56px; background: none; border: none; color: rgba(255,255,255,.75); font-size: 14px; font-weight: 500; cursor: pointer; border-bottom: 3px solid transparent; transition: all .2s; white-space: nowrap; }
+  .tab-btn.active { color: #fff; border-bottom-color: var(--gold); }
+  .tab-btn:hover { color: #fff; }
+
+  /* ── LAYOUT ── */
+  .view { display: none; }
+  .view.active { display: flex; min-height: calc(100vh - 56px); }
+
+  /* ── SIDEBAR ── */
+  .sidebar { width: var(--sidebar-w); flex-shrink: 0; background: var(--white); border-right: 1px solid var(--border); padding: 16px 0; position: sticky; top: 56px; height: calc(100vh - 56px); overflow-y: auto; }
+  .sidebar-group { margin-bottom: 4px; }
+  .sidebar-group-title { font-size: 11px; font-weight: 700; color: var(--text-mute); padding: 8px 16px 4px; letter-spacing: .08em; text-transform: uppercase; }
+  .sidebar-item { display: block; padding: 7px 16px; font-size: 13px; color: var(--text-mute); cursor: pointer; border-left: 3px solid transparent; transition: all .15s; text-decoration: none; }
+  .sidebar-item:hover { background: var(--red-light); color: var(--red); border-left-color: var(--red-mid); }
+  .sidebar-item.active { background: var(--red-light); color: var(--red); border-left-color: var(--red); font-weight: 600; }
+
+  /* ── CONTENT ── */
+  .content { flex: 1; padding: 32px 48px; max-width: 960px; }
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* ── TYPOGRAPHY ── */
+  .section-title { font-size: 24px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+  .section-subtitle { font-size: 14px; color: var(--text-mute); margin-bottom: 28px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; font-weight: 600; color: var(--text); margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; }
+  h3::before { content: ''; display: inline-block; width: 4px; height: 16px; background: var(--red); border-radius: 2px; }
+  h4 { font-size: 14px; font-weight: 600; color: var(--text); margin: 16px 0 8px; }
+  p, li { font-size: 14px; line-height: 1.8; color: #374151; }
+  ul, ol { padding-left: 20px; margin: 8px 0; }
+  li { margin: 4px 0; }
+
+  /* ── CARDS & TIPS ── */
+  .card { background: var(--white); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin: 16px 0; }
+  .tip { background: var(--gold-light); border-left: 4px solid var(--gold); border-radius: 0 8px 8px 0; padding: 12px 16px; margin: 12px 0; font-size: 13px; }
+  .tip strong { color: #92400e; }
+  .warn { background: #fef2f2; border-left: 4px solid var(--red); border-radius: 0 8px 8px 0; padding: 12px 16px; margin: 12px 0; font-size: 13px; }
+  .warn strong { color: var(--red); }
+  .info { background: #eff6ff; border-left: 4px solid var(--blue); border-radius: 0 8px 8px 0; padding: 12px 16px; margin: 12px 0; font-size: 13px; }
+  .info strong { color: var(--blue); }
+
+  .step-list { counter-reset: step; list-style: none; padding: 0; }
+  .step-list li { counter-increment: step; display: flex; gap: 12px; margin: 10px 0; align-items: flex-start; }
+  .step-list li::before { content: counter(step); display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--red); color: #fff; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin: 0 2px; }
+  .tag-red { background: var(--red-light); color: var(--red); }
+  .tag-gold { background: var(--gold-light); color: #92400e; }
+  .tag-green { background: #f0fdf4; color: var(--green); }
+  .tag-blue { background: #eff6ff; color: var(--blue); }
+  .tag-gray { background: #f3f4f6; color: #374151; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+  .feat-card { background: var(--white); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .feat-card .icon { font-size: 22px; margin-bottom: 6px; }
+  .feat-card .name { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .feat-card .desc { font-size: 12px; color: var(--text-mute); line-height: 1.6; }
+
+  kbd { display: inline-block; padding: 1px 6px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; font-family: monospace; }
+
+  /* ── REPORT VIEW ── */
+  .report-content { padding: 48px 64px; max-width: 900px; margin: 0 auto; background: var(--white); min-height: calc(100vh - 56px); }
+  .report-header { text-align: center; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 2px solid var(--red); }
+  .report-header h1 { font-size: 28px; font-weight: 800; color: var(--red); margin-bottom: 8px; }
+  .report-header .sub { font-size: 16px; color: var(--text-mute); }
+  .report-header .date { font-size: 13px; color: var(--text-mute); margin-top: 12px; }
+
+  .report-section { margin: 36px 0; }
+  .report-section h2 { font-size: 18px; font-weight: 700; color: var(--text); padding: 10px 16px; background: var(--red-light); border-left: 5px solid var(--red); border-radius: 0 6px 6px 0; margin-bottom: 20px; }
+  .report-section h3 { font-size: 15px; font-weight: 600; margin: 20px 0 10px; }
+  .report-section h3::before { content: '▶'; color: var(--red); font-size: 12px; margin-right: 6px; display: inline; width: auto; height: auto; background: none; border-radius: 0; }
+  .report-section p { font-size: 14px; line-height: 2; color: #374151; margin: 8px 0; }
+  .metric-row { display: flex; gap: 20px; margin: 20px 0; flex-wrap: wrap; }
+  .metric { background: var(--red-light); border: 1px solid var(--red-mid); border-radius: 10px; padding: 16px 24px; text-align: center; flex: 1; min-width: 120px; }
+  .metric .num { font-size: 28px; font-weight: 800; color: var(--red); }
+  .metric .label { font-size: 12px; color: var(--text-mute); margin-top: 4px; }
+  .check-list { list-style: none; padding: 0; }
+  .check-list li { padding: 6px 0; font-size: 14px; display: flex; gap: 8px; align-items: flex-start; border-bottom: 1px dashed var(--border); }
+  .check-list li:last-child { border: none; }
+  .check-list li::before { content: '✅'; flex-shrink: 0; }
+  .module-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  .module-table th { background: var(--red); color: #fff; padding: 10px 14px; text-align: left; font-weight: 600; }
+  .module-table td { padding: 9px 14px; border-bottom: 1px solid var(--border); line-height: 1.6; }
+  .module-table tr:nth-child(even) td { background: var(--bg); }
+
+  @media (max-width: 768px) {
+    .content { padding: 20px; }
+    .grid2, .grid3 { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .report-content { padding: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<nav class="top-nav">
+  <div class="logo">🏛️ 党建益友 <span>内部文档</span></div>
+  <button class="tab-btn active" onclick="switchTab('guide')">📖 使用说明</button>
+  <button class="tab-btn" onclick="switchTab('report')">📊 功能建设汇报</button>
+</nav>
+
+<!-- ════════════════════════════════════════
+     TAB 1: 使用说明
+═══════════════════════════════════════════ -->
+<div id="tab-guide" class="view active">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-group">
+      <div class="sidebar-group-title">快速开始</div>
+      <a class="sidebar-item active" onclick="showSection('start')">🚀 登录与首页</a>
+      <a class="sidebar-item" onclick="showSection('nav')">🧭 导航门户</a>
+    </div>
+    <div class="sidebar-group">
+      <div class="sidebar-group-title">组织与人员</div>
+      <a class="sidebar-item" onclick="showSection('org')">🏢 组织管理</a>
+      <a class="sidebar-item" onclick="showSection('user')">👤 用户管理</a>
+      <a class="sidebar-item" onclick="showSection('role')">🔑 角色权限</a>
+    </div>
+    <div class="sidebar-group">
+      <div class="sidebar-group-title">业务功能</div>
+      <a class="sidebar-item" onclick="showSection('cert')">🏅 证书管理</a>
+      <a class="sidebar-item" onclick="showSection('task')">📋 任务分派</a>
+    </div>
+    <div class="sidebar-group">
+      <div class="sidebar-group-title">系统配置</div>
+      <a class="sidebar-item" onclick="showSection('dict')">📖 字典管理</a>
+      <a class="sidebar-item" onclick="showSection('site')">⚙️ 站点设置</a>
+      <a class="sidebar-item" onclick="showSection('ai')">🤖 AI 配置</a>
+      <a class="sidebar-item" onclick="showSection('avatar')">🎨 AI 头像</a>
+      <a class="sidebar-item" onclick="showSection('desktop')">🖥️ 桌面客户端</a>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="content">
+
+    <!-- 登录与首页 -->
+    <div id="sec-start" class="section active">
+      <div class="section-title">🚀 登录与首页</div>
+      <div class="section-subtitle">了解如何访问系统及切换身份</div>
+
+      <h3>访问系统</h3>
+      <p>在浏览器地址栏输入以下地址即可访问（无需安装任何软件）：</p>
+      <div class="card">
+        <strong>局域网访问地址：</strong><code style="background:#f3f4f6;padding:2px 8px;border-radius:4px;margin-left:8px;">http://10.10.10.194:5173</code>
+        <p style="margin-top:8px;color:var(--text-mute);font-size:13px;">需与服务器在同一局域网内，地址可能因服务器 IP 变化而调整。</p>
+      </div>
+
+      <h3>登录方式</h3>
+      <p>当前系统使用<strong>模拟登录</strong>，点击页面右上角头像图标，选择要切换的账号即可。</p>
+
+      <div class="card">
+        <h4>内置演示账号</h4>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px;">
+          <thead><tr style="background:var(--bg);">
+            <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">账号</th>
+            <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">角色</th>
+            <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">可用功能</th>
+          </tr></thead>
+          <tbody>
+            <tr><td style="padding:8px;border-bottom:1px solid var(--border);"><strong>admin</strong></td><td style="padding:8px;border-bottom:1px solid var(--border);">系统管理员</td><td style="padding:8px;border-bottom:1px solid var(--border);">全部管理功能</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid var(--border);"><strong>wang_zs</strong></td><td style="padding:8px;border-bottom:1px solid var(--border);">王总书记</td><td style="padding:8px;border-bottom:1px solid var(--border);">党务管理、派发任务</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid var(--border);"><strong>li_mgr</strong></td><td style="padding:8px;border-bottom:1px solid var(--border);">李经理</td><td style="padding:8px;border-bottom:1px solid var(--border);">部门管理、任务接收</td></tr>
+            <tr><td style="padding:8px;"><strong>zhang3</strong></td><td style="padding:8px;">张三</td><td style="padding:8px;">普通党员，填报任务</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="tip"><strong>💡 提示：</strong>不同账号登录后菜单会有差异，没有权限的功能菜单会隐藏，这是正常现象。如需调整权限，联系系统管理员在「角色管理」中配置。</div>
+
+      <h3>后台入口</h3>
+      <p>登录后点击右上角头像旁的「<strong>管理后台</strong>」按钮，或直接访问 <code style="background:#f3f4f6;padding:1px 6px;border-radius:4px;">/admin</code> 路径进入后台管理界面。</p>
+
+      <div class="warn"><strong>⚠ 注意：</strong>系统目前为开发/演示状态，使用模拟登录，正式上线前会接入企业统一身份认证（Casdoor）。请勿在当前环境录入真实敏感数据。</div>
+    </div>
+
+    <!-- 导航门户 -->
+    <div id="sec-nav" class="section">
+      <div class="section-title">🧭 导航门户（首页）</div>
+      <div class="section-subtitle">首页是各系统的统一入口，支持后台自定义配置</div>
+
+      <h3>功能说明</h3>
+      <p>首页展示企业内所有已接入系统的导航入口，按分类分组展示，点击图标即可跳转至对应系统。</p>
+
+      <div class="grid2">
+        <div class="feat-card">
+          <div class="icon">🔍</div>
+          <div class="name">拼音搜索</div>
+          <div class="desc">支持汉字全称、首字母缩写搜索，如输入"zjpt"可找到"综合管理平台"</div>
+        </div>
+        <div class="feat-card">
+          <div class="icon">🏆</div>
+          <div class="name">访问排行</div>
+          <div class="desc">展示各系统的访问热度，金银铜牌标注 Top 3</div>
+        </div>
+        <div class="feat-card">
+          <div class="icon">🔗</div>
+          <div class="name">外链跳转</div>
+          <div class="desc">点击应用卡片直接跳转到对应系统 URL，支持新标签页打开</div>
+        </div>
+        <div class="feat-card">
+          <div class="icon">🎨</div>
+          <div class="name">主题色</div>
+          <div class="desc">管理员可在站点设置中修改品牌色，全站实时生效无需刷新</div>
+        </div>
+      </div>
+
+      <h3>如何管理导航</h3>
+      <p>进入后台 → 左侧菜单「<strong>首页导航</strong>」→ 可对分类和导航项进行增删改排序。</p>
+      <ol class="step-list">
+        <li>先新建「分类」（如"业务系统"、"党务系统"），设置图标和排序</li>
+        <li>在分类下新建「导航项」，填写名称、URL、图标</li>
+        <li>图标从内置 Lucide 图标库中选择，输入关键词实时搜索</li>
+        <li>拖动排序条调整显示顺序，保存后前台即时生效</li>
+      </ol>
+      <div class="tip"><strong>💡 图标选择技巧：</strong>图标选择器支持中英文搜索，如"建筑""party""shield"等。鼠标悬停在图标上可看到名称。</div>
+    </div>
+
+    <!-- 组织管理 -->
+    <div id="sec-org" class="section">
+      <div class="section-title">🏢 组织管理</div>
+      <div class="section-subtitle">管理行政机构树和党组织树，支持最多4级行政层级</div>
+
+      <h3>两棵组织树</h3>
+      <div class="grid2">
+        <div class="feat-card">
+          <div class="icon">🏛️</div>
+          <div class="name">行政机构</div>
+          <div class="desc">一级单位 → 二级单位 → 三级单位 → 四级单位，描述公司行政结构</div>
+        </div>
+        <div class="feat-card">
+          <div class="icon">🔴</div>
+          <div class="name">党组织</div>
+          <div class="desc">党委 / 党总支 / 党支部 / 临时党支部 / 党小组，描述党务组织架构</div>
+        </div>
+      </div>
+
+      <h3>新建/编辑组织</h3>
+      <ol class="step-list">
+        <li>进入后台「组织管理」，默认显示「行政机构」tab（左侧）</li>
+        <li>点击某节点右侧的「⋯」菜单，选择「添加子级」或「编辑」</li>
+        <li>填写名称、类型、上级节点，可选填「部门负责人」</li>
+        <li>保存后树状结构立即更新</li>
+      </ol>
+
+      <h3>成员管理</h3>
+      <p>编辑行政机构时，切换到「<strong>成员</strong>」tab 可管理该部门的直接成员。</p>
+      <ul>
+        <li><strong>添加成员：</strong>搜索姓名或工号，选择用户，可同时指定在该部门的「职务」</li>
+        <li><strong>新建用户：</strong>若用户不存在，可在弹窗内直接新建后添加</li>
+        <li><strong>移出成员：</strong>点击成员行右侧「移出」，即时生效（不删除用户账号）</li>
+      </ul>
+      <div class="tip"><strong>💡 主部门规则：</strong>用户加入第一个同类型组织时自动设为「主部门」。有多个归属时，删除主部门会自动将最早加入的其他部门提升为主部门。</div>
+
+      <h3>部门负责人（重要）</h3>
+      <p>部门负责人用于「<strong>平级确认</strong>」机制——当机关部门之间互相派发任务时，须双方负责人确认后才正式下发。建议为每个机关部门设置负责人。</p>
+      <div class="warn"><strong>⚠ 注意：</strong>「部门负责人」与「有 task:reception 权限的成员」是两个不同概念。负责人管「平级确认」，reception 权限管「指派承办人」，可以是同一人，也可以不同。</div>
+
+      <h3>虚拟机构说明</h3>
+      <p>系统中存在「<strong>虚拟机构</strong>」（如"公司机关"、"基层单位"），它们是用于归类的壳节点，<strong>不是真实的单位</strong>，不建议直接派发任务给虚拟机构。真实的部门/单位在其下一级。</p>
+    </div>
+
+    <!-- 用户管理 -->
+    <div id="sec-user" class="section">
+      <div class="section-title">👤 用户管理</div>
+      <div class="section-subtitle">管理员工账号、组织归属、角色与自定义字段</div>
+
+      <h3>新建用户</h3>
+      <ol class="step-list">
+        <li>后台「用户管理」→ 点击右上角「新建用户」</li>
+        <li>填写姓名、员工编号（工号，系统唯一标识）、手机号</li>
+        <li>选择所属组织（行政机构），可多选</li>
+        <li>选择角色（决定该用户能使用哪些功能）</li>
+        <li>可在「自定义字段」tab 填入额外信息（入职日期、身份证号等）</li>
+      </ol>
+
+      <div class="tip"><strong>💡 员工编号 vs 账号：</strong>系统统一使用「员工编号」而非「账号」称呼，登录时也以员工编号识别身份。请勿将它理解成工资系统的工号，它只是本系统的用户标识。</div>
+
+      <h3>多组织归属</h3>
+      <p>一个用户可以同时归属多个部门（如"综合办公室"兼任"党支部"），系统用「<strong>主部门</strong>」标记主要归属，影响任务派发时的责任判定。</p>
+
+      <h3>自定义字段</h3>
+      <p>管理员可在「用户自定义字段」页面定义额外的用户属性（如"入职日期"、"岗位类别"），定义后在用户详情页可填写对应值。字段类型支持文本、日期、数字、下拉选择等。</p>
+
+      <h3>头像说明</h3>
+      <ul>
+        <li>用户可上传本人照片，系统提供 <strong>AI 生成职场风 3D 头像</strong>（红底、提亮效果）</li>
+        <li>生成的头像会保存到「头像库」，可随时切换历史头像</li>
+        <li>头像在首页右上角、后台右上角、桌面客户端均统一显示</li>
+      </ul>
+    </div>
+
+    <!-- 角色权限 -->
+    <div id="sec-role" class="section">
+      <div class="section-title">🔑 角色与权限</div>
+      <div class="section-subtitle">基于角色的访问控制，权限点精确到具体操作</div>
+
+      <h3>角色管理</h3>
+      <p>后台「角色管理」页可以创建/编辑角色，每个角色可勾选多个权限点。</p>
+      <div class="card">
+        <h4>内置关键权限点参考</h4>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="background:var(--bg);">
+            <th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--border);">权限代码</th>
+            <th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--border);">含义</th>
+          </tr></thead>
+          <tbody>
+            <tr><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:monospace;color:var(--blue);">certificate:manage</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);">管理证书（发证/撤销/模板）</td></tr>
+            <tr><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:monospace;color:var(--blue);">task:manage</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);">派发任务（创建/查看全部）</td></tr>
+            <tr><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:monospace;color:var(--blue);">task:reception</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);">接收管理（指派承办人）</td></tr>
+            <tr><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:monospace;color:var(--blue);">task:fill</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);">填报任务回执</td></tr>
+            <tr><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:monospace;color:var(--blue);">task:review</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);">审核回执（通过/退回）</td></tr>
+            <tr><td style="padding:6px 10px;font-family:monospace;color:var(--blue);">admin:menu</td><td style="padding:6px 10px;">访问后台管理菜单</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><strong>💡 权限不足提示：</strong>当操作被拒绝（提示"403 无权限"）时，通常是当前账号缺少对应权限点。请用系统管理员账号（admin）操作，或让管理员给您所在角色添加对应权限。</div>
+
+      <h3>平台管理员（platform_admin）</h3>
+      <p>系统内置「平台管理员」标识，拥有所有权限，可绕过所有权限检查。这相当于超级管理员，谨慎分配。</p>
+    </div>
+
+    <!-- 证书管理 -->
+    <div id="sec-cert" class="section">
+      <div class="section-title">🏅 证书管理</div>
+      <div class="section-subtitle">覆盖「设计模板 → 颁发证书 → 公开验真」完整闭环</div>
+
+      <h3>整体流程</h3>
+      <div class="card" style="background:linear-gradient(135deg,var(--red-light),var(--gold-light));">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;font-weight:500;">
+          <span style="background:var(--red);color:#fff;padding:4px 10px;border-radius:4px;">1. 设计模板</span>
+          <span style="color:var(--text-mute);">→</span>
+          <span style="background:var(--red);color:#fff;padding:4px 10px;border-radius:4px;">2. AI 提取 / 手动填写</span>
+          <span style="color:var(--text-mute);">→</span>
+          <span style="background:var(--red);color:#fff;padding:4px 10px;border-radius:4px;">3. 审核发证</span>
+          <span style="color:var(--text-mute);">→</span>
+          <span style="background:var(--red);color:#fff;padding:4px 10px;border-radius:4px;">4. 下载 PDF</span>
+          <span style="color:var(--text-mute);">→</span>
+          <span style="background:var(--red);color:#fff;padding:4px 10px;border-radius:4px;">5. 扫码验真</span>
+        </div>
+      </div>
+
+      <h3>① 设计证书模板</h3>
+      <p>后台「证书管理」→「证书模板」→「新建模板」，进入可视化设计器。</p>
+      <ul>
+        <li><strong>8种元素：</strong>文本、变量文本、图片、背景、矩形、线条、印章、二维码</li>
+        <li><strong>变量绑定：</strong>拖入「变量文本」元素，点击可选择绑定到「姓名」「荣誉名称」「表彰年度」「证书编号」等动态变量，发证时自动替换</li>
+        <li><strong>撤销/重做：</strong>支持 50 步历史，快捷键 <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd></li>
+        <li><strong>预览：</strong>设计界面右上角可随时预览实际效果</li>
+        <li><strong>导出：</strong>模板支持导出为 PNG 和 PDF 两种格式</li>
+      </ul>
+      <div class="tip"><strong>💡 最佳实践：</strong>模板建议以「荣誉类别」为单位创建（如"优秀共产党员证书"）。背景图片建议上传 A4 尺寸高清图片（2480×3508px），避免打印模糊。</div>
+
+      <h3>② 发证向导（5步）</h3>
+      <ol class="step-list">
+        <li><strong>AI 上传识别：</strong>上传表彰文件（Word/PDF），AI 自动提取荣誉名称、年份、受表彰人列表。或直接跳过手动填写</li>
+        <li><strong>选择模板：</strong>从已有模板中选择，预览效果</li>
+        <li><strong>填写受表彰人：</strong>输入姓名或工号自动带出，系统会自动填充所属单位全称路径</li>
+        <li><strong>确认信息：</strong>核对证书编号格式（自动生成：年份-荣誉代码-总数-序号）</li>
+        <li><strong>发证：</strong>生成 PDF，可单张下载或批量打包 ZIP 下载</li>
+      </ol>
+      <div class="warn"><strong>⚠ 重名处理：</strong>按姓名搜索时如有重名，系统会标注「待核对」，请务必核实工号确认是否为同一人，避免发错证书。</div>
+
+      <h3>③ AI 自动提取</h3>
+      <p>上传表彰文件后，AI（DeepSeek）会自动识别：</p>
+      <ul>
+        <li>表彰荣誉名称（如"优秀共产党员"）</li>
+        <li>表彰年度（默认取上一年）</li>
+        <li>受表彰人名单（姓名+单位）</li>
+      </ul>
+      <p>识别结果为预填值，<strong>人工确认后再发证</strong>，AI 可能有偏差需校对。</p>
+      <div class="tip"><strong>💡 AI 配置：</strong>如 AI 提取很慢，可在后台「外部 API 接入」中将 DeepSeek 模型改为 flash 版本（速度更快，精度略低）。</div>
+
+      <h3>④ 证书验真</h3>
+      <p>每张证书都带有唯一二维码/验真链接，任何人无需登录，直接访问即可验证真伪：</p>
+      <ul>
+        <li>扫描证书上的二维码，或访问 <code style="background:#f3f4f6;padding:1px 6px;border-radius:4px;">/verify/[token]</code></li>
+        <li>显示证书缩略图、颁发信息、颁发时间</li>
+        <li>已撤销的证书显示「已撤销」标记</li>
+      </ul>
+
+      <h3>⑤ 外部证书导入</h3>
+      <p>对于历史纸质证书或外部系统证书，可通过「外部录入」功能上传原件扫描件，录入基本信息，统一管理。</p>
+
+      <h3>证书编号规则</h3>
+      <div class="card">
+        <p style="font-family:monospace;font-size:15px;text-align:center;letter-spacing:.05em;">2024 - YXGCDYY - 0050 - 0003</p>
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:8px;font-size:12px;flex-wrap:wrap;">
+          <span class="tag tag-red">表彰年度</span>
+          <span style="color:var(--text-mute);">-</span>
+          <span class="tag tag-gold">荣誉代码</span>
+          <span style="color:var(--text-mute);">-</span>
+          <span class="tag tag-blue">该荣誉总颁发数</span>
+          <span style="color:var(--text-mute);">-</span>
+          <span class="tag tag-green">本批序号</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 任务分派 -->
+    <div id="sec-task" class="section">
+      <div class="section-title">📋 任务分派系统</div>
+      <div class="section-subtitle">通用「下发-填报-审核-汇总」全流程，适用于数据报送、党建报告等场景</div>
+
+      <h3>角色分工</h3>
+      <div class="grid3">
+        <div class="feat-card">
+          <div class="icon">📤</div>
+          <div class="name">派发人</div>
+          <div class="desc">有 task:manage 权限，创建任务并派发给各单位/部门</div>
+        </div>
+        <div class="feat-card">
+          <div class="icon">📥</div>
+          <div class="name">接收管理员</div>
+          <div class="desc">有 task:reception 权限，指派承办人给本部门成员</div>
+        </div>
+        <div class="feat-card">
+          <div class="icon">✍️</div>
+          <div class="name">填报人</div>
+          <div class="desc">有 task:fill 权限，填写回执并提交</div>
+        </div>
+      </div>
+
+      <h3>新建任务（4步向导）</h3>
+      <ol class="step-list">
+        <li>
+          <div>
+            <strong>AI 上传识别：</strong>上传通知文件（Word/PDF），AI 自动生成任务标题、填报要求、截止日期，并建议填报字段和派发范围。文件同时作为通知文件下发给填报人。
+            <div class="tip" style="margin-top:8px;"><strong>💡</strong> 若没有文件，直接跳过此步手动填写也可以。AI 识别出的字段仅供参考，可在第二步修改。</div>
+          </div>
+        </li>
+        <li>
+          <div>
+            <strong>设计填报表单：</strong>使用可视化字段设计器，拖拽添加字段。
+            <ul style="margin-top:6px;">
+              <li>支持 9 种字段类型：文本、多行文本、数字、日期、下拉选择、文件、图片、富文本、在线文档</li>
+              <li>可「按填报要求生成字段」让 AI 自动产出字段方案</li>
+              <li>可「复制往期任务字段」直接复用历史表单</li>
+              <li>字段分组：左侧「添加分组」创建分组，字段可跨组拖拽</li>
+            </ul>
+          </div>
+        </li>
+        <li>
+          <div>
+            <strong>选择派发对象：</strong>在组织树中勾选目标部门/单位，或直接勾选个人。
+            <ul style="margin-top:6px;">
+              <li>「快捷组」：可将常用的派发范围存为自定义快捷组，下次一键选择</li>
+              <li>「AI 建议范围」：若第一步上传了文件，此处会显示 AI 建议的派发范围，可一键选中</li>
+            </ul>
+          </div>
+        </li>
+        <li><strong>确认并派发：</strong>核查任务信息、字段列表、派发对象数量，点击「确认派发」。</li>
+      </ol>
+
+      <div class="warn"><strong>⚠ 权限提示：</strong>新建任务须使用有 <code>task:manage</code> 权限的账号（如 admin）。普通员工账号派发会提示 403 权限不足。</div>
+
+      <h3>平级确认机制</h3>
+      <p>当<strong>机关部门向其他机关部门派发任务</strong>时，会触发「平级确认」流程：</p>
+      <ul>
+        <li>派发后任务状态为「待确认」，<strong>不会立即进入对方待办</strong></li>
+        <li>双方部门负责人需在「我的待办 → 待我确认」中点击「同意下发」</li>
+        <li>任一方驳回，该派发对象作废（不影响同任务其他对象）</li>
+        <li>派发人可对「已驳回」对象点击「重新发起」重新触发确认流程</li>
+      </ul>
+      <div class="tip"><strong>💡 何时触发：</strong>派给「基层单位」或「个人」不触发平级确认，只有「机关↔机关」跨部门才需要确认。</div>
+
+      <h3>我的待办（填报侧）</h3>
+      <p>有填报任务时，登录后在「我的待办」页面可看到：</p>
+      <ul>
+        <li><strong>待接收：</strong>已派发但尚未有人认领的任务，点击「接收」或「指派」</li>
+        <li><strong>我负责的：</strong>已认领/被指派给我的任务，点击「填报」</li>
+      </ul>
+
+      <h3>填报注意事项</h3>
+      <ul>
+        <li>可先「保存草稿」，后续再修改提交</li>
+        <li>提交后不可直接修改，如需更改需等审核人「退回」后重新填报</li>
+        <li>页面顶部显示<strong>派发部门、派发人姓名及联系电话</strong>，有疑问可直接拨打</li>
+        <li>截止日期过后系统不会立即锁定，但超期满 1 个月未提交的回执系统会自动标为通过</li>
+      </ul>
+
+      <h3>超期自动通过规则</h3>
+      <div class="info"><strong>ℹ️ 说明：</strong>任务截止日期满 1 个月后，仍处于「已提交」待审状态的回执，系统每天凌晨 3 点自动标记为「已通过」，并在审核备注中注明「系统自动通过」。此规则保证历史数据不会永久停留在待审状态。</div>
+    </div>
+
+    <!-- 字典管理 -->
+    <div id="sec-dict" class="section">
+      <div class="section-title">📖 字典管理</div>
+      <div class="section-subtitle">管理系统内下拉选项的可选值</div>
+
+      <h3>什么是字典</h3>
+      <p>字典是系统中各类「下拉选项」的数据来源，例如「职务」「学历」「荣誉级别」等字段的可选值都从字典中读取。</p>
+
+      <h3>字典结构（2级）</h3>
+      <ul>
+        <li><strong>字典类别（一级）：</strong>如"职务"、"学历"，相当于一组下拉的名称</li>
+        <li><strong>字典项（二级）：</strong>如"职务"下有"总经理"、"部门经理"、"员工"等具体选项</li>
+      </ul>
+
+      <h3>操作说明</h3>
+      <ol class="step-list">
+        <li>后台「字典管理」→ 左侧选择或新建字典类别</li>
+        <li>右侧列表管理该类别下的字典项（增删改排序）</li>
+        <li>修改立即生效，前台下拉选项同步更新</li>
+      </ol>
+      <div class="tip"><strong>💡 注意：</strong>任务分派中的「下拉选择」字段不依赖字典，而是在字段设计时直接输入选项文本，更灵活。字典主要用于用户管理等固定字段。</div>
+    </div>
+
+    <!-- 站点设置 -->
+    <div id="sec-site" class="section">
+      <div class="section-title">⚙️ 站点设置</div>
+      <div class="section-subtitle">配置平台的品牌信息、外观主题</div>
+
+      <h3>可配置项</h3>
+      <div class="card">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="background:var(--bg);">
+            <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">分类</th>
+            <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">设置项</th>
+            <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">说明</th>
+          </tr></thead>
+          <tbody>
+            <tr><td rowspan="3" style="padding:8px;border-bottom:1px solid var(--border);font-weight:600;">品牌</td><td style="padding:8px;border-bottom:1px solid var(--border);">平台名称</td><td style="padding:8px;border-bottom:1px solid var(--border);">显示在浏览器标题和首页标题</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid var(--border);">LOGO</td><td style="padding:8px;border-bottom:1px solid var(--border);">上传图片，建议 PNG 透明背景</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid var(--border);">首页 Hero 文案</td><td style="padding:8px;border-bottom:1px solid var(--border);">首页大标题和副标题</td></tr>
+            <tr><td rowspan="2" style="padding:8px;border-bottom:1px solid var(--border);font-weight:600;">主题</td><td style="padding:8px;border-bottom:1px solid var(--border);">主色调</td><td style="padding:8px;border-bottom:1px solid var(--border);">默认党建红 #C8001E，修改后全站实时生效</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid var(--border);">点缀色</td><td style="padding:8px;border-bottom:1px solid var(--border);">默认金黄 #F5A623</td></tr>
+            <tr><td style="padding:8px;font-weight:600;">其他</td><td style="padding:8px;">页脚文案</td><td style="padding:8px;">版权信息等底部文字</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><strong>💡 主题色说明：</strong>修改主题色后全站（前台+后台）实时更新，无需刷新页面。但「金牌」「银牌」「党委红」等语义颜色不跟主题色变化，始终保持固定颜色。</div>
+    </div>
+
+    <!-- AI 配置 -->
+    <div id="sec-ai" class="section">
+      <div class="section-title">🤖 外部 AI 配置</div>
+      <div class="section-subtitle">管理接入的 AI 模型服务（DeepSeek、豆包、通义千问）</div>
+
+      <h3>支持的 AI 平台</h3>
+      <p>系统支持同时配置多个 AI 服务商，按优先级顺序调用，首个可用的服务商生效。</p>
+      <div class="grid3">
+        <div class="feat-card"><div class="icon">🔵</div><div class="name">DeepSeek</div><div class="desc">文字理解、信息提取，用于证书 AI 提取和任务字段生成</div></div>
+        <div class="feat-card"><div class="icon">🟡</div><div class="name">豆包（火山引擎）</div><div class="desc">图像生成（Seedream）+ 3D 模型生成（Seed3D），用于头像生成</div></div>
+        <div class="feat-card"><div class="icon">🟢</div><div class="name">通义千问</div><div class="desc">文字理解备用服务商</div></div>
+      </div>
+
+      <h3>配置方法</h3>
+      <ol class="step-list">
+        <li>后台「外部 API 接入」→ 选择服务商</li>
+        <li>填入 API Key（从对应平台官网获取）</li>
+        <li>填入模型名称（如 <code>deepseek-chat</code>）</li>
+        <li>设置优先级（数字越小越优先）</li>
+        <li>保存后即时生效</li>
+      </ol>
+
+      <h3>提示词管理</h3>
+      <p>后台「AI 提示词管理」可查看和修改各 AI 功能的提示词，无需改代码：</p>
+      <ul>
+        <li>证书 AI 提取提示词</li>
+        <li>任务字段生成提示词</li>
+        <li>头像生成提示词</li>
+      </ul>
+      <div class="tip"><strong>💡 调优建议：</strong>若 AI 提取的信息不准确，可在「AI 提示词管理」页修改对应提示词，保存后立即生效，无需重启服务。</div>
+    </div>
+
+    <!-- AI 头像 -->
+    <div id="sec-avatar" class="section">
+      <div class="section-title">🎨 AI 头像生成</div>
+      <div class="section-subtitle">上传本人照片，AI 生成职场风 3D 头像</div>
+
+      <h3>使用步骤</h3>
+      <ol class="step-list">
+        <li>进入后台「用户管理」→ 找到自己的账号 → 点击「基本信息」tab</li>
+        <li>在头像区域点击「上传照片」，选择本人清晰正面照（支持 JPG/PNG）</li>
+        <li>点击「AI 生成头像」，等待约 10~30 秒</li>
+        <li>生成的头像自动加入「头像库」，可点击选用</li>
+        <li>点击保存后，全站头像同步更新</li>
+      </ol>
+
+      <div class="tip"><strong>💡 照片建议：</strong>使用正面、光线均匀的证件照或职场照，效果最佳。侧脸、戴墨镜、遮挡面部的照片识别效果较差。</div>
+      <div class="info"><strong>ℹ️ 原图保存：</strong>上传的原始照片会按「姓名-工号」命名保存到服务器，下次生成头像无需重新上传。</div>
+      <div class="warn"><strong>⚠ 费用说明：</strong>AI 头像生成调用火山引擎 Seedream 接口，每次生成有 API 费用，请勿频繁生成。</div>
+    </div>
+
+    <!-- 桌面客户端 -->
+    <div id="sec-desktop" class="section">
+      <div class="section-title">🖥️ 桌面客户端</div>
+      <div class="section-subtitle">Windows 桌面应用，后台驻留，新任务自动弹通知</div>
+
+      <h3>为什么要用桌面客户端</h3>
+      <p>内网 HTTP 环境下，浏览器的推送通知无法工作（PWA 需要 HTTPS）。桌面客户端解决了这个问题：</p>
+      <ul>
+        <li>常驻系统托盘，不占用桌面空间</li>
+        <li>每 90 秒后台轮询一次待办任务</li>
+        <li>有新的「待接收」任务时，弹出<strong>原生 Windows 通知</strong></li>
+        <li>点击通知直接打开对应任务</li>
+      </ul>
+
+      <h3>安装与使用</h3>
+      <ol class="step-list">
+        <li>从管理员处获取安装包（<code>.msi</code> 或 <code>.exe</code>）</li>
+        <li>双击安装，可能出现 SmartScreen 提示（点「仍要运行」）</li>
+        <li>安装后程序自动启动，右下角任务栏托盘出现党建益友图标</li>
+        <li>双击托盘图标或点击「显示主窗口」即可打开</li>
+        <li>关闭窗口 = 最小化到托盘，不会退出程序</li>
+      </ol>
+
+      <div class="tip"><strong>💡 完全退出：</strong>右键点击托盘图标 → 选择「退出」才会完全关闭程序。</div>
+      <div class="warn"><strong>⚠ 登录说明：</strong>桌面客户端加载的是同一个 Web 页面，需要在窗口内正常登录账号后，通知功能才会工作。</div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ════════════════════════════════════════
+     TAB 2: 功能建设汇报
+═══════════════════════════════════════════ -->
+<div id="tab-report" class="view">
+  <div class="report-content">
+
+    <div class="report-header">
+      <h1>党建益友平台功能建设情况汇报</h1>
+      <div class="sub">企业党建数字化应用底座 · 建设阶段总结</div>
+      <div class="date">汇报时间：2026年6月</div>
+    </div>
+
+    <!-- 一、建设背景 -->
+    <div class="report-section">
+      <h2>一、建设背景与目标</h2>
+      <p>随着企业信息化建设持续推进，各职能部门分散建设了党建、办公、培训、考核等多个业务系统，存在<strong>入口分散、数据孤岛、重复建设</strong>等问题。为此，启动建设「党建益友」企业级应用底座平台，实现以下目标：</p>
+      <ul style="margin:12px 0 12px 20px;">
+        <li>统一接入各内部系统，提供<strong>统一门户导航与搜索</strong></li>
+        <li>构建<strong>组织、用户、权限</strong>统一管理底座</li>
+        <li>承载<strong>党费缴纳、活动报名、荣誉证书、任务报送</strong>等党务业务功能</li>
+        <li>为后续业务模块快速上线提供技术脚手架</li>
+      </ul>
+      <p>平台定位为「先跑起来，接入真实客户，按需扩展」，避免过度超前建设，以<strong>最小可用产品</strong>快速交付价值。</p>
+    </div>
+
+    <!-- 二、技术架构 -->
+    <div class="report-section">
+      <h2>二、技术架构</h2>
+      <p>平台采用<strong>前后端分离</strong>架构，后端为模块化单体，为后续功能扩展预留良好结构：</p>
+      <table class="module-table">
+        <thead><tr><th>层次</th><th>技术选型</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>前端</td><td>React 19 + Vite + TypeScript + Tailwind CSS</td><td>组件化、类型安全、极速热更新</td></tr>
+          <tr><td>后端</td><td>NestJS + Prisma ORM</td><td>模块化架构，代码边界清晰，守 DAG 无循环依赖</td></tr>
+          <tr><td>数据库</td><td>SQLite（开发）/ PostgreSQL（生产）</td><td>零配置开发，生产一键切换</td></tr>
+          <tr><td>文件存储</td><td>本地盘（Driver 抽象）</td><td>挂载群晖共享盘即可使用群晖存储，代码无需修改</td></tr>
+          <tr><td>AI 接入</td><td>DeepSeek / 豆包（火山引擎）/ 通义千问</td><td>多服务商冗余，优先级可配置</td></tr>
+          <tr><td>部署</td><td>Docker Compose</td><td>一键部署，支持局域网访问</td></tr>
+          <tr><td>桌面端</td><td>Tauri（基于 WebView2）</td><td>复用 Web 前端，无需二次开发，打包为 .exe 安装包</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 三、已建功能 -->
+    <div class="report-section">
+      <h2>三、已建成功能模块（共 16 个模块）</h2>
+
+      <div class="metric-row">
+        <div class="metric"><div class="num">16</div><div class="label">已建功能模块</div></div>
+        <div class="metric"><div class="num">60+</div><div class="label">后端接口</div></div>
+        <div class="metric"><div class="num">9</div><div class="label">AI 能力集成</div></div>
+        <div class="metric"><div class="num">4</div><div class="label">客户端形态</div></div>
+      </div>
+
+      <h3>（一）平台底座</h3>
+      <ul class="check-list">
+        <li>统一门户首页：各系统导航卡片、拼音搜索、访问排行（金/银/铜牌）</li>
+        <li>站点设置：平台名称、LOGO、主题色（全站实时生效）、页脚配置</li>
+        <li>组织管理：行政机构四级树（一级单位→四级单位）+ 党组织五类树（党委/总支/支部/临时支部/党小组）</li>
+        <li>用户管理：多组织归属、多角色授权、自定义扩展字段</li>
+        <li>角色权限：基于角色的精细化权限控制，权限点精确到具体操作</li>
+        <li>数据字典：两级字典管理，支撑系统内所有下拉选项</li>
+        <li>审计日志：全操作留痕，记录操作人、操作内容、时间</li>
+        <li>统一文件存储：StorageDriver 抽象层，本地盘默认、群晖挂载即用、S3 接口预留</li>
+      </ul>
+
+      <h3>（二）荣誉证书管理系统</h3>
+      <p>覆盖「设计→颁发→验真」完整闭环，核心创新点：</p>
+      <ul class="check-list">
+        <li><strong>可视化模板设计器：</strong>支持8种元素（文本/图片/变量/印章/二维码等）、撤销重做50步、PNG/PDF导出</li>
+        <li><strong>AI 智能提取：</strong>上传表彰文件（Word/PDF），AI 自动提取荣誉名称、年份、获奖人名单，大幅降低录入工作量</li>
+        <li><strong>批量发证：</strong>支持单证和批量操作，证书编号自动生成（年份-荣誉代码-总数-序号格式）</li>
+        <li><strong>公开验真：</strong>每张证书唯一二维码，任何人无需登录即可扫码验真</li>
+        <li><strong>PDF 优化：</strong>证书 PDF 内图片采用 JPEG 压缩（约 1.5MB/张），支持局域网高效下载</li>
+        <li><strong>外部证书导入：</strong>历史纸质证书扫描件统一归档管理</li>
+      </ul>
+
+      <h3>（三）任务分派系统</h3>
+      <p>通用「下发-填报-审核-汇总」底座，适用于数据报送、党建报告、专项信息收集等场景：</p>
+      <ul class="check-list">
+        <li><strong>智能创建向导：</strong>上传通知文件 → AI 自动解析生成任务结构（标题/要求/截止日期/字段/范围建议）</li>
+        <li><strong>WYSIWYG 字段设计器：</strong>9种字段类型（含文件、图片、富文本、在线文档链接），拖拽排序，字段分组，撤销重做</li>
+        <li><strong>精准派发：</strong>组织树多选部门/单位或个人，支持快捷组（常用范围一键复用）</li>
+        <li><strong>平级确认机制：</strong>机关部门间互派须双方负责人确认后才正式下发，规范横向协作流程</li>
+        <li><strong>承办人指派：</strong>接收管理员可将任务指派给本部门具体成员，支持区域权限控制</li>
+        <li><strong>全程状态追踪：</strong>派发→待确认→待接收→填报中→已提交→已审核，状态实时可见</li>
+        <li><strong>超期自动处理：</strong>截止满1个月未审核的回执，系统每日凌晨自动标记为通过，避免数据积压</li>
+        <li><strong>附件汇总下载：</strong>按单位归类打包，文件名规范，一键获取所有附件</li>
+      </ul>
+
+      <h3>（四）AI 能力集成</h3>
+      <ul class="check-list">
+        <li>多 AI 服务商统一接入（DeepSeek / 豆包 / 通义千问），优先级可配置，可热切换</li>
+        <li>证书 AI 提取：Word/PDF 文件 → 荣誉信息自动抽取</li>
+        <li>任务 AI 识别：通知文件 → 任务结构自动生成（含填报字段建议）</li>
+        <li>AI 头像生成：员工照片 → 职场风 3D 仿真头像（火山引擎 Seedream 5.0）</li>
+        <li>3D 模型生成接口预留：火山引擎 Seed3D（为虚拟展厅做准备）</li>
+        <li>提示词集中管理后台：AI 提示词可后台配置，无需改代码即可调优</li>
+      </ul>
+
+      <h3>（五）多端访问</h3>
+      <ul class="check-list">
+        <li>Web 端（浏览器）：前后台一体，局域网 IP 直访</li>
+        <li>Windows 桌面客户端（.exe/.msi）：Tauri 封装，托盘常驻，新任务原生通知弹窗</li>
+        <li>局域网移动端：手机/平板浏览器访问，响应式自适应布局</li>
+        <li>公开验真页面：无需登录，二维码/链接直达证书验真</li>
+      </ul>
+    </div>
+
+    <!-- 四、核心亮点 -->
+    <div class="report-section">
+      <h2>四、建设亮点</h2>
+
+      <h3>1. AI 贯穿全流程，大幅降低人工录入负担</h3>
+      <p>证书颁发和任务派发是频率最高的两项党务工作。传统方式需要人工逐条录入表彰信息、逐份填写任务通知，耗时费力。平台将 AI 能力无缝嵌入：上传一份 Word 文件，几十秒内自动生成完整的证书发放方案或任务派发方案，人工只需确认修改，<strong>录入工作量减少 70% 以上</strong>。</p>
+
+      <h3>2. 数据驱动设计，扩展成本极低</h3>
+      <p>平台核心模块（任务字段、用户扩展字段、导航项、证书变量）均采用元数据驱动设计，新增一种业务需求无需修改代码，只需在后台配置即可生效。这种设计使平台能够<strong>快速响应各部门不同的业务场景</strong>，而不是定制开发。</p>
+
+      <h3>3. 模块化架构，业务边界清晰</h3>
+      <p>后端采用严格的模块化单体架构，代码层面强制 5 条约束（表归属标注、跨模块 DI 调用、barrel 入口、依赖图无环、固定骨架）。新增业务模块按 7 步清单操作，<strong>任何开发者接手均可快速上手</strong>，不会产生"改了这里，不知道影响了哪里"的混乱。</p>
+
+      <h3>4. 本地化部署，数据安全可控</h3>
+      <p>平台完全支持内网离线部署，文件存储对接企业现有群晖 NAS（挂载共享盘即用），AI 模型调用仅通过 API 发送文本内容（不上传原始文件），<strong>核心数据全程不离开企业内网</strong>。</p>
+
+      <h3>5. 平级确认机制，规范横向协作</h3>
+      <p>机关部门间互发任务须双方负责人确认，避免了"被动接单"和"无效派发"的问题，同时保留派发人的"重新发起"权限和管理员的"代确认"权限，在规范流程的同时防止流程死锁。</p>
+    </div>
+
+    <!-- 五、建设进展 -->
+    <div class="report-section">
+      <h2>五、建设进展与后续规划</h2>
+      <h3>当前状态</h3>
+      <p>平台已完成 MVP（最小可用产品）建设，核心功能全部可用，当前处于<strong>功能完善与内部试用阶段</strong>，待稳定后可向各单位推广。</p>
+
+      <h3>近期优先推进</h3>
+      <table class="module-table">
+        <thead><tr><th>优先级</th><th>功能</th><th>价值</th></tr></thead>
+        <tbody>
+          <tr><td>高</td><td>接入企业统一身份认证（Casdoor）</td><td>替换模拟登录，实现与企业 LDAP/AD 打通</td></tr>
+          <tr><td>高</td><td>访问量/点赞真实统计</td><td>首页排行榜数据真实化</td></tr>
+          <tr><td>中</td><td>审计日志查询页面</td><td>合规审计需要，数据已有只差界面</td></tr>
+          <tr><td>中</td><td>首页综合查询</td><td>证书查询等多业务统一入口</td></tr>
+          <tr><td>中</td><td>任务富文本与在线文档</td><td>填报支持图文混排，接入群晖在线文档</td></tr>
+        </tbody>
+      </table>
+
+      <h3>中期规划</h3>
+      <p><strong>企业虚拟展厅（Babylon.js 3D 客户端）</strong>：员工打开网址即可进入三维展厅漫游参观，展品数据与平台已有的荣誉证书、党务公告等打通，支持 VR 设备接入。已完成技术验证，正在开发中。</p>
+    </div>
+
+    <!-- 六、总结 -->
+    <div class="report-section">
+      <h2>六、总结</h2>
+      <p>党建益友平台以<strong>「够用就好、快速迭代」</strong>为原则，在较短周期内完成了底座建设和多项核心业务功能落地。平台技术架构具备良好的扩展性，后续每新增一个业务模块，只需在现有框架内填充，<strong>不需要推倒重来</strong>。</p>
+      <p style="margin-top:12px;">当前建设重点是把已有功能打磨到可交付给真实用户使用的质量水平，同时推进统一身份认证接入，为正式推广上线做准备。</p>
+      <div style="text-align:right;margin-top:32px;color:var(--text-mute);font-size:13px;border-top:1px solid var(--border);padding-top:16px;">
+        汇报人：信息化建设团队<br>
+        汇报时间：2026年6月
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  function switchTab(tab) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    event.currentTarget.classList.add('active');
+  }
+
+  function showSection(id) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.sidebar-item').forEach(s => s.classList.remove('active'));
+    document.getElementById('sec-' + id).classList.add('active');
+    event.currentTarget.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+</script>
+</body>
+</html>

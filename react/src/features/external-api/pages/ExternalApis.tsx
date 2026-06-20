@@ -817,6 +817,8 @@ function EditDialog({
   const [model, setModel] = useState(api.model ?? "");
   const [visionModel, setVisionModel] = useState(api.visionModel ?? "");
   const [imageModel, setImageModel] = useState(api.imageModel ?? "");
+  const [ttsModel, setTtsModel] = useState(api.ttsModel ?? "");
+  const [ttsVoice, setTtsVoice] = useState(api.ttsVoice ?? "");
   const [rechargeUrl, setRechargeUrl] = useState(api.rechargeUrl ?? "");
   const [priority, setPriority] = useState(api.priority);
   const [capabilities, setCapabilities] = useState(api.capabilities);
@@ -852,6 +854,8 @@ function EditDialog({
         model: model || undefined,
         visionModel: visionModel || undefined,
         imageModel: imageModel || undefined,
+        ttsModel: ttsModel || undefined,
+        ttsVoice: ttsVoice || undefined,
         rechargeUrl: rechargeUrl || undefined,
         priority,
         capabilities,
@@ -930,6 +934,20 @@ function EditDialog({
           value={imageModel}
           onChange={setImageModel}
           placeholder="如 doubao-seededit-3-0-i2i-250628"
+          mono
+        />
+        <LabeledInput
+          label="语音合成模型(TTS;3D 展厅解说员配音,需勾选 tts 能力)"
+          value={ttsModel}
+          onChange={setTtsModel}
+          placeholder="如 doubao-tts / 平台的语音合成模型名"
+          mono
+        />
+        <LabeledInput
+          label="语音音色(TTS voice;平台各自的音色标识,留空用默认)"
+          value={ttsVoice}
+          onChange={setTtsVoice}
+          placeholder="如 zh_female_xxx / 平台音色名"
           mono
         />
         <LabeledInput

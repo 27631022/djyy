@@ -6,7 +6,8 @@ import { placeholderTexture } from './placeholder';
 import { fixtureRoot, markPickable } from './fixtureUtils';
 import type { BuiltFixture } from './imageCaseBuilder';
 
-/** 视频展墙:深色窄边框 + 屏幕(海报/占位,微自发光读作亮屏);点击在浮层里播放 */
+/** 视频展墙:深色窄边框 + 屏幕(海报/占位,微自发光读作亮屏);点击在浮层里播放。
+ *  离地高度 / 相框高度可调(参考图片展柜);doubleSided 时背面同屏(中岛双面)。 */
 export function buildVideoWall(
   scene: Scene,
   fx: Fixture,
@@ -15,8 +16,9 @@ export function buildVideoWall(
   const root = fixtureRoot(scene, fx);
   const c = (fx.source.content ?? {}) as VideoWallContent;
   const w = Math.max(fx.w, 2);
-  const h = Math.min(w * (9 / 16), 2.6);
-  const centerY = 1.1 + h / 2;
+  // 相框高:有 frameH 用之(0.5~4m),否则按 16:9 自动;下边缘离地 baseElevM(默认 1.1)
+  const h = c.frameH ? Math.min(4, Math.max(0.5, c.frameH)) : Math.min(w * (9 / 16), 2.6);
+  const centerY = (c.baseElevM ?? 1.1) + h / 2;
 
   const bezel = MeshBuilder.CreateBox(
     `video-bezel:${fx.id}`,
@@ -31,12 +33,7 @@ export function buildVideoWall(
   });
   bezel.parent = root;
 
-  const screen = MeshBuilder.CreatePlane(
-    `video-screen:${fx.id}`,
-    { width: w, height: h },
-    scene,
-  );
-  screen.position.set(0, centerY, -0.052);
+  // 屏幕材质(海报/占位,微自发光读作亮屏);正反面共用同一张
   const sMat = pbr(scene, `video-screen-mat:${fx.id}`, {
     color: Color3.White(),
     roughness: 0.6,
@@ -54,10 +51,22 @@ export function buildVideoWall(
   sMat.albedoTexture = tex;
   sMat.emissiveColor = new Color3(0.32, 0.32, 0.34); // 亮屏感
   sMat.emissiveTexture = tex;
-  screen.material = sMat;
-  screen.parent = root;
 
-  const pickables = [bezel, screen];
+  // 屏幕(单面板;doubleSided 时背面再来一块,旋转 π,文字/画面不镜像)
+  const mkScreen = (flip: boolean) => {
+    const s = MeshBuilder.CreatePlane(
+      `video-screen:${fx.id}:${flip ? 'b' : 'f'}`,
+      { width: w, height: h },
+      scene,
+    );
+    s.position.set(0, centerY, flip ? 0.052 : -0.052);
+    if (flip) s.rotation.y = Math.PI;
+    s.material = sMat;
+    s.parent = root;
+    return s;
+  };
+  const pickables = [bezel, mkScreen(false)];
+  if (c.doubleSided) pickables.push(mkScreen(true));
   markPickable(pickables, fx);
   return { pickables, spotTargets: [bezel] };
 }

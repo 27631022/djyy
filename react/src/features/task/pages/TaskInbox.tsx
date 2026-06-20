@@ -28,6 +28,7 @@ import {
 } from "../api";
 import { ConfirmDrawer } from "../components/ConfirmDrawer";
 import { AssignPicker } from "../components/AssignPicker";
+import { ReportInboxSection } from "@/features/report";
 
 const PARTY = "var(--party-primary)";
 const PAGE_BG = "linear-gradient(120deg, rgba(200,0,30,0.05), transparent 30%), #eef2f7";
@@ -105,6 +106,9 @@ export default function TaskInboxPage() {
             <Loader2Icon className="w-4 h-4 animate-spin text-[#9CA3AF]" />
           )}
         </header>
+
+        {/* 报送待办(report 模块,UI 层并列;无报送待办时自渲染 null) */}
+        <ReportInboxSection />
 
         {q.isLoading ? (
           <div className="text-center py-16 text-[#9CA3AF] text-sm">加载待办…</div>

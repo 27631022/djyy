@@ -404,6 +404,8 @@ model ExternalApi {
   visionModel  String? // 多模态/视觉模型(OCR 用)。空 = 走 model 兜底
   imageModel   String? // 图像生成/图生图模型(SeedEdit 等,出图)。空 = 不支持生图,不与文本/视觉模型混用
   model3d      String? // 3D 生成模型(Seed3D 等,异步出 .glb 3D 模型)。空 = 不支持 3D 生成
+  ttsModel     String? // 语音合成(TTS)模型。空 = 不支持配音
+  ttsVoice     String? // TTS 音色标识(provider 各自的音色名,如火山的 voice_type)。空 = 用 provider 默认
   rechargeUrl  String? // 平台充值/计费控制台 URL
   priority     Int      @default(50) // 业务优先级,大者优先。getActive*() 按此降序选
   capabilities String   @default("chat") // 能力标签逗号分隔:chat/vision/reasoning
@@ -784,6 +786,17 @@ model ModelLibraryMeta {
   updatedAt DateTime @updatedAt
 }
 
+// @module: exhibition  讲解员「形象包」—— 一套立绘/3D 形象 + 音色 + 肩点参数,可复用到任意厅
+// configJson = HallGuide 配置子集(kind/sprite*FileId/voice/voiceRef/armPivot 等);fileId 松引用 StoredFile
+model ExhibitionGuidePreset {
+  id          String   @id @default(cuid())
+  name        String
+  configJson  String   @default("{}")
+  createdById String? // 创建人 user id(松引用)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 // ─────────────────────────────────────────────────────────
 // 实体会议室 — 物理空间。一个会议室可挂多张会场图。
 // @module: venue
@@ -966,4 +979,222 @@ model IndicatorScore {
 
   @@unique([roundId, targetRef, leafCode])
   @@index([roundId])
+}
+
+// ─────────────────────────────────────────────────────────
+// 通用报送平台(report)— 「一次发布 · 多次提交」底座
+// 与 task 的本质区别:提交无 @unique(一对象可多次提交)+ 提交=发票头+明细子行(master-detail)。
+// 扶贫采买 = 它的一份配置(ReportTemplate code='fupin_purchase' + 导入清单),非专用 CRUD。
+// 跨模块 fileId/orgId/userId 全松引用(普通 string,不建 relation);report 内部 relation+cascade。
+// 详见 docs/specs/2026-06-16-report-platform.md
+// ─────────────────────────────────────────────────────────
+
+// @module: report
+// 可复用表单 schema(扶贫采买 = 一条实例)。一年一配,轻量。fields=ReportField[] JSON 快照。
+model ReportTemplate {
+  id         String   @id @default(cuid())
+  code       String   @unique // 'fupin_purchase'
+  name       String
+  fieldsJson String   @default("[]") // JSON: ReportField[](仿 task-fields 的 normalizeFieldDefs)
+  catalogTag String? // 绑定哪批目录(扶贫='fupin-2026'),空=非目录型
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([active])
+}
+
+// @module: report
+// 一次发布(= 任务根,仿 Task)。fields 是发布时对模板的快照(改模板不影响在途)。
+model ReportTask {
+  id             String    @id @default(cuid())
+  templateId     String? // 松引用 ReportTemplate
+  title          String
+  notes          String? // 填报要求
+  fieldsJson     String    @default("[]") // 发布时快照:ReportField[]
+  goalsJson      String    @default("[]") // 目标定义快照:ReportGoal[](总额/分项/分部分/是否有内容,通用可多个)
+  catalogTag     String? // 快照绑定的目录批次
+  dispatchUserId String // 派发人 user id(松引用)
+  dispatchOrgId  String? // 派发部门 org id(对口路由匹配键)
+  dueAt          DateTime? // 截止时间(可空)
+  noticeFileId   String? // 通知文件 storage fileId(可空)
+  noticeFileName String? // 通知文件原始名(展示用)
+  seriesId       String? // 周期报表串联各期(P3,= 首期任务 id)
+  periodLabel    String? // 期次标签(如「2026」)
+  status         String    @default("open") // draft | open | closed | archived
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([dispatchUserId])
+  @@index([dispatchOrgId])
+  @@index([status])
+  @@index([seriesId])
+}
+
+// @module: report
+// fan-out 派发对象,仿 TaskTarget。★关键差异:提交无 @unique → 一对象多次提交。
+// 不做平级确认(无机关互派);保留 handlerOrgId(对口责任部门)+ ownerUserId(认领/指派承办)。
+model ReportTarget {
+  id           String   @id @default(cuid())
+  taskId       String
+  targetType   String // 'org' | 'user'(扶贫主用 org)
+  targetOrgId  String? // targetType=org
+  targetUserId String? // targetType=user(直派个人)
+  handlerOrgId String? // 对口责任部门(命中 ReportRouting 时写;认领前供该部门成员可见)
+  ownerUserId  String? // 承办人(认领/指派,唯一)
+  goalTargetsJson String @default("{}") // 逐单位目标值 { goalKey: 目标数值 }(targetMode=perUnit 的金额目标用;uniform 走 task.goals.target)
+  status       String   @default("pending") // pending | in_progress | submitted | closed
+  assignedById String? // 由谁指派(对口命中=null;手动指派=接收管理员 id)
+  assignedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([taskId])
+  @@index([targetOrgId])
+  @@index([targetUserId])
+  @@index([handlerOrgId])
+  @@index([ownerUserId])
+  @@index([status])
+}
+
+// @module: report
+// 对口路由:某单位的「报送责任部门」配置(仿 UnitTaskRouting,自有表守「表归属单一模块」)。
+// 上级派发到单位 → 命中该单位配置的责任部门 handlerOrgId → 进该部门 inbox。
+// scope='global' 或某 templateCode(可按报送类型分别配)。
+model ReportRouting {
+  id           String   @id @default(cuid())
+  scope        String   @default("global") // 'global' | templateCode
+  unitOrgId    String // 被派发的单位 org id
+  handlerOrgId String // 该单位的报送责任部门 org id
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([scope, unitOrgId])
+  @@index([unitOrgId])
+}
+
+// @module: report
+// ★一次提交 = 一张发票头。targetId 非 @unique(同对象多张发票=多条)。
+// 发票/合同文件挂在头层(N 明细共享、不重复传);明细行不带文件指针。
+model ReportSubmission {
+  id             String    @id @default(cuid())
+  taskId         String // 冗余,便于跨 target 聚合
+  targetId       String // 挂 ReportTarget(非 unique)
+  seq            Int // 该 target 下第几次提交(1-based,发号)
+  invoiceNo      String // 发票号
+  purchaseDate   DateTime // 购买日期
+  unitOrgId      String? // 单位 org id(松引用)
+  unitName       String? // 单位名称快照
+  totalAmountCents Int     @default(0) // 冗余 = SUM(lines.amountCents),单位=分;列表/校验
+  invoiceFileId  String? // ★共享发票文件(头层一份)
+  contractFileId String? // ★共享合同文件(头层一份)
+  headData       String    @default("{}") // 头层其余模板自由字段 JSON(明细不进这里)
+  status         String    @default("draft") // draft | submitted | returned | approved
+  submittedById  String?
+  submittedAt    DateTime?
+  reviewNote     String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  returnCount    Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  lines ReportLine[]
+
+  @@unique([targetId, seq]) // 发号防并发重号(仿 certificate 批次)
+  @@unique([taskId, targetId, invoiceNo]) // 防同对象重录同一发票号
+  @@index([taskId])
+  @@index([targetId])
+  @@index([status])
+}
+
+// @module: report
+// ★原子单位 = 一行结构化记录 = 一条发票明细。可聚合度量(amount/feeSource/orgId/category)抽成真实列。
+// 点选清单带出的产品字段快照落库(次年换清单不污染历史);catalogItemId 仅溯源。
+model ReportLine {
+  id            String           @id @default(cuid())
+  submissionId  String
+  submission    ReportSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  taskId        String // 冗余,便于跨提交 SQL 聚合
+  orgId         String? // 冗余 = 对象单位(便于 group-by)
+  lineNo        Int
+  catalogItemId String? // 松引用 ReportCatalogItem(仅溯源)
+  // 点选带出的清单只读快照列(年度调整不污染历史;税率/起订量/联系方式等其余清单字段存 extraJson.catalog 保完整)
+  productName    String
+  spec           String? // 规格(清单快照,如「5L」「200g*2」)
+  category       String? // 第一~第四部分
+  categoryDesc   String?
+  recommendOrg   String? // 推荐单位
+  origin         String? // 产地
+  catalogSupplier String? // 清单供应商(扶贫目录里该产品的供货商,快照;区别于发票销售方)
+  unitPriceCents Int? // 企业采购价快照(单位=分)
+  // 录入度量列(可 SQL group-by;金额一律存「分」避免浮点误差,UI 除以 100 显示)
+  amountCents   Int // 购买金额(单位=分)
+  feeSource     String // ★费用来源(福利费|工会经费),逐行独立
+  supplier      String? // 销售方(发票识别的实际销售单位,一票一个 → 冗余到每行便于按销售方 group-by)
+  qty           Int?
+  extraJson     String           @default("{}") // 其余动态列(含 catalog:{taxRate,minOrderQty,contact} 清单完整快照)
+
+  @@index([submissionId])
+  @@index([taskId, orgId])
+  @@index([taskId, feeSource])
+  @@index([taskId, category])
+  @@index([taskId, supplier])
+  @@index([taskId, catalogSupplier])
+  @@index([catalogItemId])
+}
+
+// @module: report
+// 目录(清单)— 一批可点选商品(如「2026帮扶产品清单」3988 行)。columnsJson 驱动 catalog_pick 带出哪些列。
+model ReportCatalog {
+  id          String              @id @default(cuid())
+  catalogTag  String              @unique // 'fupin-2026'
+  name        String // '2026帮扶产品清单'
+  year        Int?
+  columnsJson String              @default("[]") // 列定义
+  active      Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  items       ReportCatalogItem[]
+
+  @@index([active])
+}
+
+// @module: report
+// 清单一行(3988 行)。批量整体导入,一年一调,轻量维护。
+model ReportCatalogItem {
+  id            String        @id @default(cuid())
+  catalogTag    String // 冗余,便于按 tag 检索
+  catalogId     String
+  catalog       ReportCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  totalSeq      Int? // 总序号
+  subSeq        Int? // 分序号
+  productName   String
+  spec          String? // 产品规格
+  purchasePriceCents Int? // 企业采购价(单位=分)
+  taxRate       String? // 税率
+  minOrderQty   String? // 起订量
+  contact       String? // 联系方式
+  category      String // 第一~第四部分
+  categoryDesc  String? // 类别说明
+  supplier      String? // 供应商
+  recommendOrg  String? // 推荐单位
+  origin        String? // 产地
+  dataJson      String        @default("{}") // 其余列
+
+  @@index([catalogTag, category])
+  @@index([catalogTag, productName])
+}
+
+// @module: report
+// 派发对象「快捷组」—— 每人自己存的常用单位组合,跟个人账号走(服务端持久化,跨浏览器/设备/客户端)。
+// 列全用 String(含 createdAt 存 ISO 串)避开 SQLite DateTime 写入坑;服务端用 raw SQL 读写。
+model ReportUnitGroup {
+  id         String @id @default(cuid())
+  userId     String // 松引用 User
+  name       String
+  orgIdsJson String @default("[]") // 选中单位 org id 数组 JSON
+  createdAt  String @default("") // ISO 时间串(排序用)
+
+  @@index([userId])
 }

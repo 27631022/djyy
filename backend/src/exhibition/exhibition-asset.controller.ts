@@ -3,8 +3,11 @@ import {
   Get,
   NotFoundException,
   Param,
+  Req,
+  Res,
   StreamableFile,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { Readable } from 'stream';
 import { StorageService, type StoredFileMeta } from '../storage';
 
@@ -41,12 +44,56 @@ export class ExhibitionAssetController {
   constructor(private readonly storage: StorageService) {}
 
   @Get(':id')
-  async serve(@Param('id') id: string): Promise<StreamableFile> {
+  async serve(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
     const meta = await this.storage.getMeta(id);
     if (!ALLOWED_MODULES.has(meta.ownerModule)) {
       throw new NotFoundException('不是展厅素材文件');
     }
-    return this.streamOf(meta);
+    await this.streamRanged(meta, req, res);
+  }
+
+  /**
+   * 支持 HTTP Range 的流式下发(关键:视频拖动进度/截帧、大文件断点都靠它)。
+   * 无 Range → 200 全量 + Accept-Ranges:bytes(告知可分段);带 Range → 206 + Content-Range,
+   * 只从磁盘读该区间(不把整个视频读进内存)。手动 pipe(@Res)以完全掌控状态码与响应头。
+   */
+  private async streamRanged(meta: StoredFileMeta, req: Request, res: Response): Promise<void> {
+    const total = meta.size;
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Type', meta.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename*=UTF-8''${encodeURIComponent(meta.originalName)}`,
+    );
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    const rangeHeader = req.headers.range;
+    if (rangeHeader && total > 0) {
+      const m = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
+      let start = m && m[1] ? parseInt(m[1], 10) : 0;
+      let end = m && m[2] ? parseInt(m[2], 10) : total - 1;
+      if (Number.isNaN(start)) start = 0;
+      if (Number.isNaN(end) || end >= total) end = total - 1;
+      if (start > end || start >= total) {
+        res.status(416).setHeader('Content-Range', `bytes */${total}`);
+        res.end();
+        return;
+      }
+      const { stream } = await this.storage.getStream(meta.id, { start, end });
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+      res.setHeader('Content-Length', String(end - start + 1));
+      stream.pipe(res);
+      return;
+    }
+
+    res.setHeader('Content-Length', String(total));
+    const { stream } = await this.storage.getStream(meta.id);
+    stream.pipe(res);
   }
 
   @Get(':id/rel/*')

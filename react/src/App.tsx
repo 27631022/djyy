@@ -14,7 +14,7 @@ import { NavigationPage } from "@/features/nav-category";
 import { ExternalApisPage } from "@/features/external-api";
 import { IconLibraryPage } from "@/features/icon-library";
 import { Model3dStudioPage } from "@/features/model3d";
-import { HallsPage, HallDesignerPage, ModelLibraryPage } from "@/features/exhibition";
+import { HallsPage, HallDesignerPage, ModelLibraryPage, ExhibitionAssetsPage } from "@/features/exhibition";
 import { PromptsPage } from "@/features/prompt";
 import {
   VenueRoomsPage,
@@ -42,6 +42,7 @@ import {
   CertificateVerifyPage,
 } from "@/features/certificate";
 import { SchemeListPage, SchemeEditorPage, RoundListPage, RoundDetailPage } from "@/features/assessment";
+import { ReportTasksPage, ReportCatalogPage, ReportCreatePage, PublishChooserPage, ReportFillPage, ReportDetailPage } from "@/features/report";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
 import { Toaster } from "@/shared/components/ui/sonner";
@@ -172,6 +173,7 @@ const App = () => (
             <Route path="halls" element={<HallsPage />} />
             <Route path="halls/:hallId/design" element={<HallDesignerPage />} />
             <Route path="model-library" element={<ModelLibraryPage />} />
+            <Route path="exhibition-assets" element={<ExhibitionAssetsPage />} />
             {/* 会场管理(venue) */}
             <Route path="venue/rooms" element={<VenueRoomsPage />} />
             <Route path="venue/layouts/:layoutId" element={<VenueLayoutDesignerPage />} />
@@ -184,6 +186,13 @@ const App = () => (
             <Route path="assessment/schemes/:id" element={<SchemeEditorPage />} />
             <Route path="assessment/rounds" element={<RoundListPage />} />
             <Route path="assessment/rounds/:id" element={<RoundDetailPage />} />
+            {/* 通用报送平台(report) */}
+            <Route path="reports" element={<ReportTasksPage />} />
+            <Route path="reports/publish" element={<PublishChooserPage />} />
+            <Route path="reports/new" element={<ReportCreatePage />} />
+            <Route path="reports/fill/:targetId" element={<ReportFillPage />} />
+            <Route path="reports/catalog" element={<ReportCatalogPage />} />
+            <Route path="reports/:id" element={<ReportDetailPage />} />
           </Route>
         </Routes>
         <Toaster position="top-center" richColors closeButton />

@@ -48,7 +48,7 @@ function decodeMulterFilename(name: string): string {
  *   GET    /files/:id    仅登录                       流式下载/预览(StreamableFile)
  *   DELETE /files/:id   @Permission('file:delete')   软删 + 删字节
  *
- * 注:multipart 上限由 service.put 按扩展名分级校验(视频 300MB / 3D 100MB / 其余 30MB,
+ * 注:multipart 上限由 service.put 按扩展名分级校验(视频/3D 模型 500MB / 其余 30MB,
  *     见 storage.constants 的 EXT_MAX_BYTES),与 main.ts 的 json({limit:'50mb'})
  *     是两套(那只管 application/json),互不相干。
  * 公开下载不在此(降攻击面)—— 证书公开下载走证书自己的 /public/certificates/... 经 DI 调本服务。

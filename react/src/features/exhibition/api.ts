@@ -59,7 +59,22 @@ export const hallApi = {
   /** AI 生成展厅布置(LLM 较慢,给 120s) */
   aiGenerate: (body: GenerateHallBody) =>
     api.post<GeneratedHall>("/halls/ai-generate", body, { timeout: 120_000 }).then((r) => r.data),
+
+  /** 解说员配音:解说词文本 → AI 合成音频,返回 fileId + url(写进 fixture.narration)。
+   *  本地 IndexTTS2 声音克隆较慢(一句可能 ~1-2 分钟),给足超时。 */
+  narrateTts: (body: { text: string; voice?: string; hallId?: string }) =>
+    api
+      .post<NarrateTtsResult>("/halls/narration/tts", body, { timeout: 300_000 })
+      .then((r) => r.data),
 };
+
+/** 解说员配音返回 */
+export interface NarrateTtsResult {
+  fileId: string;
+  url: string;
+  provider: string;
+  model: string;
+}
 
 /** 模型库条目(上传库 + AI 生成历史 合并;id=storage fileId,模型台 modelFileId 直接用) */
 export interface LibraryModel {
@@ -96,5 +111,67 @@ export const modelLibraryApi = {
   optimize: (fileId: string, preset: OptimizePreset = "medium") =>
     api
       .post<OptimizeResult>(`/exhibition/model-library/${fileId}/optimize`, { preset })
+      .then((r) => r.data),
+};
+
+/* ── 展厅素材中心 ── */
+
+/** 讲解员「形象包」:整套(立绘/3D 形象 + 音色 + 肩点参数),config 已解析(含 *Url 可预览/套用) */
+export interface GuidePreset {
+  id: string;
+  name: string;
+  createdAt: string;
+  config: Record<string, unknown> & {
+    kind?: "model" | "sprite";
+    spriteUrl?: string;
+    modelUrl?: string;
+    modelName?: string;
+  };
+}
+
+/** 文件型素材分类 */
+export type AssetCategory = "voice" | "wall-texture" | "wall-decor";
+
+/** 各分类上传到的 storage 文件夹(ownerModule 固定 exhibition) */
+export const ASSET_FOLDER: Record<AssetCategory, string> = {
+  voice: "library-voice",
+  "wall-texture": "library-wall-texture",
+  "wall-decor": "library-wall-decor",
+};
+
+/** 各分类上传 accept */
+export const ASSET_ACCEPT: Record<AssetCategory, string> = {
+  voice: ".mp3,.wav,.ogg,audio/*",
+  "wall-texture": ".png,.jpg,.jpeg,.webp",
+  "wall-decor": ".png,.jpg,.jpeg,.webp,.glb,.gltf",
+};
+
+/** 文件型素材条目 */
+export interface LibraryAsset {
+  id: string;
+  name: string;
+  size: number;
+  createdAt: string;
+  url: string;
+  tags: string[];
+}
+
+export const exhibitionLibraryApi = {
+  /* 形象包 */
+  listPresets: () => api.get<GuidePreset[]>("/exhibition/guide-presets").then((r) => r.data),
+  createPreset: (name: string, config: Record<string, unknown>) =>
+    api.post<GuidePreset>("/exhibition/guide-presets", { name, config }).then((r) => r.data),
+  renamePreset: (id: string, name: string) =>
+    api.patch<{ ok: true }>(`/exhibition/guide-presets/${id}`, { name }).then((r) => r.data),
+  removePreset: (id: string) =>
+    api.delete<{ ok: true }>(`/exhibition/guide-presets/${id}`).then((r) => r.data),
+  /* 文件型素材(音色 / 墙面贴图 / 墙面装饰) */
+  listAssets: (category: AssetCategory) =>
+    api
+      .get<LibraryAsset[]>("/exhibition/asset-library", { params: { category } })
+      .then((r) => r.data),
+  updateAsset: (category: AssetCategory, fileId: string, body: { name?: string; tags?: string[] }) =>
+    api
+      .patch<{ ok: true }>(`/exhibition/asset-library/${fileId}`, body, { params: { category } })
       .then((r) => r.data),
 };

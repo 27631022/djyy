@@ -4,6 +4,7 @@ import { ExternalApiModule } from '../external-api';
 import { PromptModule } from '../prompt';
 import { ExhibitionService } from './exhibition.service';
 import { ExhibitionAiService } from './exhibition-ai.service';
+import { ExhibitionNarrationService } from './exhibition-narration.service';
 import {
   ConnectorController,
   ExhibitionController,
@@ -14,6 +15,8 @@ import { ExhibitionFontService } from './exhibition-font.service';
 import { ExhibitionModelLibraryController } from './exhibition-model-library.controller';
 import { ExhibitionModelLibraryService } from './exhibition-model-library.service';
 import { ExhibitionModelOptimizeService } from './exhibition-model-optimize.service';
+import { ExhibitionLibraryController } from './exhibition-library.controller';
+import { ExhibitionLibraryService } from './exhibition-library.service';
 
 /**
  * 企业虚拟展厅模块。
@@ -30,13 +33,16 @@ import { ExhibitionModelOptimizeService } from './exhibition-model-optimize.serv
     ExhibitionAssetController,
     ExhibitionFontController,
     ExhibitionModelLibraryController,
+    ExhibitionLibraryController,
   ],
   providers: [
     ExhibitionService,
     ExhibitionFontService,
     ExhibitionAiService,
+    ExhibitionNarrationService,
     ExhibitionModelLibraryService,
     ExhibitionModelOptimizeService,
+    ExhibitionLibraryService,
   ],
   exports: [ExhibitionService],
 })

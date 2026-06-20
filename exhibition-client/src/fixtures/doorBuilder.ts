@@ -45,30 +45,36 @@ export function buildDoor(scene: Scene, fx: Fixture, theme: ThemeParams): BuiltF
   lintel.material = jambMat;
   lintel.parent = root;
 
-  // 门头标识牌:两块单面板背靠背(DOUBLESIDE 从背面看文字会镜像)
-  // 设了目标展厅 → 显示「→ 厅名」,点击传送(拦截在 main.ts onPick)
+  // 门头标识牌:两块单面板背靠背,**正反面各自一套材质/文字**(可显示不同的字,如
+  // 正面「→ 车辆展厅」、背面「→ 序厅」)。DOUBLESIDE 会镜像文字,故单面板分开做。
+  // 设了目标展厅且未自定义文字时,回退「→ 厅名」;点击传送(拦截在 main.ts onPick)。
   const door = (fx.source.content ?? {}) as DoorContent;
-  const label = door.targetHallId
+  const fallback = door.targetHallId
     ? `→ ${door.targetName || '另一个展厅'}`
     : (fx.label ?? '通道');
-  const signMat = pbr(scene, `door-sign-mat:${fx.id}`, {
-    color: Color3.White(),
-    roughness: 0.7,
-  });
-  signMat.albedoTexture = canvasTexture(scene, `door-sign-tex:${fx.id}`, 512, 124, (ctx, tw, th) => {
-    ctx.fillStyle = theme.accent.toHexString();
-    ctx.fillRect(0, 0, tw, th);
-    ctx.fillStyle = '#fff';
-    ctx.font = `bold 62px 'Microsoft YaHei', sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, tw / 2, th / 2 + 4);
-  });
-  signMat.emissiveColor = new Color3(0.14, 0.14, 0.14);
-  signMat.emissiveTexture = signMat.albedoTexture;
+  const frontText = door.frontText?.trim() || fallback;
+  const backText = door.backText?.trim() || frontText;
+  const mkSignMat = (text: string, key: string) => {
+    const mat = pbr(scene, `door-sign-mat:${fx.id}:${key}`, {
+      color: Color3.White(),
+      roughness: 0.7,
+    });
+    mat.albedoTexture = canvasTexture(scene, `door-sign-tex:${fx.id}:${key}`, 512, 124, (ctx, tw, th) => {
+      ctx.fillStyle = theme.accent.toHexString();
+      ctx.fillRect(0, 0, tw, th);
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold 62px 'Microsoft YaHei', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, tw / 2, th / 2 + 4);
+    });
+    mat.emissiveColor = new Color3(0.14, 0.14, 0.14);
+    mat.emissiveTexture = mat.albedoTexture;
+    return mat;
+  };
   // ⚠ 牌挂「门洞内上沿」(2.26m,真实出口牌位置),不能挂门框上方(原 2.88):
   // 门放在实体墙上时,墙体过梁(净高 2.5 以上补墙)会把 2.88 的牌整个吞进墙里看不见。
-  const mkSign = (flip: boolean) => {
+  const mkSign = (flip: boolean, mat: ReturnType<typeof mkSignMat>) => {
     const s = MeshBuilder.CreatePlane(
       `door-sign:${fx.id}:${flip ? 'b' : 'f'}`,
       { width: 1.5, height: 0.36 },
@@ -76,12 +82,12 @@ export function buildDoor(scene: Scene, fx: Fixture, theme: ThemeParams): BuiltF
     );
     s.position.set(0, 2.26, flip ? 0.012 : -0.012);
     if (flip) s.rotation.y = Math.PI;
-    s.material = signMat;
+    s.material = mat;
     s.parent = root;
     return s;
   };
-  const signF = mkSign(false);
-  const signB = mkSign(true);
+  const signF = mkSign(false, mkSignMat(frontText, 'f'));
+  const signB = mkSign(true, mkSignMat(backText, 'b'));
 
   const pickables = [j1, j2, lintel, signF, signB];
   markPickable(pickables, fx);

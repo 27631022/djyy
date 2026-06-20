@@ -22,9 +22,11 @@ import type {
 import { FIXTURE_META, round2, wallLength } from "../../lib/hallUtils";
 import {
   ColorSwatches,
+  GuideEditor,
   HonorItemsEditor,
   ImageCaseEditor,
   ModelStandEditor,
+  NarrationEditor,
   NoticeItemsEditor,
   Text3dEditor,
   VideoWallEditor,
@@ -258,6 +260,13 @@ export function PropertiesPanel({ state, selection, hallId, accent, onUpdate, on
           </button>
         )}
 
+        <SectionTitle>在线解说员「党建小益」</SectionTitle>
+        <GuideEditor
+          value={meta.guide}
+          hallId={hallId}
+          onChange={(guide) => onUpdate((s) => ({ ...s, meta: { ...s.meta, guide } }))}
+        />
+
         <SectionTitle>进场出生点</SectionTitle>
         <Row label="X(m)">
           <Num value={spawn.x} onChange={(n) => onUpdate((s) => ({ ...s, meta: { ...s.meta, spawn: { ...spawn, x: n } } }))} />
@@ -406,6 +415,17 @@ function FixtureProps({
               onChange={(n) => patchContent({ ...((source.content as ImageCaseContent) ?? { images: [] }), baseElevM: n })}
             />
           </Row>
+        ) : fixture.type === "video_wall" ? (
+          /* 视频展墙:深度无意义,这格改「下边缘离地高度」(默认 1.1);相框高度在内容编辑器 */
+          <Row label="离地(m)">
+            <Num
+              value={(source.content as VideoWallContent | undefined)?.baseElevM ?? 1.1}
+              step={0.05}
+              min={0}
+              max={5}
+              onChange={(n) => patchContent({ ...((source.content as VideoWallContent) ?? {}), baseElevM: n })}
+            />
+          </Row>
         ) : (
           <Row label="深(m)"><Num value={fixture.d} step={0.1} min={0.1} max={10} onChange={(n) => onPatch({ d: n })} /></Row>
         )}
@@ -528,6 +548,18 @@ function FixtureProps({
         </>
       )}
 
+      {/* 解说词 + AI 配音(可点击展品类型都有;门/装饰不参与) */}
+      {fixture.type !== "door" && fixture.type !== "decor" && (
+        <>
+          <SectionTitle>解说词(党建小益)</SectionTitle>
+          <NarrationEditor
+            value={fixture.narration}
+            hallId={hallId}
+            onChange={(narration) => onPatch({ narration })}
+          />
+        </>
+      )}
+
       <DeleteButton onClick={onDelete} label="删除组件" />
     </div>
   );
@@ -568,9 +600,30 @@ function DoorTargetEditor({
       </select>
       {value.targetHallId && (
         <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
-          3D 里门头牌会显示「→ {value.targetName}」,观众点门即可前往该展厅。
+          3D 里门头牌默认显示「→ {value.targetName}」,观众点门即可前往该展厅。
         </p>
       )}
+
+      <SectionTitle>门头牌文字(正反面)</SectionTitle>
+      <Row label="正面">
+        <input
+          value={value.frontText ?? ""}
+          onChange={(e) => onChange({ ...value, frontText: e.target.value })}
+          placeholder="留空=默认(→目标厅/名称)"
+          className={inputCls}
+        />
+      </Row>
+      <Row label="背面">
+        <input
+          value={value.backText ?? ""}
+          onChange={(e) => onChange({ ...value, backText: e.target.value })}
+          placeholder="留空=同正面"
+          className={inputCls}
+        />
+      </Row>
+      <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+        两面可显示不同的字(如正面「车辆展厅」、背面「序厅」)。
+      </p>
     </>
   );
 }

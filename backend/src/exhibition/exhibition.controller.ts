@@ -14,8 +14,10 @@ import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { Permission } from '../permission';
 import { ExhibitionService } from './exhibition.service';
 import { ExhibitionAiService } from './exhibition-ai.service';
+import { ExhibitionNarrationService } from './exhibition-narration.service';
 import { CreateHallDto, UpdateHallDto } from './dto/hall.dto';
 import { GenerateHallDto } from './dto/generate-hall.dto';
+import { NarrateDto } from './dto/narrate.dto';
 
 /**
  * 展厅 CRUD(规格 5.5)。
@@ -30,11 +32,37 @@ export class ExhibitionController {
   constructor(
     private readonly svc: ExhibitionService,
     private readonly ai: ExhibitionAiService,
+    private readonly narration: ExhibitionNarrationService,
   ) {}
 
   @Get()
   list() {
     return this.svc.list();
+  }
+
+  /** 解说员配音:解说词文本 → AI 合成音频 → 存 storage,返回 fileId + url(前端写进 fixture.narration) */
+  @Post('narration/tts')
+  @UseGuards(AuthGuard)
+  @Permission('exhibition:manage')
+  async narrate(
+    @Body() dto: NarrateDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    // 本地 IndexTTS2 声音克隆要参考音频 —— 取该厅解说员设置里的「音色参考音频」(没有则用示例音色)
+    let voiceRefFileId: string | undefined;
+    if (dto.hallId) {
+      try {
+        const hall = await this.svc.getResolved(dto.hallId);
+        voiceRefFileId = hall.meta?.guide?.voiceRefFileId;
+      } catch {
+        /* 厅不存在/未保存,忽略 */
+      }
+    }
+    return this.narration.synthesize(
+      { text: dto.text, voice: dto.voice, hallId: dto.hallId, voiceRefFileId },
+      { actorId: me.sub, actorName: me.name, ip: req.ip },
+    );
   }
 
   /** AI 生成展厅布置(不落库,前端应用进搭建器后由用户确认保存) */

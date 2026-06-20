@@ -1,4 +1,5 @@
 import '@babylonjs/loaders/glTF'; // 副作用注册 .glb 加载器(model_stand)
+import type { FreeCameraGamepadInput } from '@babylonjs/core';
 import { hallApi } from './api/hallApi';
 import { resolveTheme } from './theme/presets';
 import { createEngine } from './scene/engineSetup';
@@ -12,6 +13,7 @@ import { setupPicking } from './interaction/pickingManager';
 import { setupHover } from './interaction/hoverManager';
 import { setupGamepadSelect } from './interaction/gamepadSelect';
 import { Overlay } from './interaction/overlay';
+import { createGuideNarrator, type GuideNarrator } from './guide/guideNarrator';
 import { LoadingScreen, showHint } from './ui/loadingScreen';
 import { persistImmersiveAcrossNav, setupImmersiveUi } from './ui/immersive';
 import { setupXR } from './xr/webxrHelper';
@@ -79,27 +81,73 @@ async function boot(): Promise<void> {
 
     // 详情浮层 + 拾取(浮层打开时挂起相机控制)
     const overlay = new Overlay(theme.accent.toHexString());
-    overlay.onOpenChange = (open) => {
-      if (open) camera.detachControl();
-      else camera.attachControl(canvas, true);
+    // ⚠ 用「状态转换」守卫:onOpenChange 可能重复触发(全屏视频 fsClose + hide 都发 false),
+    // 不守卫会重复 attachControl → 相机手柄/键鼠输入监听重复挂载,几次后摇杆/移动失灵。
+    // 保证一次 detach 对一次 attach。
+    let camDetached = false;
+    // detach/attach 后,相机的手柄输入(FreeCameraGamepadInput)可能没重新拿到已连接的手柄
+    // → 左摇杆移动/右摇杆视角失灵,而 A/B 走 scene.gamepadManager 仍有效(=「确认有反应、方向没反应」)。
+    // attach 后把当前手柄重新塞回相机手柄输入(已绑定则 no-op)。
+    const refreshCameraGamepad = () => {
+      const gi = camera.inputs.attached.gamepad as FreeCameraGamepadInput | undefined;
+      if (gi && !gi.gamepad) {
+        gi.gamepad = scene.gamepadManager.gamepads.find((p) => p) ?? null;
+      }
     };
-    // 鼠标点击 / 手柄 A 键 共用的拾取处理:门 → 传送,其它 → 详情浮层
+    overlay.onOpenChange = (open) => {
+      if (open && !camDetached) {
+        camera.detachControl();
+        camDetached = true;
+      } else if (!open && camDetached) {
+        camera.attachControl(canvas, true);
+        camDetached = false;
+        refreshCameraGamepad();
+      }
+    };
+    // 在线解说员「党建小益」(厅级启用):进厅即站在迎宾位常驻可见,有解说词的展品点击时滑过去讲解
+    let guide: GuideNarrator | null = null;
+    // 彻底关闭:详情浮层 / 全屏视频 + 讲解一起关(手柄 B / 字幕「关闭」/ ESC 用)
+    const closeAll = () => {
+      overlay.hide();
+      guide?.close();
+    };
+    guide = hall.meta.guide?.enabled
+      ? createGuideNarrator(scene, camera, hall.meta.guide, theme, {
+          onDetail: (f) => overlay.show(f),
+          spawn: { x: hall.meta.spawn?.x ?? 0, y: hall.meta.spawn?.y ?? 0 },
+          walls: shell.staticMeshes, // 站位避让:右侧被墙挡则改左侧(水平射线只会命中墙)
+          onRequestCloseAll: closeAll,
+        })
+      : null;
+    // 鼠标点击 / 手柄 A 共用的拾取处理:
+    //   门 → 传送 / 普通门开详情;
+    //   有解说词:首次点 → 小益过来讲解;再点同一展品 → 查看大图/详情(可翻页);
+    //   无解说词 → 解说员不跟来,直接开详情浮层。
     const handleFixturePick = (fx: (typeof hall.fixtures)[number]) => {
       if (fx.type === 'door') {
         const door = (fx.source?.content ?? {}) as { targetHallId?: string };
-        if (door.targetHallId) {
-          goHall(door.targetHallId);
-          return;
-        }
+        if (door.targetHallId) goHall(door.targetHallId);
+        else overlay.show(fx);
+        return;
       }
-      overlay.show(fx);
+      const n = fx.narration;
+      const hasNarration = !!guide && !!(n?.text?.trim() || n?.audioUrl);
+      if (hasNarration && guide) {
+        if (guide.narratingId() === fx.id) overlay.show(fx); // 再次点击同一展品 → 大图/详情
+        else guide.narrate(fx); // 首次 → 讲解
+      } else {
+        overlay.show(fx); // 无解说词:不打扰,直接看详情
+      }
     };
     setupPicking(scene, canvas, handleFixturePick);
-    // 手柄按键点选:A/× 瞄准确认(开/关详情、穿门),B/○ 关闭(摇杆漫游是相机内置输入)
+    // 手柄:A 瞄准确认(浮层开着=回退一层;否则拾取/讲解→大图),B 彻底关闭,D-pad 左右翻照片
     const gamepad = setupGamepadSelect(scene, {
       onPick: handleFixturePick,
       isOverlayOpen: () => overlay.isOpen(),
       closeOverlay: () => overlay.hide(),
+      closeAll,
+      page: (dir) => overlay.page(dir),
+      canPage: () => overlay.isOpen() && overlay.canPage(),
     });
     setupHover(scene, canvas); // 悬停手型+标签:让「能点的东西」可见(瞄准模式=准星下方)
     setupImmersiveUi(canvas); // 沉浸漫游按钮 + 准星(锁定/手柄/跨厅延续)
@@ -147,7 +195,7 @@ async function boot(): Promise<void> {
     });
 
     // 调试句柄:预览窗隐藏时手动 scene.render() 截 canvas / 生产排查用(场景对象本就在浏览器侧,无安全暴露)
-    (window as unknown as Record<string, unknown>).__hallDebug = { engine, scene, camera, gamepad };
+    (window as unknown as Record<string, unknown>).__hallDebug = { engine, scene, camera, gamepad, guide, overlay, pick: handleFixturePick };
   } catch (e) {
     console.error('[展厅] 加载失败:', e);
     loading.error(e instanceof Error ? e.message : '加载失败,请确认后端服务已启动');

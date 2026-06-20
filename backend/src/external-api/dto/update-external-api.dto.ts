@@ -69,6 +69,18 @@ export class UpdateExternalApiDto {
   @MaxLength(64)
   model3d?: string;
 
+  /** 语音合成(TTS)模型。空 = 不支持配音 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  ttsModel?: string;
+
+  /** TTS 音色标识(provider 各自的音色名)。空 = 用 provider 默认 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  ttsVoice?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(512)
@@ -174,6 +186,18 @@ export class CreateExternalApiDto {
   @IsString()
   @MaxLength(64)
   model3d?: string;
+
+  /** 语音合成(TTS)模型。空 = 不支持配音 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  ttsModel?: string;
+
+  /** TTS 音色标识(provider 各自的音色名)。空 = 用 provider 默认 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  ttsVoice?: string;
 
   @IsOptional()
   @IsString()

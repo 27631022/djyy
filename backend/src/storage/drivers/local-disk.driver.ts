@@ -36,10 +36,14 @@ export class LocalDiskDriver implements StorageDriver {
     await writeFile(abs, body);
   }
 
-  async getStream(key: string): Promise<Readable> {
+  async getStream(
+    key: string,
+    range?: { start: number; end: number },
+  ): Promise<Readable> {
     const abs = this.resolveKey(key);
     await access(abs); // 不存在 → 抛 ENOENT,由 StorageService 转 NotFound
-    return createReadStream(abs);
+    // range:只读字节区间(视频拖动 / HTTP Range);createReadStream 的 start/end 都是闭区间
+    return createReadStream(abs, range ? { start: range.start, end: range.end } : undefined);
   }
 
   async getBuffer(key: string): Promise<Buffer> {

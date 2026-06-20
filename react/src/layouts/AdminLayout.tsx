@@ -9,7 +9,7 @@ import {
   AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon, ClipboardCheckIcon, ClipboardListIcon,
   PanelLeftCloseIcon, PanelLeftOpenIcon,
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon,
-  ArmchairIcon, PlusIcon, LandmarkIcon, PackageIcon,
+  ArmchairIcon, PlusIcon, LandmarkIcon, PackageIcon, LibraryIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 import { useDesktopInboxAlerts } from "@/features/task";
@@ -56,17 +56,21 @@ const CATEGORIES: Category[] = [
       { path: "/admin/certificates/issue",    label: "颁发证书",   icon: SendIcon,       group: "证书管理", perm: "certificate:issue" },
       { path: "/admin/certificates/external", label: "外部证书录入", icon: UploadIcon,    group: "证书管理", perm: "certificate:issue" },
       { path: "/admin/certificates",          label: "已发证书",   icon: ListChecksIcon, group: "证书管理", perm: "certificate:issue" },
-      // 任务派发:仅有 task:manage 的人(派发人/管理员)可见;我的待办:人人可见(任何登录员工都能收任务)
-      { path: "/admin/tasks",                 label: "任务派发",     icon: SendIcon,          group: "任务管理", perm: "task:manage" },
-      { path: "/admin/tasks/inbox",           label: "我的待办",     icon: InboxIcon,         group: "任务管理" },
+      // 报送统一入口:发布报送(单次/多次 二选一)/ 单次=task / 多次=report;我的待办人人可见(单次+多次待办并列)
+      { path: "/admin/reports/publish",       label: "发布报送",     icon: SendIcon,          group: "报送管理", perm: "task:manage" },
+      { path: "/admin/tasks",                 label: "单次报送",     icon: ClipboardListIcon, group: "报送管理", perm: "task:manage" },
+      { path: "/admin/tasks/inbox",           label: "我的待办",     icon: InboxIcon,         group: "报送管理" },
       { path: "/admin/halls",                 label: "展厅管理",     icon: LandmarkIcon,      group: "3D 展厅", perm: "exhibition:manage" },
       { path: "/admin/model-library",         label: "模型库",       icon: PackageIcon,       group: "3D 展厅", perm: "exhibition:manage" },
+      { path: "/admin/exhibition-assets",     label: "素材中心",     icon: LibraryIcon,       group: "3D 展厅", perm: "exhibition:manage" },
       { path: "/admin/model3d",               label: "3D 生成",      icon: BoxIcon,           group: "3D 展厅", perm: "admin:menu" },
       { path: "/admin/venue/rooms",              label: "会议室 / 会场图", icon: LayoutGridIcon, group: "会场管理", perm: "venue:manage" },
       { path: "/admin/venue/seating",            label: "会议管理",        icon: ArmchairIcon,   group: "会场管理", perm: "venue:manage" },
       { path: "/admin/venue/seating/new/wizard", label: "新建会议",        icon: PlusIcon,       group: "会场管理", perm: "venue:manage" },
       { path: "/admin/assessment/schemes",       label: "考核表",          icon: ClipboardCheckIcon, group: "考核管理", perm: "assessment:manage" },
       { path: "/admin/assessment/rounds",        label: "考核打分",        icon: ClipboardListIcon,  group: "考核管理", perm: "assessment:manage" },
+      { path: "/admin/reports",                  label: "多次报送",        icon: ClipboardCheckIcon, group: "报送管理", perm: "report:manage" },
+      { path: "/admin/reports/catalog",          label: "报送清单",        icon: PackageIcon,        group: "报送管理", perm: "report:manage" },
     ],
   },
   {

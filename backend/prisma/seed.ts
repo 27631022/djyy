@@ -323,6 +323,11 @@ async function seedRolesAndPermissions() {
     { code: 'assessment:score',          name: '考核打分(责任部门)',     category: 'operation' },
     { code: 'assessment:view',           name: '查看考核成绩',           category: 'operation' },
     { code: 'assessment:export',         name: '导出考核数据',           category: 'operation' },
+    // 通用报送平台(report)— manage:发布/派发;review:审核;reception:认领/指派/对口配置;fill:填报录入
+    { code: 'report:manage',             name: '报送管理(发布/派发)',     category: 'operation' },
+    { code: 'report:review',             name: '报送审核(通过/退回)',     category: 'operation' },
+    { code: 'report:reception',          name: '报送接收(认领/指派/对口)', category: 'operation' },
+    { code: 'report:fill',               name: '报送填报',                category: 'operation' },
   ];
   for (const p of permissions) {
     await prisma.permission.upsert({
@@ -337,12 +342,12 @@ async function seedRolesAndPermissions() {
     // 企业管理员:全套企业管理权限(不含 角色授权 admin:role:write / 插件 / 删除证书 / 删除文件 等高危权限,留 platform_admin)。
     // 一级 vs 二级 = 同角色不同 scope:分配时 scope=all(一级,全集团)或 scope=subtree(二级,自动锚到派发人所在单位的子树)。
     // 任务域已按 scope 强制;组织/用户管理的范围限制后续按需加。
-    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage', 'assessment:manage', 'assessment:score', 'assessment:view', 'assessment:export'] },
-    { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
-    { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload'] },
+    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage', 'assessment:manage', 'assessment:score', 'assessment:view', 'assessment:export', 'report:manage', 'report:review', 'report:reception', 'report:fill'] },
+    { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill'] },
+    { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill'] },
     // 任务派发:给各级机关部门的派发人;配合 UserRole.scope(本组织+下级 / 自定义单位)限定派发范围
-    { code: 'task_dispatcher', name: '任务派发',     perms: ['portal:view', 'task:manage', 'task:review', 'file:upload'] },
-    { code: 'member',          name: '普通用户',     perms: ['portal:view', 'task:fill'] },
+    { code: 'task_dispatcher', name: '任务派发',     perms: ['portal:view', 'task:manage', 'task:review', 'file:upload', 'report:manage', 'report:review'] },
+    { code: 'member',          name: '普通用户',     perms: ['portal:view', 'task:fill', 'report:fill'] },
   ];
   for (const r of roles) {
     const role = await prisma.role.upsert({

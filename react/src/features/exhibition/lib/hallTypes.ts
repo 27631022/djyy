@@ -45,6 +45,33 @@ export interface HallMeta {
   theme?: HallTheme;
   /** 进场出生点(米;rot 度,0=朝-Y) */
   spawn?: { x: number; y: number; rot?: number };
+  /** 在线解说员「党建小益」(全展厅统一一个数字人) */
+  guide?: HallGuide;
+}
+
+/** 在线解说员(数字人「党建小益」):3D 形象 modelFileId 指向 rigged glb,空=内置占位形象 */
+export interface HallGuide {
+  enabled?: boolean; // 是否启用解说员(默认关)
+  name?: string; // 默认「党建小益」
+  modelFileId?: string; // 3D 形象 glb(从模型库选)
+  modelName?: string; // 形象模型原文件名(编辑器显示用)
+  modelUrl?: string; // 响应态旁补
+  scale?: number; // 缩放,默认 1
+  voice?: string; // 云 TTS 音色覆盖
+  /** 音色参考音频 storage fileId(本地 IndexTTS2 声音克隆用) */
+  voiceRefFileId?: string;
+  kind?: "model" | "sprite"; // 形象类型:3D glb(默认)/ 2.5D 立绘看板
+  spriteFileId?: string; // 立绘默认/闭嘴帧
+  spriteUrl?: string; // 响应态旁补
+  spriteTalkFileId?: string; // 说话/张嘴帧
+  spriteTalkUrl?: string;
+  spriteBlinkFileId?: string; // 眨眼帧(可选)
+  spriteBlinkUrl?: string;
+  spriteArmFileId?: string; // 手臂层(拆层手势)
+  spriteArmUrl?: string;
+  armPivotX?: number; // 肩点 X(0..1)
+  armPivotY?: number; // 肩点 Y(0..1)
+  armFlip?: boolean; // 手臂方向反向
 }
 
 export interface FixtureSource {
@@ -63,16 +90,25 @@ export interface Fixture {
   w: number; // 占地宽(米)
   d: number; // 占地深(米)
   label?: string;
+  /** 在线解说员讲解词 + AI 生成音频(点击展品时由「党建小益」播报) */
+  narration?: NarrationContent;
   source: FixtureSource;
+}
+
+/** 展品解说:解说词 + AI 生成音频(响应态旁补 audioUrl) */
+export interface NarrationContent {
+  text?: string;
+  audioFileId?: string;
+  audioUrl?: string;
 }
 
 /* ── 各类型手动内容(存储态:素材 fileId;响应态后端旁补 url 键) ── */
 
 export interface ImageCaseContent {
   /** 正面图片(展示第 1 张;caption 渲染为图下说明条) */
-  images: { fileId?: string; url?: string; caption?: string }[];
+  images: { fileId?: string; url?: string; thumbnail?: string; caption?: string }[];
   /** 背面图片(可与正面不同;未设则沿用正面) */
-  backImages?: { fileId?: string; url?: string; caption?: string }[];
+  backImages?: { fileId?: string; url?: string; thumbnail?: string; caption?: string }[];
   /** 板式:横屏(默认)/ 竖屏 */
   orientation?: "landscape" | "portrait";
   /** 显示底座(落地座台);false = 不出底座(贴墙/悬空式) */
@@ -87,6 +123,12 @@ export interface VideoWallContent {
   videoUrl?: string;
   posterFileId?: string;
   poster?: string;
+  /** 屏幕下边缘离地高度(米);缺省 1.1 */
+  baseElevM?: number;
+  /** 屏幕(相框)高度(米);缺省按 16:9 自动 */
+  frameH?: number;
+  /** 两面显示(背面同屏);默认 false */
+  doubleSided?: boolean;
 }
 export interface ModelStandContent {
   modelFileId?: string;
@@ -134,6 +176,10 @@ export interface DecorContent {
 export interface DoorContent {
   targetHallId?: string;
   targetName?: string;
+  /** 门头牌正面文字(缺省回退 targetName / fixture.label) */
+  frontText?: string;
+  /** 门头牌背面文字(两面可显示不同字;缺省回退正面) */
+  backText?: string;
 }
 /** 顶端吊牌 */
 export interface CeilingSignContent {

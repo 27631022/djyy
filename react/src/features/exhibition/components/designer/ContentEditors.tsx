@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { createPortal } from "react-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ArrowDownIcon,
@@ -17,12 +18,14 @@ import {
 } from "lucide-react";
 import { Switch } from "@/shared/components/ui/switch";
 import { storageApi } from "@/features/storage";
-import { modelLibraryApi } from "../../api";
+import { exhibitionLibraryApi, hallApi, modelLibraryApi } from "../../api";
 import {
   exhibitionAssetUrl,
+  type HallGuide,
   type HonorWallContent,
   type ImageCaseContent,
   type ModelStandContent,
+  type NarrationContent,
   type NoticeBoardContent,
   type Text3dContent,
   type VideoWallContent,
@@ -36,25 +39,8 @@ async function uploadAsset(file: File, hallId: string) {
   return storageApi.upload(file, { ownerModule: "exhibition", folder: hallId });
 }
 
-/** 从视频抓一帧做封面(素材口同源,canvas 不被污染);atSec 指定秒数,缺省取约 10% 处。返回 JPEG Blob */
-async function captureVideoFrame(url: string, atSec?: number): Promise<Blob> {
-  const v = document.createElement("video");
-  v.src = url;
-  v.muted = true;
-  v.crossOrigin = "anonymous";
-  v.preload = "auto";
-  await new Promise<void>((res, rej) => {
-    v.onloadeddata = () => res();
-    v.onerror = () => rej(new Error("视频加载失败"));
-  });
-  await new Promise<void>((res) => {
-    v.onseeked = () => res();
-    const dur = Number.isFinite(v.duration) ? v.duration : 2;
-    v.currentTime =
-      atSec != null && Number.isFinite(atSec)
-        ? Math.max(0, Math.min(atSec, Math.max(0, dur - 0.05))) // 钳到视频时长内
-        : Math.min(1, dur * 0.1);
-  });
+/** 从一个已显示某帧的 <video> 元素截取当前画面 → JPEG Blob(同源素材口,canvas 不被污染) */
+async function captureFrameFromEl(v: HTMLVideoElement): Promise<Blob> {
   const cv = document.createElement("canvas");
   cv.width = v.videoWidth || 1280;
   cv.height = v.videoHeight || 720;
@@ -62,7 +48,7 @@ async function captureVideoFrame(url: string, atSec?: number): Promise<Blob> {
   if (!ctx) throw new Error("canvas 不可用");
   ctx.drawImage(v, 0, 0, cv.width, cv.height);
   return await new Promise<Blob>((res, rej) =>
-    cv.toBlob((b) => (b ? res(b) : rej(new Error("截图失败"))), "image/jpeg", 0.9),
+    cv.toBlob((b) => (b ? res(b) : rej(new Error("截图失败"))), "image/jpeg", 0.92),
   );
 }
 
@@ -294,6 +280,63 @@ export function ImageCaseEditor({
 
 /* ── 视频展墙:视频 + 海报 ── */
 
+/** 封面选取弹窗:原生进度条拖到想要的画面 → 「用当前画面做封面」截当前帧 */
+function VideoPosterDialog({
+  url,
+  hallId,
+  onPick,
+  onClose,
+}: {
+  url: string;
+  hallId: string;
+  onPick: (fileId: string) => void;
+  onClose: () => void;
+}) {
+  const vref = useRef<HTMLVideoElement>(null);
+  const [busy, setBusy] = useState(false);
+  const grab = async () => {
+    const v = vref.current;
+    if (!v || !v.videoWidth) {
+      toast.error("视频还没加载好,稍候再试");
+      return;
+    }
+    setBusy(true);
+    try {
+      const blob = await captureFrameFromEl(v);
+      const meta = await uploadAsset(new File([blob], "poster.jpg", { type: "image/jpeg" }), hallId);
+      onPick(meta.id);
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "截取失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return createPortal(
+    <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl p-3 w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="text-sm font-medium text-[#1A1A1A] mb-2">拖动进度条到想要的画面,再点「用当前画面做封面」</div>
+        <video ref={vref} src={url} controls crossOrigin="anonymous" preload="auto" className="w-full max-h-[60vh] rounded bg-black" />
+        <div className="flex justify-end gap-2 mt-3">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs rounded border border-[#E5E5E5] text-[#6B7280]">
+            取消
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void grab()}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs rounded text-white bg-[var(--party-primary)] disabled:opacity-50"
+          >
+            {busy ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <FilmIcon className="w-3.5 h-3.5" />}
+            用当前画面做封面
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function VideoWallEditor({
   value,
   hallId,
@@ -303,21 +346,7 @@ export function VideoWallEditor({
   hallId: string;
   onChange: (v: VideoWallContent) => void;
 }) {
-  const [capturing, setCapturing] = useState(false);
-  const [captureSec, setCaptureSec] = useState(0);
-  const capturePoster = async () => {
-    if (!value.videoFileId) return;
-    setCapturing(true);
-    try {
-      const blob = await captureVideoFrame(exhibitionAssetUrl(value.videoFileId), captureSec);
-      const meta = await uploadAsset(new File([blob], "poster.jpg", { type: "image/jpeg" }), hallId);
-      onChange({ ...value, posterFileId: meta.id });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "截取封面失败");
-    } finally {
-      setCapturing(false);
-    }
-  };
+  const [pickerOpen, setPickerOpen] = useState(false);
   return (
     <div className="space-y-2">
       <Row label="视频">
@@ -343,33 +372,51 @@ export function VideoWallEditor({
         ) : (
           <div className="flex items-center gap-1.5 flex-wrap">
             {value.videoFileId && (
-              <div className="flex items-center gap-1">
-                <span className="text-[11px] text-[#6B7280]">第</span>
-                <input
-                  type="number" min={0} step={1} value={captureSec}
-                  onChange={(e) => setCaptureSec(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
-                  className="w-12 px-1.5 py-1 text-xs rounded border border-[#E5E5E5] focus:border-[var(--party-primary)] focus:outline-none"
-                />
-                <span className="text-[11px] text-[#6B7280]">秒</span>
-                <button
-                  type="button"
-                  disabled={capturing}
-                  onClick={() => void capturePoster()}
-                  title="抓取视频该时刻的一帧画面做封面"
-                  className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-[#D4D4D4] text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] disabled:opacity-50"
-                >
-                  {capturing ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <FilmIcon className="w-3.5 h-3.5" />}
-                  {capturing ? "截取中…" : "截取"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                title="拖动进度条到想要的画面,截取当前帧做封面"
+                className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-[#D4D4D4] text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+              >
+                <FilmIcon className="w-3.5 h-3.5" />
+                从视频选封面
+              </button>
             )}
             <UploadButton hallId={hallId} accept="image/*" label="上传图片" icon={<ImagePlusIcon className="w-3.5 h-3.5" />} onDone={(id) => onChange({ ...value, posterFileId: id })} />
           </div>
         )}
       </Row>
+      <Row label="相框高(m)">
+        <input
+          type="number"
+          step={0.05}
+          min={0.5}
+          max={4}
+          value={value.frameH ?? ""}
+          placeholder="留空=自动(16:9)"
+          onChange={(e) => {
+            if (e.target.value === "") return onChange({ ...value, frameH: undefined });
+            const n = Number(e.target.value);
+            onChange({ ...value, frameH: Number.isFinite(n) ? Math.min(4, Math.max(0.5, n)) : undefined });
+          }}
+          className={inputCls}
+        />
+      </Row>
+      <Row label="两面显示">
+        <Switch checked={value.doubleSided ?? false} onCheckedChange={(b) => onChange({ ...value, doubleSided: b })} />
+      </Row>
       <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
-        封面 = 视频播放前/墙面显示的图;可选第几秒「从视频截取」一帧,也可上传专门图片。3D 里点击视频会直接全屏播放。
+        封面 = 视频播放前/墙面显示的图;「从视频选封面」拖进度条到想要的画面再截取,也可上传专门图片。
+        离地高度在上方「离地(m)」调;两面显示=背面同屏(中岛双面)。3D 里点击视频会直接全屏播放(再点退出)。
       </p>
+      {pickerOpen && value.videoFileId && (
+        <VideoPosterDialog
+          url={exhibitionAssetUrl(value.videoFileId)}
+          hallId={hallId}
+          onPick={(id) => onChange({ ...value, posterFileId: id })}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -840,6 +887,398 @@ export function WallDecorEditor({
             栏目留空时按模板默认显示;最多 {maxPanels} 个,板宽随数量自动均分。
           </p>
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ── 展品解说词 + AI 配音(在线解说员「党建小益」用) ── */
+
+export function NarrationEditor({
+  value,
+  hallId,
+  onChange,
+}: {
+  value: NarrationContent | undefined;
+  hallId: string;
+  onChange: (v: NarrationContent) => void;
+}) {
+  const v = value ?? {};
+  const [busy, setBusy] = useState(false);
+  const text = v.text ?? "";
+  const audioUrl = v.audioUrl ?? (v.audioFileId ? exhibitionAssetUrl(v.audioFileId) : undefined);
+  const gen = async () => {
+    const t = text.trim();
+    if (!t) {
+      toast.error("请先填写解说词");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await hallApi.narrateTts({ text: t, hallId });
+      onChange({ ...v, text: t, audioFileId: r.fileId, audioUrl: r.url });
+      toast.success("已生成解说语音");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "生成语音失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="space-y-2">
+      <textarea
+        value={text}
+        onChange={(e) => onChange({ ...v, text: e.target.value })}
+        placeholder="走到该展品前点击时,党建小益讲的这段话(也用于生成语音)"
+        rows={4}
+        className={`${inputCls} resize-y leading-relaxed`}
+      />
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          disabled={busy || !text.trim()}
+          onClick={() => void gen()}
+          className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-[#D4D4D4] text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] disabled:opacity-50"
+        >
+          {busy ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <SparklesIcon className="w-3.5 h-3.5" />}
+          {busy ? "生成中…" : audioUrl ? "重新生成语音" : "AI 生成语音"}
+        </button>
+        {audioUrl && (
+          <button
+            type="button"
+            className="text-[10px] text-[#9CA3AF] hover:text-red-500 underline"
+            onClick={() => onChange({ ...v, audioFileId: undefined, audioUrl: undefined })}
+          >
+            清除语音
+          </button>
+        )}
+      </div>
+      {audioUrl && <audio controls src={audioUrl} className="w-full h-8" />}
+      <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+        需先在「AI 接入管理」给某平台勾选「语音合成 tts」+ 填 ttsModel / ttsVoice。无语音时小益只显示字幕。
+      </p>
+    </div>
+  );
+}
+
+/* ── 在线解说员「党建小益」(厅级设置:启用 + 形象 + 音色) ── */
+
+const kindBtnCls = (active: boolean) =>
+  `px-2.5 py-1 rounded text-xs border transition ${
+    active
+      ? "bg-[var(--party-primary)] text-white border-transparent"
+      : "bg-white text-[#374151] border-[#D1D5DB] hover:border-[#9CA3AF]"
+  }`;
+
+/** 2.5D 立绘单帧上传槽:有图显示缩略图 + 移除,无图显示上传按钮 */
+function GuideSpriteSlot({
+  label,
+  hallId,
+  fileId,
+  onChange,
+}: {
+  label: string;
+  hallId: string;
+  fileId?: string;
+  onChange: (id?: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <span className="text-xs text-[#6B7280]">{label}</span>
+      {fileId ? (
+        <div className="flex items-center gap-2">
+          <img
+            src={exhibitionAssetUrl(fileId)}
+            alt={label}
+            className="h-16 w-auto rounded border border-[#E5E7EB] bg-[#F9FAFB] object-contain"
+          />
+          <button
+            type="button"
+            className="p-1 text-[#9CA3AF] hover:text-red-500 flex-shrink-0"
+            title="移除"
+            onClick={() => onChange(undefined)}
+          >
+            <XIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+        <UploadButton
+          hallId={hallId}
+          accept=".png,.webp,.jpg,.jpeg"
+          label="上传立绘图(透明 PNG)"
+          icon={<UploadIcon className="w-3.5 h-3.5" />}
+          onDone={(id) => onChange(id)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** 厅级:套用 / 存为 讲解员「形象包」(整套立绘/3D + 音色 + 肩点,跨厅复用) */
+function GuidePresetBar({ guide, onChange }: { guide: HallGuide; onChange: (v: HallGuide) => void }) {
+  const qc = useQueryClient();
+  const { data: presets = [] } = useQuery({
+    queryKey: ["exhibition", "guide-presets"],
+    queryFn: exhibitionLibraryApi.listPresets,
+  });
+  const save = useMutation({
+    mutationFn: (name: string) =>
+      exhibitionLibraryApi.createPreset(name, guide as unknown as Record<string, unknown>),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["exhibition", "guide-presets"] });
+      toast.success("已存为形象包");
+    },
+    onError: () => toast.error("保存失败(需 exhibition:manage 权限)"),
+  });
+  return (
+    <div className="space-y-1.5 rounded-md bg-[#F9FAFB] border border-[#E5E7EB] p-2">
+      <span className="text-xs text-[#6B7280]">素材库形象包(整套复用)</span>
+      <div className="flex items-center gap-1.5">
+        <select
+          className={`${inputCls} flex-1`}
+          value=""
+          onChange={(e) => {
+            const p = presets.find((x) => x.id === e.target.value);
+            if (p) {
+              onChange({ ...guide, ...(p.config as unknown as Partial<HallGuide>), enabled: true });
+              toast.success(`已套用「${p.name}」`);
+            }
+          }}
+        >
+          <option value="">套用已存形象包…</option>
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="px-2 py-1 text-xs rounded border border-[#D1D5DB] text-[#374151] hover:border-[#9CA3AF] flex-shrink-0"
+          onClick={() => {
+            const name = window.prompt("形象包名称", guide.name || "讲解员形象");
+            if (name && name.trim()) save.mutate(name.trim());
+          }}
+        >
+          存为形象包
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** 从素材库挑一个音色参考音频 */
+function VoiceLibraryPicker({ onPick }: { onPick: (id: string) => void }) {
+  const { data: voices = [] } = useQuery({
+    queryKey: ["exhibition", "asset-library", "voice"],
+    queryFn: () => exhibitionLibraryApi.listAssets("voice"),
+  });
+  if (!voices.length) return null;
+  return (
+    <select
+      className={inputCls}
+      value=""
+      onChange={(e) => {
+        if (e.target.value) onPick(e.target.value);
+      }}
+    >
+      <option value="">从素材库选音色…</option>
+      {voices.map((v) => (
+        <option key={v.id} value={v.id}>
+          {v.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+export function GuideEditor({
+  value,
+  hallId,
+  onChange,
+}: {
+  value: HallGuide | undefined;
+  hallId: string;
+  onChange: (v: HallGuide) => void;
+}) {
+  const g = value ?? {};
+  const enabled = g.enabled ?? false;
+  const kind = g.kind ?? "model";
+  return (
+    <div className="space-y-2">
+      <Row label="启用">
+        <Switch checked={enabled} onCheckedChange={(b) => onChange({ ...g, enabled: b })} />
+      </Row>
+      {enabled && (
+        <>
+          <GuidePresetBar guide={g} onChange={onChange} />
+          <Row label="名称">
+            <input
+              value={g.name ?? ""}
+              onChange={(e) => onChange({ ...g, name: e.target.value })}
+              placeholder="党建小益"
+              className={inputCls}
+            />
+          </Row>
+          <Row label="形象类型">
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => onChange({ ...g, kind: "model" })}
+                className={kindBtnCls(kind !== "sprite")}
+              >
+                3D 模型
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange({ ...g, kind: "sprite" })}
+                className={kindBtnCls(kind === "sprite")}
+              >
+                2.5D 立绘
+              </button>
+            </div>
+          </Row>
+          {kind === "model" && (
+          <div className="space-y-1.5">
+            <span className="text-xs text-[#6B7280]">3D 形象(.glb,留空用内置占位形象)</span>
+            {g.modelFileId ? (
+              <div className="flex items-center gap-1.5 text-xs text-[#1A1A1A] min-w-0">
+                <PackageIcon className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span className="truncate" title={g.modelName}>{g.modelName ?? "已选 3D 形象"}</span>
+                <button
+                  type="button"
+                  className="p-1 text-[#9CA3AF] hover:text-red-500 flex-shrink-0"
+                  title="移除形象"
+                  onClick={() => onChange({ ...g, modelFileId: undefined, modelName: undefined })}
+                >
+                  <XIcon className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <UploadButton
+                hallId={hallId}
+                accept=".glb,.gltf"
+                label="上传 .glb 形象"
+                icon={<PackageIcon className="w-3.5 h-3.5" />}
+                onDone={(id, name) => onChange({ ...g, modelFileId: id, modelName: name })}
+              />
+            )}
+            <ModelLibraryPicker onPick={(id, name) => onChange({ ...g, modelFileId: id, modelName: name })} />
+          </div>
+          )}
+          {kind === "sprite" && (
+            <div className="space-y-2">
+              <GuideSpriteSlot
+                label="立绘(默认 / 闭嘴)"
+                hallId={hallId}
+                fileId={g.spriteFileId}
+                onChange={(id) => onChange({ ...g, spriteFileId: id })}
+              />
+              <GuideSpriteSlot
+                label="说话(张嘴 — 讲解时对口型用)"
+                hallId={hallId}
+                fileId={g.spriteTalkFileId}
+                onChange={(id) => onChange({ ...g, spriteTalkFileId: id })}
+              />
+              <GuideSpriteSlot
+                label="眨眼(可选)"
+                hallId={hallId}
+                fileId={g.spriteBlinkFileId}
+                onChange={(id) => onChange({ ...g, spriteBlinkFileId: id })}
+              />
+              <GuideSpriteSlot
+                label="手臂(可选 — 挥手/伸手手势用)"
+                hallId={hallId}
+                fileId={g.spriteArmFileId}
+                onChange={(id) => onChange({ ...g, spriteArmFileId: id })}
+              />
+              {g.spriteArmFileId && (
+                <>
+                  <Row label="肩点 X">
+                    <input
+                      type="number"
+                      step={0.01}
+                      min={0}
+                      max={1}
+                      value={g.armPivotX ?? 0.62}
+                      onChange={(e) => onChange({ ...g, armPivotX: Number(e.target.value) })}
+                      className={inputCls}
+                    />
+                  </Row>
+                  <Row label="肩点 Y">
+                    <input
+                      type="number"
+                      step={0.01}
+                      min={0}
+                      max={1}
+                      value={g.armPivotY ?? 0.42}
+                      onChange={(e) => onChange({ ...g, armPivotY: Number(e.target.value) })}
+                      className={inputCls}
+                    />
+                  </Row>
+                  <Row label="手臂方向反向">
+                    <Switch
+                      checked={g.armFlip ?? false}
+                      onCheckedChange={(b) => onChange({ ...g, armFlip: b })}
+                    />
+                  </Row>
+                </>
+              )}
+              <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+                透明 PNG 正面立绘(脚到头)。讲解时按配音自动在「默认↔说话」间切换做口型;有「眨眼」图会周期眨眼。立绘在 3D 展厅里始终朝向参观者。
+                想要挥手/伸手手势:再传一张「手臂」图(身体图里把这条会动的手臂去掉),用「肩点 X/Y」对准肩膀转轴(0~1,图左上为 0,0);方向不对就开「手臂方向反向」。听到「你好/欢迎」会挥手,介绍展品会伸手。
+              </p>
+            </div>
+          )}
+          <Row label="缩放">
+            <input
+              type="number"
+              step={0.1}
+              min={0.2}
+              max={5}
+              value={g.scale ?? 1}
+              onChange={(e) => onChange({ ...g, scale: Number(e.target.value) || 1 })}
+              className={inputCls}
+            />
+          </Row>
+          <Row label="音色">
+            <input
+              value={g.voice ?? ""}
+              onChange={(e) => onChange({ ...g, voice: e.target.value || undefined })}
+              placeholder="云 TTS 音色名;留空用默认"
+              className={inputCls}
+            />
+          </Row>
+          <div className="space-y-1.5">
+            <span className="text-xs text-[#6B7280]">音色参考音频(本地 IndexTTS2 克隆此声音)</span>
+            {g.voiceRefFileId ? (
+              <div className="flex items-center gap-1.5">
+                <audio controls src={exhibitionAssetUrl(g.voiceRefFileId)} className="h-8 max-w-[180px]" />
+                <button
+                  type="button"
+                  className="p-1 text-[#9CA3AF] hover:text-red-500 flex-shrink-0"
+                  title="移除参考音频"
+                  onClick={() => onChange({ ...g, voiceRefFileId: undefined })}
+                >
+                  <XIcon className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <UploadButton
+                hallId={hallId}
+                accept=".wav,.mp3,.ogg,audio/*"
+                label="上传参考音频(wav/mp3)"
+                icon={<UploadIcon className="w-3.5 h-3.5" />}
+                onDone={(id) => onChange({ ...g, voiceRefFileId: id })}
+              />
+            )}
+            <VoiceLibraryPicker onPick={(id) => onChange({ ...g, voiceRefFileId: id })} />
+          </div>
+          <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+            走到展品前点击 → 小益转向展品、播该展品解说音频、底部字幕。形象 glb 含口型(mouthOpen/jawOpen)时自动对口型,否则用呼吸动效。
+            用本地 IndexTTS2 时:传一段几秒清晰人声做「音色参考」,小益就用这个声音念解说(留空用 IndexTTS2 自带示例音色)。
+          </p>
+        </>
       )}
     </div>
   );
