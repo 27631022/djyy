@@ -546,7 +546,7 @@ export function createGuideNarrator(
     const right = new Vector3(-front.z, 0, front.x);
     const sideOff = clamp(fx.w / 2 + 0.7, 0.9, 2.2); // 站到展品边缘外约 0.7m
     const fwdOff = 0.8; // 略朝观众,避免嵌进展品/墙
-    // 右侧优先;沿该侧水平射线探到墙(展品在右墙角等)→ 右侧空间不够,自动改站左侧
+    // 沿优先侧水平射线探墙(展品在墙角等)→ 该侧空间不够,自动改站另一侧
     const sideClear = (dir: Vector3): boolean => {
       if (!wallSet.size) return true;
       const origin = fxPos.add(front.scale(fwdOff));
@@ -555,7 +555,11 @@ export function createGuideNarrator(
       return !hit?.hit;
     };
     const left = right.scale(-1);
-    const sideVec = !sideClear(right) && sideClear(left) ? left : right;
+    // 站位优先侧:默认观众左手侧解说,另一侧仅在优先侧被墙挡时兜底(解说员设置可切左/右)
+    const preferLeft = guide.narrateSide !== 'right';
+    const primary = preferLeft ? left : right;
+    const secondary = preferLeft ? right : left;
+    const sideVec = !sideClear(primary) && sideClear(secondary) ? secondary : primary;
     // 从远处划过来逐渐显示:起点设在展品正面远处(朝观众/开阔侧,避开墙),匀速划到展品旁;
     // 可见度随行程从 0 渐增到 1(见渲染循环 travelDest 分支)—— 越近越清晰,到位才完全显现。
     const dest = fxPos.add(sideVec.scale(sideOff)).add(front.scale(fwdOff));

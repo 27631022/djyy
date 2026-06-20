@@ -92,6 +92,8 @@ export interface HallGuide {
   armPivotX?: number; // 肩点 X(0..1,从左,默认 0.62)
   armPivotY?: number; // 肩点 Y(0..1,从上,默认 0.42)
   armFlip?: boolean; // 手臂旋转方向反向(图里手臂在另一侧时)
+  /** 解说站位优先侧:观众视角 left(默认)/ right;优先侧被墙挡时自动兜底到另一侧 */
+  narrateSide?: 'left' | 'right';
 }
 
 /** 组件实例(规格 5.2) */

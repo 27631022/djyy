@@ -105,6 +105,7 @@ export interface HallGuide {
   armPivotX?: number; // 肩点 X(0..1)
   armPivotY?: number; // 肩点 Y(0..1)
   armFlip?: boolean; // 手臂方向反向
+  narrateSide?: 'left' | 'right'; // 解说站位优先侧(默认 left,右侧兜底)
 }
 
 export interface Fixture {

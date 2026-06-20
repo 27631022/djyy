@@ -1120,6 +1120,24 @@ export function GuideEditor({
               className={inputCls}
             />
           </Row>
+          <Row label="解说站位">
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => onChange({ ...g, narrateSide: "left" })}
+                className={kindBtnCls((g.narrateSide ?? "left") === "left")}
+              >
+                左侧
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange({ ...g, narrateSide: "right" })}
+                className={kindBtnCls(g.narrateSide === "right")}
+              >
+                右侧
+              </button>
+            </div>
+          </Row>
           <Row label="形象类型">
             <div className="flex gap-1">
               <button
