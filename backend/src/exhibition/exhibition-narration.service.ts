@@ -5,6 +5,7 @@ import { ExternalApiService } from '../external-api';
 import { AuditService } from '../audit';
 import { exhibitionAssetUrl } from './exhibition.types';
 import { synthesizeWithIndexTts2 } from './indextts2-client';
+import { synthesizeWithVoxcpm } from './voxcpm-client';
 
 interface AuditCtx {
   actorId?: string;
@@ -99,6 +100,28 @@ export class ExhibitionNarrationService {
           detail: JSON.stringify({ ok: false, provider: cfg.provider, model: cfg.model, msg }),
         });
         throw new BadRequestException(`IndexTTS2 生成语音失败:${msg}`);
+      }
+    } else if (cfg.model === 'voxcpm') {
+      // 2a'. 本地 VoxCPM(Gradio):有解说员音色参考音频则克隆该音色,否则用默认音色
+      try {
+        let ref: { buffer: Buffer; name: string } | undefined;
+        if (opts.voiceRefFileId) {
+          const f = await this.storage.getBuffer(opts.voiceRefFileId);
+          ref = { buffer: f.buffer, name: f.meta.originalName };
+        }
+        const r = await synthesizeWithVoxcpm(apiUrl, text, ref);
+        outBuf = r.buffer;
+        ext = r.ext;
+        mime = r.mime;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : '未知错误';
+        this.logger.warn(`VoxCPM 配音失败 base=${apiUrl}: ${msg}`);
+        await this.audit.log({
+          action: 'exhibition.narration.tts',
+          ...actor,
+          detail: JSON.stringify({ ok: false, provider: cfg.provider, model: cfg.model, msg }),
+        });
+        throw new BadRequestException(`VoxCPM 生成语音失败:${msg}`);
       }
     } else {
       // 2b. OpenAI 兼容云 TTS(/audio/speech)
