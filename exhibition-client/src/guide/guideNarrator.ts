@@ -247,7 +247,7 @@ export function createGuideNarrator(
   /** 2.5D 立绘看板(拆层手臂):父级 rig 朝相机;身体层切口型/眨眼帧;手臂层以肩为轴转做手势。
    *  脚底落 root(y=0)。⚠ 身体图须为「去掉会动那条手臂」的版本,手臂图为单独一张、同画布对齐的透明 PNG。 */
   function buildSprite(): void {
-    const H = 1.7 * (guide.scale ?? 1); // 立绘目标身高(米)
+    const H = 2.0 * (guide.scale ?? 1); // 立绘目标身高(米;2m 略大于真人更有存在感,再用「大小」微调)
     const rig = new TransformNode('guide-sprite-rig', scene);
     rig.parent = root;
     rig.billboardMode = Mesh.BILLBOARDMODE_Y; // 整组立绘朝相机(水平),手臂在其本地平面内转

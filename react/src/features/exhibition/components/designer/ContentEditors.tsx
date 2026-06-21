@@ -1248,15 +1248,16 @@ export function GuideEditor({
               </p>
             </div>
           )}
-          <Row label="缩放">
+          <Row label="大小">
             <input
               type="number"
               step={0.1}
-              min={0.2}
-              max={5}
+              min={0.5}
+              max={6}
               value={g.scale ?? 1}
               onChange={(e) => onChange({ ...g, scale: Number(e.target.value) || 1 })}
               className={inputCls}
+              title="讲解员整体大小(1=默认约2米;调大更醒目)"
             />
           </Row>
           <Row label="音色">
