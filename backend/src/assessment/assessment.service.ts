@@ -8,8 +8,9 @@ import { CreateSchemeDto } from './dto/create-scheme.dto';
 import { UpdateSchemeDto } from './dto/update-scheme.dto';
 import { TrialScoreDto } from './dto/trial-score.dto';
 import { PreviewIndicatorDto } from './dto/preview-indicator.dto';
+import { ReportService } from '../report';
 import { flattenLeaves, normalizeIndicatorTree, type IndicatorNode } from './indicator-tree';
-import { getDataSourceSpec } from './data-sources';
+import { getDataSourceSpec, effectiveOutputType } from './data-sources';
 import { getScoringSpec, isInputCompatible, type ScoreCtx } from './scoring-strategies';
 import { computeRoundResults, previewIndicator } from './round-engine';
 import {
@@ -58,6 +59,8 @@ function safeJson<T>(s: string | null | undefined, fallback: T): T {
   }
 }
 
+const round2 = (x: number) => Math.round(x * 100) / 100;
+
 /** 把试算入参的 raw(unknown)转成原始度量 number|boolean|null */
 function toRaw(v: unknown): number | boolean | null {
   if (v === null || v === undefined || v === '') return null;
@@ -86,6 +89,7 @@ export class AssessmentService {
     private readonly roles: RoleService,
     private readonly users: UserService,
     private readonly org: OrganizationService,
+    private readonly report: ReportService,
   ) {}
 
   /**
@@ -244,9 +248,11 @@ export class AssessmentService {
         if (!ss) {
           throw new BadRequestException(`指标 "${leaf.label}" 的计分工具 "${leaf.scoringType}" 未知`);
         }
-        if (!isInputCompatible(ss.inputType, ds.outputType)) {
+        // report.query 的产出类型随取值(field)变 → 用 effectiveOutputType(集中一处)
+        const outType = effectiveOutputType(leaf.dataSource, leaf.sourceParams);
+        if (!isInputCompatible(ss.inputType, outType)) {
           throw new BadRequestException(
-            `指标 "${leaf.label}":数据源产出(${ds.outputType})与计分工具输入(${ss.inputType})不匹配`,
+            `指标 "${leaf.label}":数据源产出(${outType})与计分工具输入(${ss.inputType})不匹配`,
           );
         }
         leaf.strategyParams = ss.normalizeParams(leaf.strategyParams ?? {});
@@ -400,6 +406,19 @@ export class AssessmentService {
       raw[sc.targetRef][sc.leafCode] = sc.rawValue == null ? null : safeJson<unknown>(sc.rawValue, null);
     }
 
+    // report.query 叶子:从报送任务自动取数,覆盖到 raw(自动源不依赖手工录入)
+    const refs = targets.map((t) => t.ref);
+    for (const leaf of flattenLeaves(indicators)) {
+      if (leaf.dataSource !== 'report.query') continue;
+      const sp = (leaf.sourceParams ?? {}) as { reportTaskId?: string; goalKey?: string; field?: string };
+      const field = sp.field === 'rate' ? 'rate' : 'actual';
+      const vals = await this.resolveReportQuery(sp.reportTaskId ?? '', sp.goalKey ?? '', field, refs);
+      for (const ref of refs) {
+        if (!raw[ref]) raw[ref] = {};
+        raw[ref][leaf.code] = vals[ref];
+      }
+    }
+
     const results = computeRoundResults(indicators, targets, gradeRules, raw, new Date().toISOString());
     await this.prisma.assessmentRound.update({
       where: { id: roundId },
@@ -471,5 +490,68 @@ export class AssessmentService {
         raw: u.raw,
       }));
     return { results: previewIndicator(leaf, units) };
+  }
+
+  /* ─── report.query 接入(报送任务取数 → 考核数据源)─── */
+
+  /** 考核选数据源:列出有目标的报送任务 + 目标(供 report.query 编辑器)。 */
+  reportQuerySources() {
+    return this.report.listGoalSources();
+  }
+
+  /** report.query 预览:给 任务+目标+取值+对象,返回各对象将取到的值(配置时即时看,不落库)。 */
+  async reportQueryPreview(dto: { reportTaskId?: string; goalKey?: string; field?: string; targets?: unknown }) {
+    const targets = normalizeTargets(dto.targets);
+    const refs = targets.map((t) => (t.orgId ?? t.userId ?? '')).filter(Boolean);
+    const field = dto.field === 'rate' ? 'rate' : 'actual';
+    const vals = await this.resolveReportQuery(dto.reportTaskId ?? '', dto.goalKey ?? '', field, refs);
+    return {
+      field,
+      rows: targets.map((t) => {
+        const ref = t.orgId ?? t.userId ?? '';
+        return { ref, name: t.name, value: vals[ref] ?? null };
+      }),
+    };
+  }
+
+  /**
+   * 报送取数解析:把某报送任务某目标的各单位值映射到考核对象(ref=orgId/userId)。
+   * field='actual' 取实际值、'rate' 取完成率%。考核对象是党组织时经 PartyAdminLink 换算到行政单位匹配
+   * (直接匹配优先;1:1 直取 / 1:N actual 求和、rate 平均)。无数据/未关联 → null。
+   */
+  private async resolveReportQuery(
+    taskId: string,
+    goalKey: string,
+    field: 'actual' | 'rate',
+    targetRefs: string[],
+  ): Promise<Record<string, number | null>> {
+    const out: Record<string, number | null> = {};
+    for (const ref of targetRefs) out[ref] = null;
+    if (!taskId || !goalKey) return out;
+    let q: Awaited<ReturnType<ReportService['queryGoal']>>;
+    try {
+      q = await this.report.queryGoal(taskId, goalKey);
+    } catch {
+      return out; // 任务/目标不存在
+    }
+    const valByOrg = new Map<string, number>();
+    for (const u of q.units) {
+      if (!u.orgId) continue;
+      const v = field === 'rate' ? u.rate : u.actual;
+      if (typeof v === 'number' && Number.isFinite(v)) valByOrg.set(u.orgId, v);
+    }
+    for (const ref of targetRefs) {
+      if (valByOrg.has(ref)) {
+        out[ref] = valByOrg.get(ref)!;
+        continue;
+      }
+      const linked = await this.org.getLinkedAdminOrgs(ref);
+      const vals = linked.map((o) => valByOrg.get(o.id)).filter((v): v is number => typeof v === 'number');
+      if (vals.length) {
+        const sum = vals.reduce((a, b) => a + b, 0);
+        out[ref] = field === 'rate' ? round2(sum / vals.length) : round2(sum);
+      }
+    }
+    return out;
   }
 }

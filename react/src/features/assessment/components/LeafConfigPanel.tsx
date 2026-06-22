@@ -3,11 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Info, Scale } from "lucide-react";
 import { organizationsApi } from "@/features/organization";
 import { assessmentApi, type AssessmentTarget, type IndicatorNode, type SchemeSettings } from "../api";
-import { DATA_SOURCES, OUTPUT_LABELS, getDataSource } from "../data-sources/registry";
+import { DATA_SOURCES, OUTPUT_LABELS, getDataSource, effectiveOutputType } from "../data-sources/registry";
 import { SCORING_STRATEGY_LIST, getStrategy, isInputCompatible } from "../scoring/registry";
 import { PROP_INPUT } from "../scoring/shared";
 import { DATA_SOURCE_HELP, SCORING_HELP, type HelpText } from "../help";
 import { DifficultyCoefDialog } from "./DifficultyCoefDialog";
+import { ReportQueryEditor } from "./ReportQueryEditor";
 import { OrgPicker } from "./OrgPicker";
 
 /** 叶子指标配置:数据源 + 计分工具(各带 ⓘ 说明)+ 参数 + 难易系数 + 责任部门/责任人 + 评分标准 + 试算预览。 */
@@ -37,14 +38,26 @@ export function LeafConfigPanel({
   const [stratHelp, setStratHelp] = useState(false);
 
   const compatStrategies = useMemo(() => {
-    const out = ds?.outputType;
-    return SCORING_STRATEGY_LIST.filter((s) => (out ? isInputCompatible(s.inputType, out) : true));
-  }, [ds]);
+    if (!node.dataSource) return SCORING_STRATEGY_LIST;
+    const out = effectiveOutputType(node.dataSource, node.sourceParams);
+    return SCORING_STRATEGY_LIST.filter((s) => isInputCompatible(s.inputType, out));
+  }, [node.dataSource, node.sourceParams]);
 
   function pickDataSource(id: string) {
-    const newDs = getDataSource(id);
     const patch: Partial<IndicatorNode> = { dataSource: id || undefined };
-    if (strat && newDs && !isInputCompatible(strat.inputType, newDs.outputType)) {
+    if (id !== "report.query") patch.sourceParams = undefined; // 切走 report.query 清专属参数
+    const out = effectiveOutputType(id, id === "report.query" ? node.sourceParams : undefined);
+    if (strat && id && !isInputCompatible(strat.inputType, out)) {
+      patch.scoringType = undefined;
+      patch.strategyParams = undefined;
+    }
+    onChange(patch);
+  }
+  /** report.query 参数变(field 可能改 outputType → 与当前计分工具不兼容则清掉) */
+  function setSourceParams(spNew: Record<string, unknown>) {
+    const patch: Partial<IndicatorNode> = { sourceParams: spNew };
+    const out = effectiveOutputType(node.dataSource, spNew);
+    if (strat && !isInputCompatible(strat.inputType, out)) {
       patch.scoringType = undefined;
       patch.strategyParams = undefined;
     }
@@ -91,6 +104,10 @@ export function LeafConfigPanel({
         {ds && <div className="mt-1 text-[11px] text-[#9CA3AF]">{ds.description}</div>}
         {dsHelp && ds && DATA_SOURCE_HELP[ds.id] && <HelpBox help={DATA_SOURCE_HELP[ds.id]} />}
       </div>
+
+      {node.dataSource === "report.query" && (
+        <ReportQueryEditor sourceParams={node.sourceParams} onChange={setSourceParams} targets={targets} />
+      )}
 
       <div>
         <div className="flex items-center gap-1.5 mb-2">

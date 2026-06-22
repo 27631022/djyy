@@ -34,8 +34,6 @@ export function CatalogPicker({
   const [qInput, setQInput] = useState("");
   const q = useDebounced(qInput, 250);
   const [category, setCategory] = useState("");
-  const [recommendOrg, setRecommendOrg] = useState("");
-  const [origin, setOrigin] = useState("");
   const [page, setPage] = useState(1);
 
   const enabled = open && !!catalogTag;
@@ -48,9 +46,8 @@ export function CatalogPicker({
   const categories = useMemo(() => facets?.categories ?? [], [facets]);
 
   const searchQuery = useQuery({
-    queryKey: ["report", "catalog-search", catalogTag, q, category, recommendOrg, origin, page],
-    queryFn: () =>
-      reportApi.catalog.search({ catalogTag: catalogTag!, q, category, recommendOrg, origin, page, pageSize: PAGE_SIZE }),
+    queryKey: ["report", "catalog-search", catalogTag, q, category, page],
+    queryFn: () => reportApi.catalog.search({ catalogTag: catalogTag!, q, category, page, pageSize: PAGE_SIZE }),
     enabled,
   });
   const items = useMemo(() => searchQuery.data?.items ?? [], [searchQuery.data]);
@@ -58,9 +55,6 @@ export function CatalogPicker({
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   if (!open) return null;
-
-  const selectCls =
-    "rounded-lg border border-gray-200 px-2 py-2 text-sm focus:border-[var(--party-primary)] focus:outline-none max-w-[160px]";
 
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
@@ -107,58 +101,6 @@ export function CatalogPicker({
               </div>
             </div>
 
-            {/* 点选栏目:推荐单位 / 产地(可输入筛选,选建议或打部分字都行) */}
-            <div className="flex flex-wrap items-center gap-2 px-4 pt-2">
-              <input
-                list="rp-rec-orgs"
-                value={recommendOrg}
-                onChange={(e) => {
-                  setRecommendOrg(e.target.value);
-                  setPage(1);
-                }}
-                placeholder="推荐单位…"
-                className={selectCls}
-              />
-              <datalist id="rp-rec-orgs">
-                {(facets?.recommendOrgs ?? []).map((f) => (
-                  <option key={f.value} value={f.value}>
-                    {f.count} 项
-                  </option>
-                ))}
-              </datalist>
-              <input
-                list="rp-origins"
-                value={origin}
-                onChange={(e) => {
-                  setOrigin(e.target.value);
-                  setPage(1);
-                }}
-                placeholder="产地…"
-                className={selectCls}
-              />
-              <datalist id="rp-origins">
-                {(facets?.origins ?? []).map((f) => (
-                  <option key={f.value} value={f.value}>
-                    {f.count} 项
-                  </option>
-                ))}
-              </datalist>
-              {(recommendOrg || origin || category || qInput) && (
-                <button
-                  onClick={() => {
-                    setQInput("");
-                    setCategory("");
-                    setRecommendOrg("");
-                    setOrigin("");
-                    setPage(1);
-                  }}
-                  className="text-xs text-gray-400 hover:text-gray-600"
-                >
-                  清空筛选
-                </button>
-              )}
-            </div>
-
             {/* 类别 chips */}
             <div className="flex flex-wrap gap-1.5 px-4 pt-2">
               <button
@@ -175,6 +117,7 @@ export function CatalogPicker({
               {categories.map((c) => (
                 <button
                   key={c.value}
+                  title={c.desc ?? undefined}
                   onClick={() => {
                     setCategory(c.value);
                     setPage(1);

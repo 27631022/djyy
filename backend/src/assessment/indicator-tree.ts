@@ -27,6 +27,8 @@ export interface IndicatorNode {
   children?: IndicatorNode[];
   // 叶子专属
   dataSource?: string;
+  /** 数据源专属参数(如 report.query 的 { reportTaskId, goalKey, field })。区别于计分工具的 strategyParams。 */
+  sourceParams?: Record<string, unknown>;
   scoringType?: string;
   strategyParams?: Record<string, unknown>;
   ownerOrgId?: string;
@@ -107,6 +109,9 @@ export function normalizeIndicatorTree(raw: unknown): IndicatorNode[] {
       if (!scoringType) throw new BadRequestException(`叶子指标 "${label}" 未选计分工具`);
       node.dataSource = dataSource;
       node.scoringType = scoringType;
+      if (o.sourceParams && typeof o.sourceParams === 'object' && !Array.isArray(o.sourceParams)) {
+        node.sourceParams = o.sourceParams as Record<string, unknown>;
+      }
       if (o.strategyParams && typeof o.strategyParams === 'object') {
         node.strategyParams = o.strategyParams as Record<string, unknown>;
       }

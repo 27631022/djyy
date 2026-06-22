@@ -109,33 +109,52 @@ export class ReportCatalogService {
     return { total, page, pageSize, items };
   }
 
-  /** 分类分面(第一~第四部分 + 各计数),供检索侧边筛选。 */
-  async categories(catalogTag: string) {
-    if (!catalogTag) throw new BadRequestException('catalogTag 必填');
+  /**
+   * 各类别(第一~第四部分)的代表「类别说明」(categoryDesc,如「集团公司定点帮扶和对口支援地区」)+ 计数,
+   * 按**数据自然顺序**(min totalSeq)排 —— 不用拼音 localeCompare(否则 一/二/三/四 按拼音 yī 排到最后)。
+   */
+  private async categoryRows(catalogTag: string) {
     const rows = await this.prisma.reportCatalogItem.groupBy({
-      by: ['category'],
+      by: ['category', 'categoryDesc'],
       where: { catalogTag },
       _count: { _all: true },
+      _min: { totalSeq: true },
     });
-    return rows
-      .map((r) => ({ category: r.category, count: r._count._all }))
-      .sort((a, b) => a.category.localeCompare(b.category, 'zh'));
+    // 收敛到每个 category 一行:取 totalSeq 最小那条的 categoryDesc 为代表,count 求和
+    const byCat = new Map<string, { category: string; categoryDesc: string | null; count: number; seq: number }>();
+    for (const r of rows) {
+      const seq = r._min.totalSeq ?? Number.MAX_SAFE_INTEGER;
+      const cur = byCat.get(r.category);
+      if (!cur) byCat.set(r.category, { category: r.category, categoryDesc: r.categoryDesc, count: r._count._all, seq });
+      else {
+        cur.count += r._count._all;
+        if (seq < cur.seq) {
+          cur.seq = seq;
+          cur.categoryDesc = r.categoryDesc;
+        }
+      }
+    }
+    return [...byCat.values()].sort((a, b) => a.seq - b.seq);
   }
 
-  /** 筛选分面:类别 / 推荐单位 / 产地 的可选值 + 计数(供点选栏目)。 */
+  /** 分类分面(第一~第四部分 + 类别说明 + 各计数),供检索侧边筛选。按数据自然顺序排。 */
+  async categories(catalogTag: string) {
+    if (!catalogTag) throw new BadRequestException('catalogTag 必填');
+    return (await this.categoryRows(catalogTag)).map((r) => ({ category: r.category, categoryDesc: r.categoryDesc, count: r.count }));
+  }
+
+  /** 筛选分面:类别(带说明,自然序)/ 推荐单位 / 产地 的可选值 + 计数。 */
   async filterFacets(catalogTag: string) {
     if (!catalogTag) throw new BadRequestException('catalogTag 必填');
-    const [cats, orgs, origins] = await Promise.all([
-      this.prisma.reportCatalogItem.groupBy({ by: ['category'], where: { catalogTag }, _count: { _all: true } }),
+    const [catRows, orgs, origins] = await Promise.all([
+      this.categoryRows(catalogTag),
       this.prisma.reportCatalogItem.groupBy({ by: ['recommendOrg'], where: { catalogTag }, _count: { _all: true } }),
       this.prisma.reportCatalogItem.groupBy({ by: ['origin'], where: { catalogTag }, _count: { _all: true } }),
     ]);
     const byCount = (rows: { value: string | null; count: number }[]) =>
       rows.filter((r): r is { value: string; count: number } => !!r.value).sort((a, b) => b.count - a.count);
     return {
-      categories: byCount(cats.map((r) => ({ value: r.category, count: r._count._all }))).sort((a, b) =>
-        a.value.localeCompare(b.value, 'zh'),
-      ),
+      categories: catRows.map((r) => ({ value: r.category, count: r.count, desc: r.categoryDesc })),
       recommendOrgs: byCount(orgs.map((r) => ({ value: r.recommendOrg, count: r._count._all }))),
       origins: byCount(origins.map((r) => ({ value: r.origin, count: r._count._all }))),
     };

@@ -29,12 +29,10 @@ export default function ReportCatalog() {
   const selectedTag = pickedTag ?? catalogs[0]?.catalogTag ?? null;
   const selected = catalogs.find((c) => c.catalogTag === selectedTag) ?? null;
 
-  // 检索条件
+  // 检索条件(推荐单位/产地不再单列下拉,综合搜索框已覆盖按这两列检索)
   const [qInput, setQInput] = useState("");
   const q = useDebounced(qInput, 250);
   const [category, setCategory] = useState("");
-  const [recommendOrg, setRecommendOrg] = useState("");
-  const [origin, setOrigin] = useState("");
   const [page, setPage] = useState(1);
 
   const facetsQuery = useQuery({
@@ -46,9 +44,8 @@ export default function ReportCatalog() {
   const categories = useMemo(() => facets?.categories ?? [], [facets]);
 
   const searchQuery = useQuery({
-    queryKey: ["report", "catalog-search", selectedTag, q, category, recommendOrg, origin, page],
-    queryFn: () =>
-      reportApi.catalog.search({ catalogTag: selectedTag!, q, category, recommendOrg, origin, page, pageSize: PAGE_SIZE }),
+    queryKey: ["report", "catalog-search", selectedTag, q, category, page],
+    queryFn: () => reportApi.catalog.search({ catalogTag: selectedTag!, q, category, page, pageSize: PAGE_SIZE }),
     enabled: !!selectedTag,
   });
   const items = useMemo(() => searchQuery.data?.items ?? [], [searchQuery.data]);
@@ -79,14 +76,9 @@ export default function ReportCatalog() {
   function pickCatalog(tag: string) {
     setPickedTag(tag);
     setCategory("");
-    setRecommendOrg("");
-    setOrigin("");
     setQInput("");
     setPage(1);
   }
-
-  const comboCls =
-    "rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-[var(--party-primary)] focus:outline-none max-w-[160px]";
 
   return (
     <div className="p-6">
@@ -166,11 +158,14 @@ export default function ReportCatalog() {
                   setCategory(c.value);
                   setPage(1);
                 }}
-                className={`w-full rounded-md px-3 py-1.5 text-left text-sm ${
-                  category === c.value ? "bg-party-soft font-medium text-[var(--party-primary)]" : "text-gray-600 hover:bg-gray-50"
+                className={`block w-full rounded-md px-3 py-1.5 text-left ${
+                  category === c.value ? "bg-party-soft text-[var(--party-primary)]" : "text-gray-600 hover:bg-gray-50"
                 }`}
               >
-                {c.value} · {c.count}
+                <span className="text-sm font-medium">
+                  {c.value} · {c.count}
+                </span>
+                {c.desc && <span className="mt-0.5 block text-[11px] leading-tight text-gray-400">{c.desc}</span>}
               </button>
             ))}
           </aside>
@@ -186,7 +181,7 @@ export default function ReportCatalog() {
                     setQInput(e.target.value);
                     setPage(1);
                   }}
-                  placeholder="输入即搜;空格分词多列匹配,如「新疆 大米」"
+                  placeholder="综合搜索:名称/规格/推荐单位/产地/类别,空格分词,如「新疆 大米」"
                   className="w-full rounded-lg border border-gray-200 py-2 pl-8 pr-8 text-sm focus:border-[var(--party-primary)] focus:outline-none"
                 />
                 {qInput && (
@@ -201,40 +196,6 @@ export default function ReportCatalog() {
                   </button>
                 )}
               </div>
-              <input
-                list="rc-rec-orgs"
-                value={recommendOrg}
-                onChange={(e) => {
-                  setRecommendOrg(e.target.value);
-                  setPage(1);
-                }}
-                placeholder="推荐单位…"
-                className={comboCls}
-              />
-              <datalist id="rc-rec-orgs">
-                {(facets?.recommendOrgs ?? []).map((f) => (
-                  <option key={f.value} value={f.value}>
-                    {f.count} 项
-                  </option>
-                ))}
-              </datalist>
-              <input
-                list="rc-origins"
-                value={origin}
-                onChange={(e) => {
-                  setOrigin(e.target.value);
-                  setPage(1);
-                }}
-                placeholder="产地…"
-                className={comboCls}
-              />
-              <datalist id="rc-origins">
-                {(facets?.origins ?? []).map((f) => (
-                  <option key={f.value} value={f.value}>
-                    {f.count} 项
-                  </option>
-                ))}
-              </datalist>
             </div>
 
             <div className="overflow-hidden rounded-lg border border-gray-100">

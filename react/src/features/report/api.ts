@@ -403,6 +403,8 @@ export interface CatalogSearchResult {
 export interface CatalogCategory {
   category: string;
   count: number;
+  /** 类别说明(如「集团公司定点帮扶和对口支援地区」),代表该 category。 */
+  categoryDesc?: string | null;
 }
 
 export interface CatalogSearchParams {
@@ -418,6 +420,8 @@ export interface CatalogSearchParams {
 export interface CatalogFacetValue {
   value: string;
   count: number;
+  /** 类别分面专用:类别说明(如「集团公司定点帮扶和对口支援地区」)。 */
+  desc?: string | null;
 }
 export interface CatalogFacets {
   categories: CatalogFacetValue[];

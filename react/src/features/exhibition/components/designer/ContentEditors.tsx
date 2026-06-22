@@ -1260,6 +1260,18 @@ export function GuideEditor({
               title="讲解员整体大小(1=默认约2米;调大更醒目)"
             />
           </Row>
+          <Row label="亮度">
+            <input
+              type="number"
+              step={0.05}
+              min={0.5}
+              max={1.5}
+              value={g.brightness ?? 1}
+              onChange={(e) => onChange({ ...g, brightness: Number(e.target.value) || 1 })}
+              className={inputCls}
+              title="2.5D 立绘亮度(1=原图;暗沉就调到 1.1~1.3)"
+            />
+          </Row>
           <Row label="音色">
             <input
               value={g.voice ?? ""}

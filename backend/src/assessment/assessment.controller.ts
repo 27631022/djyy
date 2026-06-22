@@ -23,6 +23,7 @@ import { CreateSchemeDto } from './dto/create-scheme.dto';
 import { UpdateSchemeDto } from './dto/update-scheme.dto';
 import { TrialScoreDto } from './dto/trial-score.dto';
 import { PreviewIndicatorDto } from './dto/preview-indicator.dto';
+import { ReportQueryPreviewDto } from './dto/report-query-preview.dto';
 import { CreateRoundDto } from './dto/create-round.dto';
 import { SaveScoresDto } from './dto/save-scores.dto';
 
@@ -99,6 +100,18 @@ export class AssessmentController {
   @Post('scoring/preview')
   previewIndicator(@Body() dto: PreviewIndicatorDto) {
     return this.svc.previewIndicator(dto);
+  }
+
+  /** GET /assessment/report-query/sources  报送取数可选源:有目标的报送任务 + 目标(登录即可) */
+  @Get('report-query/sources')
+  reportQuerySources() {
+    return this.svc.reportQuerySources();
+  }
+
+  /** POST /assessment/report-query/preview  报送取数预览:各对象将取到的值(登录即可) */
+  @Post('report-query/preview')
+  reportQueryPreview(@Body() dto: ReportQueryPreviewDto) {
+    return this.svc.reportQueryPreview(dto);
   }
 
   /** GET /assessment/my-scope  我的考核区域(按登录账号收敛的考核关系 + 主体) */

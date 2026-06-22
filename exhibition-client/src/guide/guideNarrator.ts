@@ -260,11 +260,15 @@ export function createGuideNarrator(
         if (layer instanceof GlowLayer) layer.addExcludedMesh(m);
       }
     };
-    const SPRITE_BRIGHTNESS = 0.8; // 立绘整体亮度(1=原图;调低让画面不那么刺眼。辉光已单独排除)
+    const SPRITE_BRIGHTNESS = clamp(guide.brightness ?? 1.0, 0.3, 1.6); // 立绘亮度(1=原图;走 emissiveTexture.level 乘性缩放)
     const mkUnlit = (n: string): StandardMaterial => {
       const m = new StandardMaterial(n, scene);
       m.disableLighting = true; // 不受展厅灯光影响,自发光显示原图(×亮度)
-      m.emissiveColor = new Color3(SPRITE_BRIGHTNESS, SPRITE_BRIGHTNESS, SPRITE_BRIGHTNESS);
+      // 漫反射色清零:disableLighting 下漫反射仍满亮显示贴图,会盖过 emissive → 清零让 emissive 成唯一来源。
+      m.diffuseColor = new Color3(0, 0, 0);
+      // ⚠ 有 emissiveTexture 时 emissiveColor 是「加性」(emissiveColor + 贴图×level),控不了亮度;
+      //   亮度必须走 emissiveTexture.level(乘性,贴图就绪时设)→ 故 emissiveColor 清零。
+      m.emissiveColor = new Color3(0, 0, 0);
       m.backFaceCulling = false;
       m.transparencyMode = Material.MATERIAL_ALPHABLEND;
       m.useAlphaFromDiffuseTexture = true;
@@ -299,6 +303,7 @@ export function createGuideNarrator(
         body.scaling.y = H;
         mat.diffuseTexture = t;
         mat.emissiveTexture = t;
+        t.level = SPRITE_BRIGHTNESS; // ★亮度:贴图 level 乘性缩放(emissiveColor 是加性、控不了亮度)
         // 手臂层(可选):同画布对齐,以肩(归一化 armPivotX/Y)为轴;旋转 0 时与身体严丝合缝
         if (guide.spriteArmUrl) {
           const px = guide.armPivotX ?? 0.62; // 肩点 X(0..1,从左)
@@ -322,6 +327,7 @@ export function createGuideNarrator(
           texArm = loadTex(guide.spriteArmUrl, (at) => {
             armMat.diffuseTexture = at;
             armMat.emissiveTexture = at;
+            at.level = SPRITE_BRIGHTNESS;
           });
         }
         modelReady = true;

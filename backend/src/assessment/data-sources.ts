@@ -85,6 +85,15 @@ const DATA_SOURCE_SPECS: Record<string, DataSourceSpec> = {
     outputType: 'count',
     ready: false,
   },
+  // 报送任务取数:取某报送任务某目标的各单位「实际值/完成率」(自动)。产出类型随取值(field)变,见 effectiveOutputType。
+  'report.query': {
+    id: 'report.query',
+    label: '报送任务取数',
+    description: '取某个报送任务的某个目标的各单位实际值/完成率(在下方选 任务 + 目标 + 取值)',
+    collection: 'business',
+    outputType: 'number',
+    ready: true,
+  },
   survey: {
     id: 'survey',
     label: '群众打分/测评',
@@ -124,6 +133,20 @@ export const DATA_SOURCE_IDS = Object.keys(DATA_SOURCE_SPECS);
 
 export function getDataSourceSpec(id: string): DataSourceSpec | undefined {
   return DATA_SOURCE_SPECS[id];
+}
+
+/**
+ * 叶子实际产出类型:report.query 随取值(sourceParams.field)变 —— 'rate' 完成率→rate,其余(actual 实际值)→number;
+ * 其余数据源用静态 spec.outputType。兼容性校验(isInputCompatible)统一走这里(spec P2:集中一处)。
+ */
+export function effectiveOutputType(
+  dataSource: string | undefined,
+  sourceParams?: Record<string, unknown> | null,
+): DataSourceOutput {
+  if (dataSource === 'report.query') {
+    return sourceParams && (sourceParams as { field?: unknown }).field === 'rate' ? 'rate' : 'number';
+  }
+  return getDataSourceSpec(dataSource ?? '')?.outputType ?? 'number';
 }
 
 export function listDataSources(): DataSourceSpec[] {

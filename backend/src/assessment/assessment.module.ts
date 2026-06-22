@@ -4,6 +4,7 @@ import { UserModule } from '../user';
 import { OrganizationModule } from '../organization';
 import { ExternalApiModule } from '../external-api';
 import { PromptModule } from '../prompt';
+import { ReportModule } from '../report';
 import { AssessmentController } from './assessment.controller';
 import { AssessmentService } from './assessment.service';
 import { AssessmentExtractionService } from './assessment-extraction.service';
@@ -17,7 +18,7 @@ import { AssessmentExtractionService } from './assessment-extraction.service';
  * P2 起再注入 TaskModule/CertificateModule(业务数据源)。
  */
 @Module({
-  imports: [RoleModule, UserModule, OrganizationModule, ExternalApiModule, PromptModule],
+  imports: [RoleModule, UserModule, OrganizationModule, ExternalApiModule, PromptModule, ReportModule],
   controllers: [AssessmentController],
   providers: [AssessmentService, AssessmentExtractionService],
   exports: [AssessmentService],

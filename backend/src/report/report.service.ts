@@ -513,6 +513,22 @@ export class ReportService {
     return { taskId, goalKey, label: goal.label, grouped: !!goal.groupBy, money: units.some((u) => u.money), units };
   }
 
+  /** 供考核侧选数据源:列出「有目标」的报送任务 + 各自目标(taskId/title/goals)。 */
+  async listGoalSources() {
+    const tasks = await this.prisma.reportTask.findMany({
+      where: { status: { not: 'archived' } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, title: true, goalsJson: true },
+    });
+    return tasks
+      .map((t) => ({
+        taskId: t.id,
+        title: t.title,
+        goals: parseGoals(t.goalsJson).map((g) => ({ key: g.key, label: g.label, grouped: !!g.groupBy })),
+      }))
+      .filter((t) => t.goals.length > 0);
+  }
+
   /** 逐单位 × 逐目标完成情况的底层计算(goalProgress / queryGoal 共用)。 */
   private async loadGoalRows(taskId: string) {
     const task = await this.prisma.reportTask.findUnique({ where: { id: taskId } });

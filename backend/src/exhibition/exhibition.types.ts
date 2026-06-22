@@ -94,6 +94,8 @@ export interface HallGuide {
   armFlip?: boolean; // 手臂旋转方向反向(图里手臂在另一侧时)
   /** 解说站位优先侧:观众视角 left(默认)/ right;优先侧被墙挡时自动兜底到另一侧 */
   narrateSide?: 'left' | 'right';
+  /** 2.5D 立绘亮度(自发光强度,默认 1.0;调高更亮、治"暗沉",调低更柔和) */
+  brightness?: number;
 }
 
 /** 组件实例(规格 5.2) */

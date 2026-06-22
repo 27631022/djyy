@@ -73,6 +73,7 @@ export interface HallGuide {
   armPivotY?: number; // 肩点 Y(0..1)
   armFlip?: boolean; // 手臂方向反向
   narrateSide?: "left" | "right"; // 解说站位优先侧(默认 left,右侧兜底)
+  brightness?: number; // 2.5D 立绘亮度(自发光强度,默认 1.0)
 }
 
 export interface FixtureSource {

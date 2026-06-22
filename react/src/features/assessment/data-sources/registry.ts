@@ -28,6 +28,7 @@ export const DATA_SOURCES: DataSourceMeta[] = [
   { id: "business.task.overdueRate", label: "督办任务逾期率", description: "派发任务的逾期率(自动取数,P2 接入)", collection: "business", outputType: "rate", ready: false },
   { id: "business.publicity", label: "宣传稿件数", description: "宣传稿件数等(对应模块就绪后接入)", collection: "business", outputType: "count", ready: false },
   { id: "business.certificate.honor", label: "荣誉积分", description: "证书荣誉按级别积分(自动取数,P2 接入)", collection: "business", outputType: "count", ready: false },
+  { id: "report.query", label: "报送任务取数", description: "取某个报送任务的某个目标的各单位实际值/完成率(下方选 任务 + 目标 + 取值)", collection: "business", outputType: "number", ready: true },
   { id: "survey", label: "群众打分/测评", description: "群众投票评分、民主测评满意率(采集 P4)", collection: "survey", outputType: "rate", ready: false },
   { id: "assessment.result", label: "他考核结果", description: "取另一考核某对象的总分(党建占业绩 20% 这类跨路线组合)", collection: "assessment", outputType: "number", ready: false },
   { id: "dept_grade", label: "部门评定等次", description: "责任部门/考核人直接评定一个名次/等次(先进/良好/达标…),配「评价定分」给固定分", collection: "dept_fill", outputType: "label", ready: true },
@@ -40,6 +41,14 @@ export const DATA_SOURCE_MAP: Record<string, DataSourceMeta> = Object.fromEntrie
 
 export function getDataSource(id?: string): DataSourceMeta | undefined {
   return id ? DATA_SOURCE_MAP[id] : undefined;
+}
+
+/** 叶子实际产出类型(镜像后端):report.query 随取值 field 变(rate→rate,其余→number);其余用静态 outputType。 */
+export function effectiveOutputType(dataSource?: string, sourceParams?: Record<string, unknown> | null): DataSourceOutput {
+  if (dataSource === "report.query") {
+    return sourceParams && (sourceParams as { field?: unknown }).field === "rate" ? "rate" : "number";
+  }
+  return getDataSource(dataSource)?.outputType ?? "number";
 }
 
 export const OUTPUT_LABELS: Record<DataSourceOutput, string> = {

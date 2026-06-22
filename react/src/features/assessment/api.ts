@@ -13,6 +13,8 @@ export interface IndicatorNode {
   kind: IndicatorKind;
   children?: IndicatorNode[];
   dataSource?: string;
+  /** 数据源专属参数(如 report.query 的 { reportTaskId, goalKey, field });区别于计分工具 strategyParams。 */
+  sourceParams?: Record<string, unknown>;
   scoringType?: string;
   strategyParams?: Record<string, unknown>;
   ownerOrgId?: string;
@@ -422,4 +424,26 @@ export const assessmentApi = {
   /** 单指标实时预览:各对象 ●得分 + ●# 单项排名(无状态,录入页右栏用)*/
   previewIndicator: (input: PreviewIndicatorInput) =>
     api.post<{ results: PreviewRow[] }>("/assessment/scoring/preview", input).then((r) => r.data),
+  /** ── report.query 报送取数源 ── */
+  reportQuerySources: () =>
+    api.get<ReportQuerySource[]>("/assessment/report-query/sources").then((r) => r.data),
+  reportQueryPreview: (input: ReportQueryPreviewInput) =>
+    api.post<ReportQueryPreviewResult>("/assessment/report-query/preview", input).then((r) => r.data),
 };
+
+/** 报送取数:可选源(有目标的报送任务 + 目标)*/
+export interface ReportQuerySource {
+  taskId: string;
+  title: string;
+  goals: { key: string; label: string; grouped: boolean }[];
+}
+export interface ReportQueryPreviewInput {
+  reportTaskId: string;
+  goalKey: string;
+  field: "actual" | "rate";
+  targets: { orgId?: string; userId?: string; name: string }[];
+}
+export interface ReportQueryPreviewResult {
+  field: "actual" | "rate";
+  rows: { ref: string; name: string; value: number | null }[];
+}
