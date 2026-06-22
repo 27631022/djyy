@@ -23,7 +23,7 @@ export function ReportGoalProgress({ taskId }: { taskId: string }) {
 function Inner({ data, taskId }: { data: GoalProgressResult; taskId: string }) {
   const qc = useQueryClient();
   const { goals, rows } = data;
-  const perUnitGoals = goals.filter((g) => g.kind === "amount" && g.targetMode === "perUnit");
+  const perUnitGoals = goals; // 所有目标都可设逐单位目标值(参考)
   // 逐单位目标值编辑态(seeded from server;key=dataUpdatedAt 重挂载即重置)
   const [edits, setEdits] = useState<Record<string, Record<string, number>>>(() => {
     const m: Record<string, Record<string, number>> = {};
@@ -130,30 +130,46 @@ function Inner({ data, taskId }: { data: GoalProgressResult; taskId: string }) {
   );
 }
 
+const fmtVal = (v: number | null, money: boolean) => (money ? `¥${yuan(v ?? 0)}` : `${v ?? 0}`);
+
+/** 只显示 目标 / 实际 / 完成率(中性)+ 分组每堆数;不判断达标(达标判断在考核工具)。 */
 function GoalCell({ p }: { p: GoalProgressItem }) {
-  if (p.kind === "presence") {
-    return p.met ? (
-      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-700">✓ 有</span>
-    ) : (
-      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">✗ 无</span>
+  const hasTarget = p.target != null && p.target > 0;
+  // 分组:合计 + 每堆明细(中性)
+  if (p.grouped) {
+    return (
+      <div className="space-y-1">
+        <div className="text-gray-700">
+          合计 {fmtVal(p.actual, p.money)}
+          {hasTarget && (
+            <span className="text-gray-400">
+              {" "}
+              / {fmtVal(p.target, p.money)}
+              {p.rate != null && ` · ${p.rate}%`}
+            </span>
+          )}
+        </div>
+        {p.groups && p.groups.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {p.groups.map((s) => (
+              <span key={s.label} className="rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-600">
+                {s.label}:{fmtVal(s.value, p.money)}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     );
   }
-  // amount
-  const hasTarget = p.target != null && p.target > 0;
+  // 非分组:实际(+ 目标 + 完成率,中性)
   return (
     <div className="space-y-0.5">
       <div className="text-gray-700">
-        ¥{yuan(p.actualAmount ?? 0)}
-        {hasTarget && <span className="text-gray-400"> / ¥{yuan(p.target as number)}</span>}
+        {fmtVal(p.actual, p.money)}
+        {hasTarget && <span className="text-gray-400"> / {fmtVal(p.target, p.money)}</span>}
       </div>
-      {hasTarget ? (
-        <span
-          className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${
-            p.met ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"
-          }`}
-        >
-          {p.rate}% {p.met ? "达标" : "未达"}
-        </span>
+      {hasTarget && p.rate != null ? (
+        <span className="inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600">完成率 {p.rate}%</span>
       ) : (
         <span className="text-[11px] text-gray-400">未设目标</span>
       )}

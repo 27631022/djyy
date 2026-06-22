@@ -79,36 +79,104 @@ export interface CatalogPickValue {
 }
 
 /** 报送任务(= 后端 ReportTask)。一次发布,fan-out 到多对象,每对象可多次提交。 */
-/* ─── 目标(goal)契约 ─── */
-export type GoalKind = "amount" | "presence";
-export type GoalDim = "all" | "feeSource" | "category" | "field";
-export type GoalTargetMode = "uniform" | "perUnit";
-/** 报送目标定义(通用,可多个):对明细按维度过滤 + 看金额达标 / 是否有内容。 */
+/* ─── 目标(goal)契约:两栏「报送明细查询工具」(镜像后端 report-goals.ts;只产目标+实际,不判断达标)─── */
+export type GoalAgg = "sum" | "avg" | "count";
+export type GoalBool = "and" | "or";
+export type GoalGrain = "year" | "quarter" | "month";
+export type GoalColMatch = "exact" | "text";
+/** 一个筛选条件:某明细列 ∈/包含 一组值(values 内=或;空=不限)。 */
+export interface GoalCondition {
+  col: string;
+  values: string[];
+}
+/** 条件分组:组内多条 condition 用 op(且/或)连。 */
+export interface GoalGroup {
+  op: GoalBool;
+  conditions: GoalCondition[];
+}
+/** 报送目标定义(通用,可多个):左筛选(单层分组)→ 中统计。只产「目标值 + 实际值」,达标判断归考核。 */
 export interface ReportGoal {
   key: string;
   label: string;
-  kind: GoalKind;
-  dim: GoalDim;
-  dimValue?: string; // feeSource/category 取值;dim='field' 时 = 头字段 code
-  targetMode?: GoalTargetMode; // 仅 amount
-  target?: number; // uniform 目标值(元)
+  // 左·筛选
+  groupOp: GoalBool; // 组与组之间(且/或)
+  groups: GoalGroup[];
+  // 中·统计
+  agg: GoalAgg;
+  metricCol?: string; // sum/avg 对哪列;count 可选(该列非空数,空=命中行数)
+  groupBy?: string; // 分组依据列 key;空=不分组
+  grain?: GoalGrain; // groupBy 为日期列时的粒度
+  // 目标值(逐单位 goalTargetsJson)仅作展示参考;达标判断 + 给分由考核工具处理
 }
-export const GOAL_KIND_LABEL: Record<GoalKind, string> = { amount: "金额达标", presence: "是否有内容" };
-export const GOAL_DIM_LABEL: Record<GoalDim, string> = {
-  all: "全部明细",
-  feeSource: "按费用来源",
-  category: "按分部分",
-  field: "按字段",
-};
-/** 一个目标对一个单位的完成情况。 */
+export const GOAL_AGG_LABEL: Record<GoalAgg, string> = { sum: "求和", avg: "平均", count: "计数" };
+export const GOAL_GRAIN_LABEL: Record<GoalGrain, string> = { year: "按年", quarter: "按季度", month: "按月" };
+
+/** 从任务字段派生的「可筛选/可聚合/可分组列」(镜像后端 deriveGoalColumns)。 */
+export interface GoalColumn {
+  key: string;
+  label: string;
+  role: "dim" | "metric" | "date";
+  match?: GoalColMatch;
+  options?: string[];
+  source: string;
+  isCents?: boolean;
+}
+const CATALOG_SUBCOLS: Omit<GoalColumn, "role">[] = [
+  { key: "category", label: "分部分", match: "exact", source: "col:category" },
+  { key: "recommendOrg", label: "推荐单位", match: "text", source: "col:recommendOrg" },
+  { key: "origin", label: "产地", match: "text", source: "col:origin" },
+  { key: "catalogSupplier", label: "清单供应商", match: "text", source: "col:catalogSupplier" },
+  { key: "supplier", label: "销售方", match: "text", source: "col:supplier" },
+  { key: "productName", label: "产品名称", match: "text", source: "col:productName" },
+  { key: "spec", label: "规格", match: "text", source: "col:spec" },
+];
+/** 按任务字段派生目标的可筛选列(dim)+ 可聚合列(metric)+ 可分组日期列(date)。换报送类型按它自己的字段出列。 */
+export function deriveGoalColumns(fields: ReportField[]): GoalColumn[] {
+  const cols: GoalColumn[] = [];
+  const seen = new Set<string>();
+  const push = (c: GoalColumn) => {
+    if (!seen.has(c.key)) {
+      seen.add(c.key);
+      cols.push(c);
+    }
+  };
+  const feeField = fields.find((f) => f.role === "feeSource");
+  if (feeField)
+    push({ key: "feeSource", label: feeField.label || "费用来源", role: "dim", match: "exact", options: feeField.options ?? [], source: "col:feeSource" });
+  const dateHead = fields.find((f) => f.role === "purchaseDate");
+  if (dateHead) push({ key: dateHead.code, label: dateHead.label || "日期", role: "date", source: "col:purchaseDate" });
+  const dt = fields.find((f) => f.type === "detail_table");
+  for (const c of dt?.columns ?? []) {
+    if (c.type === "catalog_pick") {
+      for (const sub of CATALOG_SUBCOLS) push({ ...sub, role: "dim" });
+    } else if (c.type === "number") {
+      if (c.role === "amount") push({ key: c.code, label: c.label || "金额", role: "metric", source: "amount", isCents: true });
+      else push({ key: c.code, label: c.label, role: "metric", source: `extra:${c.code}` });
+    } else if (c.type === "select" && c.role !== "feeSource") {
+      push({ key: c.code, label: c.label, role: "dim", match: "exact", options: c.options ?? [], source: `extra:${c.code}` });
+    } else if (c.type === "text") {
+      push({ key: c.code, label: c.label, role: "dim", match: "text", source: `extra:${c.code}` });
+    } else if (c.type === "date") {
+      push({ key: c.code, label: c.label, role: "date", source: `extra:${c.code}` });
+    }
+  }
+  return cols;
+}
+/** 分组明细:一堆(季度/月/维度值)的统计值(无达标判断)。 */
+export interface GoalGroupStat {
+  label: string;
+  value: number;
+}
+/** 一个目标对一个单位的完成情况(只给目标 + 实际 + 中性完成率;不判断达标)。 */
 export interface GoalProgressItem {
   key: string;
   label: string;
-  kind: GoalKind;
-  actualAmount: number | null; // 金额类:实际价税合计(元)
-  target: number | null; // 金额类:本单位目标值(元)
-  rate: number | null; // 金额类:完成率 %
-  met: boolean; // 是否达标 / 有内容
+  grouped: boolean;
+  money: boolean; // 金额类(显示 ¥)
+  actual: number | null; // 实际值(分组=各堆之和总计)
+  target: number | null; // 逐单位目标值(参考;无则 null)
+  rate: number | null; // 完成率 % = 实际/目标(中性,无达标判断)
+  groups?: GoalGroupStat[]; // 分组明细(每季度的数…)
 }
 export interface GoalProgressRow {
   targetId: string;

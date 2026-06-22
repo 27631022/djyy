@@ -26,7 +26,7 @@ export function GoalPerUnitTable({
             <th className="px-3 py-2 font-medium">单位</th>
             {goals.map((g) => (
               <th key={g.key} className="px-3 py-2 font-medium">
-                {g.label}(元)
+                {g.label}
               </th>
             ))}
           </tr>

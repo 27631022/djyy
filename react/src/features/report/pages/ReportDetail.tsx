@@ -11,8 +11,9 @@ import {
   XIcon,
   ClockIcon,
 } from "lucide-react";
-import { reportApi, centsToYuan, type ReportTargetDetail, type ReportSubmissionRow } from "../api";
+import { reportApi, centsToYuan, type ReportTargetDetail, type ReportSubmissionRow, type ReportField } from "../api";
 import { ReportTaskActions } from "../components/ReportTaskActions";
+import { ReportGoalEdit } from "../components/ReportGoalEdit";
 import { ReportGoalProgress } from "../components/ReportGoalProgress";
 
 const TARGET_STATUS: Record<string, { label: string; bg: string; color: string }> = {
@@ -42,6 +43,15 @@ export default function ReportDetail() {
     const invoices = targets.reduce((s, t) => s + t.submissionCount, 0);
     return { units: targets.length, submittedUnits, invoices };
   }, [targets]);
+
+  const fields = useMemo<ReportField[]>(() => {
+    try {
+      const v = JSON.parse(taskQ.data?.fieldsJson ?? "[]");
+      return Array.isArray(v) ? (v as ReportField[]) : [];
+    } catch {
+      return [];
+    }
+  }, [taskQ.data]);
 
   if (taskQ.isLoading) return <div className="p-10 text-center text-sm text-gray-400">加载…</div>;
   if (taskQ.error || !taskQ.data) return <div className="p-10 text-center text-sm text-red-500">{errMsg(taskQ.error, "报送任务不存在")}</div>;
@@ -79,6 +89,9 @@ export default function ReportDetail() {
         <Stat label="已录入单位" value={`${stat.submittedUnits} / ${stat.units}`} />
         <Stat label="累计发票" value={`${stat.invoices} 张`} />
       </div>
+
+      {/* 目标设定(发布后可调整) */}
+      <ReportGoalEdit taskId={task.id} fields={fields} catalogTag={task.catalogTag ?? undefined} goals={task.goals} />
 
       {/* 目标完成情况(有目标才显示) */}
       <ReportGoalProgress taskId={task.id} />

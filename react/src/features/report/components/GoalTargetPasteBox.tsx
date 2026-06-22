@@ -59,8 +59,12 @@ function matchUnit(units: { id: string; name: string }[], name: string): { id: s
   );
 }
 
+const ALL = "__all__";
+
 /**
- * 粘贴导入逐单位目标值。每行「单位名 + 一个或多个数值」,数值按 goals 列顺序对应。
+ * 粘贴导入逐单位目标值。
+ * - 默认「导入到某一个目标」:每行「单位名 + 一个数值」→ 该目标(多目标时最常用,不用在一行塞齐所有值)。
+ * - 可切「全部目标(按列顺序)」:每行「单位名 + 各目标值」,数值按 goals 列顺序对应。
  * onApply 把解析出的 { unitId: { goalKey: 值 } } 交给父组件合并进表格。
  */
 export function GoalTargetPasteBox({
@@ -68,12 +72,17 @@ export function GoalTargetPasteBox({
   units,
   onApply,
 }: {
-  goals: ReportGoal[]; // perUnit 金额目标(列顺序)
+  goals: ReportGoal[]; // 需逐单位目标值的目标(达到≥/不超过≤)
   units: { id: string; name: string }[];
   onApply: (patch: Record<string, Record<string, number>>) => void;
 }) {
   const [text, setText] = useState("");
   const [result, setResult] = useState<{ matched: number; unmatched: string[] } | null>(null);
+  const [mode, setMode] = useState<string>(() => goals[0]?.key ?? ALL);
+  // 渲染期派生有效选择(goals 变化时不残留失效 key)
+  const sel = mode === ALL || goals.some((g) => g.key === mode) ? mode : goals[0]?.key ?? ALL;
+  const single = sel !== ALL;
+  const selLabel = goals.find((g) => g.key === sel)?.label ?? "";
 
   const apply = () => {
     const patch: Record<string, Record<string, number>> = {};
@@ -88,10 +97,17 @@ export function GoalTargetPasteBox({
         continue;
       }
       const vals: Record<string, number> = {};
-      goals.forEach((g, i) => {
-        const v = parsed.values[i];
-        if (typeof v === "number" && Number.isFinite(v) && v >= 0) vals[g.key] = v;
-      });
+      if (single) {
+        // 单目标:取本行第一个数值 → 选中的目标
+        const v = parsed.values[0];
+        if (typeof v === "number" && Number.isFinite(v) && v >= 0) vals[sel] = v;
+      } else {
+        // 全部目标:按列顺序对应
+        goals.forEach((g, i) => {
+          const v = parsed.values[i];
+          if (typeof v === "number" && Number.isFinite(v) && v >= 0) vals[g.key] = v;
+        });
+      }
       if (Object.keys(vals).length) {
         patch[u.id] = { ...(patch[u.id] ?? {}), ...vals };
         matched++;
@@ -107,9 +123,38 @@ export function GoalTargetPasteBox({
         <ClipboardPasteIcon className="h-4 w-4 text-[var(--party-primary)]" />
         粘贴导入
       </div>
+
+      {goals.length > 1 && (
+        <label className="mb-1.5 flex items-center gap-1.5 text-xs text-gray-500">
+          导入到
+          <select
+            value={sel}
+            onChange={(e) => {
+              setMode(e.target.value);
+              setResult(null);
+            }}
+            className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-xs focus:border-[var(--party-primary)] focus:outline-none"
+          >
+            {goals.map((g) => (
+              <option key={g.key} value={g.key}>
+                {g.label || g.key}
+              </option>
+            ))}
+            <option value={ALL}>全部目标(每行按列顺序填多个值)</option>
+          </select>
+        </label>
+      )}
+
       <p className="mb-2 text-xs text-gray-400">
-        每行一个单位:「单位名 + 目标值」(Tab/逗号/空格分隔)。多个目标按列对应:
-        <b className="text-gray-500">{goals.map((g) => g.label).join(" / ")}</b>。支持「万」(如 100万)。
+        {single ? (
+          <>
+            每行「单位名 + 目标值」(Tab/逗号/空格分隔),导入到<b className="text-gray-500">{selLabel}</b>。支持「万」(如 100万)。
+          </>
+        ) : (
+          <>
+            每行「单位名 + 各目标值」,数值按列对应:<b className="text-gray-500">{goals.map((g) => g.label).join(" / ")}</b>。支持「万」。
+          </>
+        )}
       </p>
       <textarea
         value={text}

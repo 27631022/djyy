@@ -195,6 +195,12 @@ export class ReportController {
     return this.svc.goalProgress(id);
   }
 
+  /** report.query 取数口:取一个目标的各单位值(供考核侧消费 / 预览;目标独立不耦合)。 */
+  @Get(':id/goals/:goalKey/query')
+  queryGoal(@Param('id') id: string, @Param('goalKey') goalKey: string) {
+    return this.svc.queryGoal(id, goalKey);
+  }
+
   /** 保存逐单位目标值(perUnit 金额目标)。派发人本人或管理员。 */
   @Post(':id/goal-targets')
   @Permission('report:manage')

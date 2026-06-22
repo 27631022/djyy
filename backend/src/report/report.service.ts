@@ -12,7 +12,13 @@ import { UserService } from '../user';
 import { RoleService } from '../role';
 import { StorageService } from '../storage';
 import { normalizeFieldDefs, parseFields } from './report-fields';
-import { normalizeGoals, parseGoals, computeGoalProgress, submissionFieldFilled, type GoalLine } from './report-goals';
+import {
+  normalizeGoals,
+  parseGoals,
+  computeGoalProgress,
+  deriveGoalColumns,
+  type GoalLine,
+} from './report-goals';
 import { PublishReportDto, type ReportTargetInput } from './dto/publish-report.dto';
 import { AssignReportDto } from './dto/assign-report.dto';
 import { UpdateReportTaskDto } from './dto/update-report-task.dto';
@@ -317,8 +323,8 @@ export class ReportService {
     if (!ctx.actorId) throw new BadRequestException('缺少操作者身份');
     const fields = normalizeFieldDefs(dto.fields);
     const goals = normalizeGoals(dto.goals);
-    // perUnit 金额目标的 key 集合(只接受这些键的逐单位目标值)
-    const perUnitKeys = new Set(goals.filter((g) => g.kind === 'amount' && g.targetMode === 'perUnit').map((g) => g.key));
+    // 逐单位目标值对所有目标可设(仅作参考展示)
+    const perUnitKeys = new Set(goals.map((g) => g.key));
     const targets = (dto.targets ?? []).filter(
       (t): t is ReportTargetInput =>
         t && (t.targetType === 'org' ? !!t.targetOrgId : t.targetType === 'user' ? !!t.targetUserId : false),
@@ -466,6 +472,49 @@ export class ReportService {
 
   /** 目标完成情况(逐单位 × 逐目标):按明细算实际值/完成率/是否达标。纯业务内,不依赖考核。 */
   async goalProgress(taskId: string) {
+    const { goals, rows } = await this.loadGoalRows(taskId);
+    return {
+      goals,
+      rows: rows.map((r) => ({
+        targetId: r.targetId,
+        targetOrgName: r.targetOrgName,
+        ownerUserName: r.ownerUserName,
+        submissionCount: r.submissionCount,
+        goalTargets: r.goalTargets,
+        progress: r.progress,
+      })),
+    };
+  }
+
+  /**
+   * report.query 取数口:取**一个目标**的各单位值(供考核侧 DI 消费 / 预览)。
+   * 目标之间不耦合 —— 一次只出一个 goalKey 的各派发对象 { actual, rate, met, 分组明细 };
+   * 复合/加权一律在考核指标树做,report 只提供独立的数。
+   */
+  async queryGoal(taskId: string, goalKey: string) {
+    const { goals, rows } = await this.loadGoalRows(taskId);
+    const goal = goals.find((g) => g.key === goalKey);
+    if (!goal) throw new NotFoundException(`目标 "${goalKey}" 不存在`);
+    const units = rows.map((r) => {
+      const p = r.progress.find((x) => x.key === goalKey);
+      return {
+        orgId: r.targetOrgId,
+        userId: r.targetUserId,
+        name: r.targetOrgName ?? r.ownerUserName ?? null,
+        submissionCount: r.submissionCount,
+        actual: p?.actual ?? null,
+        rate: p?.rate ?? null, // 中性完成率(实际/目标);达标判断归考核
+        target: p?.target ?? null,
+        grouped: p?.grouped ?? false,
+        money: p?.money ?? false,
+        groups: p?.groups ?? null,
+      };
+    });
+    return { taskId, goalKey, label: goal.label, grouped: !!goal.groupBy, money: units.some((u) => u.money), units };
+  }
+
+  /** 逐单位 × 逐目标完成情况的底层计算(goalProgress / queryGoal 共用)。 */
+  private async loadGoalRows(taskId: string) {
     const task = await this.prisma.reportTask.findUnique({ where: { id: taskId } });
     if (!task) throw new NotFoundException('报送任务不存在');
     const goals = parseGoals(task.goalsJson);
@@ -480,41 +529,43 @@ export class ReportService {
     }
     const index = await this.loadOrgIndex();
     const ownerInfo = await this.infoForUsers(targets.map((t) => t.ownerUserId).filter((x): x is string => !!x));
+    const columns = deriveGoalColumns(fields); // 按任务字段派生可筛选/可聚合列(通用)
     const rows = targets.map((t) => {
       const tsubs = byTarget.get(t.id) ?? [];
-      const lines: GoalLine[] = tsubs.flatMap((s) =>
-        s.lines.map((l) => ({
+      const lines: GoalLine[] = tsubs.flatMap((s) => {
+        // 把发票头的购买日期注入每行(供「按季度/月分组」取 date 列)
+        const purchaseDate = s.purchaseDate ? new Date(s.purchaseDate).toISOString() : null;
+        return s.lines.map((l) => ({
           amountCents: l.amountCents,
           taxCents: taxCentsOfExtra(l.extraJson),
-          feeSource: l.feeSource,
-          category: l.category,
-        })),
-      );
+          // 结构化列(catalog 快照 + feeSource + 头层购买日期);其余动态列读 extraJson
+          structured: {
+            category: l.category,
+            feeSource: l.feeSource,
+            recommendOrg: l.recommendOrg,
+            origin: l.origin,
+            catalogSupplier: l.catalogSupplier,
+            supplier: l.supplier,
+            productName: l.productName,
+            spec: l.spec,
+            purchaseDate,
+          },
+          extra: parseHeadObj(l.extraJson),
+        }));
+      });
       const perUnit = parseNumMap(t.goalTargetsJson);
-      const fieldHasContent = (code: string) =>
-        tsubs.some((s) =>
-          submissionFieldFilled(
-            fields,
-            {
-              invoiceNo: s.invoiceNo,
-              purchaseDate: s.purchaseDate,
-              invoiceFileId: s.invoiceFileId,
-              contractFileId: s.contractFileId,
-              headData: parseHeadObj(s.headData),
-            },
-            code,
-          ),
-        );
       return {
         targetId: t.id,
+        targetOrgId: t.targetOrgId,
+        targetUserId: t.targetUserId,
         targetOrgName: t.targetOrgId ? index.nameById.get(t.targetOrgId) ?? null : null,
         ownerUserName: t.ownerUserId ? ownerInfo.get(t.ownerUserId)?.name ?? null : null,
         submissionCount: tsubs.length,
         goalTargets: perUnit,
-        progress: computeGoalProgress(goals, lines, perUnit, fieldHasContent),
+        progress: computeGoalProgress(goals, columns, lines, perUnit),
       };
     });
-    return { goals, rows };
+    return { goals, columns, rows };
   }
 
   /** 保存逐单位目标值(targetMode=perUnit 的金额目标)。派发人 / 管理员。 */
@@ -523,9 +574,8 @@ export class ReportService {
     if (!task) throw new NotFoundException('报送任务不存在');
     await this.assertCanManageTask(actor.actorId, task.dispatchUserId);
     const goals = parseGoals(task.goalsJson);
-    const perUnitKeys = new Set(
-      goals.filter((g) => g.kind === 'amount' && g.targetMode === 'perUnit').map((g) => g.key),
-    );
+    // 逐单位目标值对所有目标可设(仅作参考展示)
+    const perUnitKeys = new Set(goals.map((g) => g.key));
     const validTargets = new Set(
       (await this.prisma.reportTarget.findMany({ where: { taskId }, select: { id: true } })).map((t) => t.id),
     );

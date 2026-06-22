@@ -63,10 +63,10 @@ export default function ReportCreate() {
   const [uploadingNotice, setUploadingNotice] = useState(false);
   const [fields, setFields] = useState<ReportField[]>([]);
   const [goals, setGoals] = useState<ReportGoal[]>([]);
-  // 逐单位目标值:{ 派发对象id: { goalKey: 元 } }(perUnit 金额目标用)
+  // 逐单位目标值:{ 派发对象id: { goalKey: 目标值 } }(达到≥/不超过≤ 用;exists 无需)
   const [goalTargets, setGoalTargets] = useState<Record<string, Record<string, number>>>({});
   const [targets, setTargets] = useState<PickedTarget[]>([]);
-  const perUnitGoals = goals.filter((g) => g.kind === "amount" && g.targetMode === "perUnit");
+  const perUnitGoals = goals; // 所有目标都可设逐单位目标值(参考)
   // 派发部门 = 对口责任部门解析的 source(在「组织机构」里给各单位部门配 counterpartParentOrgIds);默认派发人主部门
   const [dispatchOrgId, setDispatchOrgId] = useState<string | null>(
     () =>
@@ -278,7 +278,7 @@ export default function ReportCreate() {
                 <p className="mb-3 text-sm text-gray-500">
                   设定本次报送的目标(可不设)。支持<b>多个</b>:总额 / 分项(费用来源)/ 分部分(第一部分…)金额目标,或「某部分 / 某字段是否有内容」检查。
                 </p>
-                <ReportGoalEditor value={goals} onChange={setGoals} fields={fields} />
+                <ReportGoalEditor value={goals} onChange={setGoals} fields={fields} catalogTag={findCatalogTag(fields)} />
               </div>
               {perUnitGoals.length > 0 && (
                 <div>

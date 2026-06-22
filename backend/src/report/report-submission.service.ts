@@ -425,7 +425,9 @@ export class ReportSubmissionService {
       const amountRaw = amountCol ? row[amountCol.code] : undefined;
       const hasProduct = !!pick && !!pick.productName;
       const hasAmount = !isEmpty(amountRaw);
-      if (!hasProduct && !hasAmount) return; // 跳过完全空行
+      // 空行判定:产品/金额都没 且 其余列也都空 才算空。任一列有内容即保留 —— 支持无产品/无金额的通用报送
+      const otherContent = cols.some((c) => c !== productCol && c !== amountCol && !isEmpty(row[c.code]));
+      if (!hasProduct && !hasAmount && !otherContent) return; // 跳过完全空行
 
       if (productCol && !hasProduct) throw new BadRequestException(`明细第 ${idx + 1} 行未选商品`);
       const amountNum = Number(amountRaw);
