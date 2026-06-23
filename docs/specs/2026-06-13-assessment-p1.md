@@ -235,6 +235,16 @@ Round/Target/IndicatorScore/Goal 留 P2。
 
 验证:双端门禁 0/0/0;API(临时表保存 200、`difficultyOn=true` / `difficultyCoefs{o1:1.8,o2:1}` / `settings.headcounts` 回读正确)+ 浏览器(选叶子→启用→弹窗列 35 个考核对象、启用测算表、某单位填员工数 180→测算得 1.8、手改 1.5、导出无报错、关闭后按钮「已设 1 个」、0 console error;未存盘,不动用户考核表)。
 
+## P1.9 修订(2026-06-23)— 考核表三层角色 / 责任人多人(**配置+展示版,不 enforce**)
+用户要三层维护角色。和用户确认范围后选「配置+展示」:数据结构 + 配置 UI 全做、记录展示,**暂不后端拦截编辑权**(沿用 platform_admin 直通;真 enforce —— 非授权改不了表/节点管理员只见子树/责任人填报过滤 —— 留多人真用时再做)。**全走 JSON,零迁移**。
+- **① 总管理员 + 协同维护人**:`createdById` 即总管理员(新建即定,已有);scheme 新增 `settings.managerUserIds[]`(协同维护人,后端 settings 原样存 JSON,**后端零改**)。「考核表设置」顶部新增**维护人员**卡片(总管理员只读显名 + 协同维护人 `UserMultiPicker` 全员搜索多选)。
+- **② 节点管理员**:`IndicatorNode.adminUserIds[]`(可多人,**任意层级**),随指标树 JSON 走,语义=可见并维护本节点及其下全部子指标。分支选中(原只有说明文字)+ 叶子均出 `NodeAdminField`;指标树行 `UserCog` 徽标标出已设管理员的节点。
+- **③ 责任人改多人**:叶子 `ownerUserId`(单)→ `ownerUserIds[]`(从责任部门成员**勾选多人**);**不选=整个责任部门**;`indicator-tree.normalizeIndicatorTree` 兼容旧单值(`ownerUserId`→并入 `ownerUserIds`,统一只输出多值)。
+- **展示名字**:`findOne` enrich `createdByName` + `userNames`(id→姓名,覆盖 总管理员/协同人/节点管理员/责任人;`collectNodeUserIds` 递归收 + 兼容旧 `ownerUserId`);`UserService.namesByIds(ids)` 批量解析(走 DI,不直查别人表)。`findOne` 拆纯查 `loadScheme`(update/remove/duplicate/createRound 内部用,enrich 只在对外 `findOne`)。
+- **关键文件**:后端 `indicator-tree.ts`(normalize+`strIdArray`)· `user.service.ts`(`namesByIds`)· `assessment.service.ts`(`findOne` enrich + `loadScheme` + `collectNodeUserIds`);前端 `api.ts`(契约)· 新 `components/UserMultiPicker.tsx`(`UserMultiPicker`+`NodeAdminField`)· `LeafConfigPanel.tsx`(责任人多选 `MemberMultiPicker` + 节点管理员)· `pages/SchemeEditor.tsx`(维护人员卡片 + 分支节点管理员 + `nameMap`/`rememberNames`)· `IndicatorNodeRow.tsx`(徽标)。
+- **加新「人员引用字段」范式**:存 id[];后端 enrich 进 `userNames` 供展示;搜索候选用 `UserMultiPicker`(全员)或部门成员勾选。
+- 验证:门禁 后端 0/0/0、前端 0 error/0 warning;**API 端到端**(新建临时表→PATCH branch `adminUserIds`/leaf `ownerUserIds`/`settings.managerUserIds`→GET 三者持久化 + `createdByName`/`userNames` enrich + 旧 `ownerUserId`→`ownerUserIds` 迁移→DELETE 清理,全过)+ **浏览器**(维护人员卡片显总管理员+协同人搜「王」出 2 结果加 chip、叶子责任人多选、分支「指标管理员」+维护子树说明、0 console error;未保存真实考核表)。
+
 ## P2+ 后续
 
 - **✅ P2.1 后端引擎(2026-06-14 已落地,API 实测)**:`AssessmentRound`(发起考核快照 indicators/targets/settings/gradeRules,与改表解耦)+ `IndicatorScore`(轮次×对象×叶子,rawValue JSON)两表 + migrate `add_assessment_round`。纯函数引擎 `round-engine.computeRoundResults`:取数→计分→**×难易系数**(crossTarget 系数乘排名值再排名,非 crossTarget 乘得分)→ 加权汇总(normal 累加 / bonus·deduction 块按上限封顶,total clamp≥0)→ 排名 → 名次划档定级(rank top/bottom/rest;触底档 P3;score 阈值)。6 接口 `POST schemes/:id/rounds`/`GET rounds`/`GET rounds/:id`/`POST rounds/:id/scores`(`assessment:score`)/`POST rounds/:id/compute`/`DELETE rounds/:id`。实测 3 单位场景算分/排名/定级/难易系数/块封顶全对。

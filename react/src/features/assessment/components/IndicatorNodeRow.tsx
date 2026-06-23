@@ -1,4 +1,4 @@
-import { ChevronRight, CornerDownRight, GripVertical, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, CornerDownRight, GripVertical, Plus, Trash2, UserCog } from "lucide-react";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { IndicatorKind, IndicatorNode } from "../api";
@@ -116,6 +116,15 @@ export function IndicatorNodeRow(props: RowProps) {
           {incomplete && (
             <span className="text-[10px] text-amber-600 flex-shrink-0" title="叶子未配置数据源/计分工具">
               待配
+            </span>
+          )}
+          {!!node.adminUserIds?.length && (
+            <span
+              className="inline-flex items-center gap-0.5 text-[10px] text-[var(--party-primary)] bg-party-soft px-1 rounded flex-shrink-0"
+              title={`本指标已设 ${node.adminUserIds.length} 名管理员`}
+            >
+              <UserCog className="w-3 h-3" />
+              {node.adminUserIds.length}
             </span>
           )}
           <div className="flex-1" />

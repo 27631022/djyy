@@ -12,6 +12,7 @@ import { DATA_SOURCE_HELP, SCORING_HELP, type HelpText } from "../help";
 import { DifficultyCoefDialog } from "./DifficultyCoefDialog";
 import { ReportQueryEditor } from "./ReportQueryEditor";
 import { OrgPicker } from "./OrgPicker";
+import { NodeAdminField } from "./UserMultiPicker";
 
 /** 叶子指标配置:数据源 + 计分工具(各带 ⓘ 说明)+ 参数 + 难易系数 + 责任部门/责任人 + 评分标准 + 试算预览。 */
 export function LeafConfigPanel({
@@ -21,6 +22,8 @@ export function LeafConfigPanel({
   targets = [],
   settings = {},
   onSettings = () => {},
+  nameMap = {},
+  onResolveNames,
 }: {
   node: IndicatorNode;
   onChange: (patch: Partial<IndicatorNode>) => void;
@@ -31,7 +34,11 @@ export function LeafConfigPanel({
   /** 考核表设置(难易系数测算表 + 员工数,弹窗读写)*/
   settings?: SchemeSettings;
   onSettings?: (patch: Partial<SchemeSettings>) => void;
+  /** 人员 id→姓名 映射(节点管理员展示用) */
+  nameMap?: Record<string, string>;
+  onResolveNames?: (entries: Record<string, string>) => void;
 }) {
+  const ownerIds = node.ownerUserIds ?? (node.ownerUserId ? [node.ownerUserId] : []);
   const ds = getDataSource(node.dataSource);
   const strat = getStrategy(node.scoringType);
   const [diffOpen, setDiffOpen] = useState(false);
@@ -214,10 +221,22 @@ export function LeafConfigPanel({
       </div>
 
       <div>
-        <div className="text-[13px] font-semibold text-[#172033] mb-2">考核责任人(具体谁填报)</div>
-        <MemberPicker orgId={node.ownerOrgId} value={node.ownerUserId} onChange={(v) => onChange({ ownerUserId: v })} />
-        <div className="mt-1 text-[11px] text-[#9CA3AF]">责任人可见并填报自己负责的指标;部门考核管理员可见本部门全部(P2 填报闭环用)。</div>
+        <div className="text-[13px] font-semibold text-[#172033] mb-2">考核责任人(具体谁填报,可多人)</div>
+        <MemberMultiPicker
+          orgId={node.ownerOrgId}
+          value={ownerIds}
+          onChange={(ids) => onChange({ ownerUserIds: ids.length ? ids : undefined, ownerUserId: undefined })}
+        />
+        <div className="mt-1 text-[11px] text-[#9CA3AF]">不选 = 整个责任部门;责任人可见并填报自己负责的指标(P2 填报闭环用)。</div>
       </div>
+
+      <NodeAdminField
+        value={node.adminUserIds}
+        onChange={(ids) => onChange({ adminUserIds: ids })}
+        nameMap={nameMap}
+        onResolveNames={onResolveNames}
+        hasChildren={false}
+      />
 
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -284,15 +303,15 @@ function HelpBox({ help }: { help: HelpText }) {
   );
 }
 
-/** 考核责任人选择:责任人 ∈ 责任部门,故按 ownerOrgId 拉部门成员(含下级)。 */
-function MemberPicker({
+/** 考核责任人多选:责任人 ∈ 责任部门,故按 ownerOrgId 拉部门成员(含下级),勾选多人;不选=整个部门。 */
+function MemberMultiPicker({
   orgId,
   value,
   onChange,
 }: {
   orgId: string | undefined;
-  value: string | undefined;
-  onChange: (v: string | undefined) => void;
+  value: string[];
+  onChange: (ids: string[]) => void;
 }) {
   const { data } = useQuery({
     queryKey: ["org-members", orgId, "recursive"],
@@ -303,21 +322,35 @@ function MemberPicker({
 
   if (!orgId) {
     return (
-      <select disabled className={PROP_INPUT}>
-        <option>先选责任部门</option>
-      </select>
+      <div className="px-2.5 py-1.5 rounded-md border border-[#dce4ef] bg-[#f8fafc] text-[12px] text-[#9CA3AF]">
+        先选责任部门
+      </div>
     );
   }
   const members = data ?? [];
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
   return (
-    <select value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)} className={PROP_INPUT}>
-      <option value="">未指定</option>
-      {members.map((m) => (
-        <option key={m.userId} value={m.userId}>
-          {m.name}（{m.username}）
-        </option>
-      ))}
-    </select>
+    <div className="max-h-44 overflow-auto rounded-md border border-[#dce4ef] divide-y divide-[#f1f5f9]">
+      {members.length === 0 ? (
+        <div className="px-3 py-2 text-[12px] text-[#9CA3AF]">该部门暂无成员</div>
+      ) : (
+        members.map((m) => (
+          <label
+            key={m.userId}
+            className="flex items-center gap-2 px-3 py-1.5 text-[13px] cursor-pointer hover:bg-party-soft"
+          >
+            <input
+              type="checkbox"
+              checked={value.includes(m.userId)}
+              onChange={() => toggle(m.userId)}
+              className="accent-[var(--party-primary)]"
+            />
+            <span className="text-[#172033]">{m.name}</span>
+            <span className="text-[11px] text-[#9CA3AF]">{m.username}</span>
+          </label>
+        ))
+      )}
+    </div>
   );
 }
 

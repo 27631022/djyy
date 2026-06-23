@@ -32,7 +32,12 @@ export interface IndicatorNode {
   scoringType?: string;
   strategyParams?: Record<string, unknown>;
   ownerOrgId?: string;
+  /** @deprecated 旧单值责任人;normalize 时并入 ownerUserIds。读取时兼容。 */
   ownerUserId?: string;
+  /** 考核责任人(可多人;空=整个责任部门)。叶子专属。 */
+  ownerUserIds?: string[];
+  /** 节点管理员(可多人):可见并维护本节点及其下全部子指标。任意层级可设。 */
+  adminUserIds?: string[];
   rubric?: string;
   /** 本指标是否启用难易系数(默认否=各对象系数 1) */
   difficultyOn?: boolean;
@@ -63,6 +68,22 @@ export function fullScoreOf(node: IndicatorNode): number {
 }
 
 const CODE_RE = /^[A-Za-z0-9_]+$/;
+
+/** 规整字符串 id 数组(去空、去重、trim)。用于 adminUserIds / ownerUserIds。 */
+function strIdArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of v) {
+    if (typeof x !== 'string') continue;
+    const t = x.trim();
+    if (t && !seen.has(t)) {
+      seen.add(t);
+      out.push(t);
+    }
+  }
+  return out;
+}
 
 /**
  * 结构校验 + 规整:code 唯一/合法、label 必填、weight 数值、kind 合法、children 递归;
@@ -96,6 +117,10 @@ export function normalizeIndicatorTree(raw: unknown): IndicatorNode[] {
 
       const node: IndicatorNode = { code, label, weight, kind };
 
+      // 节点管理员(任意层级:可见并维护本节点子树)
+      const adminIds = strIdArray(o.adminUserIds);
+      if (adminIds.length) node.adminUserIds = adminIds;
+
       const rawChildren = o.children;
       if (Array.isArray(rawChildren) && rawChildren.length > 0) {
         node.children = walk(rawChildren, depth + 1);
@@ -116,7 +141,12 @@ export function normalizeIndicatorTree(raw: unknown): IndicatorNode[] {
         node.strategyParams = o.strategyParams as Record<string, unknown>;
       }
       if (typeof o.ownerOrgId === 'string' && o.ownerOrgId.trim()) node.ownerOrgId = o.ownerOrgId.trim();
-      if (typeof o.ownerUserId === 'string' && o.ownerUserId.trim()) node.ownerUserId = o.ownerUserId.trim();
+      // 责任人(多人;兼容旧单值 ownerUserId → 并入 ownerUserIds,统一只输出 ownerUserIds)
+      const ownerIds = strIdArray(o.ownerUserIds);
+      if (!ownerIds.length && typeof o.ownerUserId === 'string' && o.ownerUserId.trim()) {
+        ownerIds.push(o.ownerUserId.trim());
+      }
+      if (ownerIds.length) node.ownerUserIds = ownerIds;
       if (typeof o.rubric === 'string' && o.rubric.trim()) node.rubric = o.rubric.trim();
       if (o.difficultyOn === true) node.difficultyOn = true;
       if (o.difficultyCoefs && typeof o.difficultyCoefs === 'object' && !Array.isArray(o.difficultyCoefs)) {

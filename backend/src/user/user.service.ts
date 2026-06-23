@@ -120,6 +120,19 @@ export class UserService {
     };
   }
 
+  /** 批量按 id 查姓名:{ id → name }(展示用;不存在/停用的 id 不在结果里)。跨模块松引用解析名字用。 */
+  async namesByIds(ids: string[]): Promise<Record<string, string>> {
+    const uniq = [...new Set(ids.filter((x) => typeof x === 'string' && x))];
+    if (!uniq.length) return {};
+    const rows = await this.prisma.user.findMany({
+      where: { id: { in: uniq } },
+      select: { id: true, name: true },
+    });
+    const out: Record<string, string> = {};
+    for (const r of rows) out[r.id] = r.name;
+    return out;
+  }
+
   /* ─── 详情 ─── */
   async findOne(id: string) {
     const u = await this.prisma.user.findUnique({

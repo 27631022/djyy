@@ -61,6 +61,16 @@ function safeJson<T>(s: string | null | undefined, fallback: T): T {
 
 const round2 = (x: number) => Math.round(x * 100) / 100;
 
+/** 递归收集指标树里出现的所有人员 id(节点管理员 + 叶子责任人,兼容旧单值)。 */
+function collectNodeUserIds(nodes: IndicatorNode[], out: Set<string>) {
+  for (const n of nodes) {
+    for (const a of n.adminUserIds ?? []) if (a) out.add(a);
+    for (const o of n.ownerUserIds ?? []) if (o) out.add(o);
+    if (n.ownerUserId) out.add(n.ownerUserId);
+    if (n.children?.length) collectNodeUserIds(n.children, out);
+  }
+}
+
 /** 把试算入参的 raw(unknown)转成原始度量 number|boolean|null */
 function toRaw(v: unknown): number | boolean | null {
   if (v === null || v === undefined || v === '') return null;
@@ -203,10 +213,32 @@ export class AssessmentService {
     });
   }
 
-  async findOne(id: string) {
+  /** 纯查(内部用,不 enrich)。 */
+  private async loadScheme(id: string) {
     const s = await this.prisma.assessmentScheme.findUnique({ where: { id } });
     if (!s) throw new NotFoundException('考核体系不存在');
     return s;
+  }
+
+  /**
+   * 对外详情:补总管理员名(createdByName)+ 所有相关人员 id→name 映射(userNames)。
+   * 覆盖 总管理员 / 协同维护人(settings.managerUserIds)/ 节点管理员 / 叶子责任人 —— 前端展示直接查表。
+   */
+  async findOne(id: string) {
+    const s = await this.loadScheme(id);
+    const ids = new Set<string>();
+    if (s.createdById) ids.add(s.createdById);
+    const settings = safeJson<{ managerUserIds?: unknown }>(s.settingsJson, {});
+    if (Array.isArray(settings.managerUserIds)) {
+      for (const m of settings.managerUserIds) if (typeof m === 'string' && m) ids.add(m);
+    }
+    collectNodeUserIds(safeJson<IndicatorNode[]>(s.indicatorsJson, []), ids);
+    const userNames = await this.users.namesByIds([...ids]);
+    return {
+      ...s,
+      createdByName: s.createdById ? (userNames[s.createdById] ?? null) : null,
+      userNames,
+    };
   }
 
   async create(dto: CreateSchemeDto, ctx: ActorCtx) {
@@ -229,7 +261,7 @@ export class AssessmentService {
   }
 
   async update(id: string, dto: UpdateSchemeDto, ctx: ActorCtx) {
-    await this.findOne(id);
+    await this.loadScheme(id);
     const data: Record<string, unknown> = {};
     if (dto.name !== undefined) data.name = dto.name.trim();
     if (dto.year !== undefined) data.year = dto.year;
@@ -274,7 +306,7 @@ export class AssessmentService {
   }
 
   async remove(id: string, ctx: ActorCtx) {
-    await this.findOne(id);
+    await this.loadScheme(id);
     await this.prisma.assessmentScheme.delete({ where: { id } });
     await this.audit.log({ ...ctx, action: 'assessment.scheme.delete', target: id });
     return { ok: true };
@@ -282,7 +314,7 @@ export class AssessmentService {
 
   /** 整体复制一张考核表(复用方式:复制改年度/完善指标)。新表草稿态。 */
   async duplicate(id: string, ctx: ActorCtx) {
-    const src = await this.findOne(id);
+    const src = await this.loadScheme(id);
     const copy = await this.prisma.assessmentScheme.create({
       data: {
         name: `${src.name}(复制)`,
@@ -316,7 +348,7 @@ export class AssessmentService {
 
   /** 发起考核:把考核表(指标/对象/设置/定级)快照进一个新轮次。 */
   async createRound(schemeId: string, dto: { name?: string; year?: number }, ctx: ActorCtx) {
-    const s = await this.findOne(schemeId);
+    const s = await this.loadScheme(schemeId);
     const round = await this.prisma.assessmentRound.create({
       data: {
         schemeId: s.id,

@@ -18,7 +18,12 @@ export interface IndicatorNode {
   scoringType?: string;
   strategyParams?: Record<string, unknown>;
   ownerOrgId?: string;
+  /** @deprecated 旧单值责任人;保存时后端并入 ownerUserIds。读取时兼容。 */
   ownerUserId?: string;
+  /** 考核责任人(可多人;空=整个责任部门)。叶子专属。 */
+  ownerUserIds?: string[];
+  /** 节点管理员(可多人):可见并维护本节点及其下全部子指标。任意层级可设。 */
+  adminUserIds?: string[];
   rubric?: string;
   /** 本指标是否启用难易系数(默认否=各对象系数 1) */
   difficultyOn?: boolean;
@@ -91,6 +96,8 @@ export interface SchemeSettings {
   difficultyTables?: DifficultyTable[];
   /** 各考核对象员工数(targetRef→人数;导出单位→填→导入,供难易系数测算,全表共享) */
   headcounts?: Record<string, number>;
+  /** 协同维护人 userId[] —— 与总管理员(createdById)一起维护本考核表。 */
+  managerUserIds?: string[];
 }
 
 /** 考核对象快照(一次性从组织树读出后冻结,与组织机构解耦)。单位用 orgId、人员(党员/员工)用 userId。 */
@@ -160,6 +167,10 @@ export interface AssessmentScheme {
   settingsJson: string;
   status: string;
   createdById: string | null;
+  /** 总管理员姓名(findOne enrich;新建者,可配置全部指标)。 */
+  createdByName?: string | null;
+  /** 相关人员 id→姓名 映射(总管理员/协同维护人/节点管理员/责任人 展示用,findOne enrich)。 */
+  userNames?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 }

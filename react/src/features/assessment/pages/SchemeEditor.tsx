@@ -24,6 +24,7 @@ import { IndicatorTreeEditor } from "../components/IndicatorTreeEditor";
 import { LeafConfigPanel } from "../components/LeafConfigPanel";
 import { SubjectObjectsPanel } from "../components/SubjectObjectsPanel";
 import { GradeRulesEditor } from "../components/GradeRulesEditor";
+import { UserMultiPicker, NodeAdminField } from "../components/UserMultiPicker";
 
 const INPUT =
   "px-2.5 py-1.5 text-sm border border-[#dce4ef] rounded-md bg-white focus:outline-none focus:border-[var(--party-primary)]";
@@ -58,6 +59,9 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
   });
   const [track, setTrack] = useState<AssessmentTrack>(scheme.track);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  // 人员 id→姓名 映射(总管理员/协同人/节点管理员展示;选人时回灌新姓名)
+  const [nameMap, setNameMap] = useState<Record<string, string>>(() => scheme.userNames ?? {});
+  const rememberNames = (e: Record<string, string>) => setNameMap((m) => ({ ...m, ...e }));
 
   const baseFullScore = settings.baseFullScore ?? 100;
   const selectedNode = selectedCode ? findNode(tree.state, selectedCode) : null;
@@ -210,15 +214,26 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
                 targets={targets}
                 settings={settings}
                 onSettings={(patch) => setSettings((s) => ({ ...s, ...patch }))}
+                nameMap={nameMap}
+                onResolveNames={rememberNames}
               />
             </>
           ) : selectedNode ? (
-            <div className="text-[13px] text-[#475467] space-y-2">
-              <div className="font-medium text-[#172033]">分支:{selectedNode.label}</div>
-              <p className="text-[#9CA3AF]">
-                这是一个分支节点(含子指标)。它的分值应等于其「计权」子项之和。给它加子指标,或在叶子上配置数据源与计分工具。
-              </p>
-              <p className="text-[#9CA3AF]">特殊块:把 kind 设为「加分项 / 减分项」,该块不计入计权合计。</p>
+            <div className="space-y-4">
+              <div className="text-[13px] text-[#475467] space-y-2">
+                <div className="font-medium text-[#172033]">分支:{selectedNode.label}</div>
+                <p className="text-[#9CA3AF]">
+                  这是一个分支节点(含子指标)。它的分值应等于其「计权」子项之和。给它加子指标,或在叶子上配置数据源与计分工具。
+                </p>
+                <p className="text-[#9CA3AF]">特殊块:把 kind 设为「加分项 / 减分项」,该块不计入计权合计。</p>
+              </div>
+              <NodeAdminField
+                value={selectedNode.adminUserIds}
+                onChange={(ids) => patchLeaf({ adminUserIds: ids })}
+                nameMap={nameMap}
+                onResolveNames={rememberNames}
+                hasChildren
+              />
             </div>
           ) : (
             <SettingsPanel
@@ -239,6 +254,11 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
               onBaseFullScore={(v) => setSettings((s) => ({ ...s, baseFullScore: v }))}
               grade={grade}
               onGrade={setGrade}
+              createdByName={scheme.createdByName ?? null}
+              managerUserIds={settings.managerUserIds ?? []}
+              onManagers={(ids) => setSettings((s) => ({ ...s, managerUserIds: ids.length ? ids : undefined }))}
+              nameMap={nameMap}
+              onResolveNames={rememberNames}
             />
           )}
         </div>
@@ -256,6 +276,11 @@ function SettingsPanel({
   onBaseFullScore,
   grade,
   onGrade,
+  createdByName,
+  managerUserIds,
+  onManagers,
+  nameMap,
+  onResolveNames,
 }: {
   settings: SchemeSettings;
   onSubject: (p: {
@@ -271,9 +296,32 @@ function SettingsPanel({
   onBaseFullScore: (v: number) => void;
   grade: GradeRules;
   onGrade: (g: GradeRules) => void;
+  createdByName: string | null;
+  managerUserIds: string[];
+  onManagers: (ids: string[]) => void;
+  nameMap: Record<string, string>;
+  onResolveNames: (entries: Record<string, string>) => void;
 }) {
   return (
     <div className="space-y-4">
+      <div className="rounded-lg border border-[#eef2f7] bg-[#FBFBFC] p-3 space-y-2.5">
+        <div className="text-[13px] font-semibold text-[#172033]">维护人员</div>
+        <div className="text-[12px] text-[#475467]">
+          总管理员:<span className="font-medium text-[#172033]">{createdByName || "—"}</span>
+          <span className="text-[#9CA3AF]">(新建者,可配置全部指标)</span>
+        </div>
+        <div>
+          <div className="text-[12px] text-[#475467] mb-1.5">协同维护人(与总管理员一起维护本表)</div>
+          <UserMultiPicker
+            value={managerUserIds}
+            onChange={onManagers}
+            nameMap={nameMap}
+            onResolveNames={onResolveNames}
+            placeholder="搜索姓名 / 员工编号 添加协同维护人…"
+          />
+        </div>
+      </div>
+
       <SubjectObjectsPanel
         relationKey={settings.relationKey}
         subjectOrgId={settings.subjectOrgId}
