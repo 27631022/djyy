@@ -330,6 +330,10 @@ export interface ReportFillData {
   dispatchOrgName: string | null;
   dispatchUserName: string | null;
   dispatchUserPhone: string | null;
+  /** 本任务目标定义 + 本对象完成情况(进度条/百分比用)+ 逐单位目标值 */
+  goals: ReportGoal[];
+  goalProgress: GoalProgressItem[];
+  goalTargets: Record<string, number>;
   submissions: ReportSubmissionRow[];
 }
 

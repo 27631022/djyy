@@ -24,6 +24,7 @@ import { UpdateSchemeDto } from './dto/update-scheme.dto';
 import { TrialScoreDto } from './dto/trial-score.dto';
 import { PreviewIndicatorDto } from './dto/preview-indicator.dto';
 import { ReportQueryPreviewDto } from './dto/report-query-preview.dto';
+import { GenerateCriteriaDto } from './dto/generate-criteria.dto';
 import { CreateRoundDto } from './dto/create-round.dto';
 import { SaveScoresDto } from './dto/save-scores.dto';
 
@@ -141,6 +142,13 @@ export class AssessmentController {
       actorName: me.name,
       ip: req.ip,
     });
+  }
+
+  /** POST /assessment/criteria/generate  指标配置 → AI 写一段评分标准/说明(不落库,前端填入 rubric) */
+  @Post('criteria/generate')
+  @Permission('assessment:manage')
+  generateCriteria(@Body() dto: GenerateCriteriaDto, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.extraction.generateCriteria(dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
   // ─── P2 打分闭环:考核轮次 ───

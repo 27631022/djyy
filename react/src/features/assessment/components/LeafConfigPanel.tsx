@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Info, Scale } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Info, Scale, Sparkles, Loader2 } from "lucide-react";
 import { organizationsApi } from "@/features/organization";
 import { assessmentApi, type AssessmentTarget, type IndicatorNode, type SchemeSettings } from "../api";
+import { buildRubric, criteriaInput } from "../rubric";
 import { DATA_SOURCES, OUTPUT_LABELS, getDataSource, effectiveOutputType } from "../data-sources/registry";
 import { SCORING_STRATEGY_LIST, getStrategy, isInputCompatible } from "../scoring/registry";
 import { PROP_INPUT } from "../scoring/shared";
@@ -76,6 +78,16 @@ export function LeafConfigPanel({
   }
 
   const paramIssue = strat?.validate?.(node.strategyParams ?? {}) ?? null;
+
+  // AI 生成评分标准
+  const aiCriteria = useMutation({
+    mutationFn: () => assessmentApi.generateCriteria(criteriaInput(node)),
+    onSuccess: (r) => onChange({ rubric: r.criteria }),
+    onError: (e) => {
+      const m = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(typeof m === "string" ? m : "AI 生成失败,请重试或手动填写");
+    },
+  });
 
   return (
     <div className="space-y-4">
@@ -208,12 +220,35 @@ export function LeafConfigPanel({
       </div>
 
       <div>
-        <div className="text-[13px] font-semibold text-[#172033] mb-2">评分标准 / 说明</div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-[13px] font-semibold text-[#172033]">评分标准 / 说明</div>
+          {strat && (
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => onChange({ rubric: buildRubric(node) })}
+                className="text-[12px] text-[var(--party-primary)] hover:underline"
+                title="按 数据源 + 计分工具 + 参数 + 分值 + 指标名 自动生成"
+              >
+                按配置生成
+              </button>
+              <button
+                type="button"
+                onClick={() => aiCriteria.mutate()}
+                disabled={aiCriteria.isPending}
+                className="inline-flex items-center gap-1 text-[12px] text-[#1A56A8] hover:underline disabled:opacity-50"
+              >
+                {aiCriteria.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                AI 生成
+              </button>
+            </div>
+          )}
+        </div>
         <textarea
           value={node.rubric ?? ""}
           onChange={(e) => onChange({ rubric: e.target.value })}
           rows={4}
-          placeholder="如:中心组学习每月≥1次、台账完整得满分;缺项按比例扣…(人工打分时同屏显示)"
+          placeholder="如:中心组学习每月≥1次、台账完整得满分;缺项按比例扣…(可点右上「按配置生成」或「AI 生成」)"
           className={`${PROP_INPUT} resize-y`}
         />
       </div>

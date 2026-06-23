@@ -218,6 +218,59 @@ export interface GoalLine {
   structured: Record<string, string | null | undefined>;
   extra: Record<string, unknown>;
 }
+
+/** 原始报送提交(头购买日期 + 明细行,prisma 形状)。 */
+export interface RawSubmissionForGoals {
+  purchaseDate?: Date | string | null;
+  lines: {
+    amountCents: number;
+    category?: string | null;
+    feeSource?: string | null;
+    recommendOrg?: string | null;
+    origin?: string | null;
+    catalogSupplier?: string | null;
+    supplier?: string | null;
+    productName?: string | null;
+    spec?: string | null;
+    extraJson?: string | null;
+  }[];
+}
+
+/** 从原始报送提交构建 GoalLine[](goalProgress / queryGoal / 填报页完成情况共用,头购买日期注入每行)。 */
+export function buildGoalLines(subs: RawSubmissionForGoals[]): GoalLine[] {
+  return subs.flatMap((s) => {
+    const purchaseDate = s.purchaseDate ? new Date(s.purchaseDate).toISOString() : null;
+    return s.lines.map((l) => {
+      let taxCents = 0;
+      let extra: Record<string, unknown> = {};
+      try {
+        const o = JSON.parse(l.extraJson ?? '{}');
+        if (o && typeof o === 'object' && !Array.isArray(o)) {
+          extra = o as Record<string, unknown>;
+          taxCents = Number((o as { taxCents?: unknown }).taxCents) || 0;
+        }
+      } catch {
+        /* noop */
+      }
+      return {
+        amountCents: l.amountCents,
+        taxCents,
+        structured: {
+          category: l.category,
+          feeSource: l.feeSource,
+          recommendOrg: l.recommendOrg,
+          origin: l.origin,
+          catalogSupplier: l.catalogSupplier,
+          supplier: l.supplier,
+          productName: l.productName,
+          spec: l.spec,
+          purchaseDate,
+        },
+        extra,
+      };
+    });
+  });
+}
 /** 分组明细:一堆(季度/月/维度值)的统计值(无达标判断,判断归考核)。 */
 export interface GoalGroupStat {
   label: string;

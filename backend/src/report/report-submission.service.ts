@@ -11,6 +11,7 @@ import { OrganizationService } from '../organization';
 import { UserService } from '../user';
 import { RoleService } from '../role';
 import { parseFields, type ReportField } from './report-fields';
+import { parseGoals, deriveGoalColumns, buildGoalLines, computeGoalProgress } from './report-goals';
 import { SaveSubmissionDto } from './dto/save-submission.dto';
 import { ReviewSubmissionDto } from './dto/review-submission.dto';
 
@@ -18,6 +19,24 @@ interface ActorContext {
   actorId?: string;
   actorName?: string;
   ip?: string;
+}
+
+/** 解析 goalTargetsJson → { goalKey: 目标值 } */
+function parseGoalTargets(json: string | null | undefined): Record<string, number> {
+  try {
+    const v: unknown = JSON.parse(json ?? '{}');
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const o: Record<string, number> = {};
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+        const n = Number(val);
+        if (Number.isFinite(n)) o[k] = n;
+      }
+      return o;
+    }
+  } catch {
+    /* noop */
+  }
+  return {};
 }
 
 /** catalog_pick 填报值(点选商品落的清单快照)。supplier/taxRate/minOrderQty/contact 用于保全清单完整信息。 */
@@ -105,12 +124,23 @@ export class ReportSubmissionService {
     const task = await this.prisma.reportTask.findUnique({ where: { id: target.taskId } });
     if (!task) throw new NotFoundException('报送任务不存在');
 
-    const [dispatchUser, dispatchOrg, unitOrg, submissions] = await Promise.all([
+    const goals = parseGoals(task.goalsJson);
+    const [dispatchUser, dispatchOrg, unitOrg, submissions, rawSubs] = await Promise.all([
       this.users.findOne(task.dispatchUserId).catch(() => null),
       task.dispatchOrgId ? this.orgs.findOne(task.dispatchOrgId).catch(() => null) : Promise.resolve(null),
       target.targetOrgId ? this.orgs.findOne(target.targetOrgId).catch(() => null) : Promise.resolve(null),
       this.loadSubmissions(targetId),
+      goals.length
+        ? this.prisma.reportSubmission.findMany({ where: { targetId }, include: { lines: true } })
+        : Promise.resolve([]),
     ]);
+
+    const fields = parseFields(task.fieldsJson);
+    // 本对象目标完成情况(进度条 + 百分比;承办人只看本单位)
+    const goalTargets = parseGoalTargets(target.goalTargetsJson);
+    const goalProgress = goals.length
+      ? computeGoalProgress(goals, deriveGoalColumns(fields), buildGoalLines(rawSubs), goalTargets)
+      : [];
 
     return {
       targetId,
@@ -121,12 +151,15 @@ export class ReportSubmissionService {
       noticeFileId: task.noticeFileId,
       noticeFileName: task.noticeFileName,
       catalogTag: task.catalogTag,
-      fields: parseFields(task.fieldsJson),
+      fields,
       targetStatus: target.status,
       unitOrgName: unitOrg?.name ?? null,
       dispatchOrgName: dispatchOrg?.name ?? null,
       dispatchUserName: dispatchUser?.name ?? null,
       dispatchUserPhone: dispatchUser?.phone ?? null,
+      goals,
+      goalProgress,
+      goalTargets,
       submissions,
     };
   }

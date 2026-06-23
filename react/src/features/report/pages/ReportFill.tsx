@@ -23,6 +23,7 @@ import {
   type ReportFillData,
   type ReportSubmissionRow,
   type ReportField,
+  type GoalProgressItem,
   type InvoiceExtractResult,
   type CatalogPickValue,
 } from "../api";
@@ -37,6 +38,56 @@ const SUB_STATUS: Record<string, { label: string; bg: string; color: string }> =
 function errMsg(e: unknown, fb: string): string {
   const m = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
   return typeof m === "string" ? m : fb;
+}
+
+/**
+ * 单个目标完成进度:
+ *  - 目标值=0(本单位无要求)→ 视为「已完成」(满绿条);
+ *  - 目标值>0 → 进度条 + 百分比(实际/目标,≥100% 变绿);
+ *  - 未设目标值 → 仅显示实际值(无条)。
+ */
+function GoalBar({ p, rawTarget }: { p: GoalProgressItem; rawTarget: number | undefined }) {
+  const fmt = (v: number | null) => (p.money ? `¥${(v ?? 0).toLocaleString("zh-CN", { maximumFractionDigits: 2 })}` : `${v ?? 0}`);
+  const noQuota = rawTarget === 0; // 目标=0:无要求 → 已完成
+  const hasTarget = p.target != null && p.target > 0 && p.rate != null;
+  const rate = p.rate ?? 0;
+  const pct = noQuota ? 100 : hasTarget ? Math.min(rate, 100) : 0;
+  const done = noQuota || (hasTarget && rate >= 100);
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="font-medium text-gray-700">{p.label}</span>
+        {noQuota ? (
+          <span className="text-gray-500">
+            {fmt(p.actual)} / {fmt(0)} · <b className="text-emerald-600">100%</b>
+          </span>
+        ) : hasTarget ? (
+          <span className="text-gray-500">
+            {fmt(p.actual)} / {fmt(p.target)} · <b className={done ? "text-emerald-600" : "text-[var(--party-primary)]"}>{rate}%</b>
+          </span>
+        ) : (
+          <span className="text-gray-500">
+            {p.grouped ? "合计 " : ""}
+            {fmt(p.actual)}
+          </span>
+        )}
+      </div>
+      {(hasTarget || noQuota) && (
+        <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+          <div className={`h-full rounded-full transition-all ${done ? "bg-emerald-500" : "bg-[var(--party-primary)]"}`} style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      {p.groups && p.groups.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {p.groups.map((g) => (
+            <span key={g.label} className="rounded bg-gray-50 px-1 py-0.5 text-[10px] text-gray-500">
+              {g.label}:{fmt(g.value)}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ReportFill() {
@@ -265,6 +316,21 @@ function FillInner({ data, targetId }: { data: ReportFillData; targetId: string 
           </button>
         )}
       </header>
+
+      {/* 本单位完成情况(进度条 + 百分比) */}
+      {data.goals.length > 0 && (
+        <section className="mb-5 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+          <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-gray-700">
+            <Building2Icon className="h-4 w-4 text-[var(--party-primary)]" />
+            {data.unitOrgName ? `${data.unitOrgName} · ` : ""}完成情况
+          </h2>
+          <div className="space-y-3">
+            {data.goalProgress.map((p) => (
+              <GoalBar key={p.key} p={p} rawTarget={data.goalTargets[p.key]} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* 录入一张发票 */}
       <section className="mb-6 rounded-xl border border-gray-100 bg-white p-5 shadow-sm">

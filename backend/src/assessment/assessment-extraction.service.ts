@@ -134,6 +134,34 @@ export class AssessmentExtractionService {
   }
 
   /** 调 LLM(chat,JSON 模式)。模型路由 consumer=assessment.indicators.extract.text。 */
+  /**
+   * AI 生成「评分标准/说明」:据 指标名 + 数据源 + 计分工具 + 规则 + 满分 写一段标准。
+   * 复用 callLlm(json 模式返 {criteria});提示词 key=assessment.criteria,消费点同指标生成。
+   */
+  async generateCriteria(
+    input: { label?: string; dataSourceDesc?: string; tool?: string; rule?: string; weight?: number },
+    ctx: ExtractCtx,
+  ): Promise<{ criteria: string; usedProvider: string; usedModel: string }> {
+    const sys = await this.prompts.get('assessment.criteria');
+    const user = [
+      `指标名称:${(input.label || '').trim() || '(未命名)'}`,
+      `完成情况来源:${input.dataSourceDesc || '(未指定)'}`,
+      `计分工具:${input.tool || '(未指定)'}`,
+      `计分规则:${input.rule || '(未指定)'}`,
+      `本项满分:${Number.isFinite(input.weight) ? input.weight : 0} 分`,
+    ].join('\n');
+    const llm = await this.callLlm(sys, user);
+    let criteria = '';
+    try {
+      criteria = String((JSON.parse(llm.raw) as { criteria?: unknown }).criteria ?? '').trim();
+    } catch {
+      /* 解析失败 → 保持空,下面统一拦 */
+    }
+    if (!criteria) throw new ServiceUnavailableException('AI 未返回有效的评分标准,请重试或手动填写');
+    await this.audit.log({ ...ctx, action: 'assessment.criteria.generate', detail: { label: input.label } });
+    return { criteria, usedProvider: llm.provider, usedModel: llm.model };
+  }
+
   private async callLlm(
     systemPrompt: string,
     userContent: string,

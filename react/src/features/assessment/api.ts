@@ -429,6 +429,9 @@ export const assessmentApi = {
     api.get<ReportQuerySource[]>("/assessment/report-query/sources").then((r) => r.data),
   reportQueryPreview: (input: ReportQueryPreviewInput) =>
     api.post<ReportQueryPreviewResult>("/assessment/report-query/preview", input).then((r) => r.data),
+  /** AI 生成评分标准/说明(据 指标名+数据源+计分工具+规则+分值)*/
+  generateCriteria: (input: { label?: string; dataSourceDesc?: string; tool?: string; rule?: string; weight?: number }) =>
+    api.post<{ criteria: string }>("/assessment/criteria/generate", input).then((r) => r.data),
 };
 
 /** 报送取数:可选源(有目标的报送任务 + 目标)*/

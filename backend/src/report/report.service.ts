@@ -17,7 +17,7 @@ import {
   parseGoals,
   computeGoalProgress,
   deriveGoalColumns,
-  type GoalLine,
+  buildGoalLines,
 } from './report-goals';
 import { PublishReportDto, type ReportTargetInput } from './dto/publish-report.dto';
 import { AssignReportDto } from './dto/assign-report.dto';
@@ -58,24 +58,6 @@ function parseNumMap(json: string): Record<string, number> {
   return {};
 }
 
-/** 从 ReportLine.extraJson 取税额(分);无则 0 */
-function taxCentsOfExtra(json: string): number {
-  try {
-    return Number((JSON.parse(json) as { taxCents?: unknown }).taxCents) || 0;
-  } catch {
-    return 0;
-  }
-}
-
-/** 安全解析 headData JSON → 对象 */
-function parseHeadObj(json: string): Record<string, unknown> {
-  try {
-    const v: unknown = JSON.parse(json);
-    return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
 
 /** 行政机构索引(父子 + meta + 部门/虚拟标记 + 名称)。对口走 org-meta,照搬 task。 */
 interface OrgIndex {
@@ -548,27 +530,7 @@ export class ReportService {
     const columns = deriveGoalColumns(fields); // 按任务字段派生可筛选/可聚合列(通用)
     const rows = targets.map((t) => {
       const tsubs = byTarget.get(t.id) ?? [];
-      const lines: GoalLine[] = tsubs.flatMap((s) => {
-        // 把发票头的购买日期注入每行(供「按季度/月分组」取 date 列)
-        const purchaseDate = s.purchaseDate ? new Date(s.purchaseDate).toISOString() : null;
-        return s.lines.map((l) => ({
-          amountCents: l.amountCents,
-          taxCents: taxCentsOfExtra(l.extraJson),
-          // 结构化列(catalog 快照 + feeSource + 头层购买日期);其余动态列读 extraJson
-          structured: {
-            category: l.category,
-            feeSource: l.feeSource,
-            recommendOrg: l.recommendOrg,
-            origin: l.origin,
-            catalogSupplier: l.catalogSupplier,
-            supplier: l.supplier,
-            productName: l.productName,
-            spec: l.spec,
-            purchaseDate,
-          },
-          extra: parseHeadObj(l.extraJson),
-        }));
-      });
+      const lines = buildGoalLines(tsubs);
       const perUnit = parseNumMap(t.goalTargetsJson);
       return {
         targetId: t.id,
