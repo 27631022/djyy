@@ -320,7 +320,7 @@ export function createGuideNarrator(
           arm.scaling.x = W;
           arm.scaling.y = H;
           arm.position.set(-shoulderX, H / 2 - shoulderY, 0); // 旋转 0 时手臂图与身体对齐
-          arm.renderingGroupId = 1; // 透明层排在身体之后 → 手臂永远盖在身体上(免 z 排序烦恼)
+          arm.renderingGroupId = guide.rimLight ? 2 : 1; // 手臂盖在身体之上(开轮廓光时 body=1 → 手臂=2)
           const armMat = mkUnlit('guide-sprite-arm-mat');
           arm.material = armMat;
           excludeFromGlow(arm);
@@ -329,6 +329,22 @@ export function createGuideNarrator(
             armMat.emissiveTexture = at;
             at.level = SPRITE_BRIGHTNESS;
           });
+        }
+        // 轮廓光(可选):身体剪影放大一圈、纯亮色,叠在身体背后 → 勾出一圈描边,把人从背景分离、更清晰
+        if (guide.rimLight) {
+          body.renderingGroupId = 1; // 身体抬到轮廓之上(轮廓 renderingGroupId=0 先画=背后)
+          const rim = MeshBuilder.CreatePlane('guide-sprite-rim', { size: 1 }, scene);
+          rim.isPickable = false;
+          rim.parent = rig;
+          rim.position.y = H / 2;
+          rim.scaling.x = W * 1.05;
+          rim.scaling.y = H * 1.05;
+          rim.renderingGroupId = 0;
+          const rimMat = mkUnlit('guide-sprite-rim-mat'); // diffuseColor=0 + useAlphaFromDiffuseTexture
+          rimMat.diffuseTexture = t; // 取 alpha 当剪影形状(不挂 emissiveTexture → 纯色)
+          rimMat.emissiveColor = new Color3(1.15, 1.18, 1.3); // 轮廓光色(冷白偏亮)
+          rim.material = rimMat;
+          excludeFromGlow(rim);
         }
         modelReady = true;
         guideMeshes.push(...rig.getChildMeshes(false));
@@ -343,8 +359,11 @@ export function createGuideNarrator(
         buildPlaceholder();
       },
     );
+    // ⚠ 说话/眨眼帧也要设同样的 level,否则切帧时亮度跳回原图(默认帧亮、其余帧暗的闪烁)
     texTalk = loadTex(guide.spriteTalkUrl);
+    if (texTalk) texTalk.level = SPRITE_BRIGHTNESS;
     texBlink = loadTex(guide.spriteBlinkUrl);
+    if (texBlink) texBlink.level = SPRITE_BRIGHTNESS;
   }
 
   /* ── 字幕条(DOM,永远清晰)── */

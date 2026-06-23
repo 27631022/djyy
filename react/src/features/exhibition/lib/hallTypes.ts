@@ -74,6 +74,7 @@ export interface HallGuide {
   armFlip?: boolean; // 手臂方向反向
   narrateSide?: "left" | "right"; // 解说站位优先侧(默认 left,右侧兜底)
   brightness?: number; // 2.5D 立绘亮度(自发光强度,默认 1.0)
+  rimLight?: boolean; // 2.5D 立绘轮廓光(剪影描边,默认关)
 }
 
 export interface FixtureSource {

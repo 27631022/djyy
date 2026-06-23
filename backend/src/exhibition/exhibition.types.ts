@@ -96,6 +96,8 @@ export interface HallGuide {
   narrateSide?: 'left' | 'right';
   /** 2.5D 立绘亮度(自发光强度,默认 1.0;调高更亮、治"暗沉",调低更柔和) */
   brightness?: number;
+  /** 2.5D 立绘轮廓光:身体剪影放大一圈纯亮色叠在背后,勾出一圈描边把人从背景分离(默认关) */
+  rimLight?: boolean;
 }
 
 /** 组件实例(规格 5.2) */

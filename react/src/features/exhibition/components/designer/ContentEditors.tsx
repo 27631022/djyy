@@ -1272,6 +1272,12 @@ export function GuideEditor({
               title="2.5D 立绘亮度(1=原图;暗沉就调到 1.1~1.3)"
             />
           </Row>
+          <Row label="轮廓光">
+            <Switch
+              checked={g.rimLight ?? false}
+              onCheckedChange={(b) => onChange({ ...g, rimLight: b })}
+            />
+          </Row>
           <Row label="音色">
             <input
               value={g.voice ?? ""}
