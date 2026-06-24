@@ -956,10 +956,33 @@ model AssessmentRound {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  scores IndicatorScore[]
+  scores   IndicatorScore[]
+  confirms AssessmentScoreConfirm[]
 
   @@index([schemeId])
   @@index([year])
+  @@index([status])
+}
+
+// @module: assessment
+// 分数确认会签:某轮次的某叶子指标的某责任人,确认「我已完成该指标打分、当前分数无误」。
+// 总管理员(考核表创建者/协同维护人)发起 → 每个「有责任人的叶子 × 每个责任人」生成 pending → 责任人确认 → confirmed。
+// 管理员据此看「哪个指标、谁还没确认」(带电话便于催)。note 预留(基层单位结果申诉是另一套体系,先记录)。
+model AssessmentScoreConfirm {
+  id          String          @id @default(cuid())
+  roundId     String
+  round       AssessmentRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  leafCode    String // 叶子指标 code(轮次快照里的)
+  userId      String // 责任人 id(松引用 user)
+  status      String          @default("pending") // pending | confirmed
+  note        String? // 备注 / 申诉(预留)
+  confirmedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([roundId, leafCode, userId])
+  @@index([roundId])
+  @@index([userId])
   @@index([status])
 }
 

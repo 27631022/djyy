@@ -27,6 +27,8 @@ import { ReportQueryPreviewDto } from './dto/report-query-preview.dto';
 import { GenerateCriteriaDto } from './dto/generate-criteria.dto';
 import { CreateRoundDto } from './dto/create-round.dto';
 import { SaveScoresDto } from './dto/save-scores.dto';
+import { ConfirmRequestDto } from './dto/confirm-request.dto';
+import { ConfirmIndicatorDto } from './dto/confirm-indicator.dto';
 
 interface UploadedFileShape {
   originalname: string;
@@ -201,5 +203,44 @@ export class AssessmentController {
   @Permission('assessment:manage')
   computeRound(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.svc.computeRound(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  // ─── 分数确认会签 ───
+
+  /** POST /assessment/rounds/:id/confirm-request  总管理员发起/重新发起分数确认 */
+  @Post('rounds/:id/confirm-request')
+  @Permission('assessment:manage')
+  requestConfirm(
+    @Param('id') id: string,
+    @Body() dto: ConfirmRequestDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.requestConfirm(id, !!dto?.reset, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** GET /assessment/rounds/:id/confirm  确认进度(哪个指标、谁还没确认 + 电话) */
+  @Get('rounds/:id/confirm')
+  @Permission('assessment:manage')
+  confirmProgress(@Param('id') id: string) {
+    return this.svc.confirmProgress(id);
+  }
+
+  /** GET /assessment/confirm/mine  我的考核确认(待我确认 / 已确认,跨轮次)— 登录即可 */
+  @Get('confirm/mine')
+  myConfirmations(@CurrentUser() me: AuthPayload) {
+    return this.svc.myConfirmations(me.sub);
+  }
+
+  /** POST /assessment/rounds/:id/confirm/:leafCode  责任人确认某指标分数无误 — 登录即可(service 判责任人) */
+  @Post('rounds/:id/confirm/:leafCode')
+  confirmIndicator(
+    @Param('id') id: string,
+    @Param('leafCode') leafCode: string,
+    @Body() dto: ConfirmIndicatorDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.confirmIndicator(id, leafCode, { actorId: me.sub, actorName: me.name, ip: req.ip }, dto?.note);
   }
 }

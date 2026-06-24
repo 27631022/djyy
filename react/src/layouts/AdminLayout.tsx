@@ -6,7 +6,7 @@ import {
   BuildingIcon, ShieldIcon, UserIcon, BookTextIcon,
   EyeIcon, ThumbsUpIcon, MessageSquareIcon,
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
-  AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon, ClipboardCheckIcon, ClipboardListIcon,
+  AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon, ClipboardCheckIcon, ClipboardListIcon, BadgeCheckIcon,
   PanelLeftCloseIcon, PanelLeftOpenIcon,
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon,
   ArmchairIcon, PlusIcon, LandmarkIcon, PackageIcon, LibraryIcon,
@@ -69,6 +69,7 @@ const CATEGORIES: Category[] = [
       { path: "/admin/venue/seating/new/wizard", label: "新建会议",        icon: PlusIcon,       group: "会场管理", perm: "venue:manage" },
       { path: "/admin/assessment/schemes",       label: "考核表",          icon: ClipboardCheckIcon, group: "考核管理", perm: "assessment:manage" },
       { path: "/admin/assessment/rounds",        label: "考核打分",        icon: ClipboardListIcon,  group: "考核管理", perm: "assessment:manage" },
+      { path: "/admin/assessment/confirm",       label: "考核确认",        icon: BadgeCheckIcon,     group: "考核管理" }, // 无 perm = 人人可见(责任人确认入口)
       { path: "/admin/reports",                  label: "多次报送",        icon: ClipboardCheckIcon, group: "报送管理", perm: "report:manage" },
       { path: "/admin/reports/catalog",          label: "报送清单",        icon: PackageIcon,        group: "报送管理", perm: "report:manage" },
     ],

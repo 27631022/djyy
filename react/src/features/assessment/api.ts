@@ -365,6 +365,37 @@ export interface PreviewIndicatorInput {
   units: { ref: string; name: string; raw: ScoreRaw }[];
 }
 
+/* ─── 分数确认会签(轮次 × 叶子指标 × 责任人)─── */
+export type ConfirmStatus = "pending" | "confirmed";
+/** 确认进度项(管理员视角:哪个指标、谁、状态、电话)*/
+export interface ConfirmItem {
+  leafCode: string;
+  leafLabel: string;
+  groupLabel: string;
+  userId: string;
+  userName: string;
+  userPhone: string | null;
+  status: ConfirmStatus;
+  confirmedAt: string | null;
+}
+export interface ConfirmProgress {
+  initiated: boolean;
+  summary: { total: number; confirmed: number; pending: number };
+  items: ConfirmItem[];
+  noOwnerLeaves: string[];
+}
+/** 我的考核确认项(责任人视角,跨轮次)*/
+export interface MyConfirmItem {
+  roundId: string;
+  roundName: string;
+  year: number | null;
+  leafCode: string;
+  leafLabel: string;
+  groupLabel: string;
+  status: ConfirmStatus;
+  confirmedAt: string | null;
+}
+
 export function parseRoundIndicators(r: AssessmentRound): IndicatorNode[] {
   try {
     const v: unknown = JSON.parse(r.indicatorsJson);
@@ -443,6 +474,23 @@ export const assessmentApi = {
   /** AI 生成评分标准/说明(据 指标名+数据源+计分工具+规则+分值)*/
   generateCriteria: (input: { label?: string; dataSourceDesc?: string; tool?: string; rule?: string; weight?: number }) =>
     api.post<{ criteria: string }>("/assessment/criteria/generate", input).then((r) => r.data),
+  /** ── 分数确认会签 ── */
+  /** 总管理员发起 / 重新发起分数确认(reset=true 把已确认也重置)*/
+  requestConfirm: (roundId: string, reset = false) =>
+    api.post<ConfirmProgress>(`/assessment/rounds/${roundId}/confirm-request`, { reset }).then((r) => r.data),
+  /** 确认进度(管理员看谁还没确认 + 电话)*/
+  confirmProgress: (roundId: string) =>
+    api.get<ConfirmProgress>(`/assessment/rounds/${roundId}/confirm`).then((r) => r.data),
+  /** 我的考核确认(待我确认 / 已确认,跨轮次)*/
+  myConfirmations: () => api.get<{ items: MyConfirmItem[] }>("/assessment/confirm/mine").then((r) => r.data),
+  /** 责任人确认某指标分数无误 */
+  confirmIndicator: (roundId: string, leafCode: string, note?: string) =>
+    api
+      .post<{ ok: boolean; status: string }>(
+        `/assessment/rounds/${roundId}/confirm/${encodeURIComponent(leafCode)}`,
+        { note },
+      )
+      .then((r) => r.data),
 };
 
 /** 报送取数:可选源(有目标的报送任务 + 目标)*/

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
 import { RoleService } from '../role';
@@ -458,6 +458,155 @@ export class AssessmentService {
     });
     await this.audit.log({ ...ctx, action: 'assessment.round.compute', target: roundId, detail: { targets: targets.length } });
     return results;
+  }
+
+  // ─── 分数确认会签(轮次 × 叶子指标 × 责任人) ───
+
+  /** 收集轮次快照里「有责任人的叶子」(确认单元)+ 无责任人叶子名单(发起时提示)。groupLabel=顶层分组名。 */
+  private confirmLeavesOfRound(round: { indicatorsJson: string }) {
+    const indicators = safeJson<IndicatorNode[]>(round.indicatorsJson, []);
+    const leaves: { leafCode: string; leafLabel: string; groupLabel: string; ownerUserIds: string[] }[] = [];
+    const noOwner: string[] = [];
+    const walk = (nodes: IndicatorNode[], groupLabel: string) => {
+      for (const n of nodes) {
+        const g = groupLabel || n.label; // 顶层分组名(顶层叶子取自身)
+        if (n.children?.length) {
+          walk(n.children, g);
+          continue;
+        }
+        const owners = (n.ownerUserIds ?? []).filter((x) => typeof x === 'string' && x);
+        if (owners.length) leaves.push({ leafCode: n.code, leafLabel: n.label, groupLabel: g, ownerUserIds: owners });
+        else noOwner.push(n.label);
+      }
+    };
+    walk(indicators, '');
+    return { leaves, noOwner };
+  }
+
+  /** 发起 / 重新发起分数确认:给「有责任人的叶子 × 每个责任人」生成 pending(reset=true 把已确认也重置)。 */
+  async requestConfirm(roundId: string, reset: boolean, ctx: ActorCtx) {
+    const round = await this.getRoundOrThrow(roundId);
+    const { leaves } = this.confirmLeavesOfRound(round);
+    const desired = new Set<string>();
+    for (const lf of leaves) for (const uid of lf.ownerUserIds) desired.add(`${lf.leafCode} ${uid}`);
+
+    const existing = await this.prisma.assessmentScoreConfirm.findMany({ where: { roundId } });
+    const existKey = new Set(existing.map((e) => `${e.leafCode} ${e.userId}`));
+    // 清理已失效项(指标删了 / 责任人换了)
+    const staleIds = existing.filter((e) => !desired.has(`${e.leafCode} ${e.userId}`)).map((e) => e.id);
+    if (staleIds.length) await this.prisma.assessmentScoreConfirm.deleteMany({ where: { id: { in: staleIds } } });
+
+    const ops: Promise<unknown>[] = [];
+    for (const lf of leaves)
+      for (const uid of lf.ownerUserIds) {
+        const has = existKey.has(`${lf.leafCode} ${uid}`);
+        if (reset) {
+          ops.push(
+            this.prisma.assessmentScoreConfirm.upsert({
+              where: { roundId_leafCode_userId: { roundId, leafCode: lf.leafCode, userId: uid } },
+              create: { roundId, leafCode: lf.leafCode, userId: uid, status: 'pending' },
+              update: { status: 'pending', confirmedAt: null, note: null },
+            }),
+          );
+        } else if (!has) {
+          ops.push(
+            this.prisma.assessmentScoreConfirm.create({
+              data: { roundId, leafCode: lf.leafCode, userId: uid, status: 'pending' },
+            }),
+          );
+        }
+      }
+    if (ops.length) await this.prisma.$transaction(ops as never);
+    await this.audit.log({
+      ...ctx,
+      action: 'assessment.round.confirm_request',
+      target: roundId,
+      detail: { reset, leaves: leaves.length },
+    });
+    return this.confirmProgress(roundId);
+  }
+
+  /** 确认进度(管理员看「哪个指标、谁还没确认」+ 电话)。 */
+  async confirmProgress(roundId: string) {
+    const round = await this.getRoundOrThrow(roundId);
+    const { leaves, noOwner } = this.confirmLeavesOfRound(round);
+    const leafMeta = new Map(leaves.map((l) => [l.leafCode, l]));
+    const rows = await this.prisma.assessmentScoreConfirm.findMany({ where: { roundId } });
+    const profiles = await this.users.profilesByIds([...new Set(rows.map((r) => r.userId))]);
+    const items = rows
+      .map((r) => {
+        const lf = leafMeta.get(r.leafCode);
+        const u = profiles[r.userId];
+        return {
+          leafCode: r.leafCode,
+          leafLabel: lf?.leafLabel ?? r.leafCode,
+          groupLabel: lf?.groupLabel ?? '',
+          userId: r.userId,
+          userName: u?.name ?? r.userId,
+          userPhone: u?.phone ?? null,
+          status: r.status,
+          confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
+        };
+      })
+      .sort((a, b) => a.groupLabel.localeCompare(b.groupLabel) || a.leafLabel.localeCompare(b.leafLabel));
+    const confirmed = items.filter((i) => i.status === 'confirmed').length;
+    return {
+      initiated: rows.length > 0,
+      summary: { total: items.length, confirmed, pending: items.length - confirmed },
+      items,
+      noOwnerLeaves: noOwner,
+    };
+  }
+
+  /** 「我的考核确认」:当前用户名下待确认/已确认项(跨轮次)。 */
+  async myConfirmations(actorId: string) {
+    const rows = await this.prisma.assessmentScoreConfirm.findMany({
+      where: { userId: actorId },
+      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+    });
+    if (!rows.length) return { items: [] };
+    const rounds = await this.prisma.assessmentRound.findMany({
+      where: { id: { in: [...new Set(rows.map((r) => r.roundId))] } },
+    });
+    const roundMap = new Map(rounds.map((r) => [r.id, r]));
+    const leavesCache = new Map<string, ReturnType<AssessmentService['confirmLeavesOfRound']>['leaves']>();
+    const items = rows.map((r) => {
+      const round = roundMap.get(r.roundId);
+      if (round && !leavesCache.has(r.roundId)) leavesCache.set(r.roundId, this.confirmLeavesOfRound(round).leaves);
+      const lf = leavesCache.get(r.roundId)?.find((l) => l.leafCode === r.leafCode);
+      return {
+        roundId: r.roundId,
+        roundName: round?.name ?? r.roundId,
+        year: round?.year ?? null,
+        leafCode: r.leafCode,
+        leafLabel: lf?.leafLabel ?? r.leafCode,
+        groupLabel: lf?.groupLabel ?? '',
+        status: r.status,
+        confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
+      };
+    });
+    return { items };
+  }
+
+  /** 责任人确认某指标分数无误(= 声明已完成该指标打分)。仅该指标责任人可确认自己那项。 */
+  async confirmIndicator(roundId: string, leafCode: string, ctx: ActorCtx, note?: string) {
+    const round = await this.getRoundOrThrow(roundId);
+    const actorId = ctx.actorId ?? '';
+    const { leaves } = this.confirmLeavesOfRound(round);
+    const lf = leaves.find((l) => l.leafCode === leafCode);
+    if (!lf || !lf.ownerUserIds.includes(actorId)) {
+      throw new ForbiddenException('只有该指标的考核责任人可以确认');
+    }
+    const existing = await this.prisma.assessmentScoreConfirm.findUnique({
+      where: { roundId_leafCode_userId: { roundId, leafCode, userId: actorId } },
+    });
+    if (!existing) throw new BadRequestException('该指标尚未发起确认');
+    await this.prisma.assessmentScoreConfirm.update({
+      where: { id: existing.id },
+      data: { status: 'confirmed', confirmedAt: new Date(), note: typeof note === 'string' ? note : existing.note },
+    });
+    await this.audit.log({ ...ctx, action: 'assessment.round.confirm', target: roundId, detail: { leafCode } });
+    return { ok: true, status: 'confirmed' as const };
   }
 
   /** 试算:用一个计分工具 + 参数 + 样例原始值算得分(配置时即时预览;权威,前端不重复实现公式)。 */

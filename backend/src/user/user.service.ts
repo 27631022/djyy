@@ -133,6 +133,21 @@ export class UserService {
     return out;
   }
 
+  /** 批量按 id 查 { name, phone, username }(展示 + 电话提醒用)。跨模块松引用解析。 */
+  async profilesByIds(
+    ids: string[],
+  ): Promise<Record<string, { name: string; phone: string | null; username: string }>> {
+    const uniq = [...new Set(ids.filter((x) => typeof x === 'string' && x))];
+    if (!uniq.length) return {};
+    const rows = await this.prisma.user.findMany({
+      where: { id: { in: uniq } },
+      select: { id: true, name: true, phone: true, username: true },
+    });
+    const out: Record<string, { name: string; phone: string | null; username: string }> = {};
+    for (const r of rows) out[r.id] = { name: r.name, phone: r.phone, username: r.username };
+    return out;
+  }
+
   /* ─── 详情 ─── */
   async findOne(id: string) {
     const u = await this.prisma.user.findUnique({
