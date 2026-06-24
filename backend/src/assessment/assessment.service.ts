@@ -609,6 +609,43 @@ export class AssessmentService {
     return { ok: true, status: 'confirmed' as const };
   }
 
+  /** 「我的本轮确认」状态:我负责的各指标确认了没(打分页「确认完成」按钮用)。 */
+  async myRoundConfirm(roundId: string, actorId: string) {
+    const round = await this.getRoundOrThrow(roundId);
+    const { leaves } = this.confirmLeavesOfRound(round);
+    const mine = leaves.filter((l) => l.ownerUserIds.includes(actorId));
+    if (!mine.length) return { total: 0, confirmed: 0, pending: 0, leaves: [] };
+    const rows = await this.prisma.assessmentScoreConfirm.findMany({ where: { roundId, userId: actorId } });
+    const byCode = new Map(rows.map((r) => [r.leafCode, r]));
+    const items = mine.map((l) => ({
+      leafCode: l.leafCode,
+      leafLabel: l.leafLabel,
+      status: byCode.get(l.leafCode)?.status === 'confirmed' ? ('confirmed' as const) : ('pending' as const),
+    }));
+    const confirmed = items.filter((i) => i.status === 'confirmed').length;
+    return { total: items.length, confirmed, pending: items.length - confirmed, leaves: items };
+  }
+
+  /** 「确认完成」:把我在本轮负责的所有指标标记为已确认(= 声明我已完成打分)。打分人在打分页点。 */
+  async confirmMineInRound(roundId: string, ctx: ActorCtx) {
+    const round = await this.getRoundOrThrow(roundId);
+    const actorId = ctx.actorId ?? '';
+    const { leaves } = this.confirmLeavesOfRound(round);
+    const mine = leaves.filter((l) => l.ownerUserIds.includes(actorId));
+    if (!mine.length) throw new BadRequestException('你在本轮没有负责的指标,无需确认');
+    const now = new Date();
+    const ops = mine.map((l) =>
+      this.prisma.assessmentScoreConfirm.upsert({
+        where: { roundId_leafCode_userId: { roundId, leafCode: l.leafCode, userId: actorId } },
+        create: { roundId, leafCode: l.leafCode, userId: actorId, status: 'confirmed', confirmedAt: now },
+        update: { status: 'confirmed', confirmedAt: now },
+      }),
+    );
+    await this.prisma.$transaction(ops);
+    await this.audit.log({ ...ctx, action: 'assessment.round.confirm_mine', target: roundId, detail: { count: mine.length } });
+    return { confirmed: mine.length };
+  }
+
   /** 试算:用一个计分工具 + 参数 + 样例原始值算得分(配置时即时预览;权威,前端不重复实现公式)。 */
   trial(input: TrialScoreDto) {
     const spec = getScoringSpec(input.scoringType);

@@ -243,4 +243,16 @@ export class AssessmentController {
   ) {
     return this.svc.confirmIndicator(id, leafCode, { actorId: me.sub, actorName: me.name, ip: req.ip }, dto?.note);
   }
+
+  /** GET /assessment/rounds/:id/confirm-mine  我在本轮负责指标的确认状态(打分页「确认完成」按钮用) */
+  @Get('rounds/:id/confirm-mine')
+  myRoundConfirm(@Param('id') id: string, @CurrentUser() me: AuthPayload) {
+    return this.svc.myRoundConfirm(id, me.sub);
+  }
+
+  /** POST /assessment/rounds/:id/confirm-mine  确认完成:把我本轮负责的全部指标标记已确认 — 登录即可 */
+  @Post('rounds/:id/confirm-mine')
+  confirmMineInRound(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.confirmMineInRound(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
 }

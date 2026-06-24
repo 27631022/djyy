@@ -491,7 +491,21 @@ export const assessmentApi = {
         { note },
       )
       .then((r) => r.data),
+  /** 我在本轮负责指标的确认状态(打分页「确认完成」按钮用)*/
+  myRoundConfirm: (roundId: string) =>
+    api.get<MyRoundConfirm>(`/assessment/rounds/${roundId}/confirm-mine`).then((r) => r.data),
+  /** 确认完成:把我本轮负责的全部指标标记已确认 */
+  confirmMineInRound: (roundId: string) =>
+    api.post<{ confirmed: number }>(`/assessment/rounds/${roundId}/confirm-mine`, {}).then((r) => r.data),
 };
+
+/** 「我的本轮确认」状态(打分页「确认完成」按钮)*/
+export interface MyRoundConfirm {
+  total: number;
+  confirmed: number;
+  pending: number;
+  leaves: { leafCode: string; leafLabel: string; status: ConfirmStatus }[];
+}
 
 /** 报送取数:可选源(有目标的报送任务 + 目标)*/
 export interface ReportQuerySource {

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { BarChart3, ClipboardCheck, ClipboardList, Copy, FileText, Play, Plus, Trophy, Trash2 } from "lucide-react";
+import { BarChart3, ClipboardCheck, ClipboardList, Copy, FileText, Plus, Trophy, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import {
   assessmentApi,
@@ -59,25 +59,16 @@ export default function SchemeList() {
     onError: (e) => toast.error(assessmentErrorMessage(e, "复制失败")),
   });
 
-  const start = useMutation({
-    mutationFn: (id: string) => assessmentApi.createRound(id, {}),
-    onSuccess: (round) => {
-      toast.success("已发起考核,去录入打分");
-      qc.invalidateQueries({ queryKey: ["assessment", "rounds"] });
-      navigate(`/admin/assessment/rounds/${round.id}`);
-    },
-    onError: (e) => toast.error(assessmentErrorMessage(e, "发起失败")),
-  });
-
-  // 「考核打分」:解析该表最新轮次 → 进打分页;没有轮次 → 提示先发起
+  // 「考核打分」(年度考核 = 一张表一轮):进该表的轮次,没有就建一次、有就直接进 —— 不再每次开新轮
   const goScore = async (schemeId: string) => {
     try {
       const rounds = await qc.fetchQuery({
         queryKey: ["assessment", "rounds", schemeId],
         queryFn: () => assessmentApi.listRounds(schemeId),
       });
-      if (rounds[0]) navigate(`/admin/assessment/rounds/${rounds[0].id}`);
-      else toast.info("这张考核表还没发起考核,点「发起考核」先开一轮");
+      const round = rounds[0] ?? (await assessmentApi.createRound(schemeId, {}));
+      if (!rounds[0]) qc.invalidateQueries({ queryKey: ["assessment", "rounds"] });
+      navigate(`/admin/assessment/rounds/${round.id}`);
     } catch (e) {
       toast.error(assessmentErrorMessage(e, "打开打分失败"));
     }
@@ -119,7 +110,6 @@ export default function SchemeList() {
               onOpen={() => navigate(`/admin/assessment/schemes/${s.id}`)}
               onDuplicate={() => dup.mutate(s.id)}
               onDelete={() => del.mutate(s.id)}
-              onStartRound={() => start.mutate(s.id)}
               onScore={() => goScore(s.id)}
               onRanking={() => navigate(`/admin/assessment/schemes/${s.id}/results?tab=ranking`)}
               onBoard={() => navigate(`/admin/assessment/schemes/${s.id}/results?tab=board`)}
@@ -146,7 +136,6 @@ function SchemeCard({
   onOpen,
   onDuplicate,
   onDelete,
-  onStartRound,
   onScore,
   onRanking,
   onBoard,
@@ -155,7 +144,6 @@ function SchemeCard({
   onOpen: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onStartRound: () => void;
   onScore: () => void;
   onRanking: () => void;
   onBoard: () => void;
@@ -216,8 +204,7 @@ function SchemeCard({
         <span className="px-2 py-0.5 rounded-full text-[11px] bg-[#f1f5f9] text-[#475467]">{STATUS_LABEL[scheme.status] ?? scheme.status}</span>
       </div>
       <div className="mt-3 pt-3 border-t border-[#f1f5f9] flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <CardBtn icon={Play} label="发起考核" onClick={onStartRound} title="按本表发起一次考核,生成轮次去录入打分" />
-        <CardBtn icon={ClipboardList} label="考核打分" onClick={onScore} title="进入本表最新轮次录入/确认打分" />
+        <CardBtn icon={ClipboardList} label="考核打分" onClick={onScore} title="进入年度考核打分(没有则自动开始;一张表只一轮)" />
         <CardBtn icon={Trophy} label="考核排名" onClick={onRanking} title="按我负责的指标合计排名,支持下钻" />
         <CardBtn icon={BarChart3} label="各单位排名" onClick={onBoard} title="全量总分排名 + 邻近名次" />
         <span
@@ -237,7 +224,7 @@ function CardBtn({
   onClick,
   title,
 }: {
-  icon: typeof Play;
+  icon: typeof ClipboardList;
   label: string;
   onClick: () => void;
   title: string;
