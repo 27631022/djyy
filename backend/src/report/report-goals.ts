@@ -284,7 +284,7 @@ export interface GoalProgressItem {
   money: boolean; // 金额类(显示 ¥);count/分组为 false
   actual: number | null; // 实际值(分组=各堆之和总计)
   target: number | null; // 逐单位目标值(参考;无则 null)
-  rate: number | null; // 完成率 % = 实际/目标(target>0 时;中性,无达标判断)
+  rate: number | null; // 完成率 %:目标>0=实际/目标;目标=0(显式,无最低要求)=100;未设目标=null。中性,无达标判断
   groups?: GoalGroupStat[]; // 分组明细(每季度的数…)
 }
 
@@ -380,7 +380,10 @@ export function computeGoalProgress(
     const metric = (goal.metricCol ? colByKey.get(goal.metricCol) : undefined) ?? (goal.agg === 'count' ? undefined : defaultMetric);
     const money = goal.agg !== 'count' && !!metric?.isCents;
     const matched = lines.filter((l) => lineMatches(goal, l, colByKey));
-    const target = Number(perUnitTargets[goal.key]) || 0;
+    // 目标:区分「未设」(无 key → 不评完成率,rate=null)与「显式 0」(下达要求就是 0 → 无最低要求,视同 100% 完成)
+    const rawTarget: number | undefined = perUnitTargets[goal.key];
+    const hasTarget = typeof rawTarget === 'number' && Number.isFinite(rawTarget);
+    const target = hasTarget ? rawTarget : 0;
 
     // ── 分组(每季度/每月/每维度值):列出每堆实际值,总计 = 各堆之和 ──
     if (goal.groupBy) {
@@ -398,13 +401,13 @@ export function computeGoalProgress(
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([label, ls]) => ({ label, value: round2(aggregate(goal.agg, metric, ls)) }));
       const total = round2(groupStats.reduce((s, g) => s + g.value, 0));
-      const rate = target > 0 ? round1((total / target) * 100) : null;
-      return { key: goal.key, label: goal.label, grouped: true, money, actual: total, target: target || null, rate, groups: groupStats };
+      const rate = !hasTarget ? null : target > 0 ? round1((total / target) * 100) : 100;
+      return { key: goal.key, label: goal.label, grouped: true, money, actual: total, target: hasTarget ? target : null, rate, groups: groupStats };
     }
 
     // ── 不分组:一个实际值 S ──
     const s = round2(aggregate(goal.agg, metric, matched));
-    const rate = target > 0 ? round1((s / target) * 100) : null;
-    return { key: goal.key, label: goal.label, grouped: false, money, actual: s, target: target || null, rate };
+    const rate = !hasTarget ? null : target > 0 ? round1((s / target) * 100) : 100;
+    return { key: goal.key, label: goal.label, grouped: false, money, actual: s, target: hasTarget ? target : null, rate };
   });
 }
