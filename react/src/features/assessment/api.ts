@@ -497,6 +497,8 @@ export const assessmentApi = {
   /** 确认完成:把我本轮负责的全部指标标记已确认 */
   confirmMineInRound: (roundId: string) =>
     api.post<{ confirmed: number }>(`/assessment/rounds/${roundId}/confirm-mine`, {}).then((r) => r.data),
+  /** 「我的考核」:我有负责指标的轮次 + 确认进度(打分人入口 + 实时角标)*/
+  myAssessments: () => api.get<{ items: MyAssessmentItem[] }>("/assessment/my-assessments").then((r) => r.data),
 };
 
 /** 「我的本轮确认」状态(打分页「确认完成」按钮)*/
@@ -505,6 +507,17 @@ export interface MyRoundConfirm {
   confirmed: number;
   pending: number;
   leaves: { leafCode: string; leafLabel: string; status: ConfirmStatus }[];
+}
+
+/** 「我的考核」一项(打分人入口列表)*/
+export interface MyAssessmentItem {
+  roundId: string;
+  name: string;
+  year: number;
+  status: string;
+  myLeaves: number;
+  myConfirmed: number;
+  myPending: number;
 }
 
 /** 报送取数:可选源(有目标的报送任务 + 目标)*/

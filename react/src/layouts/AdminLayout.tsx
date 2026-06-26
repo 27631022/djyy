@@ -6,20 +6,21 @@ import {
   BuildingIcon, ShieldIcon, UserIcon, BookTextIcon,
   EyeIcon, ThumbsUpIcon, MessageSquareIcon,
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
-  AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon, ClipboardCheckIcon, ClipboardListIcon,
+  AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon, ClipboardCheckIcon, ClipboardListIcon, BadgeCheckIcon,
   PanelLeftCloseIcon, PanelLeftOpenIcon,
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon,
   ArmchairIcon, PlusIcon, LandmarkIcon, PackageIcon, LibraryIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 import { useDesktopInboxAlerts } from "@/features/task";
+import { useMyAssessmentBadge } from "@/features/assessment";
 import { SiteLogo } from "@/features/site-setting";
 import { resolveAvatarUrl } from "@/features/avatar";
 
 /* ─── 顶部一级分类 → 联动左侧二级菜单 ─── */
 /** group:可选的二级菜单分组标题(同 group 的项聚在一个小标题下) */
 /** perm:需要的权限点(无则人人可见;platform_admin 直通看全部) */
-interface MenuItem { path: string; label: string; icon: React.ElementType; disabled?: boolean; group?: string; perm?: string; }
+interface MenuItem { path: string; label: string; icon: React.ElementType; disabled?: boolean; group?: string; perm?: string; badgeKey?: string; }
 interface Category { id: string; label: string; icon: React.ElementType; items: MenuItem[]; }
 
 const CATEGORIES: Category[] = [
@@ -69,6 +70,7 @@ const CATEGORIES: Category[] = [
       { path: "/admin/venue/seating/new/wizard", label: "新建会议",        icon: PlusIcon,       group: "会场管理", perm: "venue:manage" },
       { path: "/admin/assessment/schemes",       label: "考核表",          icon: ClipboardCheckIcon, group: "考核管理", perm: "assessment:manage" },
       { path: "/admin/assessment/rounds",        label: "考核打分",        icon: ClipboardListIcon,  group: "考核管理", perm: "assessment:manage" },
+      { path: "/admin/assessment/mine",          label: "我的考核",        icon: BadgeCheckIcon,     group: "考核管理", badgeKey: "myAssessment" }, // 无 perm = 人人可见(打分人入口 + 实时角标)
       { path: "/admin/reports",                  label: "多次报送",        icon: ClipboardCheckIcon, group: "报送管理", perm: "report:manage" },
       { path: "/admin/reports/catalog",          label: "报送清单",        icon: PackageIcon,        group: "报送管理", perm: "report:manage" },
     ],
@@ -100,14 +102,16 @@ function SidebarMenuItem({
   active,
   collapsed,
   onNavigate,
+  badge = 0,
 }: {
   item: MenuItem;
   active: boolean;
   collapsed: boolean;
   onNavigate: (path: string) => void;
+  badge?: number;
 }) {
   const Icon = item.icon;
-  const base = `flex items-center gap-2 rounded-lg text-sm transition-all ${
+  const base = `relative flex items-center gap-2 rounded-lg text-sm transition-all ${
     collapsed ? "justify-center px-0 py-2" : "px-3 py-2"
   }`;
   if (item.disabled) {
@@ -138,6 +142,12 @@ function SidebarMenuItem({
     >
       <Icon className="w-4 h-4 flex-shrink-0" />
       {!collapsed && <span className="truncate">{item.label}</span>}
+      {!collapsed && badge > 0 && (
+        <span className="ml-auto px-1.5 min-w-[18px] h-[18px] inline-flex items-center justify-center rounded-full text-[10px] font-bold text-white bg-red-500 flex-shrink-0">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
+      {collapsed && badge > 0 && <span className="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-red-500" />}
     </button>
   );
 }
@@ -155,6 +165,8 @@ export default function AdminLayout() {
   const { me } = useAuth();
   // 桌面客户端(Tauri)后台待办提醒;浏览器里 no-op
   useDesktopInboxAlerts(!!me);
+  // 「我的考核」实时角标:待我确认的指标项数(登录后轮询)
+  const myAssessBadge = useMyAssessmentBadge(!!me);
 
   /* ── 按权限过滤菜单(platform_admin 直通;无 perm 的项人人可见,如「我的待办」)── */
   const visibleCategories = useMemo(() => {
@@ -405,6 +417,7 @@ export default function AdminLayout() {
                         active={it.path === currentPath}
                         collapsed={sidebarCollapsed}
                         onNavigate={navigate}
+                        badge={it.badgeKey === "myAssessment" ? myAssessBadge : 0}
                       />
                     ))}
                 </div>

@@ -53,7 +53,7 @@ function ResultsInner({ round, onBack }: { round: AssessmentRound; onBack: () =>
           targets={targets}
           leafMeta={leafMeta}
           meId={me?.id}
-          isManager={me?.permissions?.includes("assessment:manage") ?? false}
+          isManager={(me?.isPlatformAdmin || me?.permissions?.includes("assessment:manage")) ?? false}
         />
       ) : (
         <BoardTab targets={targets} />

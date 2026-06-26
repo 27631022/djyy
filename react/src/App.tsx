@@ -41,7 +41,7 @@ import {
   CertificateExternalPage,
   CertificateVerifyPage,
 } from "@/features/certificate";
-import { SchemeListPage, SchemeEditorPage, RoundListPage, RoundDetailPage, AssessmentResultsPage } from "@/features/assessment";
+import { SchemeListPage, SchemeEditorPage, RoundListPage, RoundDetailPage, AssessmentResultsPage, MyAssessmentsPage } from "@/features/assessment";
 import { ReportTasksPage, ReportCatalogPage, ReportCreatePage, PublishChooserPage, ReportFillPage, ReportDetailPage } from "@/features/report";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
@@ -187,6 +187,7 @@ const App = () => (
             <Route path="assessment/schemes/:id/results" element={<AssessmentResultsPage />} />
             <Route path="assessment/rounds" element={<RoundListPage />} />
             <Route path="assessment/rounds/:id" element={<RoundDetailPage />} />
+            <Route path="assessment/mine" element={<MyAssessmentsPage />} />
             {/* 通用报送平台(report) */}
             <Route path="reports" element={<ReportTasksPage />} />
             <Route path="reports/publish" element={<PublishChooserPage />} />

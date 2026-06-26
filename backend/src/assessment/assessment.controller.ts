@@ -188,7 +188,6 @@ export class AssessmentController {
 
   /** POST /assessment/rounds/:id/scores  批量录入指标原始值(责任部门打分) */
   @Post('rounds/:id/scores')
-  @Permission('assessment:score')
   saveScores(
     @Param('id') id: string,
     @Body() dto: SaveScoresDto,
@@ -254,5 +253,11 @@ export class AssessmentController {
   @Post('rounds/:id/confirm-mine')
   confirmMineInRound(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.svc.confirmMineInRound(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** GET /assessment/my-assessments  「我的考核」:我有负责指标的轮次 + 确认进度(打分人入口 + 实时角标)— 登录即可 */
+  @Get('my-assessments')
+  myAssessments(@CurrentUser() me: AuthPayload) {
+    return this.svc.myAssessments(me.sub);
   }
 }

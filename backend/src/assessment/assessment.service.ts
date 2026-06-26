@@ -393,8 +393,22 @@ export class AssessmentService {
 
   /** 录入/更新一批指标原始值(责任部门打分)。rawValue 存 JSON 串(number/bool/label)。 */
   async saveScores(roundId: string, entries: unknown, ctx: ActorCtx) {
-    await this.getRoundOrThrow(roundId);
+    const round = await this.getRoundOrThrow(roundId);
     if (!Array.isArray(entries)) throw new BadRequestException('scores 必须是数组');
+
+    // 权限:有 assessment:manage / platform_admin → 录全部;否则只能录自己负责的指标(责任人身份即授权)
+    const actorId = ctx.actorId ?? '';
+    const { isPlatformAdmin, entries: mgrScopes } = await this.roles.getScopesForPermission(
+      actorId,
+      'assessment:manage',
+    );
+    let allowed: Set<string> | null = null; // null = 不限(管理员)
+    if (!isPlatformAdmin && mgrScopes.length === 0) {
+      const { leaves } = this.confirmLeavesOfRound(round);
+      allowed = new Set(leaves.filter((l) => l.ownerUserIds.includes(actorId)).map((l) => l.leafCode));
+      if (!allowed.size) throw new ForbiddenException('你在本轮没有负责的考核指标,不能录入打分');
+    }
+
     const norm: { targetRef: string; leafCode: string; data: { rawValue?: string | null; note?: string | null } }[] =
       [];
     for (const item of entries) {
@@ -403,6 +417,7 @@ export class AssessmentService {
       const targetRef = typeof o.targetRef === 'string' ? o.targetRef.trim() : '';
       const leafCode = typeof o.leafCode === 'string' ? o.leafCode.trim() : '';
       if (!targetRef || !leafCode) continue;
+      if (allowed && !allowed.has(leafCode)) throw new ForbiddenException('只能录入你负责的考核指标');
       const data: { rawValue?: string | null; note?: string | null } = {};
       if ('rawValue' in o)
         data.rawValue = o.rawValue === undefined || o.rawValue === null ? null : JSON.stringify(o.rawValue);
@@ -644,6 +659,49 @@ export class AssessmentService {
     await this.prisma.$transaction(ops);
     await this.audit.log({ ...ctx, action: 'assessment.round.confirm_mine', target: roundId, detail: { count: mine.length } });
     return { confirmed: mine.length };
+  }
+
+  /**
+   * 「我的考核」:打分人入口 —— 列出我有负责指标的各轮次 + 我的确认进度。
+   * 跨考核表 / 轮次扫描(轮次量级小);用于人人可见的「我的考核」页 + 实时角标。
+   */
+  async myAssessments(actorId: string) {
+    const rounds = await this.prisma.assessmentRound.findMany({
+      orderBy: [{ year: 'desc' }, { createdAt: 'desc' }],
+    });
+    const myRows = await this.prisma.assessmentScoreConfirm.findMany({ where: { userId: actorId } });
+    const confirmedByRound = new Map<string, Set<string>>();
+    for (const r of myRows) {
+      if (r.status !== 'confirmed') continue;
+      if (!confirmedByRound.has(r.roundId)) confirmedByRound.set(r.roundId, new Set());
+      confirmedByRound.get(r.roundId)!.add(r.leafCode);
+    }
+    const items: {
+      roundId: string;
+      name: string;
+      year: number;
+      status: string;
+      myLeaves: number;
+      myConfirmed: number;
+      myPending: number;
+    }[] = [];
+    for (const round of rounds) {
+      const { leaves } = this.confirmLeavesOfRound(round);
+      const mine = leaves.filter((l) => l.ownerUserIds.includes(actorId));
+      if (!mine.length) continue;
+      const confirmedSet = confirmedByRound.get(round.id) ?? new Set<string>();
+      const myConfirmed = mine.filter((l) => confirmedSet.has(l.leafCode)).length;
+      items.push({
+        roundId: round.id,
+        name: round.name,
+        year: round.year,
+        status: round.status,
+        myLeaves: mine.length,
+        myConfirmed,
+        myPending: mine.length - myConfirmed,
+      });
+    }
+    return { items };
   }
 
   /** 试算:用一个计分工具 + 参数 + 样例原始值算得分(配置时即时预览;权威,前端不重复实现公式)。 */
