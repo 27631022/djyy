@@ -22,7 +22,7 @@
 
 ### assessment 模块(5 表,均 `// @module: assessment`)
 - **`AssessmentScheme`**(考核表):`name / year / track(party|admin) / targetLevel / indicatorsJson / targetsJson / gradeRulesJson / settingsJson / status(draft|active|archived) / createdById`。**不做模板**,复用=整体复制(`/schemes/:id/duplicate`)。
-- **`AssessmentRound`**(轮次):创建时**快照**考核表(`indicatorsJson/targetsJson/settingsJson/gradeRulesJson`)→ 与日后改表解耦。`resultsJson` = `computeRound` 产出;`status(open|done)`。`scores`/`confirms`/`snapshots` 反向关系。
+- **`AssessmentRound`**(轮次):创建时**快照**考核表(`indicatorsJson/targetsJson/settingsJson/gradeRulesJson`)。⚠ **一轮制下 `update` scheme 会把这 4 个字段同步到该表进行中的轮次**(`updateMany where schemeId`)—— 否则「考核已发起后换人 / 加打分人 / 改指标」时,新责任人/新指标在 round 快照里看不到(`myAssessments` / 打分页 / 打分权限都读 round 快照)。历史成绩由「季度结果快照」留档,不受同步影响;`resultsJson` 同步后需重新「计算」才更新。`status(open|done)`。`scores`/`confirms`/`snapshots` 反向关系。
 - **`IndicatorScore`**(指标得分):`@@unique([roundId, targetRef, leafCode])`。`rawValue`(原始度量 JSON 串:number/bool/"label"/扣分明细对象)、`note`、`evidenceFileIds`(佐证,P3 留)。一格 = 一个(轮次×对象×叶子)。
 - **`AssessmentScoreConfirm`**(分数确认会签):`@@unique([roundId, leafCode, userId])`。`status(pending|confirmed)` + `confirmedAt` + `note`(预留申诉)。
 - **`AssessmentResultSnapshot`**(季度结果快照):`@@index([roundId])`。`label`(用户命名,如「1季度结果」)+ `resultsJson`(生成那一刻 `computeRound` 产出的**冻结副本**,同 RoundResults 形状)+ `note?` + `createdById`。**一轮制下不重开轮**,到季度/截止日手动定格 + 历次对比;round 删除级联删快照。

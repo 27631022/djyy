@@ -296,11 +296,30 @@ export class AssessmentService {
     if (dto.settings !== undefined) data.settingsJson = JSON.stringify(dto.settings);
 
     const scheme = await this.prisma.assessmentScheme.update({ where: { id }, data });
+
+    // 一轮制(一表一轮、不重开):把考核内容/对象/设置/定级的改动同步到该考核表「进行中的轮次」。
+    // 否则「考核已发起后换人 / 加打分人」时,新责任人看不到 —— myAssessments / 打分页 / 打分权限
+    // 都读 round 创建时冻结的 indicatorsJson 快照。历史成绩由「季度结果快照」单独留档,不受此同步影响。
+    const roundData: {
+      indicatorsJson?: string;
+      targetsJson?: string;
+      settingsJson?: string;
+      gradeRulesJson?: string;
+    } = {};
+    if (typeof data.indicatorsJson === 'string') roundData.indicatorsJson = data.indicatorsJson;
+    if (typeof data.targetsJson === 'string') roundData.targetsJson = data.targetsJson;
+    if (typeof data.settingsJson === 'string') roundData.settingsJson = data.settingsJson;
+    if (typeof data.gradeRulesJson === 'string') roundData.gradeRulesJson = data.gradeRulesJson;
+    const synced = Object.keys(roundData).length > 0;
+    if (synced) {
+      await this.prisma.assessmentRound.updateMany({ where: { schemeId: id }, data: roundData });
+    }
+
     await this.audit.log({
       ...ctx,
       action: 'assessment.scheme.update',
       target: id,
-      detail: { keys: Object.keys(data) },
+      detail: { keys: Object.keys(data), syncedToRounds: synced },
     });
     return scheme;
   }
