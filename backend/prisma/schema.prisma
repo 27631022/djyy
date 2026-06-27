@@ -956,8 +956,9 @@ model AssessmentRound {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  scores   IndicatorScore[]
-  confirms AssessmentScoreConfirm[]
+  scores    IndicatorScore[]
+  confirms  AssessmentScoreConfirm[]
+  snapshots AssessmentResultSnapshot[]
 
   @@index([schemeId])
   @@index([year])
@@ -1001,6 +1002,23 @@ model IndicatorScore {
   updatedAt       DateTime        @updatedAt
 
   @@unique([roundId, targetRef, leafCode])
+  @@index([roundId])
+}
+
+// @module: assessment
+// 考核结果快照:一轮制下「不重开轮」,到季度/截止日由管理员「手动生成并命名」一个只读结果定格
+// (如「1季度结果」「上半年结果」)。打分继续在同一轮累积;快照 = 生成那一刻 computeRound 产出的
+// 冻结副本(resultsJson 同 RoundResults 形状),供历次对比 / 留档。
+model AssessmentResultSnapshot {
+  id          String          @id @default(cuid())
+  roundId     String
+  round       AssessmentRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  label       String // 用户命名:「1季度结果」「上半年结果」
+  resultsJson String          @default("{}") // 生成时刻 computeRoundResults 产出快照({computedAt, targets:[…]})
+  note        String? // 备注(可选)
+  createdById String?
+  createdAt   DateTime        @default(now())
+
   @@index([roundId])
 }
 

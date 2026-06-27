@@ -12,7 +12,7 @@ import { ReportService } from '../report';
 import { flattenLeaves, normalizeIndicatorTree, type IndicatorNode } from './indicator-tree';
 import { getDataSourceSpec, effectiveOutputType } from './data-sources';
 import { getScoringSpec, isInputCompatible, type ScoreCtx } from './scoring-strategies';
-import { computeRoundResults, previewIndicator } from './round-engine';
+import { computeRoundResults, previewIndicator, type RoundResults } from './round-engine';
 import {
   RELATIONS,
   adminSubjectsOf,
@@ -436,9 +436,16 @@ export class AssessmentService {
     return { ok: true, count: ops.length };
   }
 
-  /** 计算轮次:取数→计分→×难易系数→排名→加权汇总→定级,产出写 resultsJson。 */
-  async computeRound(roundId: string, ctx: ActorCtx) {
-    const round = await this.getRoundOrThrow(roundId);
+  /**
+   * 纯计算一轮结果(取数→计分→×难易系数→排名→加权汇总→定级),不回写。
+   * computeRound(回写轮次)与 createSnapshot(冻结快照)共用,避免计算口径漂移。
+   */
+  private async runCompute(round: {
+    id: string;
+    indicatorsJson: string;
+    targetsJson: string;
+    gradeRulesJson: string;
+  }): Promise<RoundResults> {
     const indicators = safeJson<IndicatorNode[]>(round.indicatorsJson, []);
     const targetsRaw = safeJson<{ orgId?: string; userId?: string; name: string }[]>(round.targetsJson, []);
     const targets = targetsRaw
@@ -446,7 +453,7 @@ export class AssessmentService {
       .filter((t) => t.ref);
     const gradeRules = safeJson<Record<string, unknown>>(round.gradeRulesJson, {});
 
-    const scores = await this.prisma.indicatorScore.findMany({ where: { roundId } });
+    const scores = await this.prisma.indicatorScore.findMany({ where: { roundId: round.id } });
     const raw: Record<string, Record<string, unknown>> = {};
     for (const sc of scores) {
       if (!raw[sc.targetRef]) raw[sc.targetRef] = {};
@@ -466,13 +473,76 @@ export class AssessmentService {
       }
     }
 
-    const results = computeRoundResults(indicators, targets, gradeRules, raw, new Date().toISOString());
+    return computeRoundResults(indicators, targets, gradeRules, raw, new Date().toISOString());
+  }
+
+  /** 计算轮次:取数→计分→×难易系数→排名→加权汇总→定级,产出写 resultsJson。 */
+  async computeRound(roundId: string, ctx: ActorCtx) {
+    const round = await this.getRoundOrThrow(roundId);
+    const results = await this.runCompute(round);
     await this.prisma.assessmentRound.update({
       where: { id: roundId },
       data: { resultsJson: JSON.stringify(results), status: 'done' },
     });
-    await this.audit.log({ ...ctx, action: 'assessment.round.compute', target: roundId, detail: { targets: targets.length } });
+    await this.audit.log({ ...ctx, action: 'assessment.round.compute', target: roundId, detail: { targets: results.targets.length } });
     return results;
+  }
+
+  // ─── 季度结果快照(一轮制下「不重开轮」,到季度/截止日手动定格 + 历次对比)───
+
+  /**
+   * 生成一份只读结果快照:用当前最新录入算一次 → 冻结并命名(打分继续在同一轮累积)。
+   * 快照那一刻即「当前最新」,顺带把轮次当前结果同步(让「当前」与刚生成的快照一致)。
+   */
+  async createSnapshot(roundId: string, dto: { label: string; note?: string }, ctx: ActorCtx) {
+    const round = await this.getRoundOrThrow(roundId);
+    const label = (dto.label ?? '').trim();
+    if (!label) throw new BadRequestException('请填写快照名称(如「1季度结果」)');
+    const results = await this.runCompute(round);
+    const resultsJson = JSON.stringify(results);
+    await this.prisma.assessmentRound.update({
+      where: { id: roundId },
+      data: { resultsJson, status: 'done' },
+    });
+    const snap = await this.prisma.assessmentResultSnapshot.create({
+      data: {
+        roundId,
+        label,
+        note: typeof dto.note === 'string' && dto.note.trim() ? dto.note.trim() : null,
+        resultsJson,
+        createdById: ctx.actorId ?? null,
+      },
+    });
+    await this.audit.log({
+      ...ctx,
+      action: 'assessment.snapshot.create',
+      target: snap.id,
+      detail: { roundId, label, targets: results.targets.length },
+    });
+    return snap;
+  }
+
+  /** 列某轮次的结果快照(按时间正序;含 resultsJson —— 量小,供切换/对比直接用)。 */
+  async listSnapshots(roundId: string) {
+    await this.getRoundOrThrow(roundId);
+    return this.prisma.assessmentResultSnapshot.findMany({
+      where: { roundId },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /** 删除一份结果快照(管理员清理误建)。 */
+  async removeSnapshot(snapshotId: string, ctx: ActorCtx) {
+    const snap = await this.prisma.assessmentResultSnapshot.findUnique({ where: { id: snapshotId } });
+    if (!snap) throw new NotFoundException('结果快照不存在');
+    await this.prisma.assessmentResultSnapshot.delete({ where: { id: snapshotId } });
+    await this.audit.log({
+      ...ctx,
+      action: 'assessment.snapshot.delete',
+      target: snapshotId,
+      detail: { roundId: snap.roundId, label: snap.label },
+    });
+    return { ok: true };
   }
 
   // ─── 分数确认会签(轮次 × 叶子指标 × 责任人) ───

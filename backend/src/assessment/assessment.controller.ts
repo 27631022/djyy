@@ -27,6 +27,7 @@ import { ReportQueryPreviewDto } from './dto/report-query-preview.dto';
 import { GenerateCriteriaDto } from './dto/generate-criteria.dto';
 import { CreateRoundDto } from './dto/create-round.dto';
 import { SaveScoresDto } from './dto/save-scores.dto';
+import { CreateSnapshotDto } from './dto/create-snapshot.dto';
 import { ConfirmRequestDto } from './dto/confirm-request.dto';
 import { ConfirmIndicatorDto } from './dto/confirm-indicator.dto';
 
@@ -202,6 +203,33 @@ export class AssessmentController {
   @Permission('assessment:manage')
   computeRound(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.svc.computeRound(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  // ─── 季度结果快照(一轮制下手动定格 + 历次对比)───
+
+  /** POST /assessment/rounds/:id/snapshots  生成季度结果快照(用当前最新录入算一次并命名冻结) */
+  @Post('rounds/:id/snapshots')
+  @Permission('assessment:manage')
+  createSnapshot(
+    @Param('id') id: string,
+    @Body() dto: CreateSnapshotDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.createSnapshot(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** GET /assessment/rounds/:id/snapshots  某轮次的结果快照列表(含 resultsJson,供切换/对比)— 登录即可 */
+  @Get('rounds/:id/snapshots')
+  listSnapshots(@Param('id') id: string) {
+    return this.svc.listSnapshots(id);
+  }
+
+  /** DELETE /assessment/snapshots/:snapshotId  删除一份结果快照 */
+  @Delete('snapshots/:snapshotId')
+  @Permission('assessment:manage')
+  removeSnapshot(@Param('snapshotId') snapshotId: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.removeSnapshot(snapshotId, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
   // ─── 分数确认会签 ───

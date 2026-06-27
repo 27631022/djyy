@@ -20,11 +20,12 @@
 
 ## 1. 数据模型(5 张表)
 
-### assessment 模块(4 表,均 `// @module: assessment`)
+### assessment 模块(5 表,均 `// @module: assessment`)
 - **`AssessmentScheme`**(考核表):`name / year / track(party|admin) / targetLevel / indicatorsJson / targetsJson / gradeRulesJson / settingsJson / status(draft|active|archived) / createdById`。**不做模板**,复用=整体复制(`/schemes/:id/duplicate`)。
-- **`AssessmentRound`**(轮次):创建时**快照**考核表(`indicatorsJson/targetsJson/settingsJson/gradeRulesJson`)→ 与日后改表解耦。`resultsJson` = `computeRound` 产出;`status(open|done)`。`scores`/`confirms` 反向关系。
+- **`AssessmentRound`**(轮次):创建时**快照**考核表(`indicatorsJson/targetsJson/settingsJson/gradeRulesJson`)→ 与日后改表解耦。`resultsJson` = `computeRound` 产出;`status(open|done)`。`scores`/`confirms`/`snapshots` 反向关系。
 - **`IndicatorScore`**(指标得分):`@@unique([roundId, targetRef, leafCode])`。`rawValue`(原始度量 JSON 串:number/bool/"label"/扣分明细对象)、`note`、`evidenceFileIds`(佐证,P3 留)。一格 = 一个(轮次×对象×叶子)。
 - **`AssessmentScoreConfirm`**(分数确认会签):`@@unique([roundId, leafCode, userId])`。`status(pending|confirmed)` + `confirmedAt` + `note`(预留申诉)。
+- **`AssessmentResultSnapshot`**(季度结果快照):`@@index([roundId])`。`label`(用户命名,如「1季度结果」)+ `resultsJson`(生成那一刻 `computeRound` 产出的**冻结副本**,同 RoundResults 形状)+ `note?` + `createdById`。**一轮制下不重开轮**,到季度/截止日手动定格 + 历次对比;round 删除级联删快照。
 
 ### organization 模块(1 表)
 - **`PartyAdminLink`**(党组织↔行政机构 N:M):`partyOrgId / adminOrgId`。手动维护(组织页编辑抽屉「关联机构」tab)。用于党建考核对象(党组织)经映射读行政侧业务数据。`OrganizationService.getLinkedAdminOrgs(partyOrgId)` / `getAllLinks()`。
@@ -110,6 +111,9 @@
 - **`POST rounds/:id/scores`(登录 + service 判责任人!)** —— 见权限节
 - `POST rounds/:id/compute`(manage,计算)
 
+**季度结果快照:**
+- `POST rounds/:id/snapshots`(manage,生成定格=用当前最新录入算一次 + 命名)/ `GET rounds/:id/snapshots`(登录,列表含 resultsJson 供切换/对比)/ `DELETE snapshots/:snapshotId`(manage,删除;round 删时级联)
+
 **确认会签:**
 - `POST rounds/:id/confirm-request`(manage,发起/重新发起确认)/ `GET rounds/:id/confirm`(manage,进度+电话)
 - `GET confirm/mine`(登录,跨轮次我的确认 —— ⚠ **现孤儿**,MyConfirmations 页已删,可清)
@@ -172,7 +176,7 @@
 配置层:考核表 CRUD + 整体复制 / 指标树编辑器(拖拽+撤销重做)/ 双注册表(12 计分工具 + 数据源)/ 难易系数 / 定级预设 / 考核关系收敛(7 条,按登录账号判主体)/ 考核对象自动带出 / AI 生成指标 + AI 评分标准 / report.query 报送取数(党组织经 PartyAdminLink 换算)。
 打分闭环:发起轮次(快照)/ 三栏按指标录入(每数据源 inputType 对应控件)/ 计算(取数→计分→难易系数→排名→汇总→定级)/ 汇总结果。
 协作:三层角色(配置+展示)/ 分数确认会签(管理员发起 → 打分人「确认完成」→ 管理员看谁没确认+电话)。
-入口/展示:**一轮制**(考核表卡片合并按钮)/ 考核排名②(按责任指标合计+下钻+跳打分)/ 各单位排名③(全量榜+邻近)/ 打分页规则展示(本指标 rubric)/ **打分人入口「我的考核」+ 实时角标** / 打分页按管理员/打分人收敛控件。
+入口/展示:**一轮制**(考核表卡片合并按钮)/ 考核排名②(按责任指标合计+下钻+跳打分)/ 各单位排名③(全量榜+邻近)/ 打分页规则展示(本指标 rubric)/ **打分人入口「我的考核」+ 实时角标** / 打分页按管理员/打分人收敛控件 / **季度结果快照**(结果页时点切换 + 生成命名 + 各单位排名历次升降对比 + 只读冻结)。
 权限:**打分/确认改登录+判责任人**(责任人身份即授权);管理留 `assessment:manage`;修了 platform_admin 检测。
 
 ### 相关 git 提交(`git log --oneline | grep assessment`)
@@ -182,7 +186,8 @@
 
 ## 7. 下一步路线(用户已对齐 / 待办)
 
-1. **★ 季度结果快照(用户明确要,下一步首选)**:一轮制下不重开轮,改成「到季度/截止日**手动生成并命名**一个**只读结果快照**(如 1季度结果、2季度结果)」。打分继续在同一轮累积。**需:新表(如 `AssessmentResultSnapshot`{roundId,label,computedAt,resultsJson})+ 生成/查看端点 + 「我的考核结果」可看当前+历次快照对比**。
+1. ✅ **季度结果快照(已完成 2026-06-27)**:新表 `AssessmentResultSnapshot`(roundId/label/resultsJson/note/createdById,round 删级联)+ 端点 `POST/GET rounds/:id/snapshots`、`DELETE snapshots/:id`(生成/删=manage、看=登录)+ service `runCompute`(从 computeRound 抽出,供「计算回写」与「快照冻结」共用,杜绝口径漂移)。结果页(`AssessmentResults`)加**时点切换条**(当前实时 + 历次快照 chips)、管理员**生成命名**(弹窗,默认「N季度结果」)/删除、各单位排名**历次升降对比**(↑↓ 较上一时点;首个快照无对比)、快照视图**只读冻结**(隐藏「去完善」)。打分继续在同一轮累积,快照互不影响。e2e + 浏览器(含中文 label 往返)全验。
+   - ⏭ 余项(可做):「我的考核」(打分人/被考核方)入口看历次快照结果对比 —— 当前快照查看入口在管理员结果页;被考核单位多为组织无登录账号,有自助查询需求再加。
 2. **单位考核报告页(④,P2)**:登录路由(后台+桌面端复用,不做匿名公开),从①「单位报告」按钮 / ③ 单位行进入。体检报告(leafScores 按一级/二级分组,加/减明细)+ Recharts 雷达图(`recharts@2.15.4` 已装,按一级或二级目录,得分率 vs 平均)+ 问题与建议(规则版 `buildIssues` + 「AI 生成」按钮:新增 `ai-prompts.ts` 一条 + `ai-consumers.ts` 一条 chat + `assessment-extraction.generateIssues`;AI 不可达→规则兜底)。
 3. **业务数据源接入**:`business.task.*`(任务完成率/逾期 —— 需 `TaskService.getStatsByOrg`)、`business.certificate.honor`(荣誉积分 —— cert recipientUserId→memberships 反查 + `countByOrg`)、`self_report`(自评+佐证+核定)、`survey`(群众打分)、`assessment.result/grade`(他考核→业绩兑现)。均经 `getLinkedAdminOrgs` 党委→行政取数。
 4. **清理**:`GET confirm/mine` + `POST confirm/:leafCode` 已成孤儿(MyConfirmations 页删了),可清;`RoundList`(考核打分菜单)在一轮制下略冗余,可评估并入考核表。

@@ -421,6 +421,27 @@ export function parseRoundResults(r: AssessmentRound): RoundResults {
   }
 }
 
+/* ─── 季度结果快照(一轮制下手动定格 + 历次对比)─── */
+
+/** 一份只读结果快照:label 命名 + 生成那一刻的 resultsJson(同 RoundResults 形状)*/
+export interface ResultSnapshot {
+  id: string;
+  roundId: string;
+  label: string;
+  resultsJson: string;
+  note: string | null;
+  createdById: string | null;
+  createdAt: string;
+}
+export function parseSnapshotResults(s: ResultSnapshot): RoundResults {
+  try {
+    const v: unknown = JSON.parse(s.resultsJson);
+    return v && typeof v === "object" ? (v as RoundResults) : {};
+  } catch {
+    return {};
+  }
+}
+
 export const assessmentApi = {
   listSchemes: () => api.get<AssessmentScheme[]>("/assessment/schemes").then((r) => r.data),
   getScheme: (id: string) => api.get<AssessmentScheme>(`/assessment/schemes/${id}`).then((r) => r.data),
@@ -463,6 +484,13 @@ export const assessmentApi = {
   computeRound: (id: string) =>
     api.post<RoundResults>(`/assessment/rounds/${id}/compute`, {}).then((r) => r.data),
   deleteRound: (id: string) => api.delete<{ ok: boolean }>(`/assessment/rounds/${id}`).then((r) => r.data),
+  /** ── 季度结果快照:列表(含 resultsJson)/ 生成 / 删除 ── */
+  listSnapshots: (roundId: string) =>
+    api.get<ResultSnapshot[]>(`/assessment/rounds/${roundId}/snapshots`).then((r) => r.data),
+  createSnapshot: (roundId: string, input: { label: string; note?: string }) =>
+    api.post<ResultSnapshot>(`/assessment/rounds/${roundId}/snapshots`, input).then((r) => r.data),
+  deleteSnapshot: (snapshotId: string) =>
+    api.delete<{ ok: boolean }>(`/assessment/snapshots/${snapshotId}`).then((r) => r.data),
   /** 单指标实时预览:各对象 ●得分 + ●# 单项排名(无状态,录入页右栏用)*/
   previewIndicator: (input: PreviewIndicatorInput) =>
     api.post<{ results: PreviewRow[] }>("/assessment/scoring/preview", input).then((r) => r.data),
