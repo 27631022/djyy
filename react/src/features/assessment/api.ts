@@ -365,6 +365,35 @@ export interface PreviewIndicatorInput {
   units: { ref: string; name: string; raw: ScoreRaw }[];
 }
 
+/* ─── 多指标合计实时预览(打分人侧:我负责的几项 单项 + 合计排名)─── */
+export interface SubtotalLeafInput {
+  code: string;
+  scoringType?: string;
+  weight?: number;
+  label?: string;
+  strategyParams?: Record<string, unknown>;
+  difficultyOn?: boolean;
+  difficultyCoefs?: Record<string, number>;
+}
+export interface SubtotalUnitInput {
+  ref: string;
+  name: string;
+  /** 该对象在各指标的当前录入值 { leafCode: raw } */
+  valuesByLeaf: Record<string, ScoreRaw>;
+}
+export interface PreviewSubtotalInput {
+  leaves: SubtotalLeafInput[];
+  units: SubtotalUnitInput[];
+}
+export interface SubtotalPreview {
+  /** leafCode → 该指标各对象 ●# 单项排名 */
+  perLeaf: Record<string, PreviewRow[]>;
+  /** 各对象合计得分 + 合计排名(score=Σ各项得分) */
+  subtotal: PreviewRow[];
+  /** 这组指标满分之和 */
+  fullScore: number;
+}
+
 /* ─── 分数确认会签(轮次 × 叶子指标 × 责任人)─── */
 export type ConfirmStatus = "pending" | "confirmed";
 /** 确认进度项(管理员视角:哪个指标、谁、状态、电话)*/
@@ -494,6 +523,12 @@ export const assessmentApi = {
   /** 单指标实时预览:各对象 ●得分 + ●# 单项排名(无状态,录入页右栏用)*/
   previewIndicator: (input: PreviewIndicatorInput) =>
     api.post<{ results: PreviewRow[] }>("/assessment/scoring/preview", input).then((r) => r.data),
+  /** 多指标合计实时预览:我负责的几项 单项 + 合计排名(打分人侧)*/
+  previewSubtotal: (input: PreviewSubtotalInput) =>
+    api.post<SubtotalPreview>("/assessment/scoring/preview-subtotal", input).then((r) => r.data),
+  /** 实时全表结果(读当前录入实时算,不落库;不依赖手动「计算」)*/
+  liveResults: (roundId: string) =>
+    api.get<RoundResults>(`/assessment/rounds/${roundId}/live-results`).then((r) => r.data),
   /** ── report.query 报送取数源 ── */
   reportQuerySources: () =>
     api.get<ReportQuerySource[]>("/assessment/report-query/sources").then((r) => r.data),

@@ -12,7 +12,7 @@ import { ReportService } from '../report';
 import { flattenLeaves, normalizeIndicatorTree, type IndicatorNode } from './indicator-tree';
 import { getDataSourceSpec, effectiveOutputType } from './data-sources';
 import { getScoringSpec, isInputCompatible, type ScoreCtx } from './scoring-strategies';
-import { computeRoundResults, previewIndicator, type RoundResults } from './round-engine';
+import { computeRoundResults, previewIndicator, previewSubtotal, type RoundResults } from './round-engine';
 import {
   RELATIONS,
   adminSubjectsOf,
@@ -855,6 +855,55 @@ export class AssessmentService {
         raw: u.raw,
       }));
     return { results: previewIndicator(leaf, units) };
+  }
+
+  /**
+   * 多指标合计实时预览(打分人侧):给「我负责的几项指标」+ 各对象当前录入 →
+   * 各项单项排名 + 合计得分/排名。无状态(不落库),前端传当前值即时出结果。
+   */
+  previewSubtotal(dto: { leaves?: unknown; units?: unknown }) {
+    const rawLeaves = Array.isArray(dto.leaves) ? dto.leaves : [];
+    const leaves: IndicatorNode[] = rawLeaves
+      .map((l) => (l && typeof l === 'object' ? (l as Record<string, unknown>) : null))
+      .filter((l): l is Record<string, unknown> => !!l && typeof l.code === 'string' && typeof l.scoringType === 'string')
+      .map((l) => {
+        const spec = getScoringSpec(l.scoringType as string);
+        return {
+          code: l.code as string,
+          label: typeof l.label === 'string' ? l.label : (l.code as string),
+          kind: 'normal' as const,
+          weight: typeof l.weight === 'number' && l.weight >= 0 ? l.weight : 0,
+          scoringType: l.scoringType as string,
+          strategyParams: spec ? spec.normalizeParams((l.strategyParams as Record<string, unknown>) ?? {}) : {},
+          difficultyOn: l.difficultyOn === true,
+          difficultyCoefs:
+            l.difficultyCoefs && typeof l.difficultyCoefs === 'object'
+              ? (l.difficultyCoefs as Record<string, number>)
+              : undefined,
+        };
+      });
+    const rawUnits = Array.isArray(dto.units) ? dto.units : [];
+    const units = rawUnits
+      .map((u) => (u && typeof u === 'object' ? (u as Record<string, unknown>) : null))
+      .filter((u): u is Record<string, unknown> => !!u && typeof u.ref === 'string')
+      .map((u) => ({
+        ref: u.ref as string,
+        name: typeof u.name === 'string' ? u.name : (u.ref as string),
+        valuesByLeaf:
+          u.valuesByLeaf && typeof u.valuesByLeaf === 'object'
+            ? (u.valuesByLeaf as Record<string, unknown>)
+            : {},
+      }));
+    return previewSubtotal(leaves, units);
+  }
+
+  /**
+   * 实时全表结果(读当前已录入 → 引擎实时算,不落库)。
+   * 公开总分榜 / 单位体检报告 / 管理员实时排名共用;让排名不依赖管理员手动「计算」。
+   */
+  async liveResults(roundId: string) {
+    const round = await this.getRoundOrThrow(roundId);
+    return this.runCompute(round);
   }
 
   /* ─── report.query 接入(报送任务取数 → 考核数据源)─── */

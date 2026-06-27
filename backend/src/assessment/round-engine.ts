@@ -103,6 +103,48 @@ export function previewIndicator(
   return sorted;
 }
 
+/** 一组指标的实时合计预览(打分人看自己负责的几项:单项 + 合计排名)。 */
+export interface SubtotalPreview {
+  /** leafCode → 该指标各对象 ●# 单项排名 */
+  perLeaf: Record<string, PreviewRow[]>;
+  /** 各对象在这组指标的合计得分 + 合计排名(score=Σ各项得分) */
+  subtotal: PreviewRow[];
+  /** 这组指标的满分之和(Σ weight) */
+  fullScore: number;
+}
+/**
+ * 多指标合计实时预览。每个指标独立按 scoreOneLeaf 算(crossTarget 用该指标全体对象值),
+ * 再按对象把各项得分相加、排名。无状态(不落库),前端传当前录入即时出结果。
+ */
+export function previewSubtotal(
+  leaves: IndicatorNode[],
+  units: { ref: string; name: string; valuesByLeaf: Record<string, unknown> }[],
+): SubtotalPreview {
+  const perLeaf: Record<string, PreviewRow[]> = {};
+  const sumByRef: Record<string, number> = {};
+  const nameByRef = new Map(units.map((u) => [u.ref, u.name] as const));
+  for (const u of units) sumByRef[u.ref] = 0;
+  let fullScore = 0;
+  for (const leaf of leaves) {
+    fullScore += Number.isFinite(leaf.weight) ? leaf.weight : 0;
+    const rows = previewIndicator(
+      leaf,
+      units.map((u) => ({ ref: u.ref, name: u.name, raw: u.valuesByLeaf?.[leaf.code] })),
+    );
+    perLeaf[leaf.code] = rows;
+    for (const r of rows) sumByRef[r.ref] = (sumByRef[r.ref] ?? 0) + r.score;
+  }
+  const subtotal: PreviewRow[] = units.map((u) => ({
+    ref: u.ref,
+    name: nameByRef.get(u.ref) ?? u.ref,
+    score: round2(sumByRef[u.ref] ?? 0),
+    rank: 0,
+  }));
+  subtotal.sort((a, b) => b.score - a.score);
+  subtotal.forEach((r, i) => (r.rank = i + 1));
+  return { perLeaf, subtotal, fullScore: round2(fullScore) };
+}
+
 export function computeRoundResults(
   indicators: IndicatorNode[],
   targets: { ref: string; name: string }[],

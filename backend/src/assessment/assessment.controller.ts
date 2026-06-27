@@ -23,6 +23,7 @@ import { CreateSchemeDto } from './dto/create-scheme.dto';
 import { UpdateSchemeDto } from './dto/update-scheme.dto';
 import { TrialScoreDto } from './dto/trial-score.dto';
 import { PreviewIndicatorDto } from './dto/preview-indicator.dto';
+import { PreviewSubtotalDto } from './dto/preview-subtotal.dto';
 import { ReportQueryPreviewDto } from './dto/report-query-preview.dto';
 import { GenerateCriteriaDto } from './dto/generate-criteria.dto';
 import { CreateRoundDto } from './dto/create-round.dto';
@@ -104,6 +105,12 @@ export class AssessmentController {
   @Post('scoring/preview')
   previewIndicator(@Body() dto: PreviewIndicatorDto) {
     return this.svc.previewIndicator(dto);
+  }
+
+  /** POST /assessment/scoring/preview-subtotal  多指标合计实时预览:各项单项 + 合计排名(打分人侧,登录即可) */
+  @Post('scoring/preview-subtotal')
+  previewSubtotal(@Body() dto: PreviewSubtotalDto) {
+    return this.svc.previewSubtotal(dto);
   }
 
   /** GET /assessment/report-query/sources  报送取数可选源:有目标的报送任务 + 目标(登录即可) */
@@ -203,6 +210,12 @@ export class AssessmentController {
   @Permission('assessment:manage')
   computeRound(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.svc.computeRound(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** GET /assessment/rounds/:id/live-results  实时全表结果(读当前录入实时算,不落库,不依赖手动计算)— 登录即可 */
+  @Get('rounds/:id/live-results')
+  liveResults(@Param('id') id: string) {
+    return this.svc.liveResults(id);
   }
 
   // ─── 季度结果快照(一轮制下手动定格 + 历次对比)───
