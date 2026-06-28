@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, type RouteObject } from "react-router-dom";
 import { useEffect, type ReactNode } from "react";
 import NavPage from "@/pages/NavPage";
 import WorkbenchPage from "@/pages/Workbench";
@@ -89,6 +89,60 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** 后台 /admin 下的全部叶子路由(相对路径)。AdminLayout 用它做多标签 keep-alive 渲染。 */
+const ADMIN_ROUTES: RouteObject[] = [
+  { index: true, element: <Navigate to="organizations" replace /> },
+  { path: "organizations", element: <OrganizationsPage /> },
+  { path: "users", element: <UsersPage /> },
+  { path: "roles", element: <RolesPage /> },
+  { path: "dictionaries", element: <DictionariesPage /> },
+  { path: "custom-fields", element: <UserCustomFieldsPage /> },
+  { path: "site-settings", element: <SiteSettingsPage /> },
+  { path: "navigation", element: <NavigationPage /> },
+  { path: "external-apis", element: <ExternalApisPage /> },
+  { path: "prompts", element: <PromptsPage /> },
+  { path: "icon-library", element: <IconLibraryPage /> },
+  { path: "certificate-templates", element: <CertificateTemplatesPage /> },
+  { path: "certificate-templates/new", element: <CertificateDesignerPage /> },
+  { path: "certificate-templates/:id/edit", element: <CertificateDesignerPage /> },
+  { path: "certificates", element: <CertificateListPage /> },
+  { path: "certificates/issue", element: <CertificateIssuePage /> },
+  { path: "certificates/external", element: <CertificateExternalPage /> },
+  { path: "tasks", element: <TaskListPage /> },
+  { path: "tasks/inbox", element: <TaskInboxPage /> },
+  { path: "tasks/fill/:targetId", element: <TaskFillPage /> },
+  { path: "tasks/new", element: <TaskCreatePage /> },
+  { path: "tasks/:id/summary", element: <TaskSummaryPage /> },
+  { path: "tasks/:id", element: <TaskDetailPage /> },
+  { path: "model3d", element: <Model3dStudioPage /> },
+  // 3D 展厅(exhibition)
+  { path: "halls", element: <HallsPage /> },
+  { path: "halls/:hallId/design", element: <HallDesignerPage /> },
+  { path: "model-library", element: <ModelLibraryPage /> },
+  { path: "exhibition-assets", element: <ExhibitionAssetsPage /> },
+  // 会场管理(venue)
+  { path: "venue/rooms", element: <VenueRoomsPage /> },
+  { path: "venue/layouts/:layoutId", element: <VenueLayoutDesignerPage /> },
+  { path: "venue/seating", element: <VenueSeatingListPage /> },
+  { path: "venue/seating/:planId", element: <VenueSeatingPlanPage /> },
+  { path: "venue/seating/:planId/arrange", element: <VenueSeatingArrangePage /> },
+  { path: "venue/seating/:planId/wizard", element: <VenueSeatingWizardPage /> },
+  // 考核系统(assessment)
+  { path: "assessment/schemes", element: <SchemeListPage /> },
+  { path: "assessment/schemes/:id", element: <SchemeEditorPage /> },
+  { path: "assessment/schemes/:id/results", element: <AssessmentResultsPage /> },
+  { path: "assessment/rounds", element: <RoundListPage /> },
+  { path: "assessment/rounds/:id", element: <RoundDetailPage /> },
+  { path: "assessment/mine", element: <MyAssessmentsPage /> },
+  // 通用报送平台(report)
+  { path: "reports", element: <ReportTasksPage /> },
+  { path: "reports/publish", element: <PublishChooserPage /> },
+  { path: "reports/new", element: <ReportCreatePage /> },
+  { path: "reports/fill/:targetId", element: <ReportFillPage /> },
+  { path: "reports/catalog", element: <ReportCatalogPage /> },
+  { path: "reports/:id", element: <ReportDetailPage /> },
+];
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <BrowserRouter>
@@ -137,65 +191,16 @@ const App = () => (
               </ProtectedRoute>
             }
           />
+          {/* /admin/* 由 AdminLayout 自己用 ADMIN_ROUTES + useRoutes 渲染(多标签 keep-alive)。
+              不再用嵌套 <Route> 子路由 —— AdminLayout 把每个打开过的标签各渲染一份并显隐切换。 */}
           <Route
-            path="/admin"
+            path="/admin/*"
             element={
               <ProtectedRoute>
-                <AdminLayout />
+                <AdminLayout routes={ADMIN_ROUTES} />
               </ProtectedRoute>
             }
-          >
-            <Route index element={<Navigate to="organizations" replace />} />
-            <Route path="organizations" element={<OrganizationsPage />} />
-            <Route path="users" element={<UsersPage />} />
-            <Route path="roles" element={<RolesPage />} />
-            <Route path="dictionaries" element={<DictionariesPage />} />
-            <Route path="custom-fields" element={<UserCustomFieldsPage />} />
-            <Route path="site-settings" element={<SiteSettingsPage />} />
-            <Route path="navigation" element={<NavigationPage />} />
-            <Route path="external-apis" element={<ExternalApisPage />} />
-            <Route path="prompts" element={<PromptsPage />} />
-            <Route path="icon-library" element={<IconLibraryPage />} />
-            <Route path="certificate-templates" element={<CertificateTemplatesPage />} />
-            <Route path="certificate-templates/new" element={<CertificateDesignerPage />} />
-            <Route path="certificate-templates/:id/edit" element={<CertificateDesignerPage />} />
-            <Route path="certificates" element={<CertificateListPage />} />
-            <Route path="certificates/issue" element={<CertificateIssuePage />} />
-            <Route path="certificates/external" element={<CertificateExternalPage />} />
-            <Route path="tasks" element={<TaskListPage />} />
-            <Route path="tasks/inbox" element={<TaskInboxPage />} />
-            <Route path="tasks/fill/:targetId" element={<TaskFillPage />} />
-            <Route path="tasks/new" element={<TaskCreatePage />} />
-            <Route path="tasks/:id/summary" element={<TaskSummaryPage />} />
-            <Route path="tasks/:id" element={<TaskDetailPage />} />
-            <Route path="model3d" element={<Model3dStudioPage />} />
-            {/* 3D 展厅(exhibition) */}
-            <Route path="halls" element={<HallsPage />} />
-            <Route path="halls/:hallId/design" element={<HallDesignerPage />} />
-            <Route path="model-library" element={<ModelLibraryPage />} />
-            <Route path="exhibition-assets" element={<ExhibitionAssetsPage />} />
-            {/* 会场管理(venue) */}
-            <Route path="venue/rooms" element={<VenueRoomsPage />} />
-            <Route path="venue/layouts/:layoutId" element={<VenueLayoutDesignerPage />} />
-            <Route path="venue/seating" element={<VenueSeatingListPage />} />
-            <Route path="venue/seating/:planId" element={<VenueSeatingPlanPage />} />
-            <Route path="venue/seating/:planId/arrange" element={<VenueSeatingArrangePage />} />
-            <Route path="venue/seating/:planId/wizard" element={<VenueSeatingWizardPage />} />
-            {/* 考核系统(assessment) */}
-            <Route path="assessment/schemes" element={<SchemeListPage />} />
-            <Route path="assessment/schemes/:id" element={<SchemeEditorPage />} />
-            <Route path="assessment/schemes/:id/results" element={<AssessmentResultsPage />} />
-            <Route path="assessment/rounds" element={<RoundListPage />} />
-            <Route path="assessment/rounds/:id" element={<RoundDetailPage />} />
-            <Route path="assessment/mine" element={<MyAssessmentsPage />} />
-            {/* 通用报送平台(report) */}
-            <Route path="reports" element={<ReportTasksPage />} />
-            <Route path="reports/publish" element={<PublishChooserPage />} />
-            <Route path="reports/new" element={<ReportCreatePage />} />
-            <Route path="reports/fill/:targetId" element={<ReportFillPage />} />
-            <Route path="reports/catalog" element={<ReportCatalogPage />} />
-            <Route path="reports/:id" element={<ReportDetailPage />} />
-          </Route>
+          />
         </Routes>
         <Toaster position="top-center" richColors closeButton />
       </AuthProvider>

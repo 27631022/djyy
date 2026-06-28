@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useRoutes, type RouteObject } from "react-router-dom";
 import {
   HomeIcon, ChevronLeftIcon, XIcon,
   NetworkIcon, BarChart2Icon, SettingsIcon,
@@ -12,6 +12,7 @@ import {
   ArmchairIcon, PlusIcon, LandmarkIcon, PackageIcon, LibraryIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
+import type { AuthMe } from "@/features/auth";
 import { useDesktopInboxAlerts } from "@/features/task";
 import { useMyAssessmentBadge } from "@/features/assessment";
 import { SiteLogo } from "@/features/site-setting";
@@ -154,12 +155,87 @@ function SidebarMenuItem({
 
 interface Tab { path: string; label: string; icon: React.ElementType; }
 
-const TABS_STORAGE_KEY = "djyy_admin_tabs_v1";
+/** 标签存储:按用户 id 分桶,杜绝换账号串号 */
+const TABS_STORAGE_PREFIX = "djyy_admin_tabs_v1";
+const LEGACY_TABS_KEY = "djyy_admin_tabs_v1"; // 旧的全局键(不分用户),首次挂载清理
+const tabsKeyFor = (uid: string) => `${TABS_STORAGE_PREFIX}::${uid}`;
 const CAT_STORAGE_KEY  = "djyy_admin_active_cat_v1";
 const SIDEBAR_COLLAPSED_KEY = "djyy_admin_sidebar_collapsed_v1";
 const GROUP_COLLAPSED_KEY = "djyy_admin_collapsed_groups_v1";
+/** 标签数量上限;超出按「最久未访问」挤掉(LRU) */
+const MAX_TABS = 12;
 
-export default function AdminLayout() {
+/** 某菜单项当前用户是否可见(platform_admin 直通;无 perm 人人可见) */
+function canSeeItem(it: MenuItem, me: AuthMe | null | undefined): boolean {
+  return !it.perm || !!me?.isPlatformAdmin || (me?.permissions ?? []).includes(it.perm);
+}
+/** 当前用户有权访问的全部菜单路径(恢复标签时按此过滤,防越权暴露) */
+function visiblePathSet(me: AuthMe | null | undefined): Set<string> {
+  const s = new Set<string>();
+  for (const c of CATEGORIES) for (const it of c.items) if (canSeeItem(it, me)) s.add(it.path);
+  return s;
+}
+/** 超出上限时挤掉「最久未访问」且非当前页的标签,直到回到上限内 */
+function evictLRU(list: Tab[], keep: string, recency: Map<string, number>): Tab[] {
+  let out = list;
+  while (out.length > MAX_TABS) {
+    let victim: string | null = null;
+    let min = Infinity;
+    for (const t of out) {
+      if (t.path === keep) continue;
+      const r = recency.get(t.path) ?? 0;
+      if (r < min) { min = r; victim = t.path; }
+    }
+    if (!victim) break;
+    out = out.filter((t) => t.path !== victim);
+  }
+  return out;
+}
+
+/* ─── 多标签 keep-alive 内容区 ─── */
+/** 每个打开过的标签各渲染一份(用 useRoutes 按其路径匹配),只显示当前页;
+    切换标签 = 显隐切换,组件不卸载 → 数据/滚动/页内状态全部保活。 */
+function KeepAliveRoutes({
+  routes,
+  alivePaths,
+  currentPath,
+}: {
+  routes: RouteObject[];
+  alivePaths: string[];
+  currentPath: string;
+}) {
+  return (
+    <div className="flex-1 min-h-0 relative">
+      {alivePaths.map((p) => {
+        const active = p === currentPath;
+        return (
+          <div
+            key={p}
+            className="absolute inset-0 overflow-auto"
+            style={{ display: active ? "block" : "none" }}
+            aria-hidden={!active}
+            inert={active ? undefined : true}
+          >
+            <RouteSlot routes={routes} path={p} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+/** 把 routes 按指定 path 匹配渲染(location 覆盖),与当前真实 URL 解耦 */
+function RouteSlot({ routes, path }: { routes: RouteObject[]; path: string }) {
+  return useRoutes(routes, path);
+}
+
+export default function AdminLayout({ routes }: { routes: RouteObject[] }) {
+  const { me } = useAuth();
+  // 切换账号 = uid 变化 → 内层整体重挂载,标签/分类等状态按新用户从其专属存储重新初始化(杜绝串号)
+  const uid = me?.id ?? "anon";
+  return <AdminLayoutInner key={uid} uid={uid} routes={routes} />;
+}
+
+function AdminLayoutInner({ uid, routes }: { uid: string; routes: RouteObject[] }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { me } = useAuth();
@@ -169,13 +245,13 @@ export default function AdminLayout() {
   const myAssessBadge = useMyAssessmentBadge(!!me);
 
   /* ── 按权限过滤菜单(platform_admin 直通;无 perm 的项人人可见,如「我的待办」)── */
-  const visibleCategories = useMemo(() => {
-    const canSee = (it: MenuItem) =>
-      !it.perm || !!me?.isPlatformAdmin || (me?.permissions ?? []).includes(it.perm);
-    return CATEGORIES.map((c) => ({ ...c, items: c.items.filter(canSee) })).filter(
-      (c) => c.items.length > 0,
-    );
-  }, [me]);
+  const visibleCategories = useMemo(
+    () =>
+      CATEGORIES.map((c) => ({ ...c, items: c.items.filter((it) => canSeeItem(it, me)) })).filter(
+        (c) => c.items.length > 0,
+      ),
+    [me],
+  );
 
   /* ── 当前所在 category(基于当前路径或本地存储) ── */
   const [activeCatId, setActiveCatId] = useState<string>(() => {
@@ -184,14 +260,17 @@ export default function AdminLayout() {
     return localStorage.getItem(CAT_STORAGE_KEY) ?? "org";
   });
 
-  /* ── 已打开 Tabs ── */
+  /* ── 已打开 Tabs(按用户分桶恢复 + 按权限过滤) ── */
   const [tabs, setTabs] = useState<Tab[]>(() => {
+    // 清理旧的全局标签键(不分用户,曾导致换账号串号)
+    localStorage.removeItem(LEGACY_TABS_KEY);
     try {
-      const raw = localStorage.getItem(TABS_STORAGE_KEY);
+      const raw = localStorage.getItem(tabsKeyFor(uid));
       if (!raw) return [];
       const parsed: { path: string; label: string }[] = JSON.parse(raw);
-      // 恢复 icon 引用
+      const allowed = visiblePathSet(me); // 越权防护:只恢复当前用户有权访问的标签
       return parsed
+        .filter((p) => allowed.has(p.path))
         .map((p) => {
           const found = findMenuItem(p.path);
           return found ? { path: p.path, label: found.item.label, icon: found.item.icon } : null;
@@ -201,6 +280,13 @@ export default function AdminLayout() {
       return [];
     }
   });
+
+  /* ── 标签栏:LRU 访问时序 / 横向滚动 / 右键菜单 ── */
+  const seqRef = useRef(0);
+  const recencyRef = useRef<Map<string, number>>(new Map());
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; path: string } | null>(null);
 
   /* ── 左侧二级菜单是否收缩 ── */
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
@@ -240,6 +326,9 @@ export default function AdminLayout() {
   */
   useEffect(() => {
     const found = findMenuItem(currentPath);
+    // 记录访问时序(供 LRU 挤出最久未访问的标签)
+    seqRef.current += 1;
+    recencyRef.current.set(currentPath, seqRef.current);
     if (!found) return;
     // URL(外部系统)→ 状态:tab 是逐次累计的「访问历史」,直链/后退也要进 tab,
     // 无法渲染期派生 —— useLocation 的变化就是订阅回调,此处 setState 属合法同步。
@@ -247,17 +336,63 @@ export default function AdminLayout() {
     setActiveCatId(found.category.id);
     setTabs((prev) => {
       if (prev.some((t) => t.path === currentPath)) return prev;
-      return [...prev, { path: currentPath, label: found.item.label, icon: found.item.icon }];
+      const next = [...prev, { path: currentPath, label: found.item.label, icon: found.item.icon }];
+      return next.length > MAX_TABS ? evictLRU(next, currentPath, recencyRef.current) : next;
     });
   }, [currentPath]);
 
-  /* 持久化 */
+  /* 标签溢出检测(显隐 ‹ › 滚动按钮);标签增减 + 容器尺寸变化时重测 */
   useEffect(() => {
-    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(tabs.map((t) => ({ path: t.path, label: t.label }))));
-  }, [tabs]);
+    const el = scrollerRef.current;
+    if (!el) return;
+    const measure = () => {
+      const o = el.scrollWidth > el.clientWidth + 1;
+      setOverflowing((prev) => (prev === o ? prev : o));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tabs.length]);
+
+  /* 当前标签自动滚入可视区 */
+  useEffect(() => {
+    scrollerRef.current
+      ?.querySelector<HTMLElement>('[data-tab-active="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [currentPath, tabs.length]);
+
+  /* 右键菜单:点击 / 右键空白 / 失焦 / Esc 关闭 */
+  useEffect(() => {
+    if (!tabMenu) return;
+    const close = () => setTabMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setTabMenu(null); };
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    window.addEventListener("blur", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+      window.removeEventListener("blur", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [tabMenu]);
+
+  /* 持久化(标签按用户分桶) */
+  useEffect(() => {
+    localStorage.setItem(tabsKeyFor(uid), JSON.stringify(tabs.map((t) => ({ path: t.path, label: t.label }))));
+  }, [tabs, uid]);
   useEffect(() => {
     localStorage.setItem(CAT_STORAGE_KEY, activeCatId);
   }, [activeCatId]);
+
+  /* keep-alive 渲染集 = 已打开标签 ∪ 当前页(详情页虽不进标签,也要渲染) */
+  const alivePaths = useMemo(() => {
+    const set = new Set(tabs.map((t) => t.path));
+    set.add(currentPath);
+    return [...set];
+  }, [tabs, currentPath]);
 
   const activeCat = useMemo(
     () => visibleCategories.find((c) => c.id === activeCatId) ?? visibleCategories[0] ?? CATEGORIES[0],
@@ -279,8 +414,7 @@ export default function AdminLayout() {
     return out;
   }, [activeCat]);
 
-  function closeTab(path: string, e: React.MouseEvent) {
-    e.stopPropagation();
+  function closeTabByPath(path: string) {
     setTabs((prev) => {
       const next = prev.filter((t) => t.path !== path);
       // 如果关掉的是当前 tab,跳到旁边一个 tab(或者第一个,或者菜单首项)
@@ -292,6 +426,32 @@ export default function AdminLayout() {
       }
       return next;
     });
+  }
+  function closeTab(path: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    closeTabByPath(path);
+  }
+  /** 关闭其他:只留下指定标签 */
+  function closeOthers(path: string) {
+    setTabs((prev) => prev.filter((t) => t.path === path));
+    if (path !== currentPath) navigate(path);
+  }
+  /** 关闭右侧:留下指定标签及其左侧 */
+  function closeRight(path: string) {
+    setTabs((prev) => {
+      const idx = prev.findIndex((t) => t.path === path);
+      if (idx < 0) return prev;
+      const next = prev.slice(0, idx + 1);
+      if (!next.some((t) => t.path === currentPath)) navigate(path);
+      return next;
+    });
+  }
+  /** 关闭全部:保留当前页(若是菜单页),其余全关 */
+  function closeAll() {
+    setTabs((prev) => prev.filter((t) => t.path === currentPath));
+  }
+  function scrollTabs(dir: number) {
+    scrollerRef.current?.scrollBy({ left: dir * 240, behavior: "smooth" });
   }
 
   function switchCategory(catId: string) {
@@ -428,47 +588,113 @@ export default function AdminLayout() {
 
         {/* 右下:Tab 栏 + 内容区 */}
         <main className="flex-1 min-w-0 flex flex-col">
-          {/* Tab 栏 */}
-          <div className="h-10 bg-white border-b border-[#E9E9E9] flex items-center gap-0 overflow-x-auto flex-shrink-0">
-            {tabs.length === 0 ? (
-              <div className="px-4 text-xs text-[#9CA3AF]">从左侧菜单打开一个页面</div>
-            ) : (
-              tabs.map((t) => {
-                const Icon = t.icon;
-                const active = t.path === currentPath;
-                return (
-                  <div
-                    key={t.path}
-                    onClick={() => navigate(t.path)}
-                    className="group flex items-center gap-1.5 h-full px-3 cursor-pointer border-r border-[#F0F0F0] transition-colors flex-shrink-0"
-                    style={{
-                      backgroundColor: active ? "#F7F8FA" : "transparent",
-                      borderBottom: active ? "2px solid var(--party-primary)" : "2px solid transparent",
-                      color: active ? "#1A1A1A" : "#6B7280",
-                    }}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span className="text-xs font-medium">{t.label}</span>
-                    <button
-                      onClick={(e) => closeTab(t.path, e)}
-                      className="w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-100 transition-all ml-1"
-                      title="关闭"
+          {/* Tab 栏:‹ › 滚动按钮 + 可滚动标签区 + 关闭全部 */}
+          <div className="h-10 bg-white border-b border-[#E9E9E9] flex items-center flex-shrink-0">
+            {overflowing && (
+              <button
+                onClick={() => scrollTabs(-1)}
+                title="向左滚动"
+                className="h-full px-1.5 flex items-center text-[#9CA3AF] hover:text-[var(--party-primary)] hover:bg-[#F7F8FA] border-r border-[#F0F0F0] flex-shrink-0"
+              >
+                <ChevronLeftIcon className="w-4 h-4" />
+              </button>
+            )}
+            <div
+              ref={scrollerRef}
+              className="flex-1 min-w-0 flex items-center h-full overflow-x-auto [&::-webkit-scrollbar]:hidden"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {tabs.length === 0 ? (
+                <div className="px-4 text-xs text-[#9CA3AF]">从左侧菜单打开一个页面</div>
+              ) : (
+                tabs.map((t) => {
+                  const Icon = t.icon;
+                  const active = t.path === currentPath;
+                  return (
+                    <div
+                      key={t.path}
+                      data-tab-active={active ? "true" : "false"}
+                      onClick={() => navigate(t.path)}
+                      onAuxClick={(e) => {
+                        if (e.button === 1) closeTab(t.path, e); // 中键关闭
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation(); // 不冒泡到 window,避免刚弹出就被关闭
+                        setTabMenu({ x: e.clientX, y: e.clientY, path: t.path });
+                      }}
+                      className="group flex items-center gap-1.5 h-full px-3 cursor-pointer border-r border-[#F0F0F0] transition-colors flex-shrink-0"
+                      style={{
+                        backgroundColor: active ? "#F7F8FA" : "transparent",
+                        borderBottom: active ? "2px solid var(--party-primary)" : "2px solid transparent",
+                        color: active ? "#1A1A1A" : "#6B7280",
+                      }}
                     >
-                      <XIcon className="w-2.5 h-2.5 text-[#6B7280] hover:text-red-600" />
-                    </button>
-                  </div>
-                );
-              })
+                      <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="text-xs font-medium whitespace-nowrap">{t.label}</span>
+                      <button
+                        onClick={(e) => closeTab(t.path, e)}
+                        className="w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-100 transition-all ml-1 flex-shrink-0"
+                        title="关闭"
+                      >
+                        <XIcon className="w-2.5 h-2.5 text-[#6B7280] hover:text-red-600" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            {overflowing && (
+              <button
+                onClick={() => scrollTabs(1)}
+                title="向右滚动"
+                className="h-full px-1.5 flex items-center text-[#9CA3AF] hover:text-[var(--party-primary)] hover:bg-[#F7F8FA] border-l border-[#F0F0F0] flex-shrink-0"
+              >
+                <ChevronRightIcon className="w-4 h-4" />
+              </button>
+            )}
+            {tabs.length > 1 && (
+              <button
+                onClick={closeAll}
+                title="关闭全部(保留当前页)"
+                className="h-full px-2 flex items-center text-[#9CA3AF] hover:text-red-600 hover:bg-[#F7F8FA] border-l border-[#F0F0F0] flex-shrink-0"
+              >
+                <XIcon className="w-3.5 h-3.5" />
+              </button>
             )}
           </div>
 
-          {/* 内容区 */}
-          <div className="flex-1 min-h-0 overflow-auto">
-            <Outlet />
-          </div>
+          {/* 内容区(多标签 keep-alive) */}
+          <KeepAliveRoutes routes={routes} alivePaths={alivePaths} currentPath={currentPath} />
         </main>
       </div>
+
+      {/* 标签右键菜单 */}
+      {tabMenu && (
+        <div
+          className="fixed z-50 min-w-[132px] bg-white rounded-md shadow-lg border border-[#E9E9E9] py-1 text-xs"
+          style={{ left: tabMenu.x, top: tabMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <TabMenuItem label="关闭" onClick={() => { closeTabByPath(tabMenu.path); setTabMenu(null); }} />
+          <TabMenuItem label="关闭其他" onClick={() => { closeOthers(tabMenu.path); setTabMenu(null); }} />
+          <TabMenuItem label="关闭右侧" onClick={() => { closeRight(tabMenu.path); setTabMenu(null); }} />
+          <div className="h-px bg-[#F0F0F0] my-1" />
+          <TabMenuItem label="关闭全部" onClick={() => { closeAll(); setTabMenu(null); }} />
+        </div>
+      )}
     </div>
+  );
+}
+
+function TabMenuItem({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-3 py-1.5 text-[#4B5563] hover:bg-[#F7F8FA] hover:text-[var(--party-primary)] transition-colors"
+    >
+      {label}
+    </button>
   );
 }
 
