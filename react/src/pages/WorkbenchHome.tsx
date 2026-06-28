@@ -17,7 +17,8 @@ import {
   getEffectiveLayout,
   savePersonalLayout,
   clearPersonalLayout,
-  nextSize,
+  cycleW,
+  cycleH,
   CARD_META,
   isLockedFor,
   type WbLayout,
@@ -91,7 +92,7 @@ function WorkbenchHomeInner({
   }
   function addCard(type: WbCardType) {
     if (layout.some((c) => c.type === type)) return; // 单例:每种卡只一张
-    persist([...layout, { id: type, type, size: CARD_META[type].defaultSize }]);
+    persist([...layout, { id: type, type, w: CARD_META[type].w, h: CARD_META[type].h }]);
   }
   function removeType(type: WbCardType) {
     if (isLockedFor(type, isAdmin)) return; // 管理员卡对非管理员锁定
@@ -102,8 +103,11 @@ function WorkbenchHomeInner({
     if (!card || isLockedFor(card.type, isAdmin)) return;
     persist(layout.filter((c) => c.id !== id));
   }
-  function cycleSize(id: string) {
-    persist(layout.map((c) => (c.id === id ? { ...c, size: nextSize(c.size) } : c)));
+  function cycleWidth(id: string) {
+    persist(layout.map((c) => (c.id === id ? { ...c, w: cycleW(c.w) } : c)));
+  }
+  function cycleHeight(id: string) {
+    persist(layout.map((c) => (c.id === id ? { ...c, h: cycleH(c.h) } : c)));
   }
   function resetDefault() {
     clearPersonalLayout(uid);
@@ -192,7 +196,7 @@ function WorkbenchHomeInner({
         {/* 全卡片画布 */}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={layout.map((c) => c.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-start">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-[14px] auto-rows-[120px] grid-flow-row-dense">
               {layout.map((card) => (
                 <WbCardFrame
                   key={card.id}
@@ -200,7 +204,8 @@ function WorkbenchHomeInner({
                   editing={editing}
                   locked={isLockedFor(card.type, isAdmin)}
                   onRemove={() => removeCard(card.id)}
-                  onCycleSize={() => cycleSize(card.id)}
+                  onCycleW={() => cycleWidth(card.id)}
+                  onCycleH={() => cycleHeight(card.id)}
                 >
                   <WbCardContent type={card.type} />
                 </WbCardFrame>

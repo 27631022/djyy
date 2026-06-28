@@ -94,14 +94,15 @@ function Governance() {
     { t: "权限自动过滤", s: "仅显示可访问应用", n: "86", color: C.blue },
     { t: "虚拟组织推荐", s: "项目组 · 专班 · 临时任务", n: "18", color: C.green },
   ];
+  // 2 列并排,适配 2×1 footprint
   return (
-    <div className="grid gap-2">
+    <div className="grid grid-cols-2 gap-3">
       {rows.map((r) => (
-        <div key={r.t} className="grid grid-cols-[8px_1fr_auto] items-center gap-2.5 min-h-[44px]">
-          <span className="w-2 h-7 rounded-full" style={{ background: r.color }} />
+        <div key={r.t} className="grid grid-cols-[8px_1fr_auto] items-center gap-2 min-w-0">
+          <span className="w-2 h-9 rounded-full" style={{ background: r.color }} />
           <div className="min-w-0">
-            <strong className="block text-[13px] text-[#172033] font-semibold">{r.t}</strong>
-            <span className="block mt-0.5 text-[11px] text-[#667085]">{r.s}</span>
+            <strong className="block text-[13px] text-[#172033] font-semibold truncate">{r.t}</strong>
+            <span className="block mt-0.5 text-[11px] text-[#667085] truncate">{r.s}</span>
           </div>
           <span className="text-[12px] font-extrabold text-[#475467]">{r.n}</span>
         </div>
@@ -129,23 +130,24 @@ const WB_APPS: WbApp[] = [
   { name: "学习中心", desc: "课程 · 考试 · 积分", icon: GraduationCapIcon, color: C.green },
 ];
 function Apps({ go }: { go: Go }) {
+  // 4×2 footprint:桌面 4 列 × 2 行正好放下 8 个磁贴,无右侧/底部留白
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 h-full content-stretch">
       {WB_APPS.map((app) => {
         const Icon = app.icon;
         return (
           <button
             key={app.name}
             onClick={() => go(app.to)}
-            className={`min-h-[104px] pl-5 pr-3 py-3 rounded-lg border border-[#e2e8f0] bg-white/70 text-left transition-all ${
+            className={`min-w-0 px-3 py-2.5 rounded-lg border border-[#e2e8f0] bg-white/70 text-left transition-all ${
               app.to ? "hover:shadow-md hover:-translate-y-0.5 cursor-pointer" : "cursor-default"
             }`}
           >
-            <span className="w-[34px] h-[34px] grid place-items-center rounded-lg text-white" style={{ background: app.color }}>
-              <Icon className="w-[18px] h-[18px]" />
+            <span className="w-8 h-8 grid place-items-center rounded-lg text-white" style={{ background: app.color }}>
+              <Icon className="w-[17px] h-[17px]" />
             </span>
-            <strong className="block mt-2.5 text-[13px] text-[#172033] font-semibold">{app.name}</strong>
-            <span className="block mt-1 text-[11px] leading-snug text-[#667085]">{app.desc}</span>
+            <strong className="block mt-2 text-[13px] text-[#172033] font-semibold truncate">{app.name}</strong>
+            <span className="block mt-0.5 text-[11px] leading-snug text-[#667085] truncate">{app.desc}</span>
           </button>
         );
       })}
@@ -255,12 +257,16 @@ function Persona() {
     { label: "组织任务", pct: 68 },
     { label: "学习偏好", pct: 52 },
   ];
+  // 2 列紧排,适配 2×1 footprint(横 2 格 × 纵 1 格)
   return (
-    <div className="space-y-2.5">
+    <div className="grid grid-cols-2 gap-x-5 gap-y-2">
       {rows.map((p) => (
-        <div key={p.label} className="flex items-center justify-between text-[12px] text-[#667085]">
-          <span>{p.label}</span>
-          <span className="w-[76px] h-1.5 rounded-full overflow-hidden bg-[#e8edf4]">
+        <div key={p.label} className="min-w-0">
+          <div className="flex items-center justify-between text-[12px] text-[#667085] mb-0.5">
+            <span className="truncate">{p.label}</span>
+            <span className="font-bold text-[#475467]">{p.pct}%</span>
+          </div>
+          <span className="block w-full h-1.5 rounded-full overflow-hidden bg-[#e8edf4]">
             <span
               className="block h-full rounded-full"
               style={{ width: `${p.pct}%`, background: `linear-gradient(90deg, ${C.red}, ${C.gold})` }}
@@ -305,18 +311,19 @@ function Quick({ go }: { go: Go }) {
     { label: "报送数据", icon: UploadIcon },
     { label: "发起审批", icon: ClipboardCheckIcon },
   ];
+  // 紧凑排布,适配 2×1 footprint
   return (
-    <div className="grid grid-cols-4 gap-2">
+    <div className="grid grid-cols-4 gap-1.5">
       {actions.map((a) => {
         const Icon = a.icon;
         return (
           <button
             key={a.label}
             onClick={() => go(a.to)}
-            className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl hover:bg-[#F2F3F5] text-[#4B5563]"
+            className="flex flex-col items-center gap-1 py-1 rounded-xl hover:bg-[#F2F3F5] text-[#4B5563]"
           >
-            <span className="w-9 h-9 rounded-full grid place-items-center bg-party-soft" style={{ color: "var(--party-primary)" }}>
-              <Icon className="w-[18px] h-[18px]" />
+            <span className="w-8 h-8 rounded-full grid place-items-center bg-party-soft" style={{ color: "var(--party-primary)" }}>
+              <Icon className="w-4 h-4" />
             </span>
             <span className="text-[12px]">{a.label}</span>
           </button>
