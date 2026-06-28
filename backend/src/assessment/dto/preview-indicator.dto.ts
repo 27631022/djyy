@@ -5,6 +5,11 @@ export class PreviewIndicatorDto {
   @IsString()
   scoringType!: string;
 
+  /** 指标类型 normal/bonus/deduction —— 减分项「得分」按实际扣分额算(影响 manual_deduct 取值) */
+  @IsOptional()
+  @IsString()
+  kind?: string;
+
   @IsOptional()
   @IsObject()
   params?: Record<string, unknown>;

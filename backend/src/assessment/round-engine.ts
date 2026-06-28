@@ -1,5 +1,5 @@
 import { flattenLeaves, type IndicatorNode } from './indicator-tree';
-import { computeScore, getScoringSpec, type RawMetric, type ScoreCtx } from './scoring-strategies';
+import { computeScore, getScoringSpec, sumDeductions, type RawMetric, type ScoreCtx } from './scoring-strategies';
 
 /**
  * 考核轮次计算引擎(纯函数,无 Prisma —— 可单测)。
@@ -76,7 +76,12 @@ export function scoreOneLeaf(
   } else {
     for (const t of targets) {
       const rv = (rawOf(t.ref) ?? null) as RawMetric;
-      let s = computeScore(type, rv, { fullScore, params });
+      // 减分项 + 扣分制:本项得分 = 实际扣分额(扣分明细之和),而非「满分−扣分」(那是计权制语义)。
+      // 减分项无「满分起评」初始分;封顶在「减分块」的减分上限(逐级封顶,见 computeRoundResults)。
+      let s =
+        leaf.kind === 'deduction' && type === 'manual_deduct'
+          ? sumDeductions(rv)
+          : computeScore(type, rv, { fullScore, params });
       if (leaf.difficultyOn) s *= coefOf(t.ref);
       out[t.ref] = round2(s);
     }

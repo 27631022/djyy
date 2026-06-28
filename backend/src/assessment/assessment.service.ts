@@ -885,7 +885,7 @@ export class AssessmentService {
     const leaf: IndicatorNode = {
       code: '_preview',
       label: '',
-      kind: 'normal',
+      kind: dto.kind === 'deduction' || dto.kind === 'bonus' ? dto.kind : 'normal',
       weight: typeof dto.fullScore === 'number' && dto.fullScore >= 0 ? dto.fullScore : 0,
       scoringType: dto.scoringType,
       strategyParams: spec.normalizeParams(dto.params ?? {}),
@@ -918,7 +918,7 @@ export class AssessmentService {
         return {
           code: l.code as string,
           label: typeof l.label === 'string' ? l.label : (l.code as string),
-          kind: 'normal' as const,
+          kind: (l.kind === 'deduction' || l.kind === 'bonus' ? l.kind : 'normal') as IndicatorNode['kind'],
           weight: typeof l.weight === 'number' && l.weight >= 0 ? l.weight : 0,
           scoringType: l.scoringType as string,
           strategyParams: spec ? spec.normalizeParams((l.strategyParams as Record<string, unknown>) ?? {}) : {},

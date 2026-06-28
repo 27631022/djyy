@@ -372,6 +372,7 @@ export interface PreviewRow {
 }
 export interface PreviewIndicatorInput {
   scoringType: string;
+  kind?: IndicatorKind;
   params?: Record<string, unknown>;
   fullScore?: number;
   difficultyOn?: boolean;
@@ -383,6 +384,7 @@ export interface PreviewIndicatorInput {
 export interface SubtotalLeafInput {
   code: string;
   scoringType?: string;
+  kind?: IndicatorKind;
   weight?: number;
   label?: string;
   strategyParams?: Record<string, unknown>;

@@ -63,7 +63,7 @@ function asNumber(raw: RawMetric): number | null {
 }
 
 /** 扣分制:总扣分 = 各明细 points 之和(也容忍直接给一个总扣分 number) */
-function sumDeductions(raw: RawMetric): number {
+export function sumDeductions(raw: RawMetric): number {
   if (typeof raw === 'number') return Math.max(0, raw);
   if (raw && typeof raw === 'object' && Array.isArray(raw.items)) {
     let d = 0;
