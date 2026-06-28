@@ -1,4 +1,4 @@
-import { ChevronRight, CornerDownRight, GripVertical, Plus, Trash2, UserCog } from "lucide-react";
+import { ChevronRight, CornerDownRight, FileText, GripVertical, Plus, Trash2, UserCog } from "lucide-react";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { IndicatorKind, IndicatorNode } from "../api";
@@ -47,13 +47,14 @@ export function IndicatorNodeRow(props: RowProps) {
     <div ref={setNodeRef} style={style}>
       <div
         onClick={() => onSelect(node.code)}
+        title={node.content || undefined}
         className={`rounded-md cursor-pointer py-1 ${
           selected ? "bg-party-soft ring-1 ring-[var(--party-primary)]/40" : "hover:bg-[#F6F8FB]"
         }`}
         style={{ paddingLeft: 4 + depth * 16, paddingRight: 8 }}
       >
-        {/* 第 1 行:拖拽手柄 + 图标 +(子级)加/减徽标 + 指标名(整行,可换行不挤) */}
-        <div className="flex items-center gap-1">
+        {/* 单行:指标名(居左,简要)+ 内容标记 + 分值(居右)+ 类型/操作。完整「考核内容」鼠标悬停可见。 */}
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             {...attributes}
@@ -77,11 +78,32 @@ export function IndicatorNodeRow(props: RowProps) {
             onFocus={record}
             onChange={(e) => onPatch(node.code, { label: e.target.value })}
             onClick={(e) => e.stopPropagation()}
+            placeholder="指标标题(简要)"
             className="flex-1 min-w-0 bg-transparent border-0 border-b border-transparent focus:border-[var(--party-primary)] focus:outline-none text-[14px] text-[#172033] px-0.5"
           />
-        </div>
-        {/* 第 2 行:权重/类型/操作(缩进对齐到指标名下) */}
-        <div className="flex items-center gap-1.5 mt-1 pl-6">
+          {node.content && (
+            <span
+              onClick={(e) => e.stopPropagation()}
+              title={node.content}
+              className="flex-shrink-0 text-[#94a3b8] hover:text-[var(--party-primary)]"
+            >
+              <FileText className="w-3.5 h-3.5" />
+            </span>
+          )}
+          {incomplete && (
+            <span className="text-[10px] text-amber-600 flex-shrink-0" title="叶子未配置数据源/计分工具">
+              待配
+            </span>
+          )}
+          {!!node.adminUserIds?.length && (
+            <span
+              className="inline-flex items-center gap-0.5 text-[10px] text-[var(--party-primary)] bg-party-soft px-1 rounded flex-shrink-0"
+              title={`本指标已设 ${node.adminUserIds.length} 名管理员`}
+            >
+              <UserCog className="w-3 h-3" />
+              {node.adminUserIds.length}
+            </span>
+          )}
           {weightEditable ? (
             <input
               type="number"
@@ -113,22 +135,7 @@ export function IndicatorNodeRow(props: RowProps) {
               ))}
             </select>
           )}
-          {incomplete && (
-            <span className="text-[10px] text-amber-600 flex-shrink-0" title="叶子未配置数据源/计分工具">
-              待配
-            </span>
-          )}
-          {!!node.adminUserIds?.length && (
-            <span
-              className="inline-flex items-center gap-0.5 text-[10px] text-[var(--party-primary)] bg-party-soft px-1 rounded flex-shrink-0"
-              title={`本指标已设 ${node.adminUserIds.length} 名管理员`}
-            >
-              <UserCog className="w-3 h-3" />
-              {node.adminUserIds.length}
-            </span>
-          )}
-          <div className="flex-1" />
-          <button type="button" title="加子指标" onClick={(e) => { e.stopPropagation(); onAddChild(node.code); }} className="p-1 rounded text-[#94a3b8] hover:text-[var(--party-primary)] hover:bg-party-soft">
+          <button type="button" title="加子指标" onClick={(e) => { e.stopPropagation(); onAddChild(node.code); }} className="p-1 rounded text-[#94a3b8] hover:text-[var(--party-primary)] hover:bg-party-soft flex-shrink-0">
             <Plus className="w-3.5 h-3.5" />
           </button>
           <button
@@ -136,7 +143,7 @@ export function IndicatorNodeRow(props: RowProps) {
             title={hasChildren ? "请先删除其下级指标" : "删除"}
             disabled={hasChildren}
             onClick={(e) => { e.stopPropagation(); onDelete(node.code); }}
-            className={`p-1 rounded ${hasChildren ? "text-[#d1d5db] cursor-not-allowed" : "text-[#94a3b8] hover:text-red-600 hover:bg-red-50"}`}
+            className={`p-1 rounded flex-shrink-0 ${hasChildren ? "text-[#d1d5db] cursor-not-allowed" : "text-[#94a3b8] hover:text-red-600 hover:bg-red-50"}`}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>

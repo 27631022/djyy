@@ -239,6 +239,18 @@ export function LeafConfigPanel({
       />
 
       <div>
+        <div className="text-[13px] font-semibold text-[#172033] mb-2">考核内容(详细)</div>
+        <textarea
+          value={node.content ?? ""}
+          onChange={(e) => onChange({ content: e.target.value })}
+          rows={3}
+          placeholder="该指标考核的详细内容(可从考核办法原文粘贴)。指标标题只放简要描述,详情写这里 —— 指标行鼠标悬停即可看到;可据此凝练标题。"
+          className={`${PROP_INPUT} resize-y`}
+        />
+        <div className="mt-1 text-[11px] text-[#9CA3AF]">标题简要、内容详细:列表只显示标题(短),hover 指标行看这里的完整考核内容。</div>
+      </div>
+
+      <div>
         <div className="flex items-center justify-between mb-2">
           <div className="text-[13px] font-semibold text-[#172033]">评分标准 / 说明</div>
           {strat && (

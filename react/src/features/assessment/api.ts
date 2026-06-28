@@ -24,6 +24,8 @@ export interface IndicatorNode {
   ownerUserIds?: string[];
   /** 节点管理员(可多人):可见并维护本节点及其下全部子指标。任意层级可设。 */
   adminUserIds?: string[];
+  /** 考核内容(详细):标题只放简要描述,详情放这里;指标行鼠标悬停可见。可据此凝练标题。 */
+  content?: string;
   rubric?: string;
   /** 本指标是否启用难易系数(默认否=各对象系数 1) */
   difficultyOn?: boolean;
