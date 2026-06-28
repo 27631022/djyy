@@ -8,7 +8,7 @@ import {
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
   AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon, ClipboardCheckIcon, ClipboardListIcon, BadgeCheckIcon,
   PanelLeftCloseIcon, PanelLeftOpenIcon,
-  ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon,
+  ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon, MoreHorizontalIcon,
   ArmchairIcon, PlusIcon, LandmarkIcon, PackageIcon, LibraryIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
@@ -32,30 +32,6 @@ const CATEGORIES: Category[] = [
     items: [
       // 无 perm = 人人可见;/admin 默认落到这里
       { path: "/admin/home", label: "我的工作台", icon: LayoutDashboardIcon },
-    ],
-  },
-  {
-    id: "org",
-    label: "组织与权限",
-    icon: NetworkIcon,
-    items: [
-      { path: "/admin/organizations", label: "党组织 / 行政机构", icon: BuildingIcon, perm: "admin:org:read" },
-      { path: "/admin/users",         label: "用户管理",           icon: UserIcon,    perm: "admin:user:read" },
-      { path: "/admin/roles",         label: "角色与权限",         icon: ShieldIcon,  perm: "admin:role:read" },
-    ],
-  },
-  {
-    id: "sys",
-    label: "系统设置",
-    icon: SlidersHorizontalIcon,
-    items: [
-      { path: "/admin/dictionaries",   label: "数据字典",         icon: BookTextIcon, perm: "admin:menu" },
-      { path: "/admin/custom-fields",  label: "用户自定义字段",   icon: SlidersHorizontalIcon, perm: "admin:menu" },
-      { path: "/admin/site-settings",  label: "站点设置",         icon: PaletteIcon,  perm: "admin:menu" },
-      { path: "/admin/navigation",     label: "首页导航",         icon: LayoutGridIcon, perm: "admin:menu" },
-      { path: "/admin/external-apis",  label: "AI 接入管理",      icon: SparklesIcon, perm: "admin:menu" },
-      { path: "/admin/prompts",        label: "AI 提示词",        icon: MessageSquareTextIcon, perm: "admin:menu" },
-      { path: "/admin/icon-library",   label: "图标库",           icon: ImageIcon, perm: "admin:menu" },
     ],
   },
   {
@@ -93,6 +69,30 @@ const CATEGORIES: Category[] = [
       { path: "/admin/stats/views", label: "浏览统计", icon: EyeIcon,         disabled: true, perm: "admin:menu" },
       { path: "/admin/stats/likes", label: "点赞统计", icon: ThumbsUpIcon,    disabled: true, perm: "admin:menu" },
       { path: "/admin/feedback",    label: "用户反馈", icon: MessageSquareIcon, disabled: true, perm: "admin:menu" },
+    ],
+  },
+  {
+    id: "org",
+    label: "组织与权限",
+    icon: NetworkIcon,
+    items: [
+      { path: "/admin/organizations", label: "党组织 / 行政机构", icon: BuildingIcon, perm: "admin:org:read" },
+      { path: "/admin/users",         label: "用户管理",           icon: UserIcon,    perm: "admin:user:read" },
+      { path: "/admin/roles",         label: "角色与权限",         icon: ShieldIcon,  perm: "admin:role:read" },
+    ],
+  },
+  {
+    id: "sys",
+    label: "系统设置",
+    icon: SlidersHorizontalIcon,
+    items: [
+      { path: "/admin/dictionaries",   label: "数据字典",         icon: BookTextIcon, perm: "admin:menu" },
+      { path: "/admin/custom-fields",  label: "用户自定义字段",   icon: SlidersHorizontalIcon, perm: "admin:menu" },
+      { path: "/admin/site-settings",  label: "站点设置",         icon: PaletteIcon,  perm: "admin:menu" },
+      { path: "/admin/navigation",     label: "首页导航",         icon: LayoutGridIcon, perm: "admin:menu" },
+      { path: "/admin/external-apis",  label: "AI 接入管理",      icon: SparklesIcon, perm: "admin:menu" },
+      { path: "/admin/prompts",        label: "AI 提示词",        icon: MessageSquareTextIcon, perm: "admin:menu" },
+      { path: "/admin/icon-library",   label: "图标库",           icon: ImageIcon, perm: "admin:menu" },
     ],
   },
 ];
@@ -506,28 +506,8 @@ function AdminLayoutInner({ uid, routes }: { uid: string; routes: RouteObject[] 
           </Link>
         </div>
 
-        {/* 右上中:一级分类菜单 */}
-        <nav className="flex-1 flex items-center gap-1 px-3 overflow-x-auto">
-          {visibleCategories.map((c) => {
-            const Icon = c.icon;
-            const active = c.id === activeCat.id;
-            return (
-              <button
-                key={c.id}
-                onClick={() => switchCategory(c.id)}
-                className="flex items-center gap-1.5 px-4 h-9 rounded-md text-sm font-medium transition-all flex-shrink-0"
-                style={{
-                  color: active ? "var(--party-primary)" : "#4B5563",
-                  backgroundColor: active ? "color-mix(in srgb, var(--party-primary) 8%, white)" : "transparent",
-                  boxShadow: active ? "inset 0 -2px 0 0 var(--party-primary)" : "none",
-                }}
-              >
-                <Icon className="w-4 h-4" />
-                {c.label}
-              </button>
-            );
-          })}
-        </nav>
+        {/* 右上中:一级分类菜单(放不下自动折叠进「更多」) */}
+        <CategoryNav categories={visibleCategories} activeId={activeCat.id} onSwitch={switchCategory} />
 
         {/* 右上右:用户设置 */}
         <UserSettingsMenu />
@@ -715,6 +695,162 @@ function TabMenuItem({ label, onClick }: { label: string; onClick: () => void })
     >
       {label}
     </button>
+  );
+}
+
+/* ─── 顶部一级分类菜单(放不下自动折叠进「更多」) ─── */
+function CatButton({ cat, active, onClick }: { cat: Category; active: boolean; onClick: () => void }) {
+  const Icon = cat.icon;
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1.5 px-4 h-9 rounded-md text-sm font-medium transition-all flex-shrink-0 whitespace-nowrap"
+      style={{
+        color: active ? "var(--party-primary)" : "#4B5563",
+        backgroundColor: active ? "color-mix(in srgb, var(--party-primary) 8%, white)" : "transparent",
+        boxShadow: active ? "inset 0 -2px 0 0 var(--party-primary)" : "none",
+      }}
+    >
+      <Icon className="w-4 h-4" />
+      {cat.label}
+    </button>
+  );
+}
+
+function CategoryNav({
+  categories,
+  activeId,
+  onSwitch,
+}: {
+  categories: Category[];
+  activeId: string;
+  onSwitch: (id: string) => void;
+}) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const [visibleCount, setVisibleCount] = useState(categories.length);
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  /* 容器宽度 / 分类数变化 → 算出能完整放下几个,其余折进「更多」 */
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const measure = measureRef.current;
+    if (!wrap || !measure) return;
+    const RESERVE = 100; // 给「更多」按钮预留的宽度
+    const GAP = 4;
+    const recompute = () => {
+      const avail = wrap.clientWidth;
+      const widths = [...measure.children].map((c) => (c as HTMLElement).offsetWidth);
+      const total = widths.reduce((s, w, i) => s + w + (i > 0 ? GAP : 0), 0);
+      let n: number;
+      if (total <= avail) {
+        n = widths.length; // 全放得下,不要「更多」
+      } else {
+        let used = 0;
+        n = 0;
+        for (let i = 0; i < widths.length; i++) {
+          const add = widths[i] + (i > 0 ? GAP : 0);
+          if (used + add + RESERVE <= avail) {
+            used += add;
+            n++;
+          } else break;
+        }
+        n = Math.max(1, n); // 至少留一个可见
+      }
+      setVisibleCount((prev) => (prev === n ? prev : n));
+    };
+    recompute();
+    // 初次挂载时测量层可能尚未完成布局/字体加载(宽度读到 0)→ 下一帧 + 字体就绪后再算一次
+    let cancelled = false;
+    const raf = requestAnimationFrame(recompute);
+    if (document.fonts?.ready) document.fonts.ready.then(() => { if (!cancelled) recompute(); });
+    const ro = new ResizeObserver(recompute);
+    ro.observe(wrap);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [categories]);
+
+  /* 点外部关闭「更多」下拉 */
+  useEffect(() => {
+    if (!moreOpen) return;
+    const close = () => setMoreOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [moreOpen]);
+
+  const visible = categories.slice(0, visibleCount);
+  const overflow = categories.slice(visibleCount);
+  const activeInOverflow = overflow.some((c) => c.id === activeId);
+
+  return (
+    <div ref={wrapRef} className="flex-1 min-w-0 px-3 relative flex items-center">
+      {/* 测量层:0×0 裁剪,不影响布局也不撑出滚动条;只为读取每个按钮真实宽度 */}
+      <div className="absolute left-0 top-0 w-0 h-0 overflow-hidden" aria-hidden>
+        <div ref={measureRef} className="flex items-center gap-1">
+          {categories.map((c) => (
+            <CatButton key={c.id} cat={c} active={false} onClick={() => {}} />
+          ))}
+        </div>
+      </div>
+
+      {/* 可见层 */}
+      <div className="flex items-center gap-1 min-w-0">
+        {visible.map((c) => (
+          <CatButton key={c.id} cat={c} active={c.id === activeId} onClick={() => onSwitch(c.id)} />
+        ))}
+        {overflow.length > 0 && (
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMoreOpen((v) => !v);
+              }}
+              className="flex items-center gap-1 px-3 h-9 rounded-md text-sm font-medium transition-all"
+              style={{
+                color: activeInOverflow ? "var(--party-primary)" : "#4B5563",
+                backgroundColor: activeInOverflow ? "color-mix(in srgb, var(--party-primary) 8%, white)" : "transparent",
+                boxShadow: activeInOverflow ? "inset 0 -2px 0 0 var(--party-primary)" : "none",
+              }}
+            >
+              <MoreHorizontalIcon className="w-4 h-4" />
+              更多
+              <ChevronDownIcon className="w-3.5 h-3.5" />
+            </button>
+            {moreOpen && (
+              <div
+                className="absolute top-full left-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-[#E9E9E9] py-1 z-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {overflow.map((c) => {
+                  const Icon = c.icon;
+                  const active = c.id === activeId;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        onSwitch(c.id);
+                        setMoreOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                        active
+                          ? "text-[var(--party-primary)] bg-party-soft font-semibold"
+                          : "text-[#4B5563] hover:bg-[#F7F8FA]"
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
