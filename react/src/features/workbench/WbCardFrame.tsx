@@ -1,7 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVerticalIcon, XIcon, LockIcon, MoveHorizontalIcon, MoveVerticalIcon } from "lucide-react";
-import { CARD_META, type WbCard } from "./wbLayout";
+import { GripVerticalIcon, XIcon, LockIcon, Maximize2Icon } from "lucide-react";
+import { CARD_META, SIZE_DIM, dimOf, hasMultipleSizes, type WbCard } from "./wbLayout";
 
 const PARTY = "var(--party-primary)";
 // 磨砂玻璃质感:半透明白 + backdrop-blur + 浅高光边 + 柔和投影
@@ -9,25 +9,22 @@ const CARD =
   "rounded-2xl border border-white/60 bg-white/55 backdrop-blur-xl shadow-[0_8px_30px_rgba(28,42,68,0.10)]";
 
 /**
- * 单卡外框(单元格网格模型)。卡片在外层栅格里占 w 列 × h 行(span),高度由 h 决定,
- * 内容超出则卡内滚动。locked(管理员卡对非管理员)→ 不可拖/改尺寸/移除。
- * 编辑态出 宽/高 步进、移除、拖拽手柄。
+ * 服务卡片外框(固定尺寸令牌模型)。卡片在栅格里占 dimOf(size).w 列 × .h 行。
+ * locked(管理员卡对非管理员)→ 不可拖/改尺寸/移除。编辑态:多尺寸组件出「尺寸」切换 + 移除 + 拖拽手柄。
  */
 export function WbCardFrame({
   card,
   editing,
   locked,
   onRemove,
-  onCycleW,
-  onCycleH,
+  onCycleSize,
   children,
 }: {
   card: WbCard;
   editing: boolean;
   locked: boolean;
   onRemove: () => void;
-  onCycleW: () => void;
-  onCycleH: () => void;
+  onCycleSize: () => void;
   children: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -36,12 +33,14 @@ export function WbCardFrame({
   });
   const meta = CARD_META[card.type];
   const Icon = meta.icon;
+  const dim = dimOf(card.size);
+  const multiSize = hasMultipleSizes(card.type);
   return (
     <div
       ref={setNodeRef}
       style={{
-        gridColumn: `span ${card.w}`,
-        gridRow: `span ${card.h}`,
+        gridColumn: `span ${dim.w}`,
+        gridRow: `span ${dim.h}`,
         transform: CSS.Transform.toString(transform),
         transition,
       }}
@@ -64,24 +63,17 @@ export function WbCardFrame({
           <div className="flex-1" />
           {editing && !locked && (
             <div className="flex items-center gap-0.5 flex-shrink-0">
-              <button
-                type="button"
-                onClick={onCycleW}
-                title={`宽度:${card.w} 格(点击切换)`}
-                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] text-[#667085] hover:bg-[#F2F3F5] border border-[#e2e8f0]"
-              >
-                <MoveHorizontalIcon className="w-3 h-3" />
-                {card.w}
-              </button>
-              <button
-                type="button"
-                onClick={onCycleH}
-                title={`高度:${card.h} 格(点击切换)`}
-                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] text-[#667085] hover:bg-[#F2F3F5] border border-[#e2e8f0]"
-              >
-                <MoveVerticalIcon className="w-3 h-3" />
-                {card.h}
-              </button>
+              {multiSize && (
+                <button
+                  type="button"
+                  onClick={onCycleSize}
+                  title={`尺寸:${SIZE_DIM[card.size].label}(点击切换)`}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] text-[#667085] hover:bg-[#F2F3F5] border border-[#e2e8f0]"
+                >
+                  <Maximize2Icon className="w-3 h-3" />
+                  {SIZE_DIM[card.size].label}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onRemove}

@@ -11,28 +11,18 @@ import {
   ZapIcon,
 } from "lucide-react";
 
-/* ═══ 全卡片工作台 · 网格标准 + 设计标准 ═══
+/* ═══ 全卡片工作台 · iOS/Android 服务卡片模型 ═══
  *
- * 【网格标准】
- *   - 桌面 4 列等宽(响应式:sm 2 列 / 移动 1 列;span 超出列数时由 CSS Grid 自动收窄)。
- *   - 纵向以 ROW_UNIT 为「一个行格」,卡片纵向占 h 个行格,实际高 = h*ROW_UNIT + (h-1)*GRID_GAP。
- *   - 列间/行间统一 GRID_GAP。
- *   - grid-auto-flow: dense —— 自动把后面的小卡回填到前面的空缺里,杜绝「找平留白」。
+ * 思路对齐手机系统的「服务卡片 / 小组件」:
+ *   一个组件(WbCardType)= 一组「固定尺寸」的卡片设计(小 / 中 / 大…),
+ *   每个尺寸在设计时就定死宽高,并各自独立排版(不是一套内容拉伸),效果最好。
+ *   用户改尺寸 = 在该组件「支持的设计尺寸」之间切换。
  *
- * 【设计标准】每个小组件 = 横 w 格 × 纵 h 格,由内容自然占用决定(w∈[1..4],h∈[1..3]):
- *   组件        w×h   依据
- *   通知公告    2×2   3 条公告列表
- *   应用治理    2×1   2 项并排(管理员)
- *   我的应用    4×2   整行 8 个应用磁贴(4 列 × 2 行,正好填满)
- *   智能待办    2×2   3 条待办
- *   猜你喜欢    2×2   3 条带图标推荐
- *   今日安排    2×2   双周迷你日历(7 列需要宽度)
- *   关键指标    2×1   3 个指标一行
- *   快捷入口    2×1   4 个动作一行
- *   个人画像    2×1   4 项画像(2×2 紧排)
- *   智能助手    2×2   说明 + 3 条建议
- *
- * 用户可在「编辑桌面」里用 宽/高 步进按钮微调每张卡的 w、h(夹在 [1..4]×[1..3])。
+ * 【网格】桌面 4 列等宽 + 行格 ROW_UNIT=120px + gap GRID_GAP + grid-auto-flow:dense(回填空缺)。
+ * 【尺寸令牌】SIZE_DIM:令牌 → {w 横格, h 纵格, label}。卡片在栅格里占 w 列 × h 行。
+ *   2x1 宽条 / 2x2 小(方) / 4x2 中(宽) / 4x4 大(整行高)。
+ * 【每组件支持尺寸】CARD_META[type].sizes:该组件做了设计的尺寸集合 + 默认尺寸。
+ *   —— 多尺寸组件(如「待办」)= 小/中/大三套真设计;其余组件暂各保留一个当前尺寸,后续逐个升级。
  */
 
 export type WbCardType =
@@ -47,46 +37,62 @@ export type WbCardType =
   | "quick"
   | "assistant";
 
-/* ── 网格常量(WbCardFrame / WorkbenchHome 共用) ── */
 export const GRID_COLS = 4;
-export const ROW_UNIT = 120; // px:一个纵向行格的高
-export const GRID_GAP = 14; // px:行/列间距
-export const MAX_W = GRID_COLS;
-export const MAX_H = 3;
+export const ROW_UNIT = 120; // px:一个纵向行格
+export const GRID_GAP = 14; // px
+
+/* ── 尺寸令牌(固定设计尺寸)── */
+export type WbCardSize = "2x1" | "2x2" | "4x2" | "4x4";
+export const SIZE_DIM: Record<WbCardSize, { w: number; h: number; label: string }> = {
+  "2x1": { w: 2, h: 1, label: "宽条" },
+  "2x2": { w: 2, h: 2, label: "小" },
+  "4x2": { w: 4, h: 2, label: "中" },
+  "4x4": { w: 4, h: 4, label: "大" },
+};
 
 export interface WbCard {
   id: string;
   type: WbCardType;
-  w: number; // 横向格子数 [1..MAX_W]
-  h: number; // 纵向格子数 [1..MAX_H]
+  size: WbCardSize;
 }
 export type WbLayout = WbCard[];
 
 export interface CardMeta {
   title: string;
   icon: ElementType;
-  w: number; // 默认横向格
-  h: number; // 默认纵向格
   admin: boolean;
   desc: string;
+  sizes: WbCardSize[]; // 该组件做了设计、可选的固定尺寸(第一个为默认)
+  defaultSize: WbCardSize;
+}
+function meta(
+  title: string,
+  icon: ElementType,
+  admin: boolean,
+  desc: string,
+  sizes: WbCardSize[],
+): CardMeta {
+  return { title, icon, admin, desc, sizes, defaultSize: sizes[0] };
 }
 export const CARD_META: Record<WbCardType, CardMeta> = {
-  notice: { title: "通知公告", icon: MegaphoneIcon, w: 2, h: 2, admin: true, desc: "管理员发布,全员可见" },
-  governance: { title: "应用治理", icon: ShieldCheckIcon, w: 2, h: 1, admin: true, desc: "权限 / 虚拟组织(管理员)" },
-  apps: { title: "我的应用", icon: LayoutGridIcon, w: 4, h: 2, admin: false, desc: "常用业务应用入口" },
-  todo: { title: "智能待办", icon: ClipboardListIcon, w: 2, h: 2, admin: false, desc: "跨应用待我处理" },
-  recommend: { title: "猜你喜欢", icon: SparklesIcon, w: 2, h: 2, admin: false, desc: "智能推荐" },
-  calendar: { title: "今日安排", icon: CalendarDaysIcon, w: 2, h: 2, admin: false, desc: "日历与日程" },
-  persona: { title: "个人画像", icon: UserCircle2Icon, w: 2, h: 1, admin: false, desc: "岗位 / 偏好" },
-  kpi: { title: "关键指标", icon: BarChart3Icon, w: 2, h: 1, admin: false, desc: "进度 / 业绩" },
-  quick: { title: "快捷入口", icon: ZapIcon, w: 2, h: 1, admin: false, desc: "高频动作" },
-  assistant: { title: "智能助手", icon: SparklesIcon, w: 2, h: 2, admin: false, desc: "自然语言调应用" },
+  // ★「待办」= 首个真数据多尺寸卡:小/中/大三套设计
+  todo: meta("智能待办", ClipboardListIcon, false, "跨应用待我处理(真实数据)", ["4x2", "2x2", "4x4"]),
+  // 其余组件暂各保留一个当前尺寸(后续逐个升级成多尺寸真卡)
+  notice: meta("通知公告", MegaphoneIcon, true, "管理员发布,全员可见", ["2x2"]),
+  governance: meta("应用治理", ShieldCheckIcon, true, "权限 / 虚拟组织(管理员)", ["2x1"]),
+  apps: meta("我的应用", LayoutGridIcon, false, "常用业务应用入口", ["4x2"]),
+  recommend: meta("猜你喜欢", SparklesIcon, false, "智能推荐", ["2x2"]),
+  calendar: meta("今日安排", CalendarDaysIcon, false, "日历与日程", ["2x2"]),
+  persona: meta("个人画像", UserCircle2Icon, false, "岗位 / 偏好", ["2x1"]),
+  kpi: meta("关键指标", BarChart3Icon, false, "进度 / 业绩", ["2x1"]),
+  quick: meta("快捷入口", ZapIcon, false, "高频动作", ["2x1"]),
+  assistant: meta("智能助手", SparklesIcon, false, "自然语言调应用", ["2x2"]),
 };
 
 /** 添加目录:个人卡(全员)/ 管理员卡(仅管理员可加) */
 export const PERSONAL_CATALOG: WbCardType[] = [
-  "apps",
   "todo",
+  "apps",
   "recommend",
   "kpi",
   "quick",
@@ -96,18 +102,23 @@ export const PERSONAL_CATALOG: WbCardType[] = [
 ];
 export const ADMIN_CATALOG: WbCardType[] = ["notice", "governance"];
 
-/* ── 尺寸夹取 / 步进 ── */
-export function clampW(w: number): number {
-  return Math.max(1, Math.min(MAX_W, Math.round(w || 1)));
+/* ── 尺寸:取维度 / 校验 / 在支持集合内切换 ── */
+export function dimOf(size: WbCardSize): { w: number; h: number } {
+  return SIZE_DIM[size] ?? SIZE_DIM["2x2"];
 }
-export function clampH(h: number): number {
-  return Math.max(1, Math.min(MAX_H, Math.round(h || 1)));
+/** 把任意 size 收敛到该组件支持的尺寸(非法 → 默认) */
+export function saneSize(type: WbCardType, size: unknown): WbCardSize {
+  const m = CARD_META[type];
+  return m.sizes.includes(size as WbCardSize) ? (size as WbCardSize) : m.defaultSize;
 }
-export function cycleW(w: number): number {
-  return w >= MAX_W ? 1 : w + 1; // 1→2→3→4→1
+/** 在该组件支持的尺寸里循环切换(只有一个尺寸则不变) */
+export function nextSize(type: WbCardType, current: WbCardSize): WbCardSize {
+  const list = CARD_META[type].sizes;
+  const i = list.indexOf(current);
+  return list[(i + 1) % list.length];
 }
-export function cycleH(h: number): number {
-  return h >= MAX_H ? 1 : h + 1; // 1→2→3→1
+export function hasMultipleSizes(type: WbCardType): boolean {
+  return CARD_META[type].sizes.length > 1;
 }
 
 export function isAdminCard(type: WbCardType): boolean {
@@ -119,26 +130,26 @@ export function isLockedFor(type: WbCardType, viewerIsAdmin: boolean): boolean {
 }
 
 function mkCard(type: WbCardType, id?: string): WbCard {
-  const m = CARD_META[type];
-  return { id: id ?? type, type, w: m.w, h: m.h };
+  return { id: id ?? type, type, size: CARD_META[type].defaultSize };
 }
 export function newCardId(type: WbCardType): string {
   return `${type}_${Date.now().toString(36)}`;
 }
 
-/* ─── 持久化:localStorage v3(w/h 单元格模型)─── */
-const LKEY = (uid: string) => `djyy_wb_layout_v3_${uid}`;
-const LKEY_V2 = (uid: string) => `djyy_wb_layout_v2_${uid}`; // 旧 size 模型,自动迁移
+/* ─── 持久化:localStorage v4(size 令牌模型;旧 v2/v3 卡集合迁移、尺寸用各组件默认)─── */
+const LKEY = (uid: string) => `djyy_wb_layout_v4_${uid}`;
+const LEGACY_KEYS = (uid: string) => [`djyy_wb_layout_v3_${uid}`, `djyy_wb_layout_v2_${uid}`];
 
 export function loadPersonalLayout(uid: string): WbLayout | null {
   try {
     const raw = localStorage.getItem(LKEY(uid));
     if (raw) return JSON.parse(raw) as WbLayout;
-    // 旧 v2(sm/md/lg size 模型)→ 保留卡集合与顺序,尺寸采用新设计默认
-    const v2 = localStorage.getItem(LKEY_V2(uid));
-    if (v2) {
-      const old = JSON.parse(v2) as { id?: string; type: WbCardType }[];
-      return old.filter((c) => c && c.type in CARD_META).map((c) => mkCard(c.type, c.id));
+    for (const k of LEGACY_KEYS(uid)) {
+      const old = localStorage.getItem(k);
+      if (old) {
+        const arr = JSON.parse(old) as { id?: string; type: WbCardType }[];
+        return arr.filter((c) => c && c.type in CARD_META).map((c) => mkCard(c.type, c.id));
+      }
     }
     return null;
   } catch {
@@ -155,18 +166,18 @@ export function savePersonalLayout(uid: string, layout: WbLayout) {
 export function clearPersonalLayout(uid: string) {
   try {
     localStorage.removeItem(LKEY(uid));
-    localStorage.removeItem(LKEY_V2(uid));
+    LEGACY_KEYS(uid).forEach((k) => localStorage.removeItem(k));
   } catch {
     /* ignore */
   }
 }
 
-/** 角色模板(千人千面骨架):默认含管理员锁定卡 + 个人默认卡。将来按 roleCodes 分支或后台配。 */
+/** 角色模板(千人千面骨架):默认含管理员锁定卡 + 个人默认卡 */
 export function roleTemplate(_roleCodes: string[]): WbLayout {
   const order: WbCardType[] = [
     "notice",
-    "apps",
     "todo",
+    "apps",
     "recommend",
     "kpi",
     "quick",
@@ -177,18 +188,13 @@ export function roleTemplate(_roleCodes: string[]): WbLayout {
   return order.map((t) => mkCard(t));
 }
 
-/** 有效布局 = (个人覆盖 ?? 角色模板) + 强制并回模板里的管理员卡;并 sanitize 非法卡 / 夹取 w,h */
+/** 有效布局 = (个人覆盖 ?? 角色模板) + 强制并回模板里的管理员卡;sanitize 非法卡 / 收敛 size */
 export function getEffectiveLayout(uid: string, _viewerIsAdmin: boolean, roleCodes: string[]): WbLayout {
   const template = roleTemplate(roleCodes);
   const base = loadPersonalLayout(uid) ?? template;
   const result: WbLayout = base
     .filter((c) => c && c.type in CARD_META)
-    .map((c) => ({
-      id: c.id ?? c.type,
-      type: c.type,
-      w: clampW(c.w ?? CARD_META[c.type].w),
-      h: clampH(c.h ?? CARD_META[c.type].h),
-    }));
+    .map((c) => ({ id: c.id ?? c.type, type: c.type, size: saneSize(c.type, c.size) }));
   for (const adm of template.filter((c) => isAdminCard(c.type))) {
     if (!result.some((c) => c.id === adm.id)) result.unshift({ ...adm });
   }

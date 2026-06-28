@@ -15,7 +15,8 @@ import {
   ArrowUpRightIcon,
 } from "lucide-react";
 import type { ElementType } from "react";
-import type { WbCardType } from "./wbLayout";
+import type { WbCardType, WbCardSize } from "./wbLayout";
+import { TodoWidget } from "./TodoWidget";
 
 const C = {
   red: "#C8001E",
@@ -27,21 +28,22 @@ const C = {
 
 type Go = (to?: string) => void;
 
-/** 全卡片内容:按 type 渲染各卡 body(只渲染内容,标题由 WbCardFrame 提供)。 */
-export function WbCardContent({ type }: { type: WbCardType }) {
+/** 全卡片内容:按 type(+ size)渲染各卡 body(只渲染内容,标题由 WbCardFrame 提供)。
+ *  多尺寸真数据卡(如 todo)按 size 切换独立排版;其余卡暂为单尺寸,忽略 size。 */
+export function WbCardContent({ type, size }: { type: WbCardType; size: WbCardSize }) {
   const navigate = useNavigate();
   const go: Go = (to) => {
     if (to) navigate(to);
   };
   switch (type) {
+    case "todo":
+      return <TodoWidget size={size} />;
     case "notice":
       return <Notice />;
     case "governance":
       return <Governance />;
     case "apps":
       return <Apps go={go} />;
-    case "todo":
-      return <Todo go={go} />;
     case "recommend":
       return <Recommend />;
     case "calendar":
@@ -155,31 +157,6 @@ function Apps({ go }: { go: Go }) {
   );
 }
 
-function Todo({ go }: { go: Go }) {
-  const rows = [
-    { title: "主题党日参会确认", sub: "来自综合处专班", time: "09:30", color: C.red },
-    { title: "费用报销审批", sub: "金额 1,248 元", time: "11:00", color: C.blue },
-    { title: "学习材料阅读", sub: "预计 6 分钟完成", time: "16:00", color: C.green },
-  ];
-  return (
-    <div className="grid gap-2">
-      {rows.map((q) => (
-        <button
-          key={q.title}
-          onClick={() => go("/admin/tasks")}
-          className="grid grid-cols-[8px_1fr_auto] items-center gap-2.5 min-h-[48px] text-left hover:bg-[#f7f8fa] rounded-lg px-1 -mx-1"
-        >
-          <span className="w-2 h-7 rounded-full" style={{ background: q.color }} />
-          <div className="min-w-0">
-            <strong className="block text-[13px] text-[#172033] font-semibold">{q.title}</strong>
-            <span className="block mt-0.5 text-[11px] text-[#667085]">{q.sub}</span>
-          </div>
-          <span className="text-[12px] font-extrabold text-[#475467]">{q.time}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Recommend() {
   const rows = [
