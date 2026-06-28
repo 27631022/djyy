@@ -134,13 +134,15 @@ export function previewSubtotal(
   for (const u of units) sumByRef[u.ref] = 0;
   let fullScore = 0;
   for (const leaf of leaves) {
-    fullScore += Number.isFinite(leaf.weight) ? leaf.weight : 0;
+    const isDed = leaf.kind === 'deduction';
+    // 减分项:不计入「满分之和」,且在合计里「减去」(不是加)。计权/加分项正常累加。
+    if (!isDed) fullScore += Number.isFinite(leaf.weight) ? leaf.weight : 0;
     const rows = previewIndicator(
       leaf,
       units.map((u) => ({ ref: u.ref, name: u.name, raw: u.valuesByLeaf?.[leaf.code] })),
     );
     perLeaf[leaf.code] = rows;
-    for (const r of rows) sumByRef[r.ref] = (sumByRef[r.ref] ?? 0) + r.score;
+    for (const r of rows) sumByRef[r.ref] = (sumByRef[r.ref] ?? 0) + (isDed ? -r.score : r.score);
   }
   const subtotal: PreviewRow[] = units.map((u) => ({
     ref: u.ref,
