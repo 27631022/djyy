@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-quer
 import { BrowserRouter, Routes, Route, Navigate, useLocation, type RouteObject } from "react-router-dom";
 import { useEffect, type ReactNode } from "react";
 import NavPage from "@/pages/NavPage";
-import WorkbenchPage from "@/pages/Workbench";
 import WorkbenchHomePage from "@/pages/WorkbenchHome";
 import AdminLayout, { AdminIndexRedirect } from "@/layouts/AdminLayout";
 import { OrganizationsPage } from "@/features/organization";
@@ -157,15 +156,6 @@ const App = () => (
           {/* 证书公开验证:完全公开,不走 AdminLayout/ProtectedRoute */}
           <Route path="/verify" element={<CertificateVerifyPage />} />
           <Route path="/verify/:token" element={<CertificateVerifyPage />} />
-          {/* 工作台:登录后业务应用启动台(原型,假数据)。定稿后接真实待办/权限过滤 + 改登录落地 */}
-          <Route
-            path="/workbench"
-            element={
-              <ProtectedRoute>
-                <WorkbenchPage />
-              </ProtectedRoute>
-            }
-          />
           {/* 桌面任务小组件(Tauri 挂件加载的透明页;浏览器也可直接开 /widget 调试)。
               挂件自行处理登录(未登录显示紧凑登录),不套 ProtectedRoute,保持透明圆角壳 */}
           <Route path="/widget" element={<TaskWidgetPage />} />
