@@ -164,14 +164,25 @@ export function computeRoundResults(
 
   // ── 逐对象加权汇总 ──
   const cap = (s: number, w: number | undefined) => (w && w > 0 ? Math.min(s, w) : s);
+  // 减分逐级封顶:每个减分块,下级减分之和超本级「减分上限」(weight)即锁死在上限;上限=0 视为不封顶。递归到末端叶子。
+  const cappedDeduct = (node: IndicatorNode, leafScore: (code: string) => number): number => {
+    const kids = node.children ?? [];
+    if (!kids.length) return leafScore(node.code);
+    const childSum = kids.reduce((acc, c) => acc + cappedDeduct(c, leafScore), 0);
+    return cap(childSum, node.weight);
+  };
   const results: RoundTargetResult[] = targets.map((t) => {
     let normalScore = 0;
     let bonus = 0;
     let deduct = 0;
     for (const top of indicators) {
+      if (top.kind === 'deduction') {
+        // 减分:逐级按本级减分上限封顶(超出锁死),不是只在顶层封顶
+        deduct += cappedDeduct(top, (code) => scoreOf[t.ref][code] ?? 0);
+        continue;
+      }
       const s = flattenLeaves([top]).reduce((a, l) => a + (scoreOf[t.ref][l.code] ?? 0), 0);
-      if (top.kind === 'bonus') bonus += cap(s, top.weight);
-      else if (top.kind === 'deduction') deduct += cap(s, top.weight);
+      if (top.kind === 'bonus') bonus += s; // 加分:下层求和、上层自动汇总,无上限
       else normalScore += s;
     }
     const total = Math.max(0, round2(normalScore + bonus - deduct));

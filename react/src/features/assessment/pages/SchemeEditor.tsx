@@ -19,7 +19,7 @@ import {
   type SchemeSettings,
 } from "../api";
 import { useHistory } from "../hooks/useHistory";
-import { findNode, isLeafNode, updateNode } from "../treeOps";
+import { findNode, isLeafNode, recomputeWeights, updateNode } from "../treeOps";
 import { IndicatorTreeEditor } from "../components/IndicatorTreeEditor";
 import { LeafConfigPanel } from "../components/LeafConfigPanel";
 import { SubjectObjectsPanel } from "../components/SubjectObjectsPanel";
@@ -47,7 +47,8 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const tree = useHistory<IndicatorNode[]>(parseIndicators(scheme));
+  // 载入即按规则重算分值:计权/加分块「下层累加」自动滚上来(老数据里加分块可能存的是手填值)
+  const tree = useHistory<IndicatorNode[]>(recomputeWeights(parseIndicators(scheme)));
   const [name, setName] = useState(scheme.name);
   const [year, setYear] = useState(scheme.year);
   const [status, setStatus] = useState(scheme.status);

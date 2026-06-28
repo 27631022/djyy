@@ -96,14 +96,14 @@ export function sumNormalWeights(nodes: IndicatorNode[]): number {
 }
 
 /**
- * 重算分支权重。仅「计权(normal)」分支 = 子节点之和(只填末端叶子,上级逐级累加);
- * 加分/减分块的 weight = 用户填的「上限/封顶」,不覆盖。返回新树。
+ * 重算分支权重。「计权(normal)」与「加分(bonus)」分支 = 子节点之和(只填末端叶子,上级逐级自动累加);
+ * 「减分(deduction)」块的 weight = 用户填的「减分上限/封顶」,不覆盖(计分时下级之和按本级上限封顶)。返回新树。
  */
 export function recomputeWeights(tree: IndicatorNode[]): IndicatorNode[] {
   return tree.map((n) => {
     if (n.children && n.children.length > 0) {
       const kids = recomputeWeights(n.children);
-      if (n.kind === "normal") {
+      if (n.kind === "normal" || n.kind === "bonus") {
         const sum = kids.reduce((s, c) => s + (c.weight || 0), 0);
         return { ...n, children: kids, weight: sum };
       }

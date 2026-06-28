@@ -32,9 +32,9 @@ export function IndicatorNodeRow(props: RowProps) {
   const selected = selectedCode === node.code;
   const incomplete = leaf && (!node.dataSource || !node.scoringType);
   const special = node.kind !== "normal";
-  // 末端叶子填分值;加分/减分块填「上限」;计权分支只读(下级累加)
-  const weightEditable = leaf || special;
-  const weightLabel = special ? "上限" : "分";
+  // 末端叶子填分值;减分块填「减分上限」;计权/加分分支只读(下级自动累加)
+  const weightEditable = leaf || node.kind === "deduction";
+  const weightLabel = !leaf && node.kind === "deduction" ? "上限" : "分";
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.code });
   const style = {
@@ -108,7 +108,7 @@ export function IndicatorNodeRow(props: RowProps) {
             <input
               type="number"
               value={node.weight ?? 0}
-              title={special ? "本块上限/封顶" : "分值(只在末端指标填)"}
+              title={!leaf ? "本块减分上限/封顶(下级减分之和超此值锁死)" : "分值(只在末端指标填)"}
               onFocus={record}
               onChange={(e) => onPatch(node.code, { weight: e.target.value === "" ? 0 : Number(e.target.value) })}
               onClick={(e) => e.stopPropagation()}
