@@ -1,8 +1,8 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowDown, ArrowLeft, ArrowUp, BarChart3, Camera, ChevronDown, ChevronRight, Minus, PenLine, Trash2, Trophy } from "lucide-react";
+import { ArrowLeft, Camera, ChevronDown, ChevronRight, PenLine, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { useAuth } from "@/stores/auth";
 import {
@@ -53,9 +53,6 @@ export default function AssessmentResults() {
 function ResultsInner({ round, onBack }: { round: AssessmentRound; onBack: () => void }) {
   const { me } = useAuth();
   const qc = useQueryClient();
-  const [params, setParams] = useSearchParams();
-  const tab: "ranking" | "board" = params.get("tab") === "board" ? "board" : "ranking";
-  const setTab = (t: "ranking" | "board") => setParams({ tab: t }, { replace: true });
 
   const indicators = useMemo(() => parseRoundIndicators(round), [round]);
   const leafMeta = useMemo(() => leafMetaMap(indicators), [indicators]);
@@ -81,26 +78,6 @@ function ResultsInner({ round, onBack }: { round: AssessmentRound; onBack: () =>
   const viewResults = activeSnap ? parseSnapshotResults(activeSnap) : currentResults;
   const targets = viewResults.targets ?? [];
 
-  // 对比基准 = 选中时点的「上一个时点」(快照按时间 asc,其后接「当前」)
-  const prevLabel = useMemo(() => {
-    if (viewId === "current") return snaps[snaps.length - 1]?.label ?? null;
-    const i = snaps.findIndex((s) => s.id === viewId);
-    return i > 0 ? snaps[i - 1].label : null;
-  }, [viewId, snaps]);
-  const prevRankByRef = useMemo(() => {
-    let prev: RoundResults | null = null;
-    if (viewId === "current") {
-      const last = snaps[snaps.length - 1];
-      prev = last ? parseSnapshotResults(last) : null;
-    } else {
-      const i = snaps.findIndex((s) => s.id === viewId);
-      prev = i > 0 ? parseSnapshotResults(snaps[i - 1]) : null;
-    }
-    const m = new Map<string, number>();
-    for (const t of prev?.targets ?? []) m.set(t.ref, t.rank);
-    return m;
-  }, [viewId, snaps]);
-
   const genSnapshot = useMutation({
     mutationFn: (input: { label: string; note?: string }) => assessmentApi.createSnapshot(round.id, input),
     onSuccess: (snap) => {
@@ -124,7 +101,7 @@ function ResultsInner({ round, onBack }: { round: AssessmentRound; onBack: () =>
   const [genOpen, setGenOpen] = useState(false);
 
   return (
-    <Shell onBack={onBack} title={round.name} sub={`${round.year} 年`} tab={tab} setTab={setTab}>
+    <Shell onBack={onBack} title={round.name} sub={`${round.year} 年`}>
       <SnapshotBar
         snaps={snaps}
         viewId={viewId}
@@ -144,7 +121,7 @@ function ResultsInner({ round, onBack }: { round: AssessmentRound; onBack: () =>
               : "本轮还没有录入,暂无排名。回打分页给各单位录入分数后,这里实时显示;也可在上方「生成季度快照」定格留档。"
           }
         />
-      ) : tab === "ranking" ? (
+      ) : (
         <RankingTab
           round={round}
           indicators={indicators}
@@ -154,8 +131,6 @@ function ResultsInner({ round, onBack }: { round: AssessmentRound; onBack: () =>
           isManager={isManager}
           readOnly={!!activeSnap}
         />
-      ) : (
-        <BoardTab targets={targets} prevRankByRef={prevRankByRef} prevLabel={prevLabel} />
       )}
 
       {genOpen && (
@@ -174,15 +149,11 @@ function Shell({
   onBack,
   title,
   sub,
-  tab,
-  setTab,
   children,
 }: {
   onBack: () => void;
   title?: string;
   sub?: string;
-  tab?: "ranking" | "board";
-  setTab?: (t: "ranking" | "board") => void;
   children: ReactNode;
 }) {
   return (
@@ -195,26 +166,6 @@ function Shell({
           <div className="text-lg font-semibold text-[#172033] truncate">{title ?? "考核结果"}</div>
           {sub && <div className="text-[12px] text-[#6B7280]">{sub}</div>}
         </div>
-        {tab && setTab && (
-          <div className="flex rounded-md border border-[#dce4ef] overflow-hidden text-sm flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => setTab("ranking")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 ${tab === "ranking" ? "text-white" : "text-[#475467] bg-white"}`}
-              style={tab === "ranking" ? { backgroundColor: "var(--party-primary)" } : undefined}
-            >
-              <Trophy className="w-4 h-4" /> 考核排名
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("board")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 ${tab === "board" ? "text-white" : "text-[#475467] bg-white"}`}
-              style={tab === "board" ? { backgroundColor: "var(--party-primary)" } : undefined}
-            >
-              <BarChart3 className="w-4 h-4" /> 各单位排名
-            </button>
-          </div>
-        )}
       </div>
       {children}
     </div>
@@ -317,31 +268,6 @@ function RankBadge({ rank }: { rank: number }) {
       style={m ? { backgroundImage: m.badge, color: "#fff" } : { backgroundColor: "#f1f5f9", color: "#64748b" }}
     >
       {rank}
-    </span>
-  );
-}
-
-/** 较上一时点的名次升降(正=上升)。prevRank 缺失=该对象上期不存在(新)。 */
-function DeltaBadge({ rank, prevRank }: { rank: number; prevRank: number | undefined }) {
-  if (prevRank === undefined) return <span className="text-[10px] text-[#94a3b8] flex-shrink-0">新</span>;
-  const d = prevRank - rank;
-  if (d === 0)
-    return (
-      <span className="inline-flex items-center text-[10px] text-[#94a3b8] flex-shrink-0" title="名次未变">
-        <Minus className="w-3 h-3" />
-      </span>
-    );
-  if (d > 0)
-    return (
-      <span className="inline-flex items-center text-[10px] text-emerald-600 font-medium flex-shrink-0" title={`较上一时点上升 ${d} 名`}>
-        <ArrowUp className="w-3 h-3" />
-        {d}
-      </span>
-    );
-  return (
-    <span className="inline-flex items-center text-[10px] text-red-500 font-medium flex-shrink-0" title={`较上一时点下降 ${-d} 名`}>
-      <ArrowDown className="w-3 h-3" />
-      {-d}
     </span>
   );
 }
@@ -471,117 +397,6 @@ function RankingTab({
           })}
         </div>
       )}
-    </div>
-  );
-}
-
-// ─── ③ 各单位排名(全量总分 + 邻近 + 历次升降) ───
-function BoardTab({
-  targets,
-  prevRankByRef,
-  prevLabel,
-}: {
-  targets: RoundTargetResult[];
-  prevRankByRef: Map<string, number>;
-  prevLabel: string | null;
-}) {
-  const sorted = useMemo(() => [...targets].sort((a, b) => a.rank - b.rank), [targets]);
-  const maxTotal = useMemo(() => Math.max(1, ...sorted.map((t) => t.total)), [sorted]);
-  const [sel, setSel] = useState<string>("");
-  const idx = sorted.findIndex((t) => t.ref === sel);
-  const selRow = idx >= 0 ? sorted[idx] : null;
-  const showDelta = prevRankByRef.size > 0;
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-      <div className="rounded-xl border border-[#eef2f7] bg-white">
-        {showDelta && prevLabel && (
-          <div className="px-4 py-2 border-b border-[#eef2f7] text-[11px] text-[#6B7280]">
-            <span className="inline-flex items-center gap-0.5 text-emerald-600">
-              <ArrowUp className="w-3 h-3" />升
-            </span>{" "}
-            /{" "}
-            <span className="inline-flex items-center gap-0.5 text-red-500">
-              <ArrowDown className="w-3 h-3" />降
-            </span>{" "}
-            = 较「{prevLabel}」的名次变化
-          </div>
-        )}
-        <div className="divide-y divide-[#f1f5f9]">
-          {sorted.map((t) => (
-            <button
-              key={t.ref}
-              type="button"
-              onClick={() => setSel(t.ref)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-[#f8fafc] ${t.ref === sel ? "bg-party-soft" : ""}`}
-            >
-              <RankBadge rank={t.rank} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[14px] text-[#172033] truncate">{t.name}</span>
-                  <span className="flex items-center gap-2 flex-shrink-0">
-                    {showDelta && <DeltaBadge rank={t.rank} prevRank={prevRankByRef.get(t.ref)} />}
-                    {t.grade && <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-party-soft text-[var(--party-primary)]">{t.grade}</span>}
-                    <span className="text-[14px] font-bold text-[#172033]">{t.total}</span>
-                  </span>
-                </div>
-                <div className="mt-1 h-1.5 rounded-full bg-[#f1f5f9] overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${barPct(t.total, maxTotal)}%`, ...bar(t.rank) }} />
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-[#eef2f7] bg-white p-4 h-fit">
-        <div className="text-[13px] font-semibold text-[#172033] mb-2">邻近排名</div>
-        <select
-          value={sel}
-          onChange={(e) => setSel(e.target.value)}
-          className="w-full px-2.5 py-1.5 text-[13px] border border-[#dce4ef] rounded-md bg-white mb-3"
-        >
-          <option value="">选一个单位看它的邻近名次…</option>
-          {sorted.map((t) => (
-            <option key={t.ref} value={t.ref}>
-              {t.rank}. {t.name}
-            </option>
-          ))}
-        </select>
-        {!selRow ? (
-          <div className="text-[12px] text-[#9CA3AF] text-center py-6">选单位后,这里显示「前三名 + 高它一名 / 它 / 低它一名」。</div>
-        ) : (
-          <div className="space-y-3">
-            <div>
-              <div className="text-[11px] text-[#9CA3AF] mb-1">前三名</div>
-              <div className="space-y-1">
-                {sorted.slice(0, 3).map((t) => (
-                  <NeighborRow key={t.ref} t={t} highlight={t.ref === selRow.ref} />
-                ))}
-              </div>
-            </div>
-            <div>
-              <div className="text-[11px] text-[#9CA3AF] mb-1">它的位置</div>
-              <div className="space-y-1">
-                {idx > 0 && <NeighborRow t={sorted[idx - 1]} label="高它一名" />}
-                <NeighborRow t={selRow} highlight label="它" />
-                {idx < sorted.length - 1 && <NeighborRow t={sorted[idx + 1]} label="低它一名" />}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function NeighborRow({ t, highlight, label }: { t: RoundTargetResult; highlight?: boolean; label?: string }) {
-  return (
-    <div className={`flex items-center gap-2 px-2 py-1.5 rounded-md ${highlight ? "bg-party-soft ring-1 ring-[var(--party-primary)]/30" : "bg-[#f8fafc]"}`}>
-      <RankBadge rank={t.rank} />
-      <span className="min-w-0 flex-1 text-[13px] text-[#172033] truncate">{t.name}</span>
-      {label && <span className="text-[10px] text-[#9CA3AF] flex-shrink-0">{label}</span>}
-      <span className="text-[13px] font-bold text-[#172033] flex-shrink-0">{t.total}</span>
     </div>
   );
 }

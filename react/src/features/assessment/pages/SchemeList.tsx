@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { BarChart3, ClipboardCheck, ClipboardList, Copy, FileText, Plus, Trophy, Trash2 } from "lucide-react";
+import { ClipboardCheck, ClipboardList, Copy, FileText, Plus, Trophy, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import {
   assessmentApi,
@@ -111,8 +111,7 @@ export default function SchemeList() {
               onDuplicate={() => dup.mutate(s.id)}
               onDelete={() => del.mutate(s.id)}
               onScore={() => goScore(s.id)}
-              onRanking={() => navigate(`/admin/assessment/schemes/${s.id}/results?tab=ranking`)}
-              onBoard={() => navigate(`/admin/assessment/schemes/${s.id}/results?tab=board`)}
+              onRanking={() => navigate(`/admin/assessment/schemes/${s.id}/results`)}
             />
           ))}
         </div>
@@ -138,7 +137,6 @@ function SchemeCard({
   onDelete,
   onScore,
   onRanking,
-  onBoard,
 }: {
   scheme: AssessmentScheme;
   onOpen: () => void;
@@ -146,7 +144,6 @@ function SchemeCard({
   onDelete: () => void;
   onScore: () => void;
   onRanking: () => void;
-  onBoard: () => void;
 }) {
   const leaves = countLeaves(parseIndicators(scheme));
   const st = parseSettings(scheme);
@@ -210,8 +207,7 @@ function SchemeCard({
       </div>
       <div className="mt-3 pt-3 border-t border-[#f1f5f9] flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <CardBtn icon={ClipboardList} label="考核打分" onClick={onScore} title="进入年度考核打分(没有则自动开始;一张表只一轮)" />
-        <CardBtn icon={Trophy} label="考核排名" onClick={onRanking} title="按我负责的指标合计排名,支持下钻" />
-        <CardBtn icon={BarChart3} label="各单位排名" onClick={onBoard} title="全量总分排名 + 邻近名次" />
+        <CardBtn icon={Trophy} label="考核排名" onClick={onRanking} title="各单位总分排名 + 我负责指标合计排名,支持下钻" />
         <span
           className="flex items-center gap-1 text-[12px] text-[#c4cbd6] cursor-not-allowed"
           title="单位考核报告(雷达图 + 问题建议)下一轮上线"
