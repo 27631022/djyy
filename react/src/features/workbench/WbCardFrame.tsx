@@ -7,6 +7,8 @@ const PARTY = "var(--party-primary)";
 // 磨砂玻璃质感:半透明白 + backdrop-blur + 浅高光边 + 柔和投影
 const CARD =
   "rounded-2xl border border-white/60 bg-white/55 backdrop-blur-xl shadow-[0_8px_30px_rgba(28,42,68,0.10)]";
+// 统一卡片高度:所有卡等高瓦片(尺寸只决定宽度),内容超出卡内滚动 → 拖拽编排时行底整齐
+const CARD_HEIGHT = "h-[272px]";
 
 /**
  * 单卡外框(参考 app-platform-home 卡片样式)。
@@ -37,7 +39,7 @@ export function WbCardFrame({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`${SIZE_CLASS[card.size]} ${isDragging ? "opacity-60 z-10" : ""}`}
+      className={`${SIZE_CLASS[card.size]} ${CARD_HEIGHT} ${isDragging ? "opacity-60 z-10" : ""}`}
     >
       <div
         className={`h-full ${CARD} flex flex-col ${
@@ -84,7 +86,7 @@ export function WbCardFrame({
             </div>
           )}
         </div>
-        <div className="px-4 pb-4 flex-1 min-h-0">{children}</div>
+        <div className="px-4 pb-4 flex-1 min-h-0 overflow-auto">{children}</div>
       </div>
     </div>
   );
