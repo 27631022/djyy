@@ -466,7 +466,7 @@ export function HallCanvas({
             <g key={w.id}>
               <line
                 x1={w.x1 * M2U} y1={w.y1 * M2U} x2={w.x2 * M2U} y2={w.y2 * M2U}
-                stroke={sel ? accent : "#3F3F46"}
+                stroke={sel ? accent : (w.faces?.inner?.color ?? w.style?.color ?? "#3F3F46")}
                 strokeWidth={WALL_T * M2U}
                 strokeLinecap="square"
               />

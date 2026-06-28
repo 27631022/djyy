@@ -53,7 +53,12 @@ export const FIXTURE_META: Record<FixtureType, FixtureTypeMeta> = {
   decor: { type: "decor", label: "装饰", w: 0.55, d: 0.55, wallMount: false, color: "#16A34A" },
   ceiling_sign: { type: "ceiling_sign", label: "顶端吊牌", w: 1.8, d: 0.12, wallMount: false, color: "#0EA5E9" },
   wall_decor: { type: "wall_decor", label: "文化墙", w: 6.0, d: 0.35, wallMount: true, color: "#DC2626" },
+  flag: { type: "flag", label: "党旗 / 旗帜", w: 1.6, d: 0.15, wallMount: true, color: "#C8001E" },
 };
+
+/** 标准入党誓词(誓词板正文默认值) */
+export const PLEDGE_OATH_TEXT =
+  "我志愿加入中国共产党,拥护党的纲领,遵守党的章程,履行党员义务,执行党的决定,严守党的纪律,保守党的秘密,对党忠诚,积极工作,为共产主义奋斗终身,随时准备为党和人民牺牲一切,永不叛党。";
 
 /** 装饰变体(palette 按变体出按钮,stamp preset 带各自尺寸) */
 export const DECOR_PRESETS: { kind: "plant" | "plant_short" | "bench" | "arrow"; label: string; w: number; d: number }[] = [
@@ -93,6 +98,12 @@ export const WALL_DECOR_PRESETS: { label: string; w: number; d: number; content:
     w: 7.0,
     d: 0.4,
     content: { template: "honor_red", title: "荣誉墙", rows: 3, cols: 5 },
+  },
+  {
+    label: "入党誓词墙",
+    w: 5.0,
+    d: 0.35,
+    content: { template: "pledge_oath", title: "入党誓词", bodyText: PLEDGE_OATH_TEXT },
   },
 ];
 

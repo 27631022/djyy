@@ -1,5 +1,5 @@
 import { Color3, Mesh, MeshBuilder, type Scene } from '@babylonjs/core';
-import type { Fixture, HallMeta, Wall } from '../types';
+import type { Fixture, HallMeta, Wall, WallStyle } from '../types';
 import type { ThemeParams } from '../theme/presets';
 import { FLOOR_TEX_TILES, emissiveMat, makeFloorTexture, pbr } from './materialFactory';
 
@@ -98,6 +98,47 @@ export function buildShell(
   // GL_MAX_VERTEX_UNIFORM_BUFFERS(弱驱动只有 12;曾设 12 → shader 编译失败,
   // 材质永不就绪,另一台办公机卡死在加载进度条)。6 盏足够:射灯有 includedOnlyMeshes。
   wallMat.maxSimultaneousLights = 6;
+  // 单面墙样式 → 专属材质;无自定义则回退全厅共享 wallMat(省材质数/UBO)。
+  // 颜色一律经 pbr()/emissiveMat() 工厂 toLinearSpace(sRGB 直喂会把党建红洗成粉)。
+  const wallMaterialFor = (st: WallStyle | undefined, nameKey: string) => {
+    const custom = st && (st.color || (st.finish && st.finish !== 'paint') || st.roughness !== undefined || st.metallic !== undefined);
+    if (!st || !custom) return wallMat;
+    const color = st.color ? Color3.FromHexString(st.color) : theme.wall;
+    const name = `mat:wall:${nameKey}`;
+    const m =
+      st.finish === 'glow'
+        ? emissiveMat(scene, name, color)
+        : st.finish === 'metal'
+          ? pbr(scene, name, { color, metallic: st.metallic ?? 0.9, roughness: st.roughness ?? 0.3 })
+          : pbr(scene, name, { color, roughness: st.roughness ?? theme.wallRoughness, metallic: st.metallic ?? 0 });
+    m.maxSimultaneousLights = 6; // 守 UBO 灯数上限(说明见 wallMat)
+    return m;
+  };
+  // 双面墙:墙盒上 innerMat;outerMat 不同则在外侧叠一块朝外单面 plane(box=内面 + 外面 overlay)。
+  // 内侧 = 朝包围盒中心(cx,cz)的一面;不做几何自动判定时,用户在 2D 设「内/外」,3D 按朝心映射。
+  const applyWallFaces = (
+    box: Mesh,
+    segW: number,
+    segH: number,
+    rotY: number,
+    innerMat: Mesh['material'],
+    outerMat: Mesh['material'],
+  ) => {
+    box.material = innerMat;
+    if (innerMat === outerMat) return;
+    const bzx = Math.sin(rotY); // 局部 +Z 的世界方向(rotation.y=rotY)
+    const bzz = Math.cos(rotY);
+    const innerOnPlusZ = bzx * (cx - box.position.x) + bzz * (cz - box.position.z) >= 0;
+    const off = WALL_T / 2 + 0.004; // 防 z-fighting 微外移(同过梁 4mm 手法)
+    const dirX = innerOnPlusZ ? -bzx : bzx; // 外侧方向
+    const dirZ = innerOnPlusZ ? -bzz : bzz;
+    const plane = MeshBuilder.CreatePlane(`${box.name}:outer`, { width: segW, height: segH }, scene);
+    plane.position.set(box.position.x + dirX * off, box.position.y, box.position.z + dirZ * off);
+    plane.rotation.y = innerOnPlusZ ? rotY : rotY + Math.PI; // 法线朝外
+    plane.material = outerMat;
+    plane.isPickable = false;
+    staticMeshes.push(plane);
+  };
   const floorMat = pbr(scene, 'mat:floor', {
     color: Color3.White(), // 基色烤进砖纹贴图,albedo 给白(相乘不偏色)
     roughness: theme.floorRoughness, // 低粗糙度 → IBL 反射,「反光地板」
@@ -170,6 +211,11 @@ export function buildShell(
     /** 沿墙 t 米处的世界坐标 */
     const at = (t: number) => ({ x: w.x1 + ux * t, z: w.y1 + uz * t });
 
+    // 本面墙内外材质(同一 wall.id 的实体段 + 门洞过梁共用);faces 缺省时内外同材质走快路径
+    const hasFaces = !!(w.faces && (w.faces.inner || w.faces.outer));
+    const innerMat = hasFaces ? wallMaterialFor(w.faces?.inner ?? w.style, `${w.id}:in`) : wallMaterialFor(w.style, w.id);
+    const outerMat = hasFaces ? wallMaterialFor(w.faces?.outer ?? w.style, `${w.id}:out`) : innerMat;
+
     const { spans, openings } = solidSpans(w, doors);
 
     // 实体段(全高,带碰撞)+ 各段踢脚线
@@ -183,7 +229,7 @@ export function buildShell(
       );
       wall.position.set(c.x, wallH / 2, c.z);
       wall.rotation.y = rotY;
-      wall.material = wallMat;
+      applyWallFaces(wall, segLen, wallH, rotY, innerMat, outerMat);
       wall.checkCollisions = true;
       // 可拾取:作为遮挡体,挡住「墙背后展品」被射线穿墙点中(拾取/悬停取最近命中,
       // 墙无 fixture 元数据 → 命中墙=无操作)。墙段不多,拾取开销可忽略。
@@ -215,7 +261,7 @@ export function buildShell(
       );
       lintel.position.set(c.x, DOOR_CLEAR_H + (wallH - DOOR_CLEAR_H) / 2, c.z);
       lintel.rotation.y = rotY;
-      lintel.material = wallMat;
+      applyWallFaces(lintel, b - a + 0.02, wallH - DOOR_CLEAR_H, rotY, innerMat, outerMat);
       lintel.checkCollisions = true;
       lintel.isPickable = false;
       staticMeshes.push(lintel);

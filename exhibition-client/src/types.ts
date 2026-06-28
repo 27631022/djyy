@@ -13,7 +13,8 @@ export const FIXTURE_TYPES = [
   'text_3d',
   'decor', // 装饰(绿植/长椅/地面引导箭头,程序化建模,不可点击)
   'ceiling_sign', // 顶端吊牌(吊杆 + 双面文字牌)
-  'wall_decor', // 文化墙挂件(贴墙浮雕造型:党务/厂务公开栏、荣誉墙,程序化分层挤出)
+  'wall_decor', // 文化墙挂件(贴墙浮雕造型:党务/厂务公开栏、荣誉墙、入党誓词板,程序化分层挤出)
+  'flag', // 党旗 / 旗帜(贴墙贴图平面)
 ] as const;
 export type FixtureType = (typeof FIXTURE_TYPES)[number];
 
@@ -37,15 +38,42 @@ export interface CeilingSignContent {
   text: string;
 }
 
-/** 文化墙挂件:三套浮雕模板(党务公开栏/厂务公开栏/荣誉墙),标题/栏目可改 */
+/** 文化墙挂件:浮雕模板(党务公开栏/厂务公开栏/荣誉墙/入党誓词板),标题/栏目/正文可改 */
 export interface WallDecorContent {
-  template?: 'party_red' | 'blue_tech' | 'honor_red';
+  template?: 'party_red' | 'blue_tech' | 'honor_red' | 'pledge_oath';
   title?: string;
-  /** 栏目名(party_red/blue_tech;honor_red 不用) */
+  /** 栏目名(party_red/blue_tech;honor_red/pledge_oath 不用) */
   panels?: string[];
   /** 相框行 × 列(仅 honor_red,默认 3 × 5) */
   rows?: number;
   cols?: number;
+  /** 正文(仅 pledge_oath 入党誓词板:整段誓词,走 canvas 贴图渲染;留空用标准誓词) */
+  bodyText?: string;
+}
+/** 党旗 / 旗帜:贴墙贴图平面(上传旗面图) */
+export interface FlagContent {
+  imageFileId?: string;
+  imageUrl?: string; // 响应态旁补(imageFileId → imageUrl)
+  frameH?: number; // 旗面高(米,默认按 3:2 自动)
+  baseElevM?: number; // 下边缘离地高度(米,默认 1.4)
+  withPole?: boolean; // 是否配旗杆
+}
+
+/** 墙面质感(注册表键;P2 可加 brick 砖纹 / relief 浮雕等贴图类) */
+export type WallFinish = 'paint' | 'metal' | 'glow';
+
+/**
+ * 单面墙样式(可选;字段一次定型,P1 仅 finish/color 进 UI,其余为已对齐的扩展位)。
+ * 缺省一律回退主题墙(theme.wall + theme.wallRoughness),旧展厅 style=undefined 自动兼容。
+ */
+export interface WallStyle {
+  finish?: WallFinish; // 质感:烤漆(默认)/ 金属 / 发光
+  color?: string; // 墙面颜色 sRGB hex;缺省回退主题墙色
+  roughness?: number; // 可选微调,缺省由 finish 决定
+  metallic?: number; // 可选微调
+  tileScale?: number; // 平铺密度,1=1m 一格(P2 贴图用)
+  textureFileId?: string; // 墙面贴图 storage 松引用(P2)
+  textureUrl?: string; // 仅响应态旁补(P2)
 }
 
 export interface Wall {
@@ -54,6 +82,9 @@ export interface Wall {
   y1: number;
   x2: number;
   y2: number;
+  style?: WallStyle; // 单面墙样式(两面共用;faces 缺省时的兜底)
+  /** 两面单独设样式:inner 朝展厅内、outer 背面;缺省回退 style/整盒单材质 */
+  faces?: { inner?: WallStyle; outer?: WallStyle };
 }
 
 export type HallThemePreset = 'modern_light' | 'party_red' | 'dark_tech' | 'future_tech';
@@ -107,7 +138,6 @@ export interface HallGuide {
   armFlip?: boolean; // 手臂方向反向
   narrateSide?: 'left' | 'right'; // 解说站位优先侧(默认 left,右侧兜底)
   brightness?: number; // 2.5D 立绘亮度(自发光强度,默认 1.0)
-  rimLight?: boolean; // 2.5D 立绘轮廓光(剪影描边,默认关)
 }
 
 export interface Fixture {

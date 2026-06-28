@@ -18,6 +18,8 @@ import type {
   Text3dContent,
   VideoWallContent,
   WallDecorContent,
+  WallStyle,
+  FlagContent,
 } from "../../lib/hallTypes";
 import { FIXTURE_META, round2, wallLength } from "../../lib/hallUtils";
 import {
@@ -31,6 +33,8 @@ import {
   Text3dEditor,
   VideoWallEditor,
   WallDecorEditor,
+  WallStyleEditor,
+  FlagEditor,
 } from "./ContentEditors";
 
 interface PropertiesPanelProps {
@@ -311,6 +315,39 @@ export function PropertiesPanel({ state, selection, hallId, accent, onUpdate, on
         <Row label="终点 X"><Num value={wall.x2} onChange={(n) => patchWall({ x2: n })} /></Row>
         <Row label="终点 Y"><Num value={wall.y2} onChange={(n) => patchWall({ y2: n })} /></Row>
         <Row label="长度"><span className="text-xs text-[#1A1A1A] font-medium">{wallLength(wall).toFixed(2)} m</span></Row>
+        <div className="pt-2 mt-1 border-t border-[#F0F0F0] space-y-2">
+          <div className="flex items-center justify-between">
+            <SectionTitle>墙面样式</SectionTitle>
+            <label className="flex items-center gap-1.5 text-[11px] text-[#6B7280] cursor-pointer">
+              两面分别
+              <Switch
+                checked={!!wall.faces}
+                onCheckedChange={(on) =>
+                  patchWall(on ? { faces: { inner: wall.style ?? {}, outer: wall.style ?? {} } } : { faces: undefined })
+                }
+              />
+            </label>
+          </div>
+          {wall.faces ? (
+            <div className="space-y-2">
+              <div className="text-[11px] font-medium text-[#52525B]">内侧(朝展厅内)</div>
+              <WallStyleEditor
+                value={wall.faces.inner ?? {}}
+                onChange={(s: WallStyle) => patchWall({ faces: { ...(wall.faces ?? {}), inner: s } })}
+              />
+              <div className="text-[11px] font-medium text-[#52525B] pt-1 border-t border-[#F4F4F5]">外侧(背面)</div>
+              <WallStyleEditor
+                value={wall.faces.outer ?? {}}
+                onChange={(s: WallStyle) => patchWall({ faces: { ...(wall.faces ?? {}), outer: s } })}
+              />
+              <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+                内 / 外由 3D 里墙的实际朝向决定;若发现反了,把两面样式对调即可。
+              </p>
+            </div>
+          ) : (
+            <WallStyleEditor value={wall.style ?? {}} onChange={(style: WallStyle) => patchWall({ style })} />
+          )}
+        </div>
         <DeleteButton onClick={onDeleteSelection} label="删除这段墙" />
       </div>
     );
@@ -544,6 +581,9 @@ function FixtureProps({
               value={(source.content as WallDecorContent) ?? {}}
               onChange={(v) => onPatch({ source: { ...source, content: v } })}
             />
+          )}
+          {fixture.type === "flag" && (
+            <FlagEditor value={(source.content as FlagContent) ?? {}} hallId={hallId} onChange={patchContent} />
           )}
         </>
       )}

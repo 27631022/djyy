@@ -14,6 +14,7 @@ import { buildText3d, fontKeyOf } from './text3dBuilder';
 import { buildDecor } from './decorBuilder';
 import { buildCeilingSign } from './ceilingSignBuilder';
 import { buildWallDecor, wallDecorFontKey, wallDecorTitleOf } from './wallDecorBuilder';
+import { buildFlag } from './flagBuilder';
 
 /** 全厅挤出文字(text_3d + 文化墙标题)按「字体 key」分组去重字符(每种字体一次请求) */
 function collectCharsByFont(fixtures: Fixture[]): Map<string, string> {
@@ -96,6 +97,9 @@ export async function buildFixtures(
         break;
       case 'wall_decor':
         built = buildWallDecor(scene, fx, fonts, shell.wallH);
+        break;
+      case 'flag':
+        built = buildFlag(scene, fx, theme);
         break;
       default:
         console.warn(`[展厅] 未知组件类型:${fx.type as string}(${fx.id})`);

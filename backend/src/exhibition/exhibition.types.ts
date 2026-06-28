@@ -20,9 +20,27 @@ export const FIXTURE_TYPES = [
   'text_3d', // 立体字(入口 LOGO 墙 / 标语,挤出 3D 文字;mount=flat 平铺地面)
   'decor', // 装饰(绿植/长椅/地面引导箭头,程序化建模,不可点击)
   'ceiling_sign', // 顶端吊牌(吊杆 + 双面文字牌)
-  'wall_decor', // 文化墙挂件(贴墙浮雕造型:党务/厂务公开栏、荣誉墙,程序化分层挤出)
+  'wall_decor', // 文化墙挂件(贴墙浮雕造型:党务/厂务公开栏、荣誉墙、入党誓词板,程序化分层挤出)
+  'flag', // 党旗 / 旗帜(贴墙贴图平面,上传旗面图)
 ] as const;
 export type FixtureType = (typeof FIXTURE_TYPES)[number];
+
+/** 墙面质感(注册表键;P2 可加 brick 砖纹 / relief 浮雕等贴图类) */
+export type WallFinish = 'paint' | 'metal' | 'glow';
+
+/**
+ * 单面墙样式(可选;字段一次定型,P1 仅 finish/color 进 UI,其余为已对齐的扩展位)。
+ * 缺省一律回退主题墙(theme.wall + theme.wallRoughness),旧展厅 style=undefined 自动兼容。
+ */
+export interface WallStyle {
+  finish?: WallFinish; // 质感:烤漆(默认)/ 金属 / 发光
+  color?: string; // 墙面颜色 sRGB hex;缺省回退主题墙色
+  roughness?: number; // 可选微调,缺省由 finish 决定(本期不进 UI)
+  metallic?: number; // 可选微调(本期不进 UI)
+  tileScale?: number; // 平铺密度,1=1m 一格(P2 贴图用)
+  textureFileId?: string; // 墙面贴图 storage 松引用(P2;命名 *FileId 后缀供孤儿 GC 自动认领)
+  textureUrl?: string; // 仅响应态旁补(P2;进 FILE_ID_TO_URL + RESOLVED_URL_KEYS)
+}
 
 /** 墙(单位:米,原点在平面图中心) */
 export interface Wall {
@@ -31,6 +49,9 @@ export interface Wall {
   y1: number;
   x2: number;
   y2: number;
+  style?: WallStyle; // 单面墙样式(两面共用;faces 缺省时的兜底)
+  /** 两面单独设样式:inner 朝展厅内、outer 背面;缺省回退 style/整盒单材质 */
+  faces?: { inner?: WallStyle; outer?: WallStyle };
 }
 
 /** 主题预设(v2):客户端 theme/presets.ts 按 preset 取整套材质/灯光参数 */
@@ -96,8 +117,6 @@ export interface HallGuide {
   narrateSide?: 'left' | 'right';
   /** 2.5D 立绘亮度(自发光强度,默认 1.0;调高更亮、治"暗沉",调低更柔和) */
   brightness?: number;
-  /** 2.5D 立绘轮廓光:身体剪影放大一圈纯亮色叠在背后,勾出一圈描边把人从背景分离(默认关) */
-  rimLight?: boolean;
 }
 
 /** 组件实例(规格 5.2) */
@@ -230,14 +249,25 @@ export interface CeilingSignContent {
  * honor_red 荣誉墙(红飘带+金相框阵列+搁板灯带)。标题/栏目名可改,留空用模板默认。
  */
 export interface WallDecorContent {
-  template?: 'party_red' | 'blue_tech' | 'honor_red';
-  /** 主标题(默认按模板:党务公开栏 / 厂务公开栏 / 荣誉墙) */
+  template?: 'party_red' | 'blue_tech' | 'honor_red' | 'pledge_oath';
+  /** 主标题(默认按模板:党务公开栏 / 厂务公开栏 / 荣誉墙 / 入党誓词) */
   title?: string;
-  /** 栏目名(party_red/blue_tech 的栏目板标题;honor_red 不用) */
+  /** 栏目名(party_red/blue_tech 的栏目板标题;honor_red/pledge_oath 不用) */
   panels?: string[];
   /** 相框行数 × 列数(仅 honor_red,默认 3 × 5) */
   rows?: number;
   cols?: number;
+  /** 正文(仅 pledge_oath 入党誓词板:整段誓词,走 canvas 贴图渲染;留空用标准誓词) */
+  bodyText?: string;
+}
+
+/** 党旗 / 旗帜:贴墙贴图平面(上传旗面图;红旗经 IBL 防洗淡) */
+export interface FlagContent {
+  imageFileId?: string; // 旗面图 storage 松引用(*FileId → 自动旁补 imageUrl + 孤儿 GC 认领)
+  imageUrl?: string; // 仅响应态旁补(见 FILE_ID_TO_URL 的 imageFileId)
+  frameH?: number; // 旗面高(米,默认按 3:2 自动)
+  baseElevM?: number; // 下边缘离地高度(米,默认 1.4)
+  withPole?: boolean; // 是否配旗杆
 }
 
 /** 已解析展厅(GET /halls/:id 响应,客户端拿到即用) */

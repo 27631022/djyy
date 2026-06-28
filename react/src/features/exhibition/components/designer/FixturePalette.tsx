@@ -13,6 +13,7 @@ import {
   PackageIcon,
   PenLineIcon,
   PinIcon,
+  ScrollTextIcon,
   SignpostIcon,
   SproutIcon,
   TrophyIcon,
@@ -36,6 +37,7 @@ const TYPE_ICONS: Record<FixtureType, IconCmp> = {
   decor: SproutIcon,
   ceiling_sign: SignpostIcon,
   wall_decor: WallpaperIcon,
+  flag: FlagIcon,
 };
 
 /** palette 条目:类型 + 可选变体预设(装饰的 绿植/矮盆栽/长椅) */
@@ -46,7 +48,7 @@ interface PaletteItem {
   preset?: StampPreset;
 }
 
-const WALL_DECOR_ICONS: IconCmp[] = [FlagIcon, FactoryIcon, TrophyIcon];
+const WALL_DECOR_ICONS: IconCmp[] = [FlagIcon, FactoryIcon, TrophyIcon, ScrollTextIcon];
 
 const SHOW_ITEMS: PaletteItem[] = [
   { type: "image_case", label: "图片展柜", icon: ImageIcon },
@@ -56,7 +58,8 @@ const SHOW_ITEMS: PaletteItem[] = [
   { type: "notice_board", label: "党务公开板", icon: LayoutTemplateIcon },
   { type: "text_3d", label: "立体字", icon: TypeIcon },
   { type: "ceiling_sign", label: "顶端吊牌", icon: SignpostIcon },
-  // 文化墙挂件(浮雕造型,三套模板各一按钮)
+  { type: "flag", label: "党旗 / 旗帜", icon: FlagIcon },
+  // 文化墙挂件(浮雕造型:党务/厂务公开栏、荣誉墙、入党誓词板,各一按钮)
   ...WALL_DECOR_PRESETS.map((p, i) => ({
     type: "wall_decor" as const,
     label: p.label,

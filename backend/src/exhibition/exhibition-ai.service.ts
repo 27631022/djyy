@@ -248,7 +248,7 @@ function defaultContent(type: FixtureType, raw: unknown): unknown {
             .slice(0, 8)
         : [];
       return {
-        template: ['party_red', 'blue_tech', 'honor_red'].includes(String(c.template))
+        template: ['party_red', 'blue_tech', 'honor_red', 'pledge_oath'].includes(String(c.template))
           ? c.template
           : 'party_red',
         ...(typeof c.title === 'string' && c.title.trim()
@@ -257,6 +257,9 @@ function defaultContent(type: FixtureType, raw: unknown): unknown {
         ...(panels.length ? { panels } : {}),
         ...(c.rows !== undefined ? { rows: Math.round(num(c.rows, 3, 1, 4)) } : {}),
         ...(c.cols !== undefined ? { cols: Math.round(num(c.cols, 5, 2, 7)) } : {}),
+        ...(typeof c.bodyText === 'string' && c.bodyText.trim()
+          ? { bodyText: c.bodyText.trim().slice(0, 400) }
+          : {}),
       };
     }
     default:

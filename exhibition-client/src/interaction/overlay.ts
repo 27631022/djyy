@@ -1,5 +1,6 @@
 import type {
   Fixture,
+  FlagContent,
   HonorWallContent,
   ImageCaseContent,
   ModelStandContent,
@@ -8,7 +9,7 @@ import type {
   VideoWallContent,
   WallDecorContent,
 } from '../types';
-import { wallDecorPanelsOf, wallDecorTemplate, wallDecorTitleOf } from '../fixtures/wallDecorBuilder';
+import { wallDecorBodyOf, wallDecorPanelsOf, wallDecorTemplate, wallDecorTitleOf } from '../fixtures/wallDecorBuilder';
 
 /**
  * HTML 详情浮层(不用 Babylon GUI —— DOM 文字永远清晰)。
@@ -163,6 +164,7 @@ export class Overlay {
       door: '通道',
       text_3d: '标语',
       wall_decor: '文化墙',
+      flag: '党旗 / 旗帜',
     };
     return names[t] ?? t;
   }
@@ -312,7 +314,12 @@ export class Overlay {
         t.style.cssText = `font-size:21px;font-weight:bold;color:${this.accent};text-align:center;padding:10px 0 14px;margin:0;`;
         t.textContent = wallDecorTitleOf(wc);
         body.appendChild(t);
-        if (tpl === 'honor_red') {
+        if (tpl === 'pledge_oath') {
+          const p = document.createElement('p');
+          p.style.cssText = 'white-space:pre-wrap;line-height:2;color:#444;padding:0 8px 10px;text-align:justify;';
+          p.textContent = wallDecorBodyOf(wc);
+          body.appendChild(p);
+        } else if (tpl === 'honor_red') {
           const p = document.createElement('p');
           p.style.cssText = 'color:#999;text-align:center;margin:0 0 8px;';
           p.textContent = `${wc.rows ?? 3} 排 × ${wc.cols ?? 5} 格荣誉相框(后续可接入证书系统数据)`;
@@ -328,6 +335,18 @@ export class Overlay {
             list.appendChild(chip);
           }
           body.appendChild(list);
+        }
+        break;
+      }
+      case 'flag': {
+        const fc = (c ?? {}) as FlagContent;
+        if (fc.imageUrl) {
+          const img = document.createElement('img');
+          img.src = fc.imageUrl;
+          img.style.cssText = 'max-width:100%;max-height:60vh;object-fit:contain;display:block;margin:0 auto;border-radius:8px;';
+          body.appendChild(img);
+        } else {
+          body.innerHTML = `<p style="color:#999;">尚未上传旗面图。</p>`;
         }
         break;
       }

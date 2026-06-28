@@ -30,6 +30,8 @@ import {
   type Text3dContent,
   type VideoWallContent,
   type WallDecorContent,
+  type WallStyle,
+  type FlagContent,
 } from "../../lib/hallTypes";
 import { WALL_DECOR_PRESETS } from "../../lib/hallUtils";
 import { groupModels, TIER_ORDER, fmtSize } from "../../lib/modelTiers";
@@ -788,6 +790,7 @@ const WALL_DECOR_TPL_LABEL: Record<string, string> = {
   party_red: "党务公开栏(红飘带金边)",
   blue_tech: "厂务公开栏(金属框蓝科技)",
   honor_red: "荣誉墙(红金相框阵列)",
+  pledge_oath: "入党誓词墙(红金异形板 + 立体标题)",
 };
 
 export function WallDecorEditor({
@@ -832,7 +835,21 @@ export function WallDecorEditor({
           className={inputCls}
         />
       </Row>
-      {tpl === "honor_red" ? (
+      {tpl === "pledge_oath" ? (
+        <div className="space-y-1.5">
+          <span className="text-xs text-[#6B7280]">誓词正文</span>
+          <textarea
+            value={value.bodyText ?? ""}
+            onChange={(e) => onChange({ ...value, bodyText: e.target.value })}
+            placeholder="留空用标准入党誓词;也可改成其他誓词/宣言"
+            rows={6}
+            className={`${inputCls} resize-y leading-relaxed`}
+          />
+          <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+            标题走立体金属字,正文画在红金异形板的米黄区。3D 预览查看效果。
+          </p>
+        </div>
+      ) : tpl === "honor_red" ? (
         <>
           <Row label="相框排数">
             <input
@@ -888,6 +905,80 @@ export function WallDecorEditor({
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── 党旗 / 旗帜 ── */
+
+export function FlagEditor({
+  value,
+  hallId,
+  onChange,
+}: {
+  value: FlagContent;
+  hallId: string;
+  onChange: (v: FlagContent) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1">
+        <span className="text-xs text-[#6B7280]">旗面图(党旗 / 旗帜,建议去背 PNG 或 3:2 图)</span>
+        {value.imageFileId ? (
+          <div className="flex items-center gap-2">
+            <img
+              src={exhibitionAssetUrl(value.imageFileId)}
+              alt="旗面"
+              className="h-16 w-auto rounded border border-[#E5E7EB] bg-[#F9FAFB] object-contain"
+            />
+            <button
+              type="button"
+              className="p-1 text-[#9CA3AF] hover:text-red-500 flex-shrink-0"
+              title="移除"
+              onClick={() => onChange({ ...value, imageFileId: undefined, imageUrl: undefined })}
+            >
+              <XIcon className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <UploadButton
+            hallId={hallId}
+            accept=".png,.webp,.jpg,.jpeg"
+            label="上传旗面图"
+            icon={<UploadIcon className="w-3.5 h-3.5" />}
+            onDone={(id) => onChange({ ...value, imageFileId: id })}
+          />
+        )}
+      </div>
+      <Row label="旗面高(m)">
+        <input
+          type="number"
+          step={0.1}
+          min={0.3}
+          max={3}
+          value={value.frameH ?? ""}
+          placeholder="按 3:2 自动"
+          onChange={(e) => onChange({ ...value, frameH: e.target.value ? Number(e.target.value) : undefined })}
+          className={inputCls}
+        />
+      </Row>
+      <Row label="离地(m)">
+        <input
+          type="number"
+          step={0.1}
+          min={0}
+          max={6}
+          value={value.baseElevM ?? 1.4}
+          onChange={(e) => onChange({ ...value, baseElevM: Number(e.target.value) || 0 })}
+          className={inputCls}
+        />
+      </Row>
+      <Row label="配旗杆">
+        <Switch checked={value.withPole ?? false} onCheckedChange={(b) => onChange({ ...value, withPole: b })} />
+      </Row>
+      <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+        旗面双面显示;红旗已防环境光洗淡。未上传图时 3D 里显示占位旗。
+      </p>
     </div>
   );
 }
@@ -1272,12 +1363,6 @@ export function GuideEditor({
               title="2.5D 立绘亮度(1=原图;暗沉就调到 1.1~1.3)"
             />
           </Row>
-          <Row label="轮廓光">
-            <Switch
-              checked={g.rimLight ?? false}
-              onCheckedChange={(b) => onChange({ ...g, rimLight: b })}
-            />
-          </Row>
           <Row label="音色">
             <input
               value={g.voice ?? ""}
@@ -1341,6 +1426,49 @@ export function ColorSwatches({ value, onPick }: { value?: string; onPick: (hex:
           />
         );
       })}
+    </div>
+  );
+}
+
+/* ── 单面墙样式 ── */
+
+export function WallStyleEditor({ value, onChange }: { value: WallStyle; onChange: (v: WallStyle) => void }) {
+  return (
+    <div className="space-y-2">
+      <Row label="质感">
+        <select
+          value={value.finish ?? "paint"}
+          onChange={(e) => onChange({ ...value, finish: e.target.value as WallStyle["finish"] })}
+          className={inputCls}
+        >
+          <option value="paint">烤漆(哑光)</option>
+          <option value="metal">金属</option>
+          <option value="glow">发光</option>
+        </select>
+      </Row>
+      <Row label="颜色">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="color"
+              value={value.color ?? "#C9C4BB"}
+              onChange={(e) => onChange({ ...value, color: e.target.value })}
+              className="w-8 h-6 p-0 border border-[#E5E5E5] rounded cursor-pointer"
+            />
+            <button
+              type="button"
+              className="text-[10px] text-[#9CA3AF] hover:text-[var(--party-primary)]"
+              onClick={() => onChange({ ...value, color: undefined })}
+            >
+              跟随主题墙色
+            </button>
+          </div>
+          <ColorSwatches value={value.color} onPick={(hex) => onChange({ ...value, color: hex })} />
+        </div>
+      </Row>
+      <p className="text-[10px] text-[#9CA3AF] leading-relaxed">
+        颜色留空 = 跟随展厅主题墙面。改样式后保存,点「3D 预览」查看效果。
+      </p>
     </div>
   );
 }

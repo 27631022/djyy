@@ -2,7 +2,7 @@ import earcut from 'earcut';
 import { Color3, Mesh, MeshBuilder, Vector3, type PBRMaterial, type Scene } from '@babylonjs/core';
 import type { Fixture, TypefaceFontSubset, WallDecorContent } from '../types';
 import { emissiveMat, pbr } from '../scene/materialFactory';
-import { canvasTexture } from './placeholder';
+import { canvasTexture, wrapCjk } from './placeholder';
 import { fixtureRoot, markPickable } from './fixtureUtils';
 import type { BuiltFixture } from './imageCaseBuilder';
 
@@ -32,9 +32,19 @@ const TPL_DEFAULTS = {
     fontKey: 'sans-bold',
   },
   honor_red: { title: '荣誉墙', panels: [] as string[], fontKey: 'serif-bold' },
+  pledge_oath: { title: '入党誓词', panels: [] as string[], fontKey: 'serif-bold' },
 } as const;
 
 type TplKey = keyof typeof TPL_DEFAULTS;
+
+/** 标准入党誓词(誓词板正文默认值) */
+const PLEDGE_OATH =
+  '我志愿加入中国共产党,拥护党的纲领,遵守党的章程,履行党员义务,执行党的决定,严守党的纪律,保守党的秘密,对党忠诚,积极工作,为共产主义奋斗终身,随时准备为党和人民牺牲一切,永不叛党。';
+
+/** 誓词板正文(空用标准誓词) */
+export function wallDecorBodyOf(c: WallDecorContent): string {
+  return c.bodyText?.trim() || PLEDGE_OATH;
+}
 
 export function wallDecorTemplate(c: WallDecorContent): TplKey {
   return c.template && c.template in TPL_DEFAULTS ? c.template : 'party_red';
@@ -225,6 +235,7 @@ function labelPlane(
   y: number,
   off: number,
   draw: (c: CanvasRenderingContext2D, tw: number, th: number) => void,
+  px = 384, // 画布横向像素;大文本区(誓词正文)传更高值保清晰
 ): Mesh {
   const plane = MeshBuilder.CreatePlane(
     `wd:${ctx.fx.id}:${ctx.n++}`,
@@ -233,7 +244,6 @@ function labelPlane(
   );
   plane.position.set(x, y, ctx.zWall - off - 0.002);
   const mat = pbr(ctx.scene, `wd-lp:${ctx.fx.id}:${ctx.n}`, { color: Color3.White(), roughness: 0.8 });
-  const px = 384;
   const tex = canvasTexture(
     ctx.scene,
     `wd-lt:${ctx.fx.id}:${ctx.n}`,
@@ -656,6 +666,92 @@ function buildHonorRed({ ctx, c, w, wallH, fontData }: TplArgs): void {
   bar(ctx, w - 0.9, 0.1, 0.22, 0, 0.19, 0, matRed);
 }
 
+/** 入党誓词墙:红金异形背板 + 顶部金星 + 立体「入党誓词」标题 + 米黄区誓词正文 + 底部金波浪 */
+function buildPledgeBoard({ ctx, c, w, wallH, fontData }: TplArgs): void {
+  const hw = w / 2;
+  const BH = Math.min(2.9, wallH - 0.9);
+  const y0 = 0.55;
+  const y1 = y0 + BH;
+  const title = wallDecorTitleOf(c);
+  const body = wallDecorBodyOf(c);
+
+  const matRed = clampEnv(
+    pbr(ctx.scene, `wd-red:${ctx.fx.id}`, {
+      color: Color3.FromHexString('#C4261D'),
+      roughness: 0.5,
+      emissive: Color3.FromHexString('#C4261D').scale(0.05),
+    }),
+    0.6,
+  );
+  const matGold = pbr(ctx.scene, `wd-gold:${ctx.fx.id}`, {
+    color: Color3.FromHexString('#D9B452'),
+    metallic: 0.85,
+    roughness: 0.32,
+    emissive: Color3.FromHexString('#D9B452').scale(0.08),
+  });
+  const matCream = pbr(ctx.scene, `wd-cream:${ctx.fx.id}`, { color: Color3.FromHexString('#FBF5E9'), roughness: 0.85 });
+
+  // 红色异形外板:顶缘微拱、底缘波浪
+  const outline: Pt[] = [];
+  const N = 26;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    outline.push([-hw + t * w, y1 + 0.05 * Math.sin(Math.PI * t)]);
+  }
+  outline.push([hw, y1 - 0.04]);
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    outline.push([hw - t * w, y0 - 0.06 - 0.05 * Math.sin(t * 1.6 * Math.PI)]);
+  }
+
+  // 内嵌米黄正文区
+  const yTitle = y1 - 0.42;
+  const inW = w - 0.6;
+  const inTop = yTitle - 0.36;
+  const inBot = y0 + 0.32;
+  const inH = inTop - inBot;
+  const inCy = (inTop + inBot) / 2;
+
+  // L0 米黄底 → L1 金边圈 → L2 红异形框
+  plate(ctx, roundedRect(0, inCy, inW + 0.12, inH + 0.12, 0.1), 0.035, 0, matCream);
+  plate(ctx, roundedRect(0, inCy, inW + 0.07, inH + 0.07, 0.09), 0.055, 0, matGold, [
+    roundedRect(0, inCy, inW - 0.07, inH - 0.07, 0.07),
+  ]);
+  plate(ctx, outline, 0.075, 0, matRed, [roundedRect(0, inCy, inW, inH, 0.08)]);
+
+  // 顶部金色五角星 + 立体标题(红色宋体粗)
+  plate(ctx, starPts(0, y1 - 0.14, 0.1), 0.03, 0.039, matGold);
+  const made = makeTitle(ctx, title, fontData, 0.4, 0, yTitle, 0.039, matRed);
+  if (!made) titleFallback(ctx, title, '#C4261D', '#FBF5E9', 0.4, 0, yTitle, 0.042);
+
+  // 誓词正文(canvas 高分辨率贴图,红字米黄底,自动折行居中)
+  labelPlane(
+    ctx,
+    inW - 0.12,
+    inH - 0.12,
+    0,
+    inCy,
+    0.037,
+    (g, tw, th) => {
+      g.fillStyle = '#FBF5E9';
+      g.fillRect(0, 0, tw, th);
+      const fontPx = Math.max(20, Math.round(th * 0.1));
+      g.fillStyle = '#8E1A12';
+      g.font = `bold ${fontPx}px 'Microsoft YaHei', serif`;
+      g.textAlign = 'left';
+      g.textBaseline = 'top';
+      const lines = wrapCjk(g, body, tw * 0.92, 16);
+      const lineH = fontPx * 1.55;
+      const startY = Math.max((th - lines.length * lineH) / 2, fontPx * 0.4);
+      lines.forEach((ln, i) => g.fillText(ln, tw * 0.04, startY + i * lineH));
+    },
+    1280,
+  );
+
+  // 底部金波浪线
+  plate(ctx, waveBand(-inW / 2 + 0.05, inW / 2 - 0.05, y0 + 0.16, 0.05, 0.016, 1.4, 0.4), 0.014, 0.038, matGold);
+}
+
 /* ───────────────────────── 入口 ───────────────────────── */
 
 export function buildWallDecor(
@@ -673,6 +769,7 @@ export function buildWallDecor(
 
   if (tpl === 'blue_tech') buildBlueTech(args);
   else if (tpl === 'honor_red') buildHonorRed(args);
+  else if (tpl === 'pledge_oath') buildPledgeBoard(args);
   else buildPartyRed(args);
 
   // 全部网格可拾取(点哪都能弹详情)。射灯只给两块公开栏(光池落在中央浅色板上);
