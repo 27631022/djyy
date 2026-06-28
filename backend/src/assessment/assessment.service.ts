@@ -530,18 +530,6 @@ export class AssessmentService {
     return computeRoundResults(indicators, targets, gradeRules, raw, new Date().toISOString());
   }
 
-  /** 计算轮次:取数→计分→×难易系数→排名→加权汇总→定级,产出写 resultsJson。 */
-  async computeRound(roundId: string, ctx: ActorCtx) {
-    const round = await this.getRoundOrThrow(roundId);
-    const results = await this.runCompute(round);
-    await this.prisma.assessmentRound.update({
-      where: { id: roundId },
-      data: { resultsJson: JSON.stringify(results), status: 'done' },
-    });
-    await this.audit.log({ ...ctx, action: 'assessment.round.compute', target: roundId, detail: { targets: results.targets.length } });
-    return results;
-  }
-
   // ─── 季度结果快照(一轮制下「不重开轮」,到季度/截止日手动定格 + 历次对比)───
 
   /**

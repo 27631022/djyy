@@ -9,7 +9,6 @@ import {
   assessmentApi,
   assessmentErrorMessage,
   parseRoundIndicators,
-  parseRoundResults,
   parseSnapshotResults,
   type AssessmentRound,
   type IndicatorNode,
@@ -38,13 +37,13 @@ export default function AssessmentResults() {
 
   if (isLoading) return <div className="p-12 text-center text-[#9CA3AF]">加载中…</div>;
   const list = data ?? [];
-  // 取最新「已计算」轮次;没有 done 的退而取最新一轮(会提示未计算)
+  // 一表一轮:取该考核表的轮次(排名实时,不再依赖「已计算」状态)
   const round = list.find((r) => r.status === "done") ?? list[0];
   const back = () => navigate("/admin/assessment/schemes");
   if (!round) {
     return (
       <Shell onBack={back}>
-        <Empty text="这张考核表还没发起考核。回考核表点「考核打分」开始录分、计算后再看排名。" />
+        <Empty text="这张考核表还没发起考核。回考核表点「考核打分」开始录分,排名实时显示。" />
       </Shell>
     );
   }
@@ -60,7 +59,13 @@ function ResultsInner({ round, onBack }: { round: AssessmentRound; onBack: () =>
 
   const indicators = useMemo(() => parseRoundIndicators(round), [round]);
   const leafMeta = useMemo(() => leafMetaMap(indicators), [indicators]);
-  const currentResults = useMemo(() => parseRoundResults(round), [round]);
+  // 「当前」时点 = 实时榜(读已保存录入即时算,不依赖手动计算)。快照时点仍读冻结副本。
+  const liveQuery = useQuery({
+    queryKey: ["assess-live", round.id],
+    queryFn: () => assessmentApi.liveResults(round.id),
+    staleTime: 2000,
+  });
+  const currentResults = useMemo<RoundResults>(() => liveQuery.data ?? {}, [liveQuery.data]);
   const isManager = (me?.isPlatformAdmin || me?.permissions?.includes("assessment:manage")) ?? false;
 
   // 结果快照(季度定格):按时间正序
@@ -136,7 +141,7 @@ function ResultsInner({ round, onBack }: { round: AssessmentRound; onBack: () =>
           text={
             activeSnap
               ? "这份快照没有数据。"
-              : "本轮还没有结果。回打分页点「计算 ★ 总分」,或在上方点「生成季度快照」定格当前结果后查看。"
+              : "本轮还没有录入,暂无排名。回打分页给各单位录入分数后,这里实时显示;也可在上方「生成季度快照」定格留档。"
           }
         />
       ) : tab === "ranking" ? (

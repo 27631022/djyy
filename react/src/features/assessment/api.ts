@@ -522,8 +522,6 @@ export const assessmentApi = {
     api.get<RoundDetailData>(`/assessment/rounds/${id}`).then((r) => r.data),
   saveRoundScores: (id: string, scores: ScoreEntry[]) =>
     api.post<{ ok: boolean; count: number }>(`/assessment/rounds/${id}/scores`, { scores }).then((r) => r.data),
-  computeRound: (id: string) =>
-    api.post<RoundResults>(`/assessment/rounds/${id}/compute`, {}).then((r) => r.data),
   deleteRound: (id: string) => api.delete<{ ok: boolean }>(`/assessment/rounds/${id}`).then((r) => r.data),
   /** ── 季度结果快照:列表(含 resultsJson)/ 生成 / 删除 ── */
   listSnapshots: (roundId: string) =>

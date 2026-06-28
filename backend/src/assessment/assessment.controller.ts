@@ -205,14 +205,7 @@ export class AssessmentController {
     return this.svc.saveScores(id, dto.scores, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
-  /** POST /assessment/rounds/:id/compute  计算轮次(取数→计分→难易系数→排名→汇总→定级) */
-  @Post('rounds/:id/compute')
-  @Permission('assessment:manage')
-  computeRound(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
-    return this.svc.computeRound(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
-  }
-
-  /** GET /assessment/rounds/:id/live-results  实时全表结果(读当前录入实时算,不落库,不依赖手动计算)— 登录即可 */
+  /** GET /assessment/rounds/:id/live-results  实时全表结果(读当前录入实时算,不落库;排名实时,已无手动「计算」)— 登录即可 */
   @Get('rounds/:id/live-results')
   liveResults(@Param('id') id: string) {
     return this.svc.liveResults(id);
