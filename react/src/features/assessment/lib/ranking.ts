@@ -1,6 +1,4 @@
-import type { GradeRules, GradeTier, IndicatorNode, RoundTargetResult } from "../api";
-
-const round2 = (x: number) => Math.round(x * 100) / 100;
+import type { GradeRules, GradeTier, IndicatorNode } from "../api";
 
 /** 末端叶子 DFS 收集。 */
 export function flattenLeaves(nodes: IndicatorNode[]): IndicatorNode[] {
@@ -43,32 +41,6 @@ export function leafMetaMap(tree: IndicatorNode[]): Map<string, LeafMeta> {
   };
   walk(tree, "");
   return m;
-}
-
-export interface SubtotalRow {
-  ref: string;
-  name: string;
-  subtotal: number;
-  fullScore: number;
-  rank: number;
-  leafScores: Record<string, number>;
-}
-
-/** 按一组叶子 code 给各 target 算小计(Σ leafScores)+ 满分(Σ weight)+ 降序排名。 */
-export function rankBySubtotal(
-  targets: RoundTargetResult[],
-  codes: Set<string>,
-  leafMeta: Map<string, LeafMeta>,
-): SubtotalRow[] {
-  const fullScore = round2([...codes].reduce((s, c) => s + (leafMeta.get(c)?.weight ?? 0), 0));
-  const rows: SubtotalRow[] = targets.map((t) => {
-    let subtotal = 0;
-    for (const c of codes) subtotal += t.leafScores?.[c] ?? 0;
-    return { ref: t.ref, name: t.name, subtotal: round2(subtotal), fullScore, leafScores: t.leafScores ?? {}, rank: 0 };
-  });
-  rows.sort((a, b) => b.subtotal - a.subtotal);
-  rows.forEach((r, i) => (r.rank = i + 1));
-  return rows;
 }
 
 /** 进度条百分比:score / 列表最大值(最高 = 100%)。 */
