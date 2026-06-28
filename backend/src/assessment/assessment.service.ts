@@ -326,9 +326,21 @@ export class AssessmentService {
 
   async remove(id: string, ctx: ActorCtx) {
     await this.loadScheme(id);
-    await this.prisma.assessmentScheme.delete({ where: { id } });
-    await this.audit.log({ ...ctx, action: 'assessment.scheme.delete', target: id });
-    return { ok: true };
+    // 一表一轮:删考核表时连带删除它的考核打分轮次(schemeId 是松引用、无外键级联,
+    // 不删轮次会残留在「考核打分」列表里)。删轮次会按外键级联清掉它的
+    // 手动打分(IndicatorScore)/ 分数确认 / 季度结果快照;生成的排名(resultsJson)
+    // 随轮次一并删除。report.query「引用数据源」的数据存在 report 模块,不受影响。
+    const [delRounds] = await this.prisma.$transaction([
+      this.prisma.assessmentRound.deleteMany({ where: { schemeId: id } }),
+      this.prisma.assessmentScheme.delete({ where: { id } }),
+    ]);
+    await this.audit.log({
+      ...ctx,
+      action: 'assessment.scheme.delete',
+      target: id,
+      detail: { deletedRounds: delRounds.count },
+    });
+    return { ok: true, deletedRounds: delRounds.count };
   }
 
   /** 整体复制一张考核表(复用方式:复制改年度/完善指标)。新表草稿态。 */

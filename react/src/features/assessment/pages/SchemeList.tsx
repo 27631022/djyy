@@ -189,7 +189,12 @@ function SchemeCard({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              if (confirm(`删除考核表「${scheme.name}」?`)) onDelete();
+              if (
+                confirm(
+                  `删除考核表「${scheme.name}」?\n\n会同时删除该表的考核打分轮次、已录入的手动打分、生成的排名/定级与季度结果快照,且不可恢复。`,
+                )
+              )
+                onDelete();
             }}
             className="p-1.5 rounded-md text-[#94a3b8] hover:text-red-600 hover:bg-red-50"
             title="删除"
