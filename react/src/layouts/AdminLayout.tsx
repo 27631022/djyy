@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useRoutes, type RouteObject } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useRoutes, type RouteObject } from "react-router-dom";
 import {
   HomeIcon, ChevronLeftIcon, XIcon,
   NetworkIcon, BarChart2Icon, SettingsIcon,
@@ -174,6 +174,17 @@ function visiblePathSet(me: AuthMe | null | undefined): Set<string> {
   const s = new Set<string>();
   for (const c of CATEGORIES) for (const it of c.items) if (canSeeItem(it, me)) s.add(it.path);
   return s;
+}
+/** 当前用户「第一个有权限且可用」的菜单路径(用于 /admin 首跳落地);兜底 organizations */
+function firstVisiblePath(me: AuthMe | null | undefined): string {
+  for (const c of CATEGORIES) for (const it of c.items) if (!it.disabled && canSeeItem(it, me)) return it.path;
+  return "/admin/organizations";
+}
+
+/** /admin 默认首跳:不再写死 organizations,落到当前用户第一个有权限的页面 */
+export function AdminIndexRedirect() {
+  const { me } = useAuth();
+  return <Navigate to={firstVisiblePath(me)} replace />;
 }
 /** 超出上限时挤掉「最久未访问」且非当前页的标签,直到回到上限内 */
 function evictLRU(list: Tab[], keep: string, recency: Map<string, number>): Tab[] {

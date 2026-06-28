@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, type RouteObject }
 import { useEffect, type ReactNode } from "react";
 import NavPage from "@/pages/NavPage";
 import WorkbenchPage from "@/pages/Workbench";
-import AdminLayout from "@/layouts/AdminLayout";
+import AdminLayout, { AdminIndexRedirect } from "@/layouts/AdminLayout";
 import { OrganizationsPage } from "@/features/organization";
 import { UsersPage } from "@/features/user";
 import { RolesPage } from "@/features/role";
@@ -91,7 +91,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 
 /** 后台 /admin 下的全部叶子路由(相对路径)。AdminLayout 用它做多标签 keep-alive 渲染。 */
 const ADMIN_ROUTES: RouteObject[] = [
-  { index: true, element: <Navigate to="organizations" replace /> },
+  { index: true, element: <AdminIndexRedirect /> },
   { path: "organizations", element: <OrganizationsPage /> },
   { path: "users", element: <UsersPage /> },
   { path: "roles", element: <RolesPage /> },
