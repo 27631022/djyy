@@ -181,10 +181,10 @@ export class AssessmentController {
     return this.svc.listRounds(schemeId);
   }
 
-  /** GET /assessment/rounds/:id  轮次详情(快照 + 已录原始值) */
+  /** GET /assessment/rounds/:id  轮次详情(快照 + 已录原始值;责任人电话按调用者权限裁剪) */
   @Get('rounds/:id')
-  getRound(@Param('id') id: string) {
-    return this.svc.getRound(id);
+  getRound(@Param('id') id: string, @CurrentUser() me: AuthPayload) {
+    return this.svc.getRound(id, me.sub);
   }
 
   /** DELETE /assessment/rounds/:id  删除轮次(级联得分) */

@@ -55,6 +55,19 @@ export class OrganizationService {
     });
   }
 
+  /** 批量 id→机构名(跨模块展示用,如考核「责任部门」)。不存在/已删的 id 不出现在结果里。 */
+  async namesByIds(ids: string[]): Promise<Record<string, string>> {
+    const uniq = [...new Set(ids.filter((x) => typeof x === 'string' && x))];
+    if (!uniq.length) return {};
+    const rows = await this.prisma.organization.findMany({
+      where: { id: { in: uniq } },
+      select: { id: true, name: true },
+    });
+    const out: Record<string, string> = {};
+    for (const r of rows) out[r.id] = r.name;
+    return out;
+  }
+
   /**
    * 嵌套树 (从根节点开始),可按 kind 过滤。
    * 每个节点带:

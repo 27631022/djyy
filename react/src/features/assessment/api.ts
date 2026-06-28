@@ -318,6 +318,18 @@ export interface IndicatorScoreRow {
   note: string | null;
   evidenceFileIds: string | null;
 }
+/** 考核责任人档案(打分页:责任人 hover 显示联系方式)。userId → 档案。phone 仅管理员/责任人本人可见,余者为 null。 */
+export interface OwnerProfile {
+  name: string;
+  phone: string | null;
+}
+/** getRound 响应:轮次 + 已录原始值 + 责任人档案(userId→档案)+ 责任部门名(orgId→名)。 */
+export interface RoundDetailData {
+  round: AssessmentRound;
+  scores: IndicatorScoreRow[];
+  ownerProfiles: Record<string, OwnerProfile>;
+  orgNames: Record<string, string>;
+}
 export interface RoundTargetResult {
   ref: string;
   name: string;
@@ -507,7 +519,7 @@ export const assessmentApi = {
       .get<AssessmentRound[]>("/assessment/rounds", { params: schemeId ? { schemeId } : undefined })
       .then((r) => r.data),
   getRound: (id: string) =>
-    api.get<{ round: AssessmentRound; scores: IndicatorScoreRow[] }>(`/assessment/rounds/${id}`).then((r) => r.data),
+    api.get<RoundDetailData>(`/assessment/rounds/${id}`).then((r) => r.data),
   saveRoundScores: (id: string, scores: ScoreEntry[]) =>
     api.post<{ ok: boolean; count: number }>(`/assessment/rounds/${id}/scores`, { scores }).then((r) => r.data),
   computeRound: (id: string) =>

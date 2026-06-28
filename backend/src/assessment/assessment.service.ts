@@ -397,10 +397,33 @@ export class AssessmentService {
     });
   }
 
-  async getRound(id: string) {
+  async getRound(id: string, actorId?: string) {
     const round = await this.getRoundOrThrow(id);
     const scores = await this.prisma.indicatorScore.findMany({ where: { roundId: id } });
-    return { round, scores };
+    // 解析叶子的「考核责任人」+「责任部门」,供打分页中间栏展示(责任人 hover 看责任部门 + 联系方式)。
+    // 兼容旧快照的单值 ownerUserId;读快照 indicatorsJson(轮次发起时冻结)。
+    const indicators = safeJson<IndicatorNode[]>(round.indicatorsJson, []);
+    const userIds = new Set<string>();
+    const orgIds = new Set<string>();
+    for (const leaf of flattenLeaves(indicators)) {
+      for (const u of leaf.ownerUserIds ?? []) userIds.add(u);
+      if (leaf.ownerUserId) userIds.add(leaf.ownerUserId);
+      if (leaf.ownerOrgId) orgIds.add(leaf.ownerOrgId);
+    }
+    // 责任人电话是 PII:仅「管理员」或「本轮责任人本人」可见(打分页他们要据此联系责任人);
+    // 其余登录用户只给姓名/责任部门、不给手机号,避免无关账号凭 round id 拖走全部联系方式。
+    let canSeePhone = false;
+    if (actorId) {
+      const { isPlatformAdmin, entries } = await this.roles.getScopesForPermission(actorId, 'assessment:manage');
+      canSeePhone = isPlatformAdmin || entries.length > 0 || userIds.has(actorId);
+    }
+    const full = await this.users.profilesByIds([...userIds]);
+    const ownerProfiles: Record<string, { name: string; phone: string | null }> = {};
+    for (const [uid, p] of Object.entries(full)) {
+      ownerProfiles[uid] = { name: p.name, phone: canSeePhone ? p.phone : null };
+    }
+    const orgNames = await this.org.namesByIds([...orgIds]);
+    return { round, scores, ownerProfiles, orgNames };
   }
 
   async removeRound(id: string, ctx: ActorCtx) {
