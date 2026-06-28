@@ -4,7 +4,9 @@ import { GripVerticalIcon, XIcon, LockIcon } from "lucide-react";
 import { CARD_META, SIZE_CLASS, SIZE_LABEL, type WbCard } from "./wbLayout";
 
 const PARTY = "var(--party-primary)";
-const CARD = "rounded-lg border border-[#dce4ef] bg-white/80 shadow-[0_12px_34px_rgba(28,42,68,0.08)]";
+// 磨砂玻璃质感:半透明白 + backdrop-blur + 浅高光边 + 柔和投影
+const CARD =
+  "rounded-2xl border border-white/60 bg-white/55 backdrop-blur-xl shadow-[0_8px_30px_rgba(28,42,68,0.10)]";
 
 /**
  * 单卡外框(参考 app-platform-home 卡片样式)。

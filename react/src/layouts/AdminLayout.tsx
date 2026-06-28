@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useRoutes, type RouteObject } from "react-router-dom";
 import {
   HomeIcon, ChevronLeftIcon, XIcon,
-  NetworkIcon, BarChart2Icon, SettingsIcon,
+  NetworkIcon, BarChart2Icon, SettingsIcon, LayoutDashboardIcon,
   BuildingIcon, ShieldIcon, UserIcon, BookTextIcon,
   EyeIcon, ThumbsUpIcon, MessageSquareIcon,
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
@@ -25,6 +25,15 @@ interface MenuItem { path: string; label: string; icon: React.ElementType; disab
 interface Category { id: string; label: string; icon: React.ElementType; items: MenuItem[]; }
 
 const CATEGORIES: Category[] = [
+  {
+    id: "home",
+    label: "工作台",
+    icon: LayoutDashboardIcon,
+    items: [
+      // 无 perm = 人人可见;/admin 默认落到这里
+      { path: "/admin/home", label: "我的工作台", icon: LayoutDashboardIcon },
+    ],
+  },
   {
     id: "org",
     label: "组织与权限",
