@@ -676,10 +676,16 @@ export class AssessmentService {
         };
       })
       .sort((a, b) => a.groupLabel.localeCompare(b.groupLabel) || a.leafLabel.localeCompare(b.leafLabel));
-    const confirmed = items.filter((i) => i.status === 'confirmed').length;
+    // 单签:某指标任一责任人确认即视同该指标确认完成 → 进度按「指标(叶子)」计,不按人头计。
+    const settledLeaves = new Set(rows.filter((r) => r.status === 'confirmed').map((r) => r.leafCode));
+    const leafCodesWithRows = new Set(rows.map((r) => r.leafCode));
     return {
       initiated: rows.length > 0,
-      summary: { total: items.length, confirmed, pending: items.length - confirmed },
+      summary: {
+        total: leafCodesWithRows.size,
+        confirmed: settledLeaves.size,
+        pending: leafCodesWithRows.size - settledLeaves.size,
+      },
       items,
       noOwnerLeaves: noOwner,
     };
@@ -696,11 +702,22 @@ export class AssessmentService {
       where: { id: { in: [...new Set(rows.map((r) => r.roundId))] } },
     });
     const roundMap = new Map(rounds.map((r) => [r.id, r]));
+    // 单签:某指标任一责任人确认即视同确认完成 → 我名下的项,只要该指标已被任一人确认,就算「已确认」(不再提醒我)。
+    const settledRows = await this.prisma.assessmentScoreConfirm.findMany({
+      where: { roundId: { in: [...roundMap.keys()] }, status: 'confirmed' },
+      select: { roundId: true, leafCode: true },
+    });
+    const settledByRound = new Map<string, Set<string>>();
+    for (const r of settledRows) {
+      if (!settledByRound.has(r.roundId)) settledByRound.set(r.roundId, new Set());
+      settledByRound.get(r.roundId)!.add(r.leafCode);
+    }
     const leavesCache = new Map<string, ReturnType<AssessmentService['confirmLeavesOfRound']>['leaves']>();
     const items = rows.map((r) => {
       const round = roundMap.get(r.roundId);
       if (round && !leavesCache.has(r.roundId)) leavesCache.set(r.roundId, this.confirmLeavesOfRound(round).leaves);
       const lf = leavesCache.get(r.roundId)?.find((l) => l.leafCode === r.leafCode);
+      const settled = settledByRound.get(r.roundId)?.has(r.leafCode) ?? false;
       return {
         roundId: r.roundId,
         roundName: round?.name ?? r.roundId,
@@ -708,7 +725,7 @@ export class AssessmentService {
         leafCode: r.leafCode,
         leafLabel: lf?.leafLabel ?? r.leafCode,
         groupLabel: lf?.groupLabel ?? '',
-        status: r.status,
+        status: settled ? ('confirmed' as const) : r.status,
         confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
       };
     });
@@ -742,12 +759,16 @@ export class AssessmentService {
     const { leaves } = this.confirmLeavesOfRound(round);
     const mine = leaves.filter((l) => l.ownerUserIds.includes(actorId));
     if (!mine.length) return { total: 0, confirmed: 0, pending: 0, leaves: [] };
-    const rows = await this.prisma.assessmentScoreConfirm.findMany({ where: { roundId, userId: actorId } });
-    const byCode = new Map(rows.map((r) => [r.leafCode, r]));
+    // 单签:某指标任一责任人确认即视同确认完成(不限本人)→ 我负责的指标已被任一人确认就算已确认。
+    const confirmedRows = await this.prisma.assessmentScoreConfirm.findMany({
+      where: { roundId, status: 'confirmed' },
+      select: { leafCode: true },
+    });
+    const settled = new Set(confirmedRows.map((r) => r.leafCode));
     const items = mine.map((l) => ({
       leafCode: l.leafCode,
       leafLabel: l.leafLabel,
-      status: byCode.get(l.leafCode)?.status === 'confirmed' ? ('confirmed' as const) : ('pending' as const),
+      status: settled.has(l.leafCode) ? ('confirmed' as const) : ('pending' as const),
     }));
     const confirmed = items.filter((i) => i.status === 'confirmed').length;
     return { total: items.length, confirmed, pending: items.length - confirmed, leaves: items };
@@ -781,10 +802,13 @@ export class AssessmentService {
     const rounds = await this.prisma.assessmentRound.findMany({
       orderBy: [{ year: 'desc' }, { createdAt: 'desc' }],
     });
-    const myRows = await this.prisma.assessmentScoreConfirm.findMany({ where: { userId: actorId } });
+    // 单签:某指标任一责任人确认即视同确认完成 → 我负责的指标只要被任一人确认就算已确认(不再提醒我)。
+    const confirmedRows = await this.prisma.assessmentScoreConfirm.findMany({
+      where: { status: 'confirmed' },
+      select: { roundId: true, leafCode: true },
+    });
     const confirmedByRound = new Map<string, Set<string>>();
-    for (const r of myRows) {
-      if (r.status !== 'confirmed') continue;
+    for (const r of confirmedRows) {
       if (!confirmedByRound.has(r.roundId)) confirmedByRound.set(r.roundId, new Set());
       confirmedByRound.get(r.roundId)!.add(r.leafCode);
     }
