@@ -128,6 +128,7 @@ function NodeMaintainInner({ scheme, nodeCode, subtree }: { scheme: AssessmentSc
                 onSettings={(patch) => setSettings((s) => ({ ...s, ...patch }))}
                 nameMap={nameMap}
                 onResolveNames={rememberNames}
+                lockDifficultyTables
               />
             </>
           ) : selectedNode ? (

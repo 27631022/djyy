@@ -24,6 +24,7 @@ export function LeafConfigPanel({
   onSettings = () => {},
   nameMap = {},
   onResolveNames,
+  lockDifficultyTables = false,
 }: {
   node: IndicatorNode;
   onChange: (patch: Partial<IndicatorNode>) => void;
@@ -37,6 +38,8 @@ export function LeafConfigPanel({
   /** 人员 id→姓名 映射(节点管理员展示用) */
   nameMap?: Record<string, string>;
   onResolveNames?: (entries: Record<string, string>) => void;
+  /** 节点管理员维护场景:测算表/员工数是考核表级(本页 updateSubtree 不保存设置),弹窗里锁为只读,只允许改本节点各单位系数。 */
+  lockDifficultyTables?: boolean;
 }) {
   const ownerIds = node.ownerUserIds ?? (node.ownerUserId ? [node.ownerUserId] : []);
   const ds = getDataSource(node.dataSource);
@@ -295,6 +298,7 @@ export function LeafConfigPanel({
         onHeadcounts={(h) => onSettings({ headcounts: h })}
         coefs={node.difficultyCoefs ?? {}}
         onCoefs={(c) => onChange({ difficultyCoefs: c })}
+        lockTables={lockDifficultyTables}
       />
     </div>
   );

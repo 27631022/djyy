@@ -27,6 +27,7 @@ export function DifficultyCoefDialog({
   onHeadcounts,
   coefs,
   onCoefs,
+  lockTables = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -38,6 +39,8 @@ export function DifficultyCoefDialog({
   onHeadcounts: (h: Record<string, number>) => void;
   coefs: Record<string, number>;
   onCoefs: (c: Record<string, number>) => void;
+  /** 节点管理员维护场景:测算表/员工数是考核表级(由总管理员维护),此处只读;只能手改本节点各单位系数(随节点保存)。 */
+  lockTables?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [applyId, setApplyId] = useState<string>("");
@@ -124,12 +127,21 @@ export function DifficultyCoefDialog({
         </header>
 
         <div className="overflow-auto p-4 space-y-4 min-h-0">
-          {/* 测算表(辅助手段):人数→系数 */}
-          <div className="rounded-lg border border-[#eef2f7] p-3">
-            <DifficultyEditor tables={tables} onChange={onTables} />
-          </div>
+          {lockTables && (
+            <div className="rounded-lg border border-[#FDE7C9] bg-[#FFF8EE] px-3 py-2 text-[12px] text-[#92400E]">
+              测算表与各单位员工数由考核总管理员维护(考核表级,此处不可改)。你只能手动调整<strong>本节点</strong>各单位的难易系数 —— 随本节点保存。
+            </div>
+          )}
 
-          {/* 导出 / 导入员工数 + 测算 */}
+          {/* 测算表(辅助手段):人数→系数 —— 考核表级,节点管理员场景只读 */}
+          {!lockTables && (
+            <div className="rounded-lg border border-[#eef2f7] p-3">
+              <DifficultyEditor tables={tables} onChange={onTables} />
+            </div>
+          )}
+
+          {/* 导出 / 导入员工数 + 测算 —— 写员工数(考核表级),节点管理员场景隐藏 */}
+          {!lockTables && (
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -177,9 +189,12 @@ export function DifficultyCoefDialog({
               <Calculator className="w-4 h-4" /> 按员工数测算系数
             </button>
           </div>
+          )}
+          {!lockTables && (
           <div className="text-[11px] text-[#9CA3AF] -mt-2">
             导出 → Excel 填「员工数」→ 另存为 CSV → 导入,系统按上表测算系数({tableSummary(applyTable)});再手动微调。
           </div>
+          )}
 
           {/* 各单位:员工数 + 系数 */}
           <div className="border border-[#eef2f7] rounded-md overflow-hidden">
@@ -206,7 +221,8 @@ export function DifficultyCoefDialog({
                         placeholder="—"
                         value={headcounts[ref] ?? ""}
                         onChange={(e) => setHeadcount(ref, e.target.value)}
-                        className={`${INPUT} w-24 text-right`}
+                        disabled={lockTables}
+                        className={`${INPUT} w-24 text-right ${lockTables ? "bg-[#f6f8fb] text-[#9CA3AF]" : ""}`}
                       />
                       <input
                         type="number"
