@@ -498,6 +498,12 @@ export const assessmentApi = {
     api.delete<{ ok: boolean }>(`/assessment/schemes/${id}`).then((r) => r.data),
   duplicateScheme: (id: string) =>
     api.post<AssessmentScheme>(`/assessment/schemes/${id}/duplicate`, {}).then((r) => r.data),
+  /** 「我维护的考核」:我作为节点管理员可维护的表 + 我管的节点 */
+  myManagedSchemes: () =>
+    api.get<{ items: ManagedScheme[] }>("/assessment/my-managed-schemes").then((r) => r.data),
+  /** 节点管理员保存「本节点子树」(只替换该子树,树其余部分不动) */
+  updateSubtree: (schemeId: string, nodeCode: string, subtree: IndicatorNode) =>
+    api.patch<{ ok: boolean }>(`/assessment/schemes/${schemeId}/subtree`, { nodeCode, subtree }).then((r) => r.data),
   trial: (input: TrialInput) =>
     api.post<TrialResult>("/assessment/scoring/trial", input).then((r) => r.data),
   /** 我的考核区域(按登录账号收敛的考核关系 + 主体)*/
@@ -595,6 +601,15 @@ export interface MyAssessmentItem {
   myLeaves: number;
   myConfirmed: number;
   myPending: number;
+}
+
+/** 「我维护的考核」一项:我作为节点管理员可维护的考核表 + 我管的(最顶层)节点 */
+export interface ManagedScheme {
+  id: string;
+  name: string;
+  year: number;
+  track: string;
+  nodes: { code: string; label: string }[];
 }
 
 /** 报送取数:可选源(有目标的报送任务 + 目标)*/

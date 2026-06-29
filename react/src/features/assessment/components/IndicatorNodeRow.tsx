@@ -23,10 +23,13 @@ interface RowProps {
   onDelete: (code: string) => void;
   /** 仅第一层可改;改后整棵子树继承 */
   onKindChange: (code: string, kind: IndicatorKind) => void;
+  /** 节点管理员「维护子树」模式:depth 0(=子树根)锁定类型、不可删(只能维护其下子项)。 */
+  scoped?: boolean;
 }
 
 export function IndicatorNodeRow(props: RowProps) {
-  const { node, depth, selectedCode, onSelect, record, onPatch, onAddChild, onDelete, onKindChange } = props;
+  const { node, depth, selectedCode, onSelect, record, onPatch, onAddChild, onDelete, onKindChange, scoped } = props;
+  const isScopedRoot = !!scoped && depth === 0;
   const leaf = isLeafNode(node);
   const hasChildren = !!node.children && node.children.length > 0;
   const selected = selectedCode === node.code;
@@ -120,7 +123,7 @@ export function IndicatorNodeRow(props: RowProps) {
             </span>
           )}
           <span className="text-[11px] text-[#9CA3AF] flex-shrink-0">{weightLabel}</span>
-          {depth === 0 && (
+          {depth === 0 && !scoped && (
             <select
               value={node.kind}
               onClick={(e) => e.stopPropagation()}
@@ -138,6 +141,7 @@ export function IndicatorNodeRow(props: RowProps) {
           <button type="button" title="加子指标" onClick={(e) => { e.stopPropagation(); onAddChild(node.code); }} className="p-1 rounded text-[#94a3b8] hover:text-[var(--party-primary)] hover:bg-party-soft flex-shrink-0">
             <Plus className="w-3.5 h-3.5" />
           </button>
+          {!isScopedRoot && (
           <button
             type="button"
             title={hasChildren ? "请先删除其下级指标" : "删除"}
@@ -147,6 +151,7 @@ export function IndicatorNodeRow(props: RowProps) {
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
+          )}
         </div>
       </div>
       {hasChildren && (

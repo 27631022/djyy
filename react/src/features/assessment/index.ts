@@ -5,4 +5,6 @@ export { default as RoundListPage } from "./pages/RoundList";
 export { default as RoundDetailPage } from "./pages/RoundDetail";
 export { default as AssessmentResultsPage } from "./pages/AssessmentResults";
 export { default as MyAssessmentsPage } from "./pages/MyAssessments";
+export { default as MyManagedSchemesPage } from "./pages/MyManagedSchemes";
+export { default as NodeMaintainPage } from "./pages/NodeMaintain";
 export { useMyAssessmentBadge } from "./useMyAssessmentBadge";

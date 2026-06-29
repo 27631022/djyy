@@ -71,6 +71,27 @@ function collectNodeUserIds(nodes: IndicatorNode[], out: Set<string>) {
   }
 }
 
+/** 按 code 在指标树里查找节点。 */
+function findNodeInTree(nodes: IndicatorNode[], code: string): IndicatorNode | null {
+  for (const n of nodes) {
+    if (n.code === code) return n;
+    if (n.children?.length) {
+      const f = findNodeInTree(n.children, code);
+      if (f) return f;
+    }
+  }
+  return null;
+}
+
+/** 按 code 用 repl 替换指标树里的节点(返回新树,不改原)。 */
+function replaceNodeInTree(nodes: IndicatorNode[], code: string, repl: IndicatorNode): IndicatorNode[] {
+  return nodes.map((n) => {
+    if (n.code === code) return repl;
+    if (n.children?.length) return { ...n, children: replaceNodeInTree(n.children, code, repl) };
+    return n;
+  });
+}
+
 /** 把试算入参的 raw(unknown)转成原始度量 number|boolean|null */
 function toRaw(v: unknown): number | boolean | null {
   if (v === null || v === undefined || v === '') return null;
@@ -270,26 +291,7 @@ export class AssessmentService {
     if (dto.status !== undefined) data.status = dto.status;
 
     if (dto.indicators !== undefined) {
-      const tree = normalizeIndicatorTree(dto.indicators);
-      for (const leaf of flattenLeaves(tree)) {
-        const ds = getDataSourceSpec(leaf.dataSource as string);
-        if (!ds) {
-          throw new BadRequestException(`指标 "${leaf.label}" 的数据源 "${leaf.dataSource}" 未知`);
-        }
-        const ss = getScoringSpec(leaf.scoringType as string);
-        if (!ss) {
-          throw new BadRequestException(`指标 "${leaf.label}" 的计分工具 "${leaf.scoringType}" 未知`);
-        }
-        // report.query 的产出类型随取值(field)变 → 用 effectiveOutputType(集中一处)
-        const outType = effectiveOutputType(leaf.dataSource, leaf.sourceParams);
-        if (!isInputCompatible(ss.inputType, outType)) {
-          throw new BadRequestException(
-            `指标 "${leaf.label}":数据源产出(${outType})与计分工具输入(${ss.inputType})不匹配`,
-          );
-        }
-        leaf.strategyParams = ss.normalizeParams(leaf.strategyParams ?? {});
-      }
-      data.indicatorsJson = JSON.stringify(tree);
+      data.indicatorsJson = JSON.stringify(this.normalizeAndValidateTree(dto.indicators));
     }
     if (dto.targets !== undefined) data.targetsJson = JSON.stringify(normalizeTargets(dto.targets));
     if (dto.gradeRules !== undefined) data.gradeRulesJson = JSON.stringify(dto.gradeRules);
@@ -322,6 +324,77 @@ export class AssessmentService {
       detail: { keys: Object.keys(data), syncedToRounds: synced },
     });
     return scheme;
+  }
+
+  /** 规整 + 校验指标树:每叶 数据源/计分工具 存在且产出↔输入兼容,并 normalizeParams。返回规整后的树。 */
+  private normalizeAndValidateTree(rawIndicators: unknown): IndicatorNode[] {
+    const tree = normalizeIndicatorTree(rawIndicators);
+    for (const leaf of flattenLeaves(tree)) {
+      const ds = getDataSourceSpec(leaf.dataSource as string);
+      if (!ds) throw new BadRequestException(`指标 "${leaf.label}" 的数据源 "${leaf.dataSource}" 未知`);
+      const ss = getScoringSpec(leaf.scoringType as string);
+      if (!ss) throw new BadRequestException(`指标 "${leaf.label}" 的计分工具 "${leaf.scoringType}" 未知`);
+      const outType = effectiveOutputType(leaf.dataSource, leaf.sourceParams);
+      if (!isInputCompatible(ss.inputType, outType)) {
+        throw new BadRequestException(
+          `指标 "${leaf.label}":数据源产出(${outType})与计分工具输入(${ss.inputType})不匹配`,
+        );
+      }
+      leaf.strategyParams = ss.normalizeParams(leaf.strategyParams ?? {});
+    }
+    return tree;
+  }
+
+  /** 「我维护的考核」:列出我作为「节点管理员」(adminUserIds)可维护的考核表 + 我管的最顶层节点。 */
+  async managedSchemes(actorId: string) {
+    if (!actorId) return { items: [] };
+    const schemes = await this.prisma.assessmentScheme.findMany({
+      orderBy: [{ year: 'desc' }, { createdAt: 'desc' }],
+    });
+    const items: { id: string; name: string; year: number; track: string; nodes: { code: string; label: string }[] }[] = [];
+    for (const s of schemes) {
+      const tree = safeJson<IndicatorNode[]>(s.indicatorsJson, []);
+      const nodes: { code: string; label: string }[] = [];
+      const walk = (ns: IndicatorNode[], ancestorAdmin: boolean) => {
+        for (const n of ns) {
+          const mine = (n.adminUserIds ?? []).includes(actorId);
+          if (mine && !ancestorAdmin) nodes.push({ code: n.code, label: n.label }); // 只列最顶层(含子树)
+          if (n.children?.length) walk(n.children, ancestorAdmin || mine);
+        }
+      };
+      walk(tree, false);
+      if (nodes.length) items.push({ id: s.id, name: s.name, year: s.year, track: s.track, nodes });
+    }
+    return { items };
+  }
+
+  /**
+   * 节点管理员「维护本节点子树」:只替换 code=nodeCode 的子树,树其余部分原样保留。
+   * 权限:平台管理员 / assessment:manage / 该节点(现有)adminUserIds 含本人。改动同步到进行中轮次。
+   */
+  async updateSubtree(schemeId: string, nodeCode: string, rawSubtree: unknown, ctx: ActorCtx) {
+    const s = await this.loadScheme(schemeId);
+    const tree = safeJson<IndicatorNode[]>(s.indicatorsJson, []);
+    const existing = findNodeInTree(tree, nodeCode);
+    if (!existing) throw new NotFoundException('节点不存在');
+
+    const actorId = ctx.actorId ?? '';
+    const { isPlatformAdmin, entries } = await this.roles.getScopesForPermission(actorId, 'assessment:manage');
+    const isManager = isPlatformAdmin || entries.length > 0;
+    const isNodeAdmin = (existing.adminUserIds ?? []).includes(actorId);
+    if (!isManager && !isNodeAdmin) throw new ForbiddenException('你不是该节点的管理员,不能维护本节点');
+
+    // 规整+校验提交的子树(单根),根 code 不可变(防越权改别的节点)
+    const sub = this.normalizeAndValidateTree([rawSubtree])[0];
+    if (!sub || sub.code !== nodeCode) throw new BadRequestException('子树根节点与目标节点不一致');
+
+    const merged = replaceNodeInTree(tree, nodeCode, sub);
+    const indicatorsJson = JSON.stringify(merged);
+    await this.prisma.assessmentScheme.update({ where: { id: schemeId }, data: { indicatorsJson } });
+    // 一表一轮:同步到进行中的轮次(打分页/排名读轮次快照)
+    await this.prisma.assessmentRound.updateMany({ where: { schemeId }, data: { indicatorsJson } });
+    await this.audit.log({ ...ctx, action: 'assessment.scheme.update_subtree', target: schemeId, detail: { nodeCode } });
+    return { ok: true };
   }
 
   async remove(id: string, ctx: ActorCtx) {

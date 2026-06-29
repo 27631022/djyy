@@ -36,6 +36,7 @@ export function IndicatorTreeEditor({
   canUndo,
   canRedo,
   baseFullScore,
+  scoped = false,
 }: {
   nodes: IndicatorNode[];
   setNodes: (next: IndicatorNode[]) => void;
@@ -47,6 +48,8 @@ export function IndicatorTreeEditor({
   canUndo: boolean;
   canRedo: boolean;
   baseFullScore: number;
+  /** 节点管理员「维护子树」模式:不能加/删顶层节点(=子树根)、根的类型锁定、不显示计权合计/基础满分对比。 */
+  scoped?: boolean;
 }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -87,18 +90,24 @@ export function IndicatorTreeEditor({
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex items-center gap-2 px-2 py-1.5 border-b border-[#F0F0F0]">
-        <button
-          type="button"
-          onClick={addTop}
-          className="flex items-center gap-1 px-2 py-1 rounded-md text-[13px] text-white"
-          style={{ backgroundColor: "var(--party-primary)" }}
-        >
-          <Plus className="w-3.5 h-3.5" /> 顶层指标
-        </button>
+        {scoped ? (
+          <span className="text-[13px] font-medium text-[#475467]">维护本节点子指标(可加/删子项、改配置)</span>
+        ) : (
+          <button
+            type="button"
+            onClick={addTop}
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[13px] text-white"
+            style={{ backgroundColor: "var(--party-primary)" }}
+          >
+            <Plus className="w-3.5 h-3.5" /> 顶层指标
+          </button>
+        )}
         <div className="flex-1" />
-        <span className={`text-[12px] ${sumOk ? "text-[#16a34a]" : "text-amber-600"}`} title="顶层「计权」指标分值之和应等于基础满分">
-          计权合计 {rootSum}/{baseFullScore}
-        </span>
+        {!scoped && (
+          <span className={`text-[12px] ${sumOk ? "text-[#16a34a]" : "text-amber-600"}`} title="顶层「计权」指标分值之和应等于基础满分">
+            计权合计 {rootSum}/{baseFullScore}
+          </span>
+        )}
         <button type="button" onClick={onUndo} disabled={!canUndo} className="p-1 rounded disabled:opacity-30 text-[#475467] hover:bg-[#eef2f7]" title="撤销">
           <Undo2 className="w-4 h-4" />
         </button>
@@ -129,6 +138,7 @@ export function IndicatorTreeEditor({
                   onAddChild={onAddChild}
                   onDelete={onDelete}
                   onKindChange={onKindChange}
+                  scoped={scoped}
                 />
               ))}
             </SortableContext>

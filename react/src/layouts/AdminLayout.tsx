@@ -57,6 +57,7 @@ const CATEGORIES: Category[] = [
       { path: "/admin/assessment/schemes",       label: "考核表",          icon: ClipboardCheckIcon, group: "考核管理", perm: "assessment:manage" },
       { path: "/admin/assessment/rounds",        label: "考核打分",        icon: ClipboardListIcon,  group: "考核管理", perm: "assessment:manage" },
       { path: "/admin/assessment/mine",          label: "我的考核",        icon: BadgeCheckIcon,     group: "考核管理", badgeKey: "myAssessment" }, // 无 perm = 人人可见(打分人入口 + 实时角标)
+      { path: "/admin/assessment/managed",       label: "我维护的考核",    icon: SlidersHorizontalIcon, group: "考核管理" }, // 无 perm = 人人可见(节点管理员入口;非节点管理员看到空页)
       { path: "/admin/reports",                  label: "多次报送",        icon: ClipboardCheckIcon, group: "报送管理", perm: "report:manage" },
       { path: "/admin/reports/catalog",          label: "报送清单",        icon: PackageIcon,        group: "报送管理", perm: "report:manage" },
     ],

@@ -21,6 +21,7 @@ import { AssessmentService } from './assessment.service';
 import { AssessmentExtractionService } from './assessment-extraction.service';
 import { CreateSchemeDto } from './dto/create-scheme.dto';
 import { UpdateSchemeDto } from './dto/update-scheme.dto';
+import { UpdateSubtreeDto } from './dto/update-subtree.dto';
 import { TrialScoreDto } from './dto/trial-score.dto';
 import { PreviewIndicatorDto } from './dto/preview-indicator.dto';
 import { PreviewSubtotalDto } from './dto/preview-subtotal.dto';
@@ -63,6 +64,23 @@ export class AssessmentController {
   @Get('schemes/:id')
   get(@Param('id') id: string) {
     return this.svc.findOne(id);
+  }
+
+  /** GET /assessment/my-managed-schemes  「我维护的考核」:我作为节点管理员可维护的表 + 我管的节点(登录即可) */
+  @Get('my-managed-schemes')
+  myManagedSchemes(@CurrentUser() me: AuthPayload) {
+    return this.svc.managedSchemes(me.sub);
+  }
+
+  /** PATCH /assessment/schemes/:id/subtree  节点管理员维护本节点子树(登录;service 内按节点管理员/管理员鉴权) */
+  @Patch('schemes/:id/subtree')
+  updateSubtree(
+    @Param('id') id: string,
+    @Body() dto: UpdateSubtreeDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.updateSubtree(id, dto.nodeCode, dto.subtree, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
   @Post('schemes')
