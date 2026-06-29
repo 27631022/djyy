@@ -387,6 +387,9 @@ export interface SubtotalLeafInput {
   kind?: IndicatorKind;
   weight?: number;
   label?: string;
+  /** report.query 叶子:供后端实时取报送数据(与考核排名页同口径),无需前端传值 */
+  dataSource?: string;
+  sourceParams?: Record<string, unknown>;
   strategyParams?: Record<string, unknown>;
   difficultyOn?: boolean;
   difficultyCoefs?: Record<string, number>;
@@ -400,6 +403,8 @@ export interface SubtotalUnitInput {
 export interface PreviewSubtotalInput {
   leaves: SubtotalLeafInput[];
   units: SubtotalUnitInput[];
+  /** 含「我负责的减分叶子」的顶层减分块子树(带 weight/children)——用于逐级减分上限封顶,使合计与考核排名页同口径 */
+  deductBlocks?: IndicatorNode[];
 }
 export interface SubtotalPreview {
   /** leafCode → 该指标各对象 ●# 单项排名 */

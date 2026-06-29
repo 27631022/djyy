@@ -981,7 +981,7 @@ export class AssessmentService {
    * 多指标合计实时预览(打分人侧):给「我负责的几项指标」+ 各对象当前录入 →
    * 各项单项排名 + 合计得分/排名。无状态(不落库),前端传当前值即时出结果。
    */
-  previewSubtotal(dto: { leaves?: unknown; units?: unknown }) {
+  async previewSubtotal(dto: { leaves?: unknown; units?: unknown; deductBlocks?: unknown }) {
     const rawLeaves = Array.isArray(dto.leaves) ? dto.leaves : [];
     const leaves: IndicatorNode[] = rawLeaves
       .map((l) => (l && typeof l === 'object' ? (l as Record<string, unknown>) : null))
@@ -993,6 +993,12 @@ export class AssessmentService {
           label: typeof l.label === 'string' ? l.label : (l.code as string),
           kind: (l.kind === 'deduction' || l.kind === 'bonus' ? l.kind : 'normal') as IndicatorNode['kind'],
           weight: typeof l.weight === 'number' && l.weight >= 0 ? l.weight : 0,
+          // dataSource/sourceParams 仅用于服务端解析 report.query(自动取数),与考核排名页同口径
+          dataSource: typeof l.dataSource === 'string' ? l.dataSource : undefined,
+          sourceParams:
+            l.sourceParams && typeof l.sourceParams === 'object'
+              ? (l.sourceParams as Record<string, unknown>)
+              : undefined,
           scoringType: l.scoringType as string,
           strategyParams: spec ? spec.normalizeParams((l.strategyParams as Record<string, unknown>) ?? {}) : {},
           difficultyOn: l.difficultyOn === true,
@@ -1014,7 +1020,53 @@ export class AssessmentService {
             ? (u.valuesByLeaf as Record<string, unknown>)
             : {},
       }));
-    return previewSubtotal(leaves, units);
+    // 减分块子树:轻量结构化解析(只取引擎逐级封顶需要的 结构 + 叶子计分配置)。
+    // 不走 normalizeIndicatorTree —— 那会强校验 dataSource/label,而预览要容忍「半配置中」的叶子;
+    // 叶子参数由引擎 scoreOneLeaf 内部归一化(与考核排名页同口径)。
+    const parseBlock = (raw: unknown): IndicatorNode | null => {
+      if (!raw || typeof raw !== 'object') return null;
+      const o = raw as Record<string, unknown>;
+      const code = typeof o.code === 'string' ? o.code : '';
+      if (!code) return null;
+      const node: IndicatorNode = {
+        code,
+        label: typeof o.label === 'string' ? o.label : code,
+        weight: typeof o.weight === 'number' && Number.isFinite(o.weight) ? o.weight : 0,
+        kind: o.kind === 'deduction' || o.kind === 'bonus' ? o.kind : 'normal',
+      };
+      const kids = Array.isArray(o.children)
+        ? o.children.map(parseBlock).filter((n): n is IndicatorNode => !!n)
+        : [];
+      if (kids.length) {
+        node.children = kids;
+        return node;
+      }
+      if (typeof o.scoringType === 'string') node.scoringType = o.scoringType;
+      if (o.strategyParams && typeof o.strategyParams === 'object') {
+        node.strategyParams = o.strategyParams as Record<string, unknown>;
+      }
+      if (o.difficultyOn === true) node.difficultyOn = true;
+      if (o.difficultyCoefs && typeof o.difficultyCoefs === 'object' && !Array.isArray(o.difficultyCoefs)) {
+        node.difficultyCoefs = o.difficultyCoefs as Record<string, number>;
+      }
+      return node;
+    };
+    const deductBlocks = Array.isArray(dto.deductBlocks)
+      ? dto.deductBlocks.map(parseBlock).filter((n): n is IndicatorNode => !!n && n.kind === 'deduction')
+      : [];
+
+    // report.query 叶子:服务端按报送任务实时取数,覆盖到各对象 valuesByLeaf —— 与考核排名页(runCompute)同一份口径,
+    // 避免「打分页用前端传的值、排名页重新拉报送值」两个数。
+    const refs = units.map((u) => u.ref);
+    for (const leaf of leaves) {
+      if (leaf.dataSource !== 'report.query') continue;
+      const sp = (leaf.sourceParams ?? {}) as { reportTaskId?: string; goalKey?: string; field?: string };
+      const field = sp.field === 'rate' ? 'rate' : 'actual';
+      const vals = await this.resolveReportQuery(sp.reportTaskId ?? '', sp.goalKey ?? '', field, refs);
+      for (const u of units) u.valuesByLeaf[leaf.code] = vals[u.ref];
+    }
+
+    return previewSubtotal(leaves, units, deductBlocks);
   }
 
   /**

@@ -45,8 +45,19 @@ export interface GradeRulesLike {
 type RawMap = Record<string, Record<string, unknown>>; // targetRef → leafCode → rawValue(已 parse)
 
 const round2 = (x: number) => Math.round(x * 100) / 100;
-const toNum = (v: unknown): number =>
-  typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'boolean' ? (v ? 1 : 0) : 0;
+/** 取「已录入的数值」:数字/布尔→数值,未录入(null/undefined/字符串/NaN)→null(用于把未录入对象排除出排名群体) */
+const numOrNull = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'boolean' ? (v ? 1 : 0) : null;
+
+/** 减分逐级封顶:每个减分块,下级减分之和超本级「减分上限」(weight)即锁死在上限;上限=0 视为不封顶。递归到末端叶子。
+ *  打分页(previewSubtotal)与考核排名页(computeRoundResults)共用同一函数,保证两处口径一致。 */
+const capVal = (s: number, w: number | undefined) => (w && w > 0 ? Math.min(s, w) : s);
+export function cappedDeduct(node: IndicatorNode, leafScore: (code: string) => number): number {
+  const kids = node.children ?? [];
+  if (!kids.length) return leafScore(node.code);
+  const childSum = kids.reduce((acc, c) => acc + cappedDeduct(c, leafScore), 0);
+  return capVal(childSum, node.weight);
+}
 
 /** 单个末端指标:对全体对象算 ●得分(含难易系数;crossTarget 系数乘在排名值上再排名)。返回 ref→●得分。 */
 export function scoreOneLeaf(
@@ -58,17 +69,29 @@ export function scoreOneLeaf(
   const type = leaf.scoringType ?? '';
   const spec = getScoringSpec(type);
   const fullScore = Number.isFinite(leaf.weight) ? leaf.weight : 0;
-  const params = leaf.strategyParams ?? {};
   const coefOf = (ref: string) => (leaf.difficultyOn ? leaf.difficultyCoefs?.[ref] ?? 1 : 1);
   if (!spec) {
     for (const t of targets) out[t.ref] = 0;
     return out;
   }
+  // 计分参数统一归一化(排序档位/补默认值等),让「考核排名页直接吃快照参数」与「打分页预览归一化后参数」口径一致;
+  // 万一存量参数非法(本不该,存表已校验)归一化抛错时,退回原始参数兜底,避免一个坏叶子让整轮算分 500。
+  let params: Record<string, unknown> = leaf.strategyParams ?? {};
+  try {
+    params = spec.normalizeParams(params);
+  } catch {
+    params = leaf.strategyParams ?? {};
+  }
   if (spec.crossTarget) {
-    const eff = targets.map((t) => ({ ref: t.ref, v: toNum(rawOf(t.ref)) * coefOf(t.ref) }));
-    const all = eff.map((e) => e.v);
+    // 只把「已录入数值」的对象纳入排名/标准化群体:未录入的不参与(不挤名次)、本身记 0 分。
+    const entered = targets
+      .map((t) => ({ ref: t.ref, v: numOrNull(rawOf(t.ref)) }))
+      .filter((e): e is { ref: string; v: number } => e.v !== null)
+      .map((e) => ({ ref: e.ref, v: e.v * coefOf(e.ref) }));
+    const all = entered.map((e) => e.v);
     const order = params.order === 'asc' ? 'asc' : 'desc';
-    for (const { ref, v } of eff) {
+    for (const t of targets) out[t.ref] = 0; // 默认(未录入)= 0
+    for (const { ref, v } of entered) {
       const ahead = all.filter((x) => (order === 'asc' ? x < v : x > v)).length;
       const ctx: ScoreCtx = { fullScore, params, allValues: all, count: all.length || 1, rank: 1 + ahead };
       out[ref] = round2(computeScore(type, v, ctx));
@@ -76,11 +99,12 @@ export function scoreOneLeaf(
   } else {
     for (const t of targets) {
       const rv = (rawOf(t.ref) ?? null) as RawMetric;
-      // 减分项 + 扣分制:本项得分 = 实际扣分额(扣分明细之和),而非「满分−扣分」(那是计权制语义)。
-      // 减分项无「满分起评」初始分;按本叶「扣分上限」(weight)封顶(0=不封顶),块级再逐级封顶(见 computeRoundResults)。
+      // 减分项:本项得分 = 实际扣分额(正数),而非「满分−扣分」(那是计权制语义)。
+      // manual_deduct 用扣分明细之和;其余工具(如「按次扣分」deduction)用 computeScore 的罚分。
+      // 减分项无「满分起评」初始分;按本叶「扣分上限」(weight)封顶(0=不封顶),块级再逐级封顶(见 cappedDeduct)。
       let s: number;
-      if (leaf.kind === 'deduction' && type === 'manual_deduct') {
-        const ded = sumDeductions(rv);
+      if (leaf.kind === 'deduction') {
+        const ded = type === 'manual_deduct' ? sumDeductions(rv) : computeScore(type, rv, { fullScore, params });
         s = fullScore > 0 ? Math.min(ded, fullScore) : ded;
       } else {
         s = computeScore(type, rv, { fullScore, params });
@@ -127,23 +151,48 @@ export interface SubtotalPreview {
 export function previewSubtotal(
   leaves: IndicatorNode[],
   units: { ref: string; name: string; valuesByLeaf: Record<string, unknown> }[],
+  deductBlocks: IndicatorNode[] = [],
 ): SubtotalPreview {
   const perLeaf: Record<string, PreviewRow[]> = {};
-  const sumByRef: Record<string, number> = {};
   const nameByRef = new Map(units.map((u) => [u.ref, u.name] as const));
-  for (const u of units) sumByRef[u.ref] = 0;
-  let fullScore = 0;
+
+  // 1) 单项排名:我的每项指标(含减分)逐项 ●# —— 展示不变。
   for (const leaf of leaves) {
-    const isDed = leaf.kind === 'deduction';
-    // 减分项:不计入「满分之和」,且在合计里「减去」(不是加)。计权/加分项正常累加。
-    if (!isDed) fullScore += Number.isFinite(leaf.weight) ? leaf.weight : 0;
-    const rows = previewIndicator(
+    perLeaf[leaf.code] = previewIndicator(
       leaf,
       units.map((u) => ({ ref: u.ref, name: u.name, raw: u.valuesByLeaf?.[leaf.code] })),
     );
-    perLeaf[leaf.code] = rows;
-    for (const r of rows) sumByRef[r.ref] = (sumByRef[r.ref] ?? 0) + (isDed ? -r.score : r.score);
   }
+
+  // 2) 减分块内全部叶子按对象算分(leafCode→ref→●扣分额,已按本叶上限封顶),供逐级封顶 cappedDeduct 使用。
+  const blockLeafScore: Record<string, Record<string, number>> = {};
+  const coveredDeduct = new Set<string>();
+  const valOf = new Map(units.map((u) => [u.ref, u.valuesByLeaf ?? {}] as const));
+  const collectLeaves = (n: IndicatorNode): IndicatorNode[] =>
+    n.children && n.children.length ? n.children.flatMap(collectLeaves) : [n];
+  for (const block of deductBlocks) {
+    for (const lf of collectLeaves(block)) {
+      coveredDeduct.add(lf.code);
+      blockLeafScore[lf.code] = scoreOneLeaf(lf, units, (ref) => valOf.get(ref)?.[lf.code]);
+    }
+  }
+
+  // 3) 合计:正项(计权/加分)累加 + 减分块逐级封顶后减(与考核排名页 computeRoundResults 同口径)。
+  let fullScore = 0;
+  for (const leaf of leaves)
+    if (leaf.kind !== 'deduction') fullScore += Number.isFinite(leaf.weight) ? leaf.weight : 0;
+  const scoreInPerLeaf = (code: string, ref: string) => perLeaf[code]?.find((r) => r.ref === ref)?.score ?? 0;
+  const sumByRef: Record<string, number> = {};
+  for (const u of units) {
+    let s = 0;
+    for (const leaf of leaves) if (leaf.kind !== 'deduction') s += scoreInPerLeaf(leaf.code, u.ref);
+    for (const block of deductBlocks) s -= cappedDeduct(block, (code) => blockLeafScore[code]?.[u.ref] ?? 0);
+    // 兜底:不在任何减分块内的减分叶子(理论上不应出现)——按叶子分(已按本叶上限封顶)直接减,避免漏减。
+    for (const leaf of leaves)
+      if (leaf.kind === 'deduction' && !coveredDeduct.has(leaf.code)) s -= scoreInPerLeaf(leaf.code, u.ref);
+    sumByRef[u.ref] = s;
+  }
+
   const subtotal: PreviewRow[] = units.map((u) => ({
     ref: u.ref,
     name: nameByRef.get(u.ref) ?? u.ref,
@@ -172,15 +221,7 @@ export function computeRoundResults(
     for (const t of targets) scoreOf[t.ref][leaf.code] = ls[t.ref] ?? 0;
   }
 
-  // ── 逐对象加权汇总 ──
-  const cap = (s: number, w: number | undefined) => (w && w > 0 ? Math.min(s, w) : s);
-  // 减分逐级封顶:每个减分块,下级减分之和超本级「减分上限」(weight)即锁死在上限;上限=0 视为不封顶。递归到末端叶子。
-  const cappedDeduct = (node: IndicatorNode, leafScore: (code: string) => number): number => {
-    const kids = node.children ?? [];
-    if (!kids.length) return leafScore(node.code);
-    const childSum = kids.reduce((acc, c) => acc + cappedDeduct(c, leafScore), 0);
-    return cap(childSum, node.weight);
-  };
+  // ── 逐对象加权汇总(减分逐级封顶:cappedDeduct,与打分页 previewSubtotal 共用)──
   const results: RoundTargetResult[] = targets.map((t) => {
     let normalScore = 0;
     let bonus = 0;
