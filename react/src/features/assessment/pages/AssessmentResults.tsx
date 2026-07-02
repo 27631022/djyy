@@ -289,7 +289,19 @@ function RankingTab({
     () => r2([...leafMeta.values()].filter((m) => m.kind === "normal").reduce((s, m) => s + (m.weight || 0), 0)),
     [leafMeta],
   );
-  const leafList = useMemo(() => [...leafMeta.keys()], [leafMeta]);
+  // 展开明细按「一级目录」分组(60+ 指标平铺一列没法看):组头 Σ 小计 + 组内叶子双列
+  const groupedLeaves = useMemo(() => {
+    const order: string[] = [];
+    const byGroup = new Map<string, LeafMeta[]>();
+    for (const m of leafMeta.values()) {
+      if (!byGroup.has(m.groupLabel)) {
+        byGroup.set(m.groupLabel, []);
+        order.push(m.groupLabel);
+      }
+      byGroup.get(m.groupLabel)!.push(m);
+    }
+    return order.map((label) => ({ label, leaves: byGroup.get(label)! }));
+  }, [leafMeta]);
   const rows = useMemo(() => [...targets].sort((a, b) => a.rank - b.rank), [targets]);
   const maxTotal = rows[0]?.total ?? 0;
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -334,32 +346,55 @@ function RankingTab({
                 {open ? <ChevronDown className="w-4 h-4 text-[#9CA3AF] flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-[#9CA3AF] flex-shrink-0" />}
               </button>
               {open && (
-                <div className="px-4 pb-3 pl-14 space-y-1">
-                  {leafList.map((c) => {
-                    const meta = leafMeta.get(c);
-                    const sc = r.leafScores[c] ?? 0;
-                    const isDed = meta?.kind === "deduction";
+                <div className="px-4 pb-3 pl-14 space-y-3">
+                  {groupedLeaves.map((grp) => {
+                    const isDedGroup = grp.leaves.every((l) => l.kind === "deduction");
+                    const isBonusGroup = grp.leaves.every((l) => l.kind === "bonus");
+                    const subtotal = r2(grp.leaves.reduce((a, l) => a + (r.leafScores[l.code] ?? 0), 0));
+                    const groupFull = r2(grp.leaves.reduce((a, l) => a + (l.weight || 0), 0));
                     return (
-                      <div key={c} className="flex items-center gap-2 text-[12px]">
-                        <span className="flex-1 text-[#475467] truncate" title={meta?.groupLabel}>
-                          {meta?.label ?? c}
-                          {isDed && <span className="ml-1 text-[10px] text-red-500">减</span>}
-                          {meta?.kind === "bonus" && <span className="ml-1 text-[10px] text-emerald-600">加</span>}
-                        </span>
-                        <span className={`font-medium w-16 text-right ${isDed && sc > 0 ? "text-red-500" : "text-[#172033]"}`}>
-                          {isDed ? (sc > 0 ? `-${r2(sc)}` : 0) : r2(sc)}
-                          <span className="text-[10px] text-[#9CA3AF]"> / {isDed ? `上限${meta?.weight ?? 0}` : meta?.weight ?? 0}</span>
-                        </span>
-                        {!readOnly && (
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/admin/assessment/rounds/${round.id}?leaf=${encodeURIComponent(c)}`)}
-                            className="inline-flex items-center gap-0.5 text-[11px] text-[var(--party-primary)] hover:underline flex-shrink-0"
-                            title="去打分页完善该指标"
-                          >
-                            <PenLine className="w-3 h-3" /> 去完善
-                          </button>
-                        )}
+                      <div key={grp.label}>
+                        {/* 组头:一级目录名 + Σ 小计(减分组为负、按上限封顶后计入总分;加分组为正) */}
+                        <div className="flex items-center gap-2 text-[12px] font-medium text-[#172033] border-b border-[#f1f5f9] pb-1 mb-1">
+                          <span className="flex-1 truncate">{grp.label}</span>
+                          <span className={isDedGroup && subtotal > 0 ? "text-red-500" : isBonusGroup && subtotal > 0 ? "text-emerald-600" : ""}>
+                            Σ {isDedGroup ? (subtotal > 0 ? `-${subtotal}` : 0) : isBonusGroup ? `+${subtotal}` : subtotal}
+                            {!isDedGroup && !isBonusGroup && (
+                              <span className="text-[10px] font-normal text-[#9CA3AF]"> / {groupFull}</span>
+                            )}
+                          </span>
+                        </div>
+                        {/* 组内叶子双列(60+ 指标时高度减半、按组扫读) */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-1">
+                          {grp.leaves.map((meta) => {
+                            const c = meta.code;
+                            const sc = r.leafScores[c] ?? 0;
+                            const isDed = meta.kind === "deduction";
+                            return (
+                              <div key={c} className="flex items-center gap-2 text-[12px]">
+                                <span className="flex-1 text-[#475467] truncate">
+                                  {meta.label}
+                                  {isDed && <span className="ml-1 text-[10px] text-red-500">减</span>}
+                                  {meta.kind === "bonus" && <span className="ml-1 text-[10px] text-emerald-600">加</span>}
+                                </span>
+                                <span className={`font-medium w-16 text-right ${isDed && sc > 0 ? "text-red-500" : "text-[#172033]"}`}>
+                                  {isDed ? (sc > 0 ? `-${r2(sc)}` : 0) : r2(sc)}
+                                  <span className="text-[10px] text-[#9CA3AF]"> / {isDed ? `上限${meta.weight}` : meta.weight}</span>
+                                </span>
+                                {!readOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate(`/admin/assessment/rounds/${round.id}?leaf=${encodeURIComponent(c)}`)}
+                                    className="inline-flex items-center gap-0.5 text-[11px] text-[var(--party-primary)] hover:underline flex-shrink-0"
+                                    title="去打分页完善该指标"
+                                  >
+                                    <PenLine className="w-3 h-3" /> 去完善
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     );
                   })}
