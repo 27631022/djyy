@@ -10,6 +10,7 @@ import {
   parseIndicators,
   parseSettings,
   parseTargets,
+  scoredChangeConflict,
   RELATION_LABELS,
   type AssessmentScheme,
   type AssessmentTarget,
@@ -19,7 +20,7 @@ import {
   type SchemeSettings,
 } from "../api";
 import { useHistory } from "../hooks/useHistory";
-import { findNode, isLeafNode, recomputeWeights, updateNode } from "../treeOps";
+import { findNode, isLeafNode, recodeTree, recomputeWeights, updateNode } from "../treeOps";
 import { IndicatorTreeEditor } from "../components/IndicatorTreeEditor";
 import { LeafConfigPanel } from "../components/LeafConfigPanel";
 import { SubjectObjectsPanel } from "../components/SubjectObjectsPanel";
@@ -69,7 +70,7 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
   const selectedLeaf = selectedNode && isLeafNode(selectedNode) ? selectedNode : null;
 
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: (confirmDataLoss: boolean) =>
       assessmentApi.updateScheme(scheme.id, {
         name: name.trim() || scheme.name,
         year,
@@ -79,12 +80,27 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
         targets,
         gradeRules: grade,
         settings,
+        confirmDataLoss,
       }),
     onSuccess: () => {
       toast.success("已保存");
       qc.invalidateQueries({ queryKey: ["assessment"] });
     },
-    onError: (e) => toast.error(assessmentErrorMessage(e, "保存失败")),
+    onError: (e) => {
+      // B6 防丢分:删/换工具的指标已有录入 → 后端 409 带明细,弹确认后带 confirmDataLoss 重试
+      const conflict = scoredChangeConflict(e);
+      if (conflict) {
+        if (
+          window.confirm(
+            `以下指标已有录入数据:\n${conflict}。\n\n确认保存将同时删除这些指标的已录入(相关单位需重新录入)。确定继续吗?`,
+          )
+        ) {
+          save.mutate(true);
+        }
+        return;
+      }
+      toast.error(assessmentErrorMessage(e, "保存失败"));
+    },
   });
 
   // AI 生成指标(导入考核办法文件)—— 预留接口,需配 AI 模型
@@ -93,7 +109,8 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
     mutationFn: (file: File) => assessmentApi.extractIndicators(file),
     onSuccess: (res) => {
       tree.record();
-      tree.setState(res.indicators);
+      // 重发全局唯一 code:AI 每次生成都是 n1、n2…,两次生成互相撞 code,已有录入会错套在新指标上
+      tree.setState(recodeTree(res.indicators));
       setSelectedCode(null);
       toast.success(`AI 已生成 ${res.source.leafCount} 项末端指标,请核对分值与计分工具后保存`);
     },
@@ -164,7 +181,7 @@ function SchemeEditorInner({ scheme }: { scheme: AssessmentScheme }) {
         </button>
         <button
           type="button"
-          onClick={() => save.mutate()}
+          onClick={() => save.mutate(false)}
           disabled={save.isPending}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white text-sm font-medium disabled:opacity-60 flex-shrink-0"
           style={{ backgroundColor: "var(--party-primary)" }}

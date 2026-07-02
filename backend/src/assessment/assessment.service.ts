@@ -1,4 +1,11 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
 import { RoleService } from '../role';
@@ -282,7 +289,7 @@ export class AssessmentService {
   }
 
   async update(id: string, dto: UpdateSchemeDto, ctx: ActorCtx) {
-    await this.loadScheme(id);
+    const existing = await this.loadScheme(id);
     const data: Record<string, unknown> = {};
     if (dto.name !== undefined) data.name = dto.name.trim();
     if (dto.year !== undefined) data.year = dto.year;
@@ -290,12 +297,25 @@ export class AssessmentService {
     if (dto.targetLevel !== undefined) data.targetLevel = dto.targetLevel;
     if (dto.status !== undefined) data.status = dto.status;
 
+    let newTree: IndicatorNode[] | null = null;
     if (dto.indicators !== undefined) {
-      data.indicatorsJson = JSON.stringify(this.normalizeAndValidateTree(dto.indicators));
+      newTree = this.normalizeAndValidateTree(dto.indicators);
+      data.indicatorsJson = JSON.stringify(newTree);
     }
     if (dto.targets !== undefined) data.targetsJson = JSON.stringify(normalizeTargets(dto.targets));
     if (dto.gradeRules !== undefined) data.gradeRulesJson = JSON.stringify(dto.gradeRules);
     if (dto.settings !== undefined) data.settingsJson = JSON.stringify(dto.settings);
+
+    // B6 防丢分守卫:删除/更换取数计分工具「已有录入」的指标 → 首次 409 要求确认;确认后连带清理这些录入
+    // (防止旧录入隐形残留、code 复用时"复活"套在新指标上、换工具后被新工具错误重解释)。
+    const guard = newTree
+      ? await this.guardScoredLeafChanges(
+          id,
+          safeJson<IndicatorNode[]>(existing.indicatorsJson, []),
+          newTree,
+          dto.confirmDataLoss === true,
+        )
+      : { roundIds: [], cleanCodes: [] };
 
     const scheme = await this.prisma.assessmentScheme.update({ where: { id }, data });
 
@@ -313,17 +333,90 @@ export class AssessmentService {
     if (typeof data.settingsJson === 'string') roundData.settingsJson = data.settingsJson;
     if (typeof data.gradeRulesJson === 'string') roundData.gradeRulesJson = data.gradeRulesJson;
     const synced = Object.keys(roundData).length > 0;
-    if (synced) {
-      await this.prisma.assessmentRound.updateMany({ where: { schemeId: id }, data: roundData });
+    if (synced || guard.cleanCodes.length) {
+      const ops: Prisma.PrismaPromise<unknown>[] = [];
+      if (synced) ops.push(this.prisma.assessmentRound.updateMany({ where: { schemeId: id }, data: roundData }));
+      if (guard.cleanCodes.length) {
+        // 确认后的连带清理:被删/被换工具指标的录入 + 分数确认,随快照同步一并生效(同事务)
+        ops.push(
+          this.prisma.indicatorScore.deleteMany({
+            where: { roundId: { in: guard.roundIds }, leafCode: { in: guard.cleanCodes } },
+          }),
+          this.prisma.assessmentScoreConfirm.deleteMany({
+            where: { roundId: { in: guard.roundIds }, leafCode: { in: guard.cleanCodes } },
+          }),
+        );
+      }
+      await this.prisma.$transaction(ops);
     }
 
     await this.audit.log({
       ...ctx,
       action: 'assessment.scheme.update',
       target: id,
-      detail: { keys: Object.keys(data), syncedToRounds: synced },
+      detail: { keys: Object.keys(data), syncedToRounds: synced, cleanedScoredLeaves: guard.cleanCodes },
     });
     return scheme;
+  }
+
+  /**
+   * B6 防丢分守卫:比对新旧指标树,找出「已有录入」却被 删除 / 更换数据源或计分工具 的叶子。
+   * 未带 confirmDataLoss → 409(带明细,前端弹确认后重试);已确认 → 返回需连带清理的 leafCode。
+   * 为什么确认后要"删"而不是留着:留着会 ① 隐形残留(code 对不上谁也看不见)② 将来 code 复用时
+   * "复活"套在不相干的新指标上 ③ 换工具后旧值被新工具错误重解释(如 得分8 被扣分制当成 扣8分)。
+   */
+  private async guardScoredLeafChanges(
+    schemeId: string,
+    oldTree: IndicatorNode[],
+    newTree: IndicatorNode[],
+    confirmed: boolean,
+  ): Promise<{ roundIds: string[]; cleanCodes: string[] }> {
+    const rounds = await this.prisma.assessmentRound.findMany({
+      where: { schemeId },
+      select: { id: true },
+    });
+    const roundIds = rounds.map((r) => r.id);
+    if (!roundIds.length) return { roundIds, cleanCodes: [] };
+    const rows = await this.prisma.indicatorScore.findMany({
+      where: { roundId: { in: roundIds } },
+      select: { leafCode: true, rawValue: true },
+    });
+    const enteredCount = new Map<string, number>();
+    for (const r of rows) {
+      if (r.rawValue == null || r.rawValue === 'null') continue; // 未真正录入的占位行不算
+      enteredCount.set(r.leafCode, (enteredCount.get(r.leafCode) ?? 0) + 1);
+    }
+    if (!enteredCount.size) return { roundIds, cleanCodes: [] };
+
+    const oldLeaves = new Map(flattenLeaves(oldTree).map((l) => [l.code, l] as const));
+    const newLeaves = new Map(flattenLeaves(newTree).map((l) => [l.code, l] as const));
+    const removed: { code: string; label: string; count: number }[] = [];
+    const retooled: { code: string; label: string; count: number }[] = [];
+    for (const [code, count] of enteredCount) {
+      const oldLeaf = oldLeaves.get(code);
+      if (!oldLeaf) continue; // 历史孤儿(旧树里已不存在),不归本次改动管
+      const newLeaf = newLeaves.get(code);
+      if (!newLeaf) removed.push({ code, label: oldLeaf.label, count });
+      else if (
+        (newLeaf.scoringType ?? '') !== (oldLeaf.scoringType ?? '') ||
+        (newLeaf.dataSource ?? '') !== (oldLeaf.dataSource ?? '')
+      ) {
+        retooled.push({ code, label: oldLeaf.label, count });
+      }
+    }
+    if (!removed.length && !retooled.length) return { roundIds, cleanCodes: [] };
+
+    if (!confirmed) {
+      const fmt = (arr: { label: string; count: number }[], verb: string) =>
+        arr.length ? `【${verb}】` + arr.map((x) => `「${x.label}」(已录 ${x.count} 条)`).join('、') : '';
+      throw new ConflictException({
+        code: 'ASSESSMENT_SCORED_CHANGE',
+        message: [fmt(removed, '删除'), fmt(retooled, '更换取数/计分工具')].filter(Boolean).join(';'),
+        removed,
+        retooled,
+      });
+    }
+    return { roundIds, cleanCodes: [...removed, ...retooled].map((x) => x.code) };
   }
 
   /** 规整 + 校验指标树:每叶 数据源/计分工具 存在且产出↔输入兼容,并 normalizeParams。返回规整后的树。 */
@@ -372,7 +465,13 @@ export class AssessmentService {
    * 节点管理员「维护本节点子树」:只替换 code=nodeCode 的子树,树其余部分原样保留。
    * 权限:平台管理员 / assessment:manage / 该节点(现有)adminUserIds 含本人。改动同步到进行中轮次。
    */
-  async updateSubtree(schemeId: string, nodeCode: string, rawSubtree: unknown, ctx: ActorCtx) {
+  async updateSubtree(
+    schemeId: string,
+    nodeCode: string,
+    rawSubtree: unknown,
+    ctx: ActorCtx,
+    confirmDataLoss = false,
+  ) {
     const s = await this.loadScheme(schemeId);
     const tree = safeJson<IndicatorNode[]>(s.indicatorsJson, []);
     const existing = findNodeInTree(tree, nodeCode);
@@ -389,11 +488,31 @@ export class AssessmentService {
     if (!sub || sub.code !== nodeCode) throw new BadRequestException('子树根节点与目标节点不一致');
 
     const merged = replaceNodeInTree(tree, nodeCode, sub);
+    // B6 防丢分守卫(同 update()):删/换工具「已有录入」的指标先 409 确认,确认后连带清理
+    const guard = await this.guardScoredLeafChanges(schemeId, tree, merged, confirmDataLoss);
     const indicatorsJson = JSON.stringify(merged);
-    await this.prisma.assessmentScheme.update({ where: { id: schemeId }, data: { indicatorsJson } });
-    // 一表一轮:同步到进行中的轮次(打分页/排名读轮次快照)
-    await this.prisma.assessmentRound.updateMany({ where: { schemeId }, data: { indicatorsJson } });
-    await this.audit.log({ ...ctx, action: 'assessment.scheme.update_subtree', target: schemeId, detail: { nodeCode } });
+    // 一表一轮:同步到进行中的轮次(打分页/排名读轮次快照);确认后的录入清理同事务
+    const ops: Prisma.PrismaPromise<unknown>[] = [
+      this.prisma.assessmentScheme.update({ where: { id: schemeId }, data: { indicatorsJson } }),
+      this.prisma.assessmentRound.updateMany({ where: { schemeId }, data: { indicatorsJson } }),
+    ];
+    if (guard.cleanCodes.length) {
+      ops.push(
+        this.prisma.indicatorScore.deleteMany({
+          where: { roundId: { in: guard.roundIds }, leafCode: { in: guard.cleanCodes } },
+        }),
+        this.prisma.assessmentScoreConfirm.deleteMany({
+          where: { roundId: { in: guard.roundIds }, leafCode: { in: guard.cleanCodes } },
+        }),
+      );
+    }
+    await this.prisma.$transaction(ops);
+    await this.audit.log({
+      ...ctx,
+      action: 'assessment.scheme.update_subtree',
+      target: schemeId,
+      detail: { nodeCode, cleanedScoredLeaves: guard.cleanCodes },
+    });
     return { ok: true };
   }
 

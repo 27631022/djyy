@@ -194,6 +194,17 @@ export interface UpdateSchemeInput {
   targets?: AssessmentTarget[];
   gradeRules?: GradeRules;
   settings?: SchemeSettings;
+  /** 确认「删除/更换取数计分工具 将连带删除这些指标的已录入」(首次保存命中会 409,确认后带 true 重试) */
+  confirmDataLoss?: boolean;
+}
+
+/** B6 防丢分:保存命中「删/换工具且已有录入」时后端 409 的明细文案;非该冲突返回 null */
+export function scoredChangeConflict(e: unknown): string | null {
+  const r = (e as { response?: { status?: number; data?: { code?: string; message?: string } } })?.response;
+  if (r?.status === 409 && r.data?.code === "ASSESSMENT_SCORED_CHANGE") {
+    return r.data.message ?? "部分指标已有录入数据";
+  }
+  return null;
 }
 
 export interface TrialResult {
@@ -507,8 +518,10 @@ export const assessmentApi = {
   myManagedSchemes: () =>
     api.get<{ items: ManagedScheme[] }>("/assessment/my-managed-schemes").then((r) => r.data),
   /** 节点管理员保存「本节点子树」(只替换该子树,树其余部分不动) */
-  updateSubtree: (schemeId: string, nodeCode: string, subtree: IndicatorNode) =>
-    api.patch<{ ok: boolean }>(`/assessment/schemes/${schemeId}/subtree`, { nodeCode, subtree }).then((r) => r.data),
+  updateSubtree: (schemeId: string, nodeCode: string, subtree: IndicatorNode, confirmDataLoss?: boolean) =>
+    api
+      .patch<{ ok: boolean }>(`/assessment/schemes/${schemeId}/subtree`, { nodeCode, subtree, confirmDataLoss })
+      .then((r) => r.data),
   trial: (input: TrialInput) =>
     api.post<TrialResult>("/assessment/scoring/trial", input).then((r) => r.data),
   /** 我的考核区域(按登录账号收敛的考核关系 + 主体)*/

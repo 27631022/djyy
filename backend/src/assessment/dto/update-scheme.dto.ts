@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsObject,
@@ -54,4 +55,10 @@ export class UpdateSchemeDto {
   @IsOptional()
   @IsObject()
   settings?: Record<string, unknown>;
+
+  /** 确认「删除/更换取数计分工具 会连带删除这些指标的已录入」:
+   *  首次保存若命中带录入的结构性改动会 409 返回明细;前端弹确认后带 true 重试。 */
+  @IsOptional()
+  @IsBoolean()
+  confirmDataLoss?: boolean;
 }

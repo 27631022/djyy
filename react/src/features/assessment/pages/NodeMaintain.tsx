@@ -9,6 +9,7 @@ import {
   parseIndicators,
   parseSettings,
   parseTargets,
+  scoredChangeConflict,
   type AssessmentScheme,
   type IndicatorNode,
   type SchemeSettings,
@@ -65,12 +66,27 @@ function NodeMaintainInner({ scheme, nodeCode, subtree }: { scheme: AssessmentSc
   }
 
   const save = useMutation({
-    mutationFn: () => assessmentApi.updateSubtree(scheme.id, nodeCode, tree.state[0]),
+    mutationFn: (confirmDataLoss: boolean) =>
+      assessmentApi.updateSubtree(scheme.id, nodeCode, tree.state[0], confirmDataLoss),
     onSuccess: () => {
       toast.success("已保存本节点");
       qc.invalidateQueries({ queryKey: ["assessment"] });
     },
-    onError: (e) => toast.error(assessmentErrorMessage(e, "保存失败")),
+    onError: (e) => {
+      // B6 防丢分:删/换工具的指标已有录入 → 后端 409 带明细,弹确认后带 confirmDataLoss 重试
+      const conflict = scoredChangeConflict(e);
+      if (conflict) {
+        if (
+          window.confirm(
+            `以下指标已有录入数据:\n${conflict}。\n\n确认保存将同时删除这些指标的已录入(相关单位需重新录入)。确定继续吗?`,
+          )
+        ) {
+          save.mutate(true);
+        }
+        return;
+      }
+      toast.error(assessmentErrorMessage(e, "保存失败"));
+    },
   });
 
   return (
@@ -87,7 +103,7 @@ function NodeMaintainInner({ scheme, nodeCode, subtree }: { scheme: AssessmentSc
         </div>
         <button
           type="button"
-          onClick={() => save.mutate()}
+          onClick={() => save.mutate(false)}
           disabled={save.isPending}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white text-sm font-medium disabled:opacity-60 flex-shrink-0"
           style={{ backgroundColor: "var(--party-primary)" }}

@@ -80,7 +80,13 @@ export class AssessmentController {
     @CurrentUser() me: AuthPayload,
     @Req() req: Request,
   ) {
-    return this.svc.updateSubtree(id, dto.nodeCode, dto.subtree, { actorId: me.sub, actorName: me.name, ip: req.ip });
+    return this.svc.updateSubtree(
+      id,
+      dto.nodeCode,
+      dto.subtree,
+      { actorId: me.sub, actorName: me.name, ip: req.ip },
+      dto.confirmDataLoss === true,
+    );
   }
 
   @Post('schemes')
