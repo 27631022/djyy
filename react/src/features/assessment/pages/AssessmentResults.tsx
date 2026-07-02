@@ -56,10 +56,12 @@ function ResultsInner({ round, onBack }: { round: AssessmentRound; onBack: () =>
   const indicators = useMemo(() => parseRoundIndicators(round), [round]);
   const leafMeta = useMemo(() => leafMetaMap(indicators), [indicators]);
   // 「当前」时点 = 实时榜(读已保存录入即时算,不依赖手动计算)。快照时点仍读冻结副本。
+  // 30s 自动刷新:别人保存录入后本页自动跟上(后端有按轮次缓存+写时失效,轮询成本 ~1ms/次)
   const liveQuery = useQuery({
     queryKey: ["assess-live", round.id],
     queryFn: () => assessmentApi.liveResults(round.id),
     staleTime: 2000,
+    refetchInterval: 30_000,
   });
   const currentResults = useMemo<RoundResults>(() => liveQuery.data ?? {}, [liveQuery.data]);
   const isManager = (me?.isPlatformAdmin || me?.permissions?.includes("assessment:manage")) ?? false;

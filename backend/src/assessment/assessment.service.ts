@@ -131,6 +131,21 @@ export class AssessmentService {
   ) {}
 
   /**
+   * 实时结果内存缓存(按轮次):排名只在「保存录入 / 改表」时变,通报洪峰/大屏轮询下
+   * 不必每次重算(实测未缓存单次 ~130ms、吞吐 ~28 次/秒;命中后 ~1ms)。
+   * 写路径主动失效;TTL 30s 兜底 report.query 的报送数据在报送模块侧变化(无失效钩子)。
+   * ⚠ 单进程内存缓存(与 @nestjs/schedule 同一前提);上多副本需换 Redis 或去缓存。
+   */
+  private readonly liveCache = new Map<string, { at: number; results: RoundResults }>();
+  private static readonly LIVE_TTL_MS = 30_000;
+
+  /** 写路径调用:失效某轮次的实时结果缓存;不传 = 全清(改表影响哪些轮次不确定时用) */
+  private invalidateLive(roundId?: string) {
+    if (roundId) this.liveCache.delete(roundId);
+    else this.liveCache.clear();
+  }
+
+  /**
    * 「我的考核区域」:按登录账号收敛出可建的考核关系 + 各关系下可担任的主体。
    * platform_admin / scope=all → 全部关系全部主体;否则按 membership 所在层级收敛(见 assess-relations)。
    * 每个主体附带 deptScopeOrgId(责任部门归属行政机构)供叶子配置过滤。
@@ -349,6 +364,7 @@ export class AssessmentService {
       }
       await this.prisma.$transaction(ops);
     }
+    this.invalidateLive(); // 指标/对象/设置/定级 任一变化都影响结果 → 全清实时缓存
 
     await this.audit.log({
       ...ctx,
@@ -507,6 +523,7 @@ export class AssessmentService {
       );
     }
     await this.prisma.$transaction(ops);
+    this.invalidateLive(); // 子树改动同步进轮次快照 → 实时结果缓存失效
     await this.audit.log({
       ...ctx,
       action: 'assessment.scheme.update_subtree',
@@ -526,6 +543,7 @@ export class AssessmentService {
       this.prisma.assessmentRound.deleteMany({ where: { schemeId: id } }),
       this.prisma.assessmentScheme.delete({ where: { id } }),
     ]);
+    this.invalidateLive(); // 删表连带删轮次 → 全清
     await this.audit.log({
       ...ctx,
       action: 'assessment.scheme.delete',
@@ -633,6 +651,7 @@ export class AssessmentService {
   async removeRound(id: string, ctx: ActorCtx) {
     await this.getRoundOrThrow(id);
     await this.prisma.assessmentRound.delete({ where: { id } }); // cascade scores
+    this.invalidateLive(id);
     await this.audit.log({ ...ctx, action: 'assessment.round.delete', target: id });
     return { ok: true };
   }
@@ -678,6 +697,7 @@ export class AssessmentService {
       }),
     );
     await this.prisma.$transaction(ops);
+    this.invalidateLive(roundId); // 录入变了 → 实时结果缓存立刻失效(排名秒级跟上)
     await this.audit.log({ ...ctx, action: 'assessment.round.save_scores', target: roundId, detail: { count: ops.length } });
     return { ok: true, count: ops.length };
   }
@@ -1191,10 +1211,15 @@ export class AssessmentService {
   /**
    * 实时全表结果(读当前已录入 → 引擎实时算,不落库)。
    * 公开总分榜 / 单位体检报告 / 管理员实时排名共用;让排名不依赖管理员手动「计算」。
+   * 带内存缓存(见 liveCache):保存录入/改表主动失效 + TTL 30s 兜底报送数据变化。
    */
   async liveResults(roundId: string) {
+    const hit = this.liveCache.get(roundId);
+    if (hit && Date.now() - hit.at < AssessmentService.LIVE_TTL_MS) return hit.results;
     const round = await this.getRoundOrThrow(roundId);
-    return this.runCompute(round);
+    const results = await this.runCompute(round);
+    this.liveCache.set(roundId, { at: Date.now(), results });
+    return results;
   }
 
   /* ─── report.query 接入(报送任务取数 → 考核数据源)─── */
@@ -1245,13 +1270,25 @@ export class AssessmentService {
       const v = field === 'rate' ? u.rate : u.actual;
       if (typeof v === 'number' && Number.isFinite(v)) valByOrg.set(u.orgId, v);
     }
+    // 批量建「党组织→行政机构」索引:一次 getAllLinks 代替逐对象 getLinkedAdminOrgs
+    // (原来每对象 2 条查询 × 34 对象 × 每个 report.query 指标 ≈ 200+ 条串行 SQLite 往返,
+    //  是实时结果 130ms 里的九成时间;只用到关联 id,与 getLinkedAdminOrgs 行为等价)
+    const linksByParty = new Map<string, string[]>();
+    if (targetRefs.some((ref) => !valByOrg.has(ref))) {
+      for (const l of await this.org.getAllLinks()) {
+        const arr = linksByParty.get(l.partyOrgId);
+        if (arr) arr.push(l.adminOrgId);
+        else linksByParty.set(l.partyOrgId, [l.adminOrgId]);
+      }
+    }
     for (const ref of targetRefs) {
       if (valByOrg.has(ref)) {
         out[ref] = valByOrg.get(ref)!;
         continue;
       }
-      const linked = await this.org.getLinkedAdminOrgs(ref);
-      const vals = linked.map((o) => valByOrg.get(o.id)).filter((v): v is number => typeof v === 'number');
+      const vals = (linksByParty.get(ref) ?? [])
+        .map((id) => valByOrg.get(id))
+        .filter((v): v is number => typeof v === 'number');
       if (vals.length) {
         const sum = vals.reduce((a, b) => a + b, 0);
         out[ref] = field === 'rate' ? round2(sum / vals.length) : round2(sum);
