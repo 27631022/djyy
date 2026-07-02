@@ -2,7 +2,7 @@ import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Camera, ChevronDown, ChevronRight, PenLine, Trash2 } from "lucide-react";
+import { ArrowLeft, Camera, ChevronDown, ChevronRight, HeartPulse, PenLine, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { useAuth } from "@/stores/auth";
 import {
@@ -36,8 +36,9 @@ export default function AssessmentResults() {
 
   if (isLoading) return <div className="p-12 text-center text-[#9CA3AF]">加载中…</div>;
   const list = data ?? [];
-  // 一表一轮:取该考核表的轮次(排名实时,不再依赖「已计算」状态)
-  const round = list.find((r) => r.status === "done") ?? list[0];
+  // 一表一轮:取最新轮次(与体检单同口径)。原「优先 done」是手动计算时代遗留 ——
+  // 若存在旧 done 轮 + 新实时轮会展示旧轮,与体检单两页数字对不上。
+  const round = list[0];
   const back = () => navigate("/admin/assessment/schemes");
   if (!round) {
     return (
@@ -347,6 +348,14 @@ function RankingTab({
               </button>
               {open && (
                 <div className="px-4 pb-3 pl-14 space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/admin/assessment/schemes/${round.schemeId}/checkup?ref=${encodeURIComponent(r.ref)}`)}
+                    className="inline-flex items-center gap-1 text-[12px] text-[var(--party-primary)] hover:underline"
+                    title="该单位的体检单:雷达图画像 + 逐项得分/名次 + 短板诊断"
+                  >
+                    <HeartPulse className="w-3.5 h-3.5" /> 查看单位体检单
+                  </button>
                   {groupedLeaves.map((grp) => {
                     const isDedGroup = grp.leaves.every((l) => l.kind === "deduction");
                     const isBonusGroup = grp.leaves.every((l) => l.kind === "bonus");

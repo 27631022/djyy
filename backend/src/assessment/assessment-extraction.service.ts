@@ -162,6 +162,31 @@ export class AssessmentExtractionService {
     return { criteria, usedProvider: llm.provider, usedModel: llm.model };
   }
 
+  /**
+   * AI 生成「单位体检诊断建议」:前端把体检数据(总分/名次/各维度得分率 vs 平均/失分点/扣分/加分空间)
+   * 组织成结构化摘要文本传入,AI 写「主要短板 + 改进建议」。AI 不可达时前端回退规则版诊断(本端点抛错即可)。
+   * 复用 callLlm(json 模式返 {issues});提示词 key=assessment.checkup_issues,后台「提示词管理」可调。
+   */
+  async generateCheckupIssues(
+    input: { unitName?: string; summary?: string },
+    ctx: ExtractCtx,
+  ): Promise<{ issues: string; usedProvider: string; usedModel: string }> {
+    const summary = (input.summary || '').trim();
+    if (!summary) throw new BadRequestException('缺少体检数据摘要');
+    const sys = await this.prompts.get('assessment.checkup_issues');
+    const user = `单位:${(input.unitName || '').trim() || '(未命名)'}\n${summary.slice(0, 6000)}`;
+    const llm = await this.callLlm(sys, user);
+    let issues = '';
+    try {
+      issues = String((JSON.parse(llm.raw) as { issues?: unknown }).issues ?? '').trim();
+    } catch {
+      /* 解析失败 → 保持空,下面统一抛 */
+    }
+    if (!issues) throw new ServiceUnavailableException('AI 未返回有效的诊断建议,请稍后重试');
+    await this.audit.log({ ...ctx, action: 'assessment.checkup.issues', detail: { unitName: input.unitName } });
+    return { issues, usedProvider: llm.provider, usedModel: llm.model };
+  }
+
   private async callLlm(
     systemPrompt: string,
     userContent: string,

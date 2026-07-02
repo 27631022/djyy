@@ -41,7 +41,7 @@ import {
   CertificateExternalPage,
   CertificateVerifyPage,
 } from "@/features/certificate";
-import { SchemeListPage, SchemeEditorPage, RoundListPage, RoundDetailPage, AssessmentResultsPage, MyAssessmentsPage, MyManagedSchemesPage, NodeMaintainPage } from "@/features/assessment";
+import { SchemeListPage, SchemeEditorPage, RoundListPage, RoundDetailPage, AssessmentResultsPage, MyAssessmentsPage, MyManagedSchemesPage, NodeMaintainPage, UnitCheckupPage } from "@/features/assessment";
 import { ReportTasksPage, ReportCatalogPage, ReportCreatePage, PublishChooserPage, ReportFillPage, ReportDetailPage } from "@/features/report";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
@@ -132,6 +132,7 @@ const ADMIN_ROUTES: RouteObject[] = [
   { path: "assessment/schemes", element: <SchemeListPage /> },
   { path: "assessment/schemes/:id", element: <SchemeEditorPage /> },
   { path: "assessment/schemes/:id/results", element: <AssessmentResultsPage /> },
+  { path: "assessment/schemes/:id/checkup", element: <UnitCheckupPage /> },
   { path: "assessment/schemes/:id/node/:code", element: <NodeMaintainPage /> },
   { path: "assessment/rounds", element: <RoundListPage /> },
   { path: "assessment/rounds/:id", element: <RoundDetailPage /> },

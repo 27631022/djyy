@@ -112,6 +112,7 @@ export default function SchemeList() {
               onDelete={() => del.mutate(s.id)}
               onScore={() => goScore(s.id)}
               onRanking={() => navigate(`/admin/assessment/schemes/${s.id}/results`)}
+              onCheckup={() => navigate(`/admin/assessment/schemes/${s.id}/checkup`)}
             />
           ))}
         </div>
@@ -137,6 +138,7 @@ function SchemeCard({
   onDelete,
   onScore,
   onRanking,
+  onCheckup,
 }: {
   scheme: AssessmentScheme;
   onOpen: () => void;
@@ -144,6 +146,7 @@ function SchemeCard({
   onDelete: () => void;
   onScore: () => void;
   onRanking: () => void;
+  onCheckup: () => void;
 }) {
   const leaves = countLeaves(parseIndicators(scheme));
   const st = parseSettings(scheme);
@@ -208,12 +211,7 @@ function SchemeCard({
       <div className="mt-3 pt-3 border-t border-[#f1f5f9] flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <CardBtn icon={ClipboardList} label="考核打分" onClick={onScore} title="进入年度考核打分(没有则自动开始;一张表只一轮)" />
         <CardBtn icon={Trophy} label="考核排名" onClick={onRanking} title="各单位总分排名 + 我负责指标合计排名,支持下钻" />
-        <span
-          className="flex items-center gap-1 text-[12px] text-[#c4cbd6] cursor-not-allowed"
-          title="单位考核报告(雷达图 + 问题建议)下一轮上线"
-        >
-          <FileText className="w-3.5 h-3.5" /> 单位报告
-        </span>
+        <CardBtn icon={FileText} label="单位体检" onClick={onCheckup} title="单位体检单:雷达图画像 + 逐项得分/名次 + 短板诊断(单位账号自动看自己单位)" />
       </div>
     </div>
   );

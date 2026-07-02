@@ -27,6 +27,7 @@ import { PreviewIndicatorDto } from './dto/preview-indicator.dto';
 import { PreviewSubtotalDto } from './dto/preview-subtotal.dto';
 import { ReportQueryPreviewDto } from './dto/report-query-preview.dto';
 import { GenerateCriteriaDto } from './dto/generate-criteria.dto';
+import { GenerateCheckupIssuesDto } from './dto/generate-checkup-issues.dto';
 import { CreateRoundDto } from './dto/create-round.dto';
 import { SaveScoresDto } from './dto/save-scores.dto';
 import { CreateSnapshotDto } from './dto/create-snapshot.dto';
@@ -183,6 +184,13 @@ export class AssessmentController {
   @Permission('assessment:manage')
   generateCriteria(@Body() dto: GenerateCriteriaDto, @CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.extraction.generateCriteria(dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** POST /assessment/checkup/issues  单位体检数据摘要 → AI 写「问题与改进建议」。
+   *  登录即可(单位自助看自己体检单也能点「AI 生成」);不落库,AI 不可达前端回退规则版。 */
+  @Post('checkup/issues')
+  generateCheckupIssues(@Body() dto: GenerateCheckupIssuesDto, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.extraction.generateCheckupIssues(dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
   // ─── P2 打分闭环:考核轮次 ───

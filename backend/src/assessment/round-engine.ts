@@ -131,7 +131,17 @@ export function previewIndicator(
   const scores = scoreOneLeaf(leaf, units, (ref) => rawMap.get(ref));
   const rows: PreviewRow[] = units.map((u) => ({ ref: u.ref, name: u.name, score: scores[u.ref] ?? 0, rank: 0 }));
   const sorted = [...rows].sort((a, b) => b.score - a.score);
-  sorted.forEach((r, i) => (r.rank = i + 1));
+  // 并列共享名次(竞赛排名法):同分同名次,下一名跳号。原先按 sort 下标+1 会给并列者
+  // 按数组顺序发任意名次,且与体检单(1+严格更高个数)对不上 —— 两处统一本口径。
+  let lastScore = Number.POSITIVE_INFINITY;
+  let lastRank = 0;
+  sorted.forEach((r, i) => {
+    if (r.score !== lastScore) {
+      lastRank = i + 1;
+      lastScore = r.score;
+    }
+    r.rank = lastRank;
+  });
   return sorted;
 }
 
