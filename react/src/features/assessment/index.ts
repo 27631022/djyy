@@ -8,3 +8,4 @@ export { default as MyAssessmentsPage } from "./pages/MyAssessments";
 export { default as MyManagedSchemesPage } from "./pages/MyManagedSchemes";
 export { default as NodeMaintainPage } from "./pages/NodeMaintain";
 export { useMyAssessmentBadge } from "./useMyAssessmentBadge";
+export { usePortalAssessmentBoard, type PortalBoardRow } from "./usePortalBoard";

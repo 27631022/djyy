@@ -18,7 +18,8 @@ import { useAuth } from "../stores/auth";
 import { siteSettingApi, FALLBACK_SITE_SETTINGS, SiteLogo } from "@/features/site-setting";
 import { navApi, type NavCategoryDto, type NavItemDto } from "@/features/nav-category";
 import { resolveAvatarUrl } from "@/features/avatar";
-import { DEMO_RANKINGS, rankBarGradient, scoreBarPct } from "@/shared/lib/ranking-demo";
+import { rankBarGradient } from "@/shared/lib/ranking-demo";
+import { usePortalAssessmentBoard } from "@/features/assessment";
 import { LucideIcon } from "@/shared/components/IconPicker";
 
 /* ─── Login gate: 未登录直接跳登录页 ─── */
@@ -60,14 +61,7 @@ function useNavCategories() {
   });
 }
 
-/* ─── Rankings(演示数据统一在 shared/lib/ranking-demo)─── */
-const RANKING_LIST = DEMO_RANKINGS;
-
-const STATS = [
-  { label: `党支部总数`, value: `10`, unit: `个`, icon: BuildingIcon },
-  { label: `本月平均分`, value: `90.2`, unit: `分`, icon: LayoutDashboardIcon },
-  { label: `最高得分`, value: `98.6`, unit: `分`, icon: CrownIcon },
-];
+/* ─── Rankings:概览 + 榜单均为真实实时考核结果(usePortalAssessmentBoard),演示数据已替换 ─── */
 
 /* ─── Hot Tasks ─── */
 const HOT_TASKS = [
@@ -311,15 +305,29 @@ function NavigationDirectory() {
   );
 }
 
-/* ─── 排行榜侧边栏 ─── */
+/* ─── 排行榜侧边栏(概览 + 榜单同一份实时考核数据)─── */
 function RankingSidebar() {
+  const board = usePortalAssessmentBoard();
+  // 本期概览:从实时榜推导(未登录/无数据显示 —)
+  const n = board.rows.length;
+  const r1 = (x: number) => Math.round(x * 10) / 10;
+  const stats = [
+    { label: "参评单位", value: n ? String(n) : "—", unit: n ? "个" : "", icon: BuildingIcon },
+    {
+      label: "平均总分",
+      value: n ? String(r1(board.rows.reduce((a, r) => a + r.score, 0) / n)) : "—",
+      unit: n ? "分" : "",
+      icon: LayoutDashboardIcon,
+    },
+    { label: "最高总分", value: n ? String(r1(board.maxScore)) : "—", unit: n ? "分" : "", icon: CrownIcon },
+  ];
   return (
     <div className="flex flex-col gap-4">
       {/* Stats bar */}
       <div className="bg-white rounded-2xl border border-[#E9E9E9] p-4">
         <h3 className="party-section-title text-base font-bold text-[#1A1A1A] mb-3">本期概览</h3>
         <div className="grid grid-cols-3 gap-2">
-          {STATS.map(stat => {
+          {stats.map(stat => {
             const SI = stat.icon;
             return (
               <div key={stat.label} className="flex flex-col items-center bg-party-soft rounded-xl p-3">
@@ -334,75 +342,119 @@ function RankingSidebar() {
         </div>
       </div>
 
-      {/* Rankings */}
-      <div className="bg-white rounded-2xl border border-[#E9E9E9] overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#E9E9E9]">
-          <h3 className="party-section-title text-base font-bold text-[#1A1A1A]">党建考核排行榜</h3>
-          <a href="#" onClick={e => e.preventDefault()} className="text-sm text-[var(--party-primary)] flex items-center gap-0.5 hover:opacity-70">
-            全部 <ChevronRightIcon className="w-3 h-3" />
-          </a>
-        </div>
+      {/* Rankings:最新考核轮次的实时结果(60s 自动跟新,别人保存录入后榜单自动变) */}
+      <AssessmentRankingCard board={board} />
+    </div>
+  );
+}
 
-        {/* Top 3 */}
-        <div className="p-3 flex flex-col gap-2">
-          {RANKING_LIST.slice(0, 3).map(item => {
-            // 经典金/银/铜奖牌色,与主题色解耦 —— 这是奖牌的固有语义色
-            const medals = [
-              { bg: "linear-gradient(135deg, #F5A623, #E8700A)", text: "#E8700A", border: "#F5A623" },  // 金
-              { bg: "linear-gradient(135deg, #C0C0C0, #A8A8A8)", text: "#888", border: "#C0C0C0" },     // 银
-              { bg: "linear-gradient(135deg, #CD7F32, #A0522D)", text: "#A0522D", border: "#CD7F32" },  // 铜
-            ];
-            const m = medals[item.rank - 1];
-            return (
+/* ─── 考核排行榜卡片(真实实时数据)─── */
+function AssessmentRankingCard({ board }: { board: ReturnType<typeof usePortalAssessmentBoard> }) {
+  const { goLogin } = useLoginGate();
+  const top10 = board.rows.slice(0, 10);
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#E9E9E9] overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#E9E9E9]">
+        <div className="min-w-0">
+          <h3 className="party-section-title text-base font-bold text-[#1A1A1A]">党建考核排行榜</h3>
+          {board.roundName && <p className="text-[11px] text-[#9CA3AF] truncate mt-0.5">{board.roundName} · 实时</p>}
+        </div>
+        {board.schemeId ? (
+          <Link
+            to={`/admin/assessment/schemes/${board.schemeId}/results`}
+            className="text-sm text-[var(--party-primary)] flex items-center gap-0.5 hover:opacity-70 flex-shrink-0"
+          >
+            全部 <ChevronRightIcon className="w-3 h-3" />
+          </Link>
+        ) : null}
+      </div>
+
+      {board.loggedOut ? (
+        /* 首页公开访问,考核数据登录可见 —— 不发请求(避免 401 拦截器把访客踢去登录页),给登录引导 */
+        <div className="p-6 flex flex-col items-center gap-2.5 text-center">
+          <LockIcon className="w-6 h-6 text-[#C0C6D0]" />
+          <p className="text-sm text-[#6B7280]">登录后查看各单位实时考核排名</p>
+          <button
+            type="button"
+            onClick={goLogin}
+            className="px-4 py-1.5 rounded-md text-white text-sm font-medium"
+            style={{ backgroundColor: "var(--party-primary)" }}
+          >
+            登录查看
+          </button>
+        </div>
+      ) : board.loading ? (
+        <div className="p-6 text-center text-sm text-[#9CA3AF]">加载中…</div>
+      ) : top10.length === 0 ? (
+        <div className="p-6 text-center text-sm text-[#9CA3AF]">暂无进行中的考核</div>
+      ) : (
+        <>
+          {/* Top 3 */}
+          <div className="p-3 flex flex-col gap-2">
+            {top10.slice(0, 3).map(item => {
+              // 经典金/银/铜奖牌色,与主题色解耦 —— 这是奖牌的固有语义色
+              const medals = [
+                { bg: "linear-gradient(135deg, #F5A623, #E8700A)", text: "#E8700A", border: "#F5A623" },  // 金
+                { bg: "linear-gradient(135deg, #C0C0C0, #A8A8A8)", text: "#888", border: "#C0C0C0" },     // 银
+                { bg: "linear-gradient(135deg, #CD7F32, #A0522D)", text: "#A0522D", border: "#CD7F32" },  // 铜
+              ];
+              const m = medals[item.rank - 1] ?? medals[2];
+              return (
+                <div
+                  key={item.rank}
+                  className="flex items-center gap-2.5 bg-[#FAFAFA] rounded-xl px-3 py-2.5 border hover:-translate-y-0.5 transition-transform duration-200"
+                  style={{ borderColor: `${m.border}40` }}
+                >
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-sm"
+                    style={{ background: m.bg }}
+                  >
+                    {item.rank}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[#1A1A1A] truncate">{item.name}</p>
+                    {item.grade && <p className="text-[11px] text-[#9CA3AF] leading-tight">{item.grade}</p>}
+                  </div>
+                  <span className="text-base font-extrabold flex-shrink-0" style={{ color: m.text }}>
+                    {item.score}<span className="text-[11px] font-normal text-[#9CA3AF] ml-0.5">分</span>
+                  </span>
+                  {item.rank === 1 && <CrownIcon className="w-3.5 h-3.5 text-[#F5A623] flex-shrink-0" />}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 4–10 list(进度条按榜内最高分相对宽度 —— 实分是小数,不能按满分 100 画) */}
+          <div className="border-t border-[#F0F0F0]">
+            {top10.slice(3).map((item, idx) => (
               <div
                 key={item.rank}
-                className="flex items-center gap-2.5 bg-[#FAFAFA] rounded-xl px-3 py-2.5 border hover:-translate-y-0.5 transition-transform duration-200"
-                style={{ borderColor: `${m.border}40` }}
+                className={`flex items-center gap-2.5 px-4 py-2.5 hover:bg-party-softer transition-colors ${
+                  idx < 6 ? "border-b border-[#F5F5F5]" : ""
+                }`}
               >
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-sm"
-                  style={{ background: m.bg }}
-                >
+                <div className="w-5 h-5 rounded-full bg-[#F0F0F0] flex items-center justify-center text-[12px] font-bold text-[#6B7280] flex-shrink-0">
                   {item.rank}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-[#1A1A1A] truncate">{item.name}</p>
+                <span className="text-sm text-[#1A1A1A] flex-1 min-w-0 truncate">{item.name}</span>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <div className="w-14 h-1 rounded-full bg-[#F0F0F0] overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${board.maxScore > 0 ? Math.max(4, (item.score / board.maxScore) * 100) : 0}%`,
+                        background: progressGrad(item.rank),
+                      }}
+                    />
+                  </div>
+                  <span className="text-sm font-bold text-[var(--party-primary)] w-10 text-right">{item.score}</span>
                 </div>
-                <span className="text-base font-extrabold flex-shrink-0" style={{ color: m.text }}>
-                  {item.score}<span className="text-[11px] font-normal text-[#9CA3AF] ml-0.5">分</span>
-                </span>
-                {item.rank === 1 && <CrownIcon className="w-3.5 h-3.5 text-[#F5A623] flex-shrink-0" />}
               </div>
-            );
-          })}
-        </div>
-
-        {/* 4–10 list */}
-        <div className="border-t border-[#F0F0F0]">
-          {RANKING_LIST.slice(3).map((item, idx) => (
-            <div
-              key={item.rank}
-              className={`flex items-center gap-2.5 px-4 py-2.5 hover:bg-party-softer transition-colors ${
-                idx < 6 ? "border-b border-[#F5F5F5]" : ""
-              }`}
-            >
-              <div className="w-5 h-5 rounded-full bg-[#F0F0F0] flex items-center justify-center text-[12px] font-bold text-[#6B7280] flex-shrink-0">
-                {item.rank}
-              </div>
-              <span className="text-sm text-[#1A1A1A] flex-1 min-w-0 truncate">{item.name}</span>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <div className="w-14 h-1 rounded-full bg-[#F0F0F0] overflow-hidden">
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${scoreBarPct(item.score)}%`, background: progressGrad(item.rank) }}
-                  />
-                </div>
-                <span className="text-sm font-bold text-[var(--party-primary)] w-10 text-right">{item.score}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
