@@ -1,4 +1,4 @@
-import { IsArray, IsOptional } from 'class-validator';
+import { IsArray, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
  * 多指标合计实时预览(打分人看自己负责的几项的单项 + 合计排名)。
@@ -18,4 +18,10 @@ export class PreviewSubtotalDto {
   @IsOptional()
   @IsArray()
   deductBlocks?: unknown[];
+
+  /** 自动源年份段缺省值(前端传考核年度;荣誉积分等叶子 sourceParams.yearLabel 未设时用) */
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  defaultYearLabel?: string;
 }

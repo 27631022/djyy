@@ -416,6 +416,8 @@ export interface PreviewSubtotalInput {
   units: SubtotalUnitInput[];
   /** 含「我负责的减分叶子」的顶层减分块子树(带 weight/children)——用于逐级减分上限封顶,使合计与考核排名页同口径 */
   deductBlocks?: IndicatorNode[];
+  /** 自动源年份段缺省值(传考核年度;荣誉积分叶子 sourceParams.yearLabel 未设时用) */
+  defaultYearLabel?: string;
 }
 export interface SubtotalPreview {
   /** leafCode → 该指标各对象 ●# 单项排名 */
@@ -572,6 +574,11 @@ export const assessmentApi = {
     api.get<ReportQuerySource[]>("/assessment/report-query/sources").then((r) => r.data),
   reportQueryPreview: (input: ReportQueryPreviewInput) =>
     api.post<ReportQueryPreviewResult>("/assessment/report-query/preview", input).then((r) => r.data),
+  /** 荣誉积分预览:各对象将取到的积分(打分页中栏自动取数展示 + 配置试算;登录即可)*/
+  certHonorPreview: (input: { sourceParams?: Record<string, unknown>; targets: AssessmentTarget[]; defaultYearLabel?: string }) =>
+    api
+      .post<{ rows: { ref: string; name: string; value: number | null }[] }>("/assessment/cert-honor/preview", input)
+      .then((r) => r.data),
   /** AI 生成评分标准/说明(据 指标名+数据源+计分工具+规则+分值)*/
   generateCriteria: (input: { label?: string; dataSourceDesc?: string; tool?: string; rule?: string; weight?: number }) =>
     api.post<{ criteria: string }>("/assessment/criteria/generate", input).then((r) => r.data),

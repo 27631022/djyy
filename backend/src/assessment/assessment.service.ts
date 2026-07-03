@@ -16,6 +16,7 @@ import { UpdateSchemeDto } from './dto/update-scheme.dto';
 import { TrialScoreDto } from './dto/trial-score.dto';
 import { PreviewIndicatorDto } from './dto/preview-indicator.dto';
 import { ReportService } from '../report';
+import { CertificateIssueService } from '../certificate';
 import { flattenLeaves, normalizeIndicatorTree, type IndicatorNode } from './indicator-tree';
 import { getDataSourceSpec, effectiveOutputType } from './data-sources';
 import { getScoringSpec, isInputCompatible, type ScoreCtx } from './scoring-strategies';
@@ -128,6 +129,7 @@ export class AssessmentService {
     private readonly users: UserService,
     private readonly org: OrganizationService,
     private readonly report: ReportService,
+    private readonly certIssue: CertificateIssueService,
   ) {}
 
   /**
@@ -711,6 +713,7 @@ export class AssessmentService {
     indicatorsJson: string;
     targetsJson: string;
     gradeRulesJson: string;
+    year?: number;
   }): Promise<RoundResults> {
     const indicators = safeJson<IndicatorNode[]>(round.indicatorsJson, []);
     const targetsRaw = safeJson<{ orgId?: string; userId?: string; name: string }[]>(round.targetsJson, []);
@@ -726,13 +729,19 @@ export class AssessmentService {
       raw[sc.targetRef][sc.leafCode] = sc.rawValue == null ? null : safeJson<unknown>(sc.rawValue, null);
     }
 
-    // report.query 叶子:从报送任务自动取数,覆盖到 raw(自动源不依赖手工录入)
+    // 自动数据源叶子:覆盖到 raw(不依赖手工录入)—— report.query 报送取数 / business.certificate.honor 荣誉积分
     const refs = targets.map((t) => t.ref);
+    const defaultYearLabel = round.year ? String(round.year) : String(new Date().getFullYear());
     for (const leaf of flattenLeaves(indicators)) {
-      if (leaf.dataSource !== 'report.query') continue;
-      const sp = (leaf.sourceParams ?? {}) as { reportTaskId?: string; goalKey?: string; field?: string };
-      const field = sp.field === 'rate' ? 'rate' : 'actual';
-      const vals = await this.resolveReportQuery(sp.reportTaskId ?? '', sp.goalKey ?? '', field, refs);
+      let vals: Record<string, number | null> | null = null;
+      if (leaf.dataSource === 'report.query') {
+        const sp = (leaf.sourceParams ?? {}) as { reportTaskId?: string; goalKey?: string; field?: string };
+        const field = sp.field === 'rate' ? 'rate' : 'actual';
+        vals = await this.resolveReportQuery(sp.reportTaskId ?? '', sp.goalKey ?? '', field, refs);
+      } else if (leaf.dataSource === 'business.certificate.honor') {
+        vals = await this.resolveCertHonor(leaf.sourceParams, refs, defaultYearLabel);
+      }
+      if (!vals) continue;
       for (const ref of refs) {
         if (!raw[ref]) raw[ref] = {};
         raw[ref][leaf.code] = vals[ref];
@@ -1120,7 +1129,12 @@ export class AssessmentService {
    * 多指标合计实时预览(打分人侧):给「我负责的几项指标」+ 各对象当前录入 →
    * 各项单项排名 + 合计得分/排名。无状态(不落库),前端传当前值即时出结果。
    */
-  async previewSubtotal(dto: { leaves?: unknown; units?: unknown; deductBlocks?: unknown }) {
+  async previewSubtotal(dto: {
+    leaves?: unknown;
+    units?: unknown;
+    deductBlocks?: unknown;
+    defaultYearLabel?: string;
+  }) {
     const rawLeaves = Array.isArray(dto.leaves) ? dto.leaves : [];
     const leaves: IndicatorNode[] = rawLeaves
       .map((l) => (l && typeof l === 'object' ? (l as Record<string, unknown>) : null))
@@ -1194,14 +1208,23 @@ export class AssessmentService {
       ? dto.deductBlocks.map(parseBlock).filter((n): n is IndicatorNode => !!n && n.kind === 'deduction')
       : [];
 
-    // report.query 叶子:服务端按报送任务实时取数,覆盖到各对象 valuesByLeaf —— 与考核排名页(runCompute)同一份口径,
-    // 避免「打分页用前端传的值、排名页重新拉报送值」两个数。
+    // 自动源叶子:服务端实时取数覆盖 valuesByLeaf —— 与考核排名页(runCompute)同一份口径,
+    // 避免「打分页用前端传的值、排名页重新取业务数据」两个数。report.query 报送 / business.certificate.honor 荣誉。
     const refs = units.map((u) => u.ref);
+    const defaultYearLabel =
+      typeof dto.defaultYearLabel === 'string' && dto.defaultYearLabel.trim()
+        ? dto.defaultYearLabel.trim()
+        : String(new Date().getFullYear());
     for (const leaf of leaves) {
-      if (leaf.dataSource !== 'report.query') continue;
-      const sp = (leaf.sourceParams ?? {}) as { reportTaskId?: string; goalKey?: string; field?: string };
-      const field = sp.field === 'rate' ? 'rate' : 'actual';
-      const vals = await this.resolveReportQuery(sp.reportTaskId ?? '', sp.goalKey ?? '', field, refs);
+      let vals: Record<string, number | null> | null = null;
+      if (leaf.dataSource === 'report.query') {
+        const sp = (leaf.sourceParams ?? {}) as { reportTaskId?: string; goalKey?: string; field?: string };
+        const field = sp.field === 'rate' ? 'rate' : 'actual';
+        vals = await this.resolveReportQuery(sp.reportTaskId ?? '', sp.goalKey ?? '', field, refs);
+      } else if (leaf.dataSource === 'business.certificate.honor') {
+        vals = await this.resolveCertHonor(leaf.sourceParams, refs, defaultYearLabel);
+      }
+      if (!vals) continue;
       for (const u of units) u.valuesByLeaf[leaf.code] = vals[u.ref];
     }
 
@@ -1295,5 +1318,111 @@ export class AssessmentService {
       }
     }
     return out;
+  }
+
+  /* ─── business.certificate.honor 荣誉积分(证书系统自动取数)─── */
+
+  /**
+   * 各考核对象的荣誉积分:
+   * 取数:证书模块有效荣誉记录(排除撤销;年份段 = sourceParams.yearLabel,缺省=考核年度)。
+   * 归集(每张证书 → 一个行政机构):
+   *   ① 关联了系统用户 → 该用户行政归属(主归属优先);
+   *   ② 否则用「单位路径快照 recipientDept」按机构 名称/全称 最长匹配(集体/单位荣誉、未关联用户的个人荣誉);
+   *   ③ 都定不到 → 不计入(宁缺勿错)。
+   * 积分 = 按荣誉级别配分值(sourceParams.weights.{company|department|subsidiary|other},缺省每张 1 分=计数),
+   * 沿 parentId 上卷到全部祖先(含停用机构,防归属链中断)→ 党组织考核对象经 PartyAdminLink 换算(同 report.query)。
+   */
+  private async resolveCertHonor(
+    sourceParams: Record<string, unknown> | null | undefined,
+    targetRefs: string[],
+    defaultYearLabel: string,
+  ): Promise<Record<string, number | null>> {
+    const out: Record<string, number | null> = {};
+    for (const ref of targetRefs) out[ref] = 0; // 计数语义:没有荣誉 = 0(不是「未录入」)
+    const sp = (sourceParams ?? {}) as { yearLabel?: unknown; weights?: unknown };
+    const yearLabel =
+      typeof sp.yearLabel === 'string' && sp.yearLabel.trim() ? sp.yearLabel.trim() : defaultYearLabel;
+    const wRaw = (sp.weights && typeof sp.weights === 'object' ? sp.weights : {}) as Record<string, unknown>;
+    const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+    const otherW = num(wRaw.other) ?? 1;
+    const weightOf = (level: string | null): number => {
+      if (level === 'company' || level === 'department' || level === 'subsidiary') return num(wRaw[level]) ?? otherW;
+      return otherW;
+    };
+
+    const recs = await this.certIssue.listHonorRecords(yearLabel || undefined);
+    if (!recs.length) return out;
+
+    const orgs = await this.org.findAll({ includeInactive: true });
+    const parentOf = new Map<string, string | null>(orgs.map((o) => [o.id, o.parentId]));
+    // 单位路径快照 → 机构:按 名称/全称 最长匹配(路径是全称拼接,长名先试避免「公司」这类短名误配)
+    const nameKeys = orgs
+      .filter((o) => o.kind === 'admin')
+      .flatMap((o) => {
+        const keys: { id: string; key: string }[] = [{ id: o.id, key: o.name }];
+        if (o.fullName && o.fullName !== o.name) keys.push({ id: o.id, key: o.fullName });
+        return keys;
+      })
+      .filter((k) => k.key && k.key.length >= 2)
+      .sort((a, b) => b.key.length - a.key.length);
+
+    const userIds = [...new Set(recs.map((r) => r.recipientUserId).filter((x): x is string => !!x))];
+    const orgIdsByUser = await this.users.adminOrgIdsByUserIds(userIds);
+
+    const valByOrg = new Map<string, number>();
+    for (const rec of recs) {
+      let base: string | undefined = rec.recipientUserId ? orgIdsByUser[rec.recipientUserId]?.[0] : undefined;
+      if (!base && rec.recipientDept) {
+        const dept = rec.recipientDept.replace(/\s+/g, '');
+        base = nameKeys.find((k) => dept.includes(k.key))?.id;
+      }
+      if (!base) continue;
+      const pts = weightOf(rec.honorLevel);
+      if (pts <= 0) continue;
+      // 上卷到全部祖先(含自身):目标单位读自己 orgId 即得子树累计
+      let cur: string | null | undefined = base;
+      const seen = new Set<string>();
+      while (cur && !seen.has(cur)) {
+        seen.add(cur);
+        valByOrg.set(cur, (valByOrg.get(cur) ?? 0) + pts);
+        cur = parentOf.get(cur) ?? null;
+      }
+    }
+
+    // 考核对象换算:行政对象直读;党组织对象经 PartyAdminLink 取关联行政机构之和
+    const linksByParty = new Map<string, string[]>();
+    if (targetRefs.some((ref) => !valByOrg.has(ref))) {
+      for (const l of await this.org.getAllLinks()) {
+        const arr = linksByParty.get(l.partyOrgId);
+        if (arr) arr.push(l.adminOrgId);
+        else linksByParty.set(l.partyOrgId, [l.adminOrgId]);
+      }
+    }
+    for (const ref of targetRefs) {
+      if (valByOrg.has(ref)) {
+        out[ref] = round2(valByOrg.get(ref)!);
+        continue;
+      }
+      const linked = linksByParty.get(ref) ?? [];
+      if (linked.length) out[ref] = round2(linked.reduce((a, id) => a + (valByOrg.get(id) ?? 0), 0));
+    }
+    return out;
+  }
+
+  /** 荣誉积分预览(打分页中栏「自动取数」展示 + 配置试算):给 sourceParams + 考核对象 → 各对象积分。登录即可。 */
+  async certHonorPreview(dto: { sourceParams?: Record<string, unknown>; targets?: unknown; defaultYearLabel?: string }) {
+    const targets = normalizeTargets(dto.targets);
+    const refs = targets.map((t) => (t.orgId ?? t.userId ?? '').toString()).filter(Boolean);
+    const defaultYear =
+      typeof dto.defaultYearLabel === 'string' && dto.defaultYearLabel.trim()
+        ? dto.defaultYearLabel.trim()
+        : String(new Date().getFullYear());
+    const vals = await this.resolveCertHonor(dto.sourceParams, refs, defaultYear);
+    return {
+      rows: targets.map((t) => {
+        const ref = (t.orgId ?? t.userId ?? '').toString();
+        return { ref, name: t.name, value: vals[ref] ?? 0 };
+      }),
+    };
   }
 }

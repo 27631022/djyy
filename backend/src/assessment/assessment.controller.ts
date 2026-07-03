@@ -26,6 +26,7 @@ import { TrialScoreDto } from './dto/trial-score.dto';
 import { PreviewIndicatorDto } from './dto/preview-indicator.dto';
 import { PreviewSubtotalDto } from './dto/preview-subtotal.dto';
 import { ReportQueryPreviewDto } from './dto/report-query-preview.dto';
+import { CertHonorPreviewDto } from './dto/cert-honor-preview.dto';
 import { GenerateCriteriaDto } from './dto/generate-criteria.dto';
 import { GenerateCheckupIssuesDto } from './dto/generate-checkup-issues.dto';
 import { CreateRoundDto } from './dto/create-round.dto';
@@ -148,6 +149,12 @@ export class AssessmentController {
   @Post('report-query/preview')
   reportQueryPreview(@Body() dto: ReportQueryPreviewDto) {
     return this.svc.reportQueryPreview(dto);
+  }
+
+  /** POST /assessment/cert-honor/preview  荣誉积分预览:各对象将取到的积分(打分页中栏自动取数展示;登录即可) */
+  @Post('cert-honor/preview')
+  certHonorPreview(@Body() dto: CertHonorPreviewDto) {
+    return this.svc.certHonorPreview(dto);
   }
 
   /** GET /assessment/my-scope  我的考核区域(按登录账号收敛的考核关系 + 主体) */

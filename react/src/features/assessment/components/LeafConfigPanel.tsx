@@ -11,6 +11,7 @@ import { PROP_INPUT } from "../scoring/shared";
 import { DATA_SOURCE_HELP, SCORING_HELP, type HelpText } from "../help";
 import { DifficultyCoefDialog } from "./DifficultyCoefDialog";
 import { ReportQueryEditor } from "./ReportQueryEditor";
+import { CertHonorEditor } from "./CertHonorEditor";
 import { OrgPicker } from "./OrgPicker";
 import { NodeAdminField } from "./UserMultiPicker";
 
@@ -57,8 +58,8 @@ export function LeafConfigPanel({
 
   function pickDataSource(id: string) {
     const patch: Partial<IndicatorNode> = { dataSource: id || undefined };
-    if (id !== "report.query") patch.sourceParams = undefined; // 切走 report.query 清专属参数
-    const out = effectiveOutputType(id, id === "report.query" ? node.sourceParams : undefined);
+    if (id !== node.dataSource) patch.sourceParams = undefined; // 换源清专属参数(report.query / 荣誉积分 各有一套,防串)
+    const out = effectiveOutputType(id, id === node.dataSource ? node.sourceParams : undefined);
     if (strat && id && !isInputCompatible(strat.inputType, out)) {
       patch.scoringType = undefined;
       patch.strategyParams = undefined;
@@ -129,6 +130,10 @@ export function LeafConfigPanel({
 
       {node.dataSource === "report.query" && (
         <ReportQueryEditor sourceParams={node.sourceParams} onChange={setSourceParams} targets={targets} />
+      )}
+
+      {node.dataSource === "business.certificate.honor" && (
+        <CertHonorEditor sourceParams={node.sourceParams} onChange={setSourceParams} />
       )}
 
       <div>

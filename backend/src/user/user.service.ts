@@ -148,6 +148,23 @@ export class UserService {
     return out;
   }
 
+  /**
+   * 批量按用户 id 查其行政机构归属 orgId 列表(主归属在前)。
+   * 消费方(assessment 荣誉自动取数):证书 recipientUserId → 行政归属 → 上卷到被考核单位。
+   */
+  async adminOrgIdsByUserIds(ids: string[]): Promise<Record<string, string[]>> {
+    const uniq = [...new Set(ids.filter((x) => typeof x === 'string' && x))];
+    if (!uniq.length) return {};
+    const rows = await this.prisma.userOrganization.findMany({
+      where: { userId: { in: uniq }, org: { kind: 'admin' } },
+      orderBy: [{ isPrimary: 'desc' }, { joinedAt: 'asc' }],
+      select: { userId: true, orgId: true },
+    });
+    const out: Record<string, string[]> = {};
+    for (const r of rows) (out[r.userId] ??= []).push(r.orgId);
+    return out;
+  }
+
   /* ─── 详情 ─── */
   async findOne(id: string) {
     const u = await this.prisma.user.findUnique({

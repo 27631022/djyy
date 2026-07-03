@@ -27,7 +27,7 @@ export const DATA_SOURCES: DataSourceMeta[] = [
   { id: "business.task.completionRate", label: "督办任务完成率", description: "派发任务的完成率(自动取数,P2 接入)", collection: "business", outputType: "rate", ready: false },
   { id: "business.task.overdueRate", label: "督办任务逾期率", description: "派发任务的逾期率(自动取数,P2 接入)", collection: "business", outputType: "rate", ready: false },
   { id: "business.publicity", label: "宣传稿件数", description: "宣传稿件数等(对应模块就绪后接入)", collection: "business", outputType: "count", ready: false },
-  { id: "business.certificate.honor", label: "荣誉积分", description: "证书荣誉按级别积分(自动取数,P2 接入)", collection: "business", outputType: "count", ready: false },
+  { id: "business.certificate.honor", label: "荣誉积分", description: "证书系统已发荣誉自动积分:按级别配分值(默认每张 1 分=计数),按受表彰人单位归集;年份段默认=考核年度", collection: "business", outputType: "count", ready: true },
   { id: "report.query", label: "报送任务取数", description: "取某个报送任务的某个目标的各单位实际值/完成率(下方选 任务 + 目标 + 取值)", collection: "business", outputType: "number", ready: true },
   { id: "survey", label: "群众打分/测评", description: "群众投票评分、民主测评满意率(采集 P4)", collection: "survey", outputType: "rate", ready: false },
   { id: "assessment.result", label: "他考核结果", description: "取另一考核某对象的总分(党建占业绩 20% 这类跨路线组合)", collection: "assessment", outputType: "number", ready: false },

@@ -670,6 +670,28 @@ export class CertificateIssueService {
     });
     return fuzzy.map(sanitizeForPublicList);
   }
+
+  /**
+   * 消费方(assessment 荣誉自动取数):列出有效荣誉记录(排除已撤销,可按年份段过滤)。
+   * 只回单位归集所需字段:关联用户 id(→行政归属反查)/ 单位路径快照 / 荣誉级别(模板快照,外部证书无模板为 null)。
+   */
+  async listHonorRecords(yearLabel?: string): Promise<
+    { recipientUserId: string | null; recipientDept: string | null; honorLevel: string | null }[]
+  > {
+    const rows = await this.prisma.certificate.findMany({
+      where: { revoked: false, ...(yearLabel ? { yearLabel } : {}) },
+      select: {
+        recipientUserId: true,
+        recipientDept: true,
+        template: { select: { honorLevel: true } },
+      },
+    });
+    return rows.map((r) => ({
+      recipientUserId: r.recipientUserId,
+      recipientDept: r.recipientDept,
+      honorLevel: r.template?.honorLevel ?? null,
+    }));
+  }
 }
 
 /* ─── 文件名 + 数据转换辅助 ─── */

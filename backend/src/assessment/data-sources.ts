@@ -80,10 +80,11 @@ const DATA_SOURCE_SPECS: Record<string, DataSourceSpec> = {
   'business.certificate.honor': {
     id: 'business.certificate.honor',
     label: '荣誉积分',
-    description: '证书荣誉按级别积分(自动取数,P2 接入)',
+    description:
+      '证书系统已发荣誉自动积分:按荣誉级别配分值(默认每张 1 分=计数),按受表彰人单位归集(关联用户→行政归属反查;否则按单位路径快照名称匹配);年份段默认=考核年度',
     collection: 'business',
     outputType: 'count',
-    ready: false,
+    ready: true,
   },
   // 报送任务取数:取某报送任务某目标的各单位「实际值/完成率」(自动)。产出类型随取值(field)变,见 effectiveOutputType。
   'report.query': {
