@@ -215,15 +215,20 @@ function evictLRU(list: Tab[], keep: string, recency: Map<string, number>): Tab[
 
 /* ─── 多标签 keep-alive 内容区 ─── */
 /** 每个打开过的标签各渲染一份(用 useRoutes 按其路径匹配),只显示当前页;
-    切换标签 = 显隐切换,组件不卸载 → 数据/滚动/页内状态全部保活。 */
+    切换标签 = 显隐切换,组件不卸载 → 数据/滚动/页内状态全部保活。
+    ★ 活动页用「真实 location(含 ?query)」渲染:标签的 pathname 快照会把 search 吞掉,
+    页内 useSearchParams 永远读到空、setSearchParams 也不触发重渲(体检单切单位、?leaf/?ref 深链全失效)。
+    非活动页保持 pathname 快照(隐藏中,无需跟随 URL)。 */
 function KeepAliveRoutes({
   routes,
   alivePaths,
   currentPath,
+  search,
 }: {
   routes: RouteObject[];
   alivePaths: string[];
   currentPath: string;
+  search: string;
 }) {
   return (
     <div className="flex-1 min-h-0 relative">
@@ -237,7 +242,7 @@ function KeepAliveRoutes({
             aria-hidden={!active}
             inert={active ? undefined : true}
           >
-            <RouteSlot routes={routes} path={p} />
+            <RouteSlot routes={routes} path={active ? p + search : p} />
           </div>
         );
       })}
@@ -666,7 +671,7 @@ function AdminLayoutInner({ uid, routes }: { uid: string; routes: RouteObject[] 
           </div>
 
           {/* 内容区(多标签 keep-alive) */}
-          <KeepAliveRoutes routes={routes} alivePaths={alivePaths} currentPath={currentPath} />
+          <KeepAliveRoutes routes={routes} alivePaths={alivePaths} currentPath={currentPath} search={location.search} />
         </main>
       </div>
 
