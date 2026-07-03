@@ -5,7 +5,8 @@
   "description": "党建益友 平台底座 monorepo (react + backend)",
   "scripts": {
     "prepare": "husky",
-    "check": "npm --prefix react run check && npm --prefix backend run check && npm --prefix backend run check:circular"
+    "check": "npm --prefix react run check && npm --prefix backend run check && npm --prefix backend run check:circular",
+    "release": "powershell -ExecutionPolicy Bypass -File deploy/synology/release.ps1"
   },
   "devDependencies": {
     "husky": "^9.1.7"

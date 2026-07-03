@@ -31,3 +31,7 @@ Thumbs.db
 
 # 临时数据 dump(xlsx 调试导出,不纳入版本管理)
 /xlsx_dump*.txt
+
+# 群晖发布:历史存档与本机 NAS 连接配置(含用户名,不入库)
+deploy/releases/
+deploy/synology/release.config.json

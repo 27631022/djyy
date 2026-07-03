@@ -1,0 +1,60 @@
+# 党建益友 · 群晖 Container Manager 部署(项目方式导入本文件即可)
+# 结构:db(PostgreSQL 16) + app(NestJS 后端,3001) + web(nginx 托管管理端/门户 SPA,5173)
+# 访问:http://<NAS_IP>:5173(前端自动按 hostname 调 <NAS_IP>:3001/api,无需改前端配置)
+services:
+  db:
+    image: postgres:16
+    container_name: djyy-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: djyy
+      POSTGRES_PASSWORD: djyy_2026_pg # ★部署前务必改成强密码(与下方 DATABASE_URL 同步改)
+      POSTGRES_DB: djyy
+      TZ: Asia/Shanghai
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U djyy -d djyy"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    # 需要在办公电脑用数据库工具直连时,取消下两行注释(端口 54320)
+    # ports:
+    #   - "54320:5432"
+
+  app:
+    build:
+      context: .
+      dockerfile: app.Dockerfile
+    container_name: djyy-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://djyy:djyy_2026_pg@db:5432/djyy # ★密码与上面同步改
+      PORT: "3001"
+      NODE_ENV: production
+      TZ: Asia/Shanghai # 定时任务(超期自动通过 每天 3:00)按北京时间跑
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_DIR: /data/storage
+      EXHIBITION_DIST_DIR: /app/exhibition-dist
+      # ★改成实际访问地址(NAS 的 IP;多个来源用英文逗号分隔)
+      CORS_ORIGIN: http://10.185.28.220:5173
+      # 首次启动且库为空时写入演示数据(admin 等账号);正式录入数据后建议删除本行
+      SEED_ON_FIRST_RUN: "1"
+    volumes:
+      # 业务文件区落在本项目文件夹 storage/ 下,File Station 里可直接浏览
+      - ./storage:/data/storage
+    ports:
+      - "3001:3001"
+
+  web:
+    image: nginx:alpine
+    container_name: djyy-web
+    restart: unless-stopped
+    volumes:
+      - ./web-dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "5173:80"
