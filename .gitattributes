@@ -1,0 +1,5 @@
+# 群晖部署套件的文件会进 Linux 容器(shell 脚本执行 / nginx 直接挂载),
+# 强制 LF 检出,防 Windows core.autocrlf 在重新克隆后把它们改成 CRLF 导致解析失败。
+deploy/synology/** text eol=lf
+# ps1 由 Windows 执行,维持默认行为
+deploy/synology/*.ps1 text auto
