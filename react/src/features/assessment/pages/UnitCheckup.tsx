@@ -11,9 +11,16 @@ import {
   PolarRadiusAxis,
   ResponsiveContainer,
   Legend,
+  Line,
+  LineChart,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as ChartTooltip,
 } from "recharts";
 import { useAuth } from "@/stores/auth";
 import { organizationsApi } from "@/features/organization";
+import { ASSESSMENT_YEARS, rankingForYearIndex, resolveUnitName } from "@/shared/lib/ranking-demo";
 import {
   assessmentApi,
   assessmentErrorMessage,
@@ -23,7 +30,7 @@ import {
   type ResultSnapshot,
   type RoundTargetResult,
 } from "../api";
-import { barPct, leafMetaMap, medalStyle, type LeafMeta } from "../lib/ranking";
+import { leafMetaMap, medalStyle, type LeafMeta } from "../lib/ranking";
 import {
   buildIssues,
   checkupSummaryForAi,
@@ -270,8 +277,8 @@ function CheckupBody({
       {/* ④ 短板诊断:规则版 + AI 生成 */}
       <IssuesCard key={mine.ref} sections={issues} unitName={mine.name} summary={checkupSummaryForAi(issueInput)} />
 
-      {/* ⑤ 季度快照趋势 */}
-      {snapshots.length > 0 && <TrendCard mineRef={mine.ref} current={mine} fullScore={fullScore} snapshots={snapshots} unitCount={targets.length} />}
+      {/* ⑤ 历次结果对比:历年导入(2023-2025)+ 季度快照 + 当前,名次折线 */}
+      <TrendCard unitName={mine.name} mineRef={mine.ref} current={mine} snapshots={snapshots} unitCount={targets.length} />
     </div>
   );
 }
@@ -366,13 +373,13 @@ function ReportTable({
   );
 }
 
-/** 短板诊断:规则版常驻 + 「AI 生成」按钮(AI 挂了保留规则版,toast 提示)。 */
+/** 短板诊断:左=系统规则建议(常驻)/ 右=AI 生成建议(明显标识;AI 挂了左栏不受影响)。 */
 function IssuesCard({ sections, unitName, summary }: { sections: IssueSection[]; unitName: string; summary: string }) {
   const [aiText, setAiText] = useState<string | null>(null);
   const gen = useMutation({
     mutationFn: () => assessmentApi.generateCheckupIssues({ unitName, summary }),
     onSuccess: (r) => setAiText(r.issues),
-    onError: (e) => toast.error(assessmentErrorMessage(e, "AI 生成失败,已保留规则版诊断")),
+    onError: (e) => toast.error(assessmentErrorMessage(e, "AI 生成失败,左侧系统建议不受影响,可稍后重试")),
   });
   const TONE: Record<IssueSection["tone"], string> = {
     bad: "text-red-500",
@@ -381,94 +388,183 @@ function IssuesCard({ sections, unitName, summary }: { sections: IssueSection[];
   };
   return (
     <div className="rounded-xl border border-[#eef2f7] bg-white">
-      <div className="flex items-center px-4 py-2.5 border-b border-[#eef2f7]">
-        <span className="text-[12px] text-[#6B7280] flex-1">短板诊断与建议(按当前录入自动生成)</span>
-        <button
-          type="button"
-          onClick={() => gen.mutate()}
-          disabled={gen.isPending}
-          className="inline-flex items-center gap-1 text-[12px] text-[#1A56A8] hover:underline disabled:opacity-50"
-          title="用 AI 按体检数据写一段「问题与改进建议」(不落库)"
-        >
-          {gen.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-          AI 生成建议
-        </button>
-      </div>
-      <div className="p-4 space-y-3">
-        {sections.length === 0 && <div className="text-[13px] text-[#9CA3AF]">暂无明显短板(或还没有录入数据)。</div>}
-        {sections.map((s) => (
-          <div key={s.title}>
-            <div className={`text-[13px] font-medium mb-1 ${TONE[s.tone]}`}>{s.title}</div>
-            <ul className="space-y-0.5">
-              {s.items.map((it) => (
-                <li key={it} className="text-[12px] text-[#475467] pl-3 relative">
-                  <span className="absolute left-0 top-[7px] w-1 h-1 rounded-full bg-[#c4cbd6]" />
-                  {it}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-        {aiText && (
-          <div className="rounded-lg border border-[#D6E6FB] bg-[#F0F7FF] p-3">
-            <div className="text-[12px] font-medium text-[#1A56A8] mb-1 flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> AI 诊断建议
+      <div className="px-4 py-2.5 border-b border-[#eef2f7] text-[12px] text-[#6B7280]">短板诊断与建议</div>
+      <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        {/* 左:系统建议(规则版,按当前录入自动生成,常驻) */}
+        <div className="space-y-3">
+          <div className="text-[12px] font-medium text-[#475467]">系统建议(按当前录入自动生成)</div>
+          {sections.length === 0 && <div className="text-[13px] text-[#9CA3AF]">暂无明显短板(或还没有录入数据)。</div>}
+          {sections.map((s) => (
+            <div key={s.title}>
+              <div className={`text-[13px] font-medium mb-1 ${TONE[s.tone]}`}>{s.title}</div>
+              <ul className="space-y-0.5">
+                {s.items.map((it) => (
+                  <li key={it} className="text-[12px] text-[#475467] pl-3 relative">
+                    <span className="absolute left-0 top-[7px] w-1 h-1 rounded-full bg-[#c4cbd6]" />
+                    {it}
+                  </li>
+                ))}
+              </ul>
             </div>
-            <div className="text-[12px] text-[#374151] whitespace-pre-wrap leading-relaxed">{aiText}</div>
+          ))}
+        </div>
+
+        {/* 右:AI 生成建议(明显标识 AI 产出;不落库,随点随生成) */}
+        <div className="rounded-lg border border-[#D6E6FB] bg-[#F6FAFF] p-3 min-h-[160px] flex flex-col">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-[#1A56A8] text-white">
+              <Sparkles className="w-2.5 h-2.5" /> AI 生成
+            </span>
+            <span className="text-[12px] font-medium text-[#1A56A8]">AI 诊断建议</span>
+            <div className="flex-1" />
+            <button
+              type="button"
+              onClick={() => gen.mutate()}
+              disabled={gen.isPending}
+              className="px-2.5 py-1 rounded-md text-[12px] text-white font-medium disabled:opacity-60"
+              style={{ backgroundColor: "#1A56A8" }}
+              title="按本单位体检数据(总分/名次/维度得分率/失分点)让 AI 撰写「主要短板 + 改进建议」"
+            >
+              {gen.isPending ? "生成中…" : aiText ? "重新生成" : "生成"}
+            </button>
           </div>
-        )}
+          {gen.isPending ? (
+            <div className="flex-1 flex items-center justify-center gap-2 text-[12px] text-[#6B7280]">
+              <Loader2 className="w-4 h-4 animate-spin text-[#1A56A8]" /> AI 撰写中(约 10~30 秒)…
+            </div>
+          ) : aiText ? (
+            <>
+              <div className="text-[12px] text-[#374151] whitespace-pre-wrap leading-relaxed">{aiText}</div>
+              <div className="mt-2 pt-2 border-t border-[#E3EEFB] text-[10px] text-[#9CA3AF]">
+                内容由 AI 按体检数据生成,仅供参考,请结合实际研判。
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-[12px] text-[#9CA3AF] text-center px-4">
+              点右上「生成」,AI 会按本单位的体检数据撰写「主要短板 + 改进建议」。
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-/** 季度快照趋势:历次快照 + 当前实时,总分横条 + 名次。 */
+interface TrendRow {
+  key: string;
+  label: string;
+  total: number;
+  rank: number;
+  count: number;
+  /** 历年导入数据(2023-2025,《3年考核结果.xlsx》,总分为百分制口径) */
+  hist?: boolean;
+}
+
+/** 折线图 tooltip:名次 + 总分 + 历年标记。 */
+function TrendTip({ active, payload, label }: { active?: boolean; payload?: { payload: TrendRow }[]; label?: string }) {
+  if (!active || !payload?.length) return null;
+  const p = payload[0].payload;
+  return (
+    <div className="rounded-md border border-[#e2e8f0] bg-white px-2.5 py-1.5 text-[12px] shadow-sm">
+      <div className="font-medium text-[#172033]">{label}</div>
+      <div className="text-[#475467]">
+        ★# 第 {p.rank} 名 / {p.count} · 总分 {p.total}
+      </div>
+      {p.hist && <div className="text-[10px] text-[#9CA3AF]">历年考核导入数据(百分制)</div>}
+    </div>
+  );
+}
+
+/**
+ * 历次结果对比:历年导入(2023-2025 真实考核,单位按名称匹配)+ 季度快照 + 当前实时,
+ * 名次折线图(Y 轴反转,第 1 名在顶,越高越好)。总分口径跨年不同(百分制 vs 本表满分),
+ * 名次可比 —— 折线画名次,总分放 tooltip。
+ */
 function TrendCard({
+  unitName,
   mineRef,
   current,
-  fullScore,
   snapshots,
   unitCount,
 }: {
+  unitName: string;
   mineRef: string;
   current: RoundTargetResult;
-  fullScore: number;
   snapshots: ResultSnapshot[];
   unitCount: number;
 }) {
-  const rows = useMemo(() => {
-    const hist = [...snapshots]
+  const rows = useMemo<TrendRow[]>(() => {
+    // ① 历年导入(shared/lib/ranking-demo,来自《3年考核结果.xlsx》):只用 2023-2025 真实年份(2026 为模拟,不用);
+    //    体检单单位名(党委/党总支)与导入单位名(行政简称)按包含关系匹配,匹配不到则不显示历年段。
+    const years: TrendRow[] = [];
+    const { name, matched } = resolveUnitName([unitName]);
+    if (matched) {
+      for (let yi = 0; yi < 3; yi++) {
+        const ranking = rankingForYearIndex(yi);
+        const hit = ranking.find((u) => u.name === name);
+        if (hit) {
+          years.push({
+            key: `y${ASSESSMENT_YEARS[yi]}`,
+            label: `${ASSESSMENT_YEARS[yi]}年`,
+            total: hit.score,
+            rank: hit.rank,
+            count: ranking.length,
+            hist: true,
+          });
+        }
+      }
+    }
+    // ② 季度快照(名次分母用快照当时的单位数,不拿当前数歪曲历史相对位置)
+    const snaps = [...snapshots]
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .map((s) => {
-        // 名次分母用「快照当时」的单位数(考核对象后来增减过的话,不能拿当前数当分母歪曲历史相对位置)
         const all = parseSnapshotResults(s).targets ?? [];
         const t = all.find((x) => x.ref === mineRef);
         return t ? { key: s.id, label: s.label, total: t.total, rank: t.rank, count: all.length } : null;
       })
-      .filter((x): x is { key: string; label: string; total: number; rank: number; count: number } => !!x);
-    return [...hist, { key: "__now__", label: "当前", total: current.total, rank: current.rank, count: unitCount }];
-  }, [snapshots, mineRef, current, unitCount]);
-  const max = Math.max(fullScore, ...rows.map((r) => r.total), 1);
+      .filter((x): x is TrendRow => !!x);
+    // ③ 当前实时
+    return [...years, ...snaps, { key: "__now__", label: "当前", total: current.total, rank: current.rank, count: unitCount }];
+  }, [unitName, snapshots, mineRef, current, unitCount]);
+
+  if (rows.length < 2) return null; // 只有「当前」一个点,画不成趋势
+  const maxCount = Math.max(...rows.map((r) => r.count), 2);
 
   return (
     <div className="rounded-xl border border-[#eef2f7] bg-white">
-      <div className="px-4 py-2.5 border-b border-[#eef2f7] text-[12px] text-[#6B7280]">历次结果对比(季度快照 → 当前)</div>
-      <div className="p-4 space-y-2">
-        {rows.map((r) => (
-          <div key={r.key} className="flex items-center gap-3 text-[13px]">
-            <span className="w-24 flex-shrink-0 text-[#475467] truncate" title={r.label}>
-              {r.label}
-            </span>
-            <div className="flex-1 h-1.5 rounded-full bg-[#f1f5f9] overflow-hidden">
-              <div
-                className="h-full rounded-full"
-                style={{ width: `${barPct(r.total, max)}%`, backgroundColor: "var(--party-primary)", opacity: r.key === "__now__" ? 1 : 0.5 }}
-              />
-            </div>
-            <span className="w-14 text-right font-medium text-[#172033]">{r.total}</span>
-            <span className="w-16 text-right text-[12px] text-[#9CA3AF]">★# {r.rank}/{r.count}</span>
-          </div>
-        ))}
+      <div className="px-4 py-2.5 border-b border-[#eef2f7] text-[12px] text-[#6B7280]">
+        历次结果对比(历年 → 季度快照 → 当前)· 折线为名次,第 1 名在顶
+      </div>
+      <div className="h-[230px] px-2 pt-3">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={rows} margin={{ top: 14, right: 24, left: 0, bottom: 4 }}>
+            <CartesianGrid stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} interval={0} />
+            <YAxis
+              reversed
+              domain={[1, maxCount]}
+              allowDecimals={false}
+              tick={{ fontSize: 10, fill: "#94a3b8" }}
+              tickLine={false}
+              axisLine={false}
+              width={30}
+            />
+            <ChartTooltip content={<TrendTip />} />
+            <Line
+              type="monotone"
+              dataKey="rank"
+              stroke="var(--party-primary)"
+              strokeWidth={2}
+              dot={{ r: 3.5, fill: "var(--party-primary)", strokeWidth: 0 }}
+              label={{ position: "top", fontSize: 10, fill: "#475467", formatter: (v: number) => `#${v}` }}
+              isAnimationActive={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="px-4 pb-3 text-[11px] text-[#9CA3AF]">
+        {rows.some((r) => r.hist) ? "2023–2025 为历年考核导入数据(总分为百分制口径,名次跨年可比);" : ""}
+        悬停看各时点总分与名次。
       </div>
     </div>
   );

@@ -539,7 +539,7 @@ export const assessmentApi = {
   extractIndicators: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
-    return api.post<ExtractIndicatorsResult>("/assessment/extract", fd).then((r) => r.data);
+    return api.post<ExtractIndicatorsResult>("/assessment/extract", fd, { timeout: 180_000 }).then((r) => r.data);
   },
   /** ── P2 考核轮次:发起 / 列表 / 详情 / 录入 / 计算 / 删除 ── */
   createRound: (schemeId: string, input: { name?: string; year?: number }) =>
@@ -581,10 +581,10 @@ export const assessmentApi = {
       .then((r) => r.data),
   /** AI 生成评分标准/说明(据 指标名+数据源+计分工具+规则+分值)*/
   generateCriteria: (input: { label?: string; dataSourceDesc?: string; tool?: string; rule?: string; weight?: number }) =>
-    api.post<{ criteria: string }>("/assessment/criteria/generate", input).then((r) => r.data),
+    api.post<{ criteria: string }>("/assessment/criteria/generate", input, { timeout: 120_000 }).then((r) => r.data),
   /** AI 生成单位体检诊断建议(体检数据摘要 → 问题与改进建议;登录即可,AI 挂了前端回退规则版)*/
   generateCheckupIssues: (input: { unitName?: string; summary: string }) =>
-    api.post<{ issues: string }>("/assessment/checkup/issues", input).then((r) => r.data),
+    api.post<{ issues: string }>("/assessment/checkup/issues", input, { timeout: 120_000 }).then((r) => r.data),
   /** ── 分数确认会签 ── */
   /** 总管理员发起 / 重新发起分数确认(reset=true 把已确认也重置)*/
   requestConfirm: (roundId: string, reset = false) =>
