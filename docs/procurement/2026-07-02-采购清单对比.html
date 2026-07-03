@@ -1,0 +1,444 @@
+<title>信创服务器采购清单与选型对比</title>
+<style>
+  :root{
+    --red:#C8001E; --red-deep:#9E0018; --red-soft:#FBEFEE;
+    --ink:#2B2422; --paper:#FAF8F6; --card:#FFFFFF;
+    --line:#E8E0DB; --muted:#857B75;
+    --gold:#B07C1E; --gold-soft:#FBF4E4;
+    --pro:#2E7D4F; --con:#B3423A;
+    font-size:15px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);
+    font-family:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC","Source Han Sans SC",sans-serif;
+    line-height:1.65;border-top:4px solid var(--red)}
+  .wrap{max-width:1280px;margin:0 auto;padding:32px 24px 56px}
+
+  header.top{margin-bottom:30px}
+  .kicker{color:var(--red);font-weight:700;font-size:.8rem;letter-spacing:.35em;margin-bottom:8px}
+  h1{font-size:1.75rem;font-weight:800;letter-spacing:.02em;text-wrap:balance}
+  .sub{color:var(--muted);margin-top:6px;font-size:.92rem}
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+  .chip{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:7px 14px;font-size:.85rem}
+  .chip b{color:var(--red);font-variant-numeric:tabular-nums}
+
+  section{margin-top:44px}
+  .sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;border-bottom:2px solid var(--ink);padding-bottom:8px;margin-bottom:14px}
+  .sec-no{background:var(--red);color:#fff;font-size:.75rem;font-weight:700;padding:3px 10px;letter-spacing:.15em}
+  .sec-head h2{font-size:1.2rem;font-weight:800}
+  .sec-note{color:var(--muted);font-size:.85rem;flex:1 1 100%;margin-top:2px}
+
+  /* ---- 清单表 ---- */
+  .tbl-scroll{overflow-x:auto;background:var(--card);border:1px solid var(--line)}
+  table{border-collapse:collapse;width:100%;min-width:980px;font-size:.86rem}
+  th{background:var(--red);color:#fff;font-weight:700;text-align:left;padding:9px 12px;white-space:nowrap}
+  td{border-bottom:1px solid var(--line);padding:9px 12px;vertical-align:top}
+  td.num{text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr.subtotal td{background:var(--red-soft);font-weight:700;color:var(--red-deep)}
+  tr.total td{background:#F1EDE9;font-weight:700}
+  .tag{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:3px;white-space:nowrap}
+  .tag.must{background:var(--red);color:#fff}
+  .tag.opt{background:var(--gold-soft);color:var(--gold);border:1px solid var(--gold)}
+  .spec{color:#4A423E}
+  .memo{color:var(--muted);font-size:.8rem}
+
+  /* ---- 对比卡片:最左=最推荐 ---- */
+  .cards{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(255px,1fr);gap:14px;overflow-x:auto;padding:4px 2px 10px}
+  .card{background:var(--card);border:1px solid var(--line);border-top:3px solid var(--line);
+    padding:16px 16px 14px;display:flex;flex-direction:column;gap:10px;position:relative}
+  .card.rec{border:1px solid var(--red);border-top:4px solid var(--red);box-shadow:0 3px 14px rgba(200,0,30,.10)}
+  .card.dead{background:#F5F2EF;border-style:dashed;color:#6E655F}
+  .badge{position:absolute;top:-1px;right:-1px;font-size:.7rem;font-weight:700;padding:3px 10px}
+  .card.rec .badge{background:var(--red);color:#fff}
+  .card.dead .badge{background:#8B817A;color:#fff}
+  .card h3{font-size:1rem;font-weight:800;padding-right:56px;text-wrap:balance}
+  .arch{display:inline-block;font-size:.7rem;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:3px;padding:1px 6px;margin-left:6px;vertical-align:2px;white-space:nowrap}
+  .stars{color:var(--gold);font-size:.85rem;letter-spacing:.15em}
+  .pos{font-size:.82rem;color:var(--muted);border-left:3px solid var(--line);padding-left:8px}
+  .card.rec .pos{border-left-color:var(--red)}
+  .card ul{list-style:none;font-size:.82rem;display:flex;flex-direction:column;gap:5px}
+  .card ul.pros li::before{content:"✓ ";color:var(--pro);font-weight:700}
+  .card ul.cons li::before{content:"✗ ";color:var(--con);font-weight:700}
+  .card ul.pros{padding-bottom:2px}
+  .card .grow{flex:1}
+  .price{border-top:1px dashed var(--line);padding-top:8px;font-size:.78rem;color:var(--muted)}
+  .price b{color:var(--ink);font-variant-numeric:tabular-nums}
+
+  .verdict{margin-top:4px;background:var(--gold-soft);border-left:4px solid var(--red);padding:10px 14px;font-size:.88rem}
+  .verdict b{color:var(--red-deep)}
+
+  footer{margin-top:52px;border-top:1px solid var(--line);padding-top:16px;color:var(--muted);font-size:.8rem;display:flex;flex-direction:column;gap:4px}
+  footer a{color:var(--red)}
+  @media (max-width:720px){ h1{font-size:1.35rem} .wrap{padding:24px 14px 40px} }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="kicker">采购申请附件</div>
+    <h1>信创服务器采购清单与选型对比</h1>
+    <div class="sub">"党建益友"平台生产环境国产化部署 · 2026年7月 · 与《信创服务器采购需求书》(docx)、《采购清单》(xlsx) 配套</div>
+    <div class="chips">
+      <span class="chip">基础包(必选 7 项) <b>约 27.5 ~ 52 万元</b></span>
+      <span class="chip">服务器 <b>5 台</b> + 操作系统 + 数据库 + 国密方案</span>
+      <span class="chip">可选项 <b>4 项</b>,按触发条件分批采购</span>
+      <span class="chip">价格为 2024–25 公开行情锚点,签订前询价 ≥3 家</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-no">清单</span><h2>采购清单总表</h2>
+      <p class="sec-note">必选 = 本次核批的基础包;可选 = 一并论证、触发条件成立后分批申请,不重复走立项流程。</p>
+    </div>
+    <div class="tbl-scroll">
+      <table>
+        <thead><tr>
+          <th>序号</th><th>品目</th><th>数量</th><th>关键规格摘要</th><th>预算(万元)</th><th>类别</th><th>触发条件 / 备注</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td><b>应用服务器</b></td><td class="num">2 台</td>
+            <td class="spec">国产 CPU 双路(安全可靠目录内,ARMv8 或 x86_64),总物理核≥64,内存 128GB(插槽占用≤50%),SSD 系统盘 RAID1 + 3.84TB×2 数据盘,双万兆,1+1 冗余电源,5 年原厂质保</td>
+            <td class="num">8 ~ 12</td><td><span class="tag must">必选</span></td><td class="memo">承载应用 / 国密网关 / 3D 展厅,双机冗余</td></tr>
+          <tr><td class="num">2</td><td><b>数据库服务器</b></td><td class="num">1 台</td>
+            <td class="spec">同架构双路≥64 核,128GB,NVMe U.2 1.92TB×2 RAID1 数据盘 + 本地备份盘 4TB×2</td>
+            <td class="num">4 ~ 6.5</td><td><span class="tag must">必选</span></td><td class="memo">考核实时计算等高频查询走 NVMe</td></tr>
+          <tr><td class="num">3</td><td><b>存储备份服务器</b></td><td class="num">1 台</td>
+            <td class="spec">总核≥32,64GB,≥12 盘位,配 6×8TB 企业级(RAID6 可用≥32TB),留扩展盘位</td>
+            <td class="num">5 ~ 8</td><td><span class="tag must">必选</span></td><td class="memo">业务文件区(3D 素材/视频,单文件上限 500MB)+ 全系统备份归集</td></tr>
+          <tr><td class="num">4</td><td><b>测试/预发服务器</b></td><td class="num">1 台</td>
+            <td class="spec">总核≥32,64GB;CPU 架构须与生产应用服务器一致</td>
+            <td class="num">3 ~ 4.5</td><td><span class="tag must">必选</span></td><td class="memo">适配验证 / 升级演练 / 应急顶替</td></tr>
+          <tr><td class="num">5</td><td><b>服务器操作系统</b></td><td class="num">5 套</td>
+            <td class="spec">银河麒麟 V10 SP3+ 或 统信 UOS V20,每台物理机 1 套永久授权,含≥3 年原厂服务;glibc≥2.28</td>
+            <td class="num">2.5 ~ 5</td><td><span class="tag must">必选</span></td><td class="memo">随整机预装激活,授权文件交采购方</td></tr>
+          <tr><td class="num">6</td><td><b>国产数据库(PG 内核系)</b></td><td class="num">2 套</td>
+            <td class="spec">信创目录内;基于 PostgreSQL 内核且版本≥9.6(优先≥10);完全兼容 PG 协议,标准 PG 驱动直连(md5/scram);生产 + 测试授权,含 3 年服务;<b>中标方配合完成应用适配验证(付款前置)</b></td>
+            <td class="num">5 ~ 15</td><td><span class="tag must">必选</span></td><td class="memo">参考:瀚高安全版 / 人大金仓(PG 兼容模式),不限品牌;须询价</td></tr>
+          <tr><td class="num">7</td><td><b>国密传输改造</b></td><td class="num">1 项</td>
+            <td class="spec">开源国密网关(Tengine + 铜锁)SM2+RSA 双证书 + 自建内网 CA、终端推根;公信 CA SM2 证书可选</td>
+            <td class="num">0 ~ 1</td><td><span class="tag must">必选</span></td><td class="memo">主方案零采购成本,实施计入部署</td></tr>
+          <tr class="subtotal"><td></td><td>基础包小计</td><td></td><td>第 1 ~ 7 项</td><td class="num">27.5 ~ 52</td><td></td><td></td></tr>
+          <tr><td class="num">8</td><td>数据库高可用备机</td><td class="num">1 台</td>
+            <td class="spec">与第 2 项同配置,与主库组流复制主备</td>
+            <td class="num">4 ~ 6.5</td><td><span class="tag opt">可选</span></td><td class="memo">正式投产稳定运行约 6 个月后按需启动</td></tr>
+          <tr><td class="num">9</td><td>密码机 + 签名验签服务器</td><td class="num">3 台</td>
+            <td class="spec">服务器密码机×2(主备)+ 签名验签×1,商用密码产品认证</td>
+            <td class="num">25 ~ 34</td><td><span class="tag opt">可选</span></td><td class="memo">等保三级定级 / 密评启动时采购(三级不强制硬件密码机)</td></tr>
+          <tr><td class="num">10</td><td>AI 算力 · 入门档</td><td class="num">1 项</td>
+            <td class="spec">国产推理卡 2~4 张(如昇腾 Atlas 300I Duo 96GB)或蒸馏版一体机;可跑 DeepSeek-R1-32B 量化 + Qwen2.5-VL-7B,覆盖现有全部 AI 功能</td>
+            <td class="num">15 ~ 30</td><td><span class="tag opt">可选</span></td><td class="memo">生产内网禁止访问公网大模型 API 时启动</td></tr>
+          <tr><td class="num">11</td><td>AI 算力 · 标准档</td><td class="num">1 项</td>
+            <td class="spec">8 卡国产推理整机(如 Atlas 800I A2,8×昇腾 910B),满血 671B 模型 / 百人并发</td>
+            <td class="num">80 ~ 150</td><td><span class="tag opt">可选</span></td><td class="memo">入门档实际负载验证不足后按需升级</td></tr>
+          <tr class="total"><td></td><td>全部合计(基础包 + 全部可选)</td><td></td><td></td><td class="num">151.5 ~ 272.5</td><td></td><td class="memo">可选项按触发条件分批,通常不会同时发生</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-no">对比一</span><h2>CPU 技术路线</h2>
+      <p class="sec-note">采购参数写"ARMv8 或 x86_64 + 安全可靠目录"——前三条路线均可投标保持竞争,龙芯被参数自然排除(有电信集采、中信银行招标同款措辞先例)。</p>
+    </div>
+    <div class="cards">
+      <article class="card rec"><div class="badge">★ 最推荐</div>
+        <h3>海光 7000 系<span class="arch">x86_64</span></h3>
+        <div class="stars">★★★★★</div>
+        <p class="pos">国产 x86,与现有开发环境同架构</p>
+        <ul class="pros">
+          <li>与开发环境同架构,迁移<b>零交叉架构风险</b></li>
+          <li>Node / Prisma / sharp 全部官方一级支持</li>
+          <li>整机选择多:中科可控 H620、新华三 R4930、联想开天 KR722h</li>
+          <li>性价比高,渠道充足</li>
+        </ul>
+        <ul class="cons grow">
+          <li>源自 AMD Zen 授权,"自主度"分档低于鲲鹏/飞腾(企业内部采购无碍)</li>
+        </ul>
+        <div class="price">双路整机约 <b>2 ~ 6 万</b>(2×7255/7285,64~256GB)</div>
+      </article>
+      <article class="card">
+        <h3>鲲鹏 920<span class="arch">ARM64</span></h3>
+        <div class="stars">★★★★</div>
+        <p class="pos">信创供货面最强的 ARM 路线</p>
+        <ul class="pros">
+          <li>电信集采 ARM 标包占 70.7%,供货面最强</li>
+          <li>整机厂多:华鲲振宇、宝德、长江计算、昆仑技术等</li>
+          <li>Node / Prisma / sharp 均有官方 linux-arm64 组件</li>
+        </ul>
+        <ul class="cons grow">
+          <li>与开发环境(x86)不同架构,需一轮完整 arm64 适配验证</li>
+          <li>7nm 先进制程受限,920 代际更新慢</li>
+        </ul>
+        <div class="price">双路 <b>2.2 ~ 8.5 万</b>(按 32/48/64 核档位)</div>
+      </article>
+      <article class="card">
+        <h3>飞腾 S5000C<span class="arch">ARM64</span></h3>
+        <div class="stars">★★★</div>
+        <p class="pos">自主度评级最高档的 ARM 路线</p>
+        <ul class="pros">
+          <li>FTC862 全自研核,自主度评级高</li>
+          <li>党政市场认可度高</li>
+          <li>软件兼容路径与鲲鹏一致(ARMv8)</li>
+        </ul>
+        <ul class="cons grow">
+          <li>单核性能弱于海光 / 鲲鹏</li>
+          <li>整机与渠道少</li>
+          <li>上代 S2500 仍在售,需甄别</li>
+        </ul>
+        <div class="price">双路整机<b>询价</b>(渠道较少)</div>
+      </article>
+      <article class="card dead"><div class="badge">排除</div>
+        <h3>龙芯 3C/3D<span class="arch">LoongArch</span></h3>
+        <div class="stars">—</div>
+        <p class="pos">全自研指令集路线</p>
+        <ul class="pros">
+          <li>指令集自研,自主可控叙事最强</li>
+        </ul>
+        <ul class="cons grow">
+          <li>Node.js 仅实验级支持、无官方二进制,社区版滞后数月</li>
+          <li>Prisma / sharp 无 loongarch 产物,需自行编译长期维护</li>
+          <li>安全补丁跟进风险高 → <b>硬排除</b></li>
+        </ul>
+        <div class="price">不适用</div>
+      </article>
+    </div>
+    <div class="verdict"><b>结论:</b>海光与鲲鹏均满足采购参数,评标时优先;首选海光(与开发环境同架构、交付风险最低),鲲鹏为强备选。</div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-no">对比二</span><h2>国产数据库</h2>
+      <p class="sec-note">采购参数一条线锁定:"基于 PostgreSQL 内核 ≥9.6 + 标准 PG 驱动直连 + md5/scram 认证"——前两家够格竞争,后两家被参数排除;适配验证写为中标方义务 + 付款前置。</p>
+    </div>
+    <div class="cards">
+      <article class="card rec"><div class="badge">★ 最推荐</div>
+        <h3>瀚高数据库(安全版)</h3>
+        <div class="stars">★★★★★</div>
+        <p class="pos">PostgreSQL 内核直系(V5 与 PG10 同步)</p>
+        <ul class="pros">
+          <li>协议 / SQL 全兼容,标准 PG 驱动直连<b>风险最低</b></li>
+          <li>信创目录内</li>
+          <li>PG 生态文档与运维经验全部适用</li>
+        </ul>
+        <ul class="cons grow">
+          <li>市场声量低于金仓 / 达梦</li>
+          <li>Prisma 无官方认证(靠合同适配条款 + 验收兜底)</li>
+        </ul>
+        <div class="price">按 CPU 授权,<b>询价</b>(预算 5~15 万含测试授权)</div>
+      </article>
+      <article class="card">
+        <h3>人大金仓 KingbaseES</h3>
+        <div class="stars">★★★★</div>
+        <p class="pos">市占前列的 PG 系,PG 兼容模式</p>
+        <ul class="pros">
+          <li>案例最多、服务网点广</li>
+          <li>PG 兼容模式有 node-postgres 直连实测案例</li>
+          <li>资质齐全</li>
+        </ul>
+        <ul class="cons grow">
+          <li>需指定 PG 兼容模式(DB_MODE=pg)</li>
+          <li>version() 返回串不含 "PostgreSQL",驱动探测有坑</li>
+          <li>Prisma 无公开成功案例</li>
+        </ul>
+        <div class="price">同量级,<b>询价</b></div>
+      </article>
+      <article class="card dead"><div class="badge">不满足参数</div>
+        <h3>openGauss / GaussDB 系</h3>
+        <div class="stars">—</div>
+        <p class="pos">华为生态,源自 PG 9.2 深度改造</p>
+        <ul class="pros">
+          <li>性能优化强、社区活跃</li>
+          <li>华为体系整合好</li>
+        </ul>
+        <ul class="cons grow">
+          <li>内核 PG 9.2.4,<b>低于应用 ORM 最低支持线 9.6</b></li>
+          <li>默认 sha256 认证使标准 PG 驱动连不上(需改 md5 并重置密码)</li>
+        </ul>
+        <div class="price">开源版免费 / 商业版询价</div>
+      </article>
+      <article class="card dead"><div class="badge">排除</div>
+        <h3>达梦 DM8</h3>
+        <div class="stars">—</div>
+        <p class="pos">党政市占第一的自研库</p>
+        <ul class="pros">
+          <li>名录资质最全</li>
+          <li>官方 Node 驱动 dmdb 存在且持续更新</li>
+        </ul>
+        <ul class="cons grow">
+          <li><b>无 Prisma 支持</b>,官方 ORM 仅 TypeORM / Knex</li>
+          <li>选它 = 数据访问层重写,预计数月工期 → <b>硬排除</b></li>
+        </ul>
+        <div class="price">询价</div>
+      </article>
+    </div>
+    <div class="verdict"><b>结论:</b>瀚高最优先(内核直系),金仓为合格竞争者,两家保证竞争充分;openGauss 与达梦被同一条参数合规排除。</div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-no">对比三</span><h2>服务器操作系统</h2>
+      <p class="sec-note">两者对本系统完全等效(glibc≥2.28 满足 Node 官方二进制最低线),双产品并列写入参数保持竞争。</p>
+    </div>
+    <div class="cards">
+      <article class="card rec"><div class="badge">★ 最推荐</div>
+        <h3>银河麒麟 V10 SP3+</h3>
+        <div class="stars">★★★★★</div>
+        <p class="pos">服务器信创市占第一</p>
+        <ul class="pros">
+          <li>与各整机<b>互认证证书覆盖最全</b></li>
+          <li>glibc 2.28 满足 Node 官方二进制要求</li>
+          <li>鲲鹏 / 飞腾 / 海光等六大平台同产品线</li>
+        </ul>
+        <ul class="cons grow">
+          <li>授权约 0.5~1 万/台(含 3 年服务)</li>
+          <li>自带软件源 Node 版本旧(实际部署用官方二进制,无碍)</li>
+        </ul>
+        <div class="price">约 <b>0.5 ~ 1 万 / 台</b>(永久授权 + 3 年服务)</div>
+      </article>
+      <article class="card">
+        <h3>统信 UOS 服务器版 V20</h3>
+        <div class="stars">★★★★</div>
+        <p class="pos">Debian 系,生态亲和的等效备选</p>
+        <ul class="pros">
+          <li>glibc 2.28 同样达标</li>
+          <li>鲲鹏 920 / 海光 7000 全支持</li>
+          <li>价格相近,可有效压价</li>
+        </ul>
+        <ul class="cons grow">
+          <li>服务器端市占与互认证证书数量少于麒麟</li>
+        </ul>
+        <div class="price">同量级,<b>询价</b></div>
+      </article>
+    </div>
+    <div class="verdict"><b>结论:</b>评标按整机互认证完整度取舍;无论中哪家,系统部署方式零差别。</div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-no">对比四</span><h2>国密传输方案</h2>
+      <p class="sec-note">本系统为企业内部系统、尚未等保定级;等保三级也不强制硬件密码机(软件密码模块二级可达标)——先零成本软件方案,定级后按密评结论补硬件。</p>
+    </div>
+    <div class="cards">
+      <article class="card rec"><div class="badge">★ 最推荐</div>
+        <h3>开源国密网关 + 自建 CA</h3>
+        <div class="stars">★★★★★</div>
+        <p class="pos">零采购成本的主方案</p>
+        <ul class="pros">
+          <li><b>0 元</b>:Tengine + 铜锁(开放原子基金会项目,阿里云生产验证)</li>
+          <li>SM2 + RSA 双证书,非国密浏览器自动回退</li>
+          <li>内网终端推根一次配置、长期有效</li>
+        </ul>
+        <ul class="cons grow">
+          <li>需自行部署维护</li>
+          <li>无对外公信力(纯内网够用)</li>
+        </ul>
+        <div class="price"><b>0 元</b>(实施计入系统部署)</div>
+      </article>
+      <article class="card">
+        <h3>公信 CA SM2 证书</h3>
+        <div class="stars">★★★</div>
+        <p class="pos">对外可信场景的补充项</p>
+        <ul class="pros">
+          <li>对外 / 对第三方可信</li>
+          <li>CFCA、沃通等签发渠道成熟</li>
+        </ul>
+        <ul class="cons grow">
+          <li>年费持续支出</li>
+          <li>内网场景非必需</li>
+        </ul>
+        <div class="price">OV 型约 <b>0.4 ~ 1 万 / 年</b></div>
+      </article>
+      <article class="card">
+        <h3>硬件密码机 + 签名验签</h3>
+        <div class="stars">★★</div>
+        <p class="pos">密评最稳妥路径,按触发条件启动</p>
+        <ul class="pros">
+          <li>密钥硬件级保护,密码模块等级更高</li>
+          <li>密评通过最稳妥</li>
+        </ul>
+        <ul class="cons grow">
+          <li>投入 25~34 万</li>
+          <li>未定级三级前属超前投入</li>
+        </ul>
+        <div class="price">密码机 8~12 万/台 ×2 + 签名验签 8~10 万</div>
+      </article>
+    </div>
+    <div class="verdict"><b>结论:</b>主方案零成本即实现全站加密访问;第 9 项可选包仅在等保三级定级 / 密评启动时采购。</div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-no">对比五</span><h2>AI 能力供给</h2>
+      <p class="sec-note">以"内网出网政策"为触发条件分批决策——允许出网则维持现状零投入;禁止出网时入门档即可覆盖现有全部 AI 功能。</p>
+    </div>
+    <div class="cards">
+      <article class="card rec"><div class="badge">★ 最推荐</div>
+        <h3>维持云端 API(现状)</h3>
+        <div class="stars">★★★★★</div>
+        <p class="pos">零新增投入,一切已跑通</p>
+        <ul class="pros">
+          <li><b>0 新增投入</b>,全部 AI 功能已在用(DeepSeek / 豆包 / 千问)</li>
+          <li>模型升级零成本</li>
+          <li>系统支持按功能降级,随时可切私有化</li>
+        </ul>
+        <ul class="cons grow">
+          <li>依赖内网出网通道</li>
+          <li>业务数据出内网需合规评估</li>
+        </ul>
+        <div class="price">按量付费(现有支出不变)</div>
+      </article>
+      <article class="card">
+        <h3>昇腾入门档</h3>
+        <div class="stars">★★★★</div>
+        <p class="pos">禁止出网时的首选私有化方案</p>
+        <ul class="pros">
+          <li>信创合规:Atlas 300I Duo ×2~4 或蒸馏版一体机</li>
+          <li>DeepSeek-R1-32B 量化 + Qwen2.5-VL-7B,<b>覆盖现有全部 AI 功能</b></li>
+          <li>MindIE 生态成熟(80+ 企业适配)</li>
+        </ul>
+        <ul class="cons grow">
+          <li>并发有限(几十级)</li>
+          <li>新增昇腾运维技能</li>
+          <li>图像生成类(AI 头像 / 3D 生成)暂无好的私有化平替</li>
+        </ul>
+        <div class="price"><b>15 ~ 30 万</b>一次性</div>
+      </article>
+      <article class="card">
+        <h3>昇腾标准档</h3>
+        <div class="stars">★★★</div>
+        <p class="pos">满血模型、百人并发的升级档</p>
+        <ul class="pros">
+          <li>满血 671B 模型、百人并发</li>
+          <li>一步到位(Atlas 800I A2,8×910B)</li>
+        </ul>
+        <ul class="cons grow">
+          <li>远超当前实际负载</li>
+          <li>应先用入门档验证真实用量再升级</li>
+        </ul>
+        <div class="price"><b>80 ~ 150 万</b>一次性</div>
+      </article>
+      <article class="card dead"><div class="badge">不推荐</div>
+        <h3>NVIDIA L20 / 4090</h3>
+        <div class="stars">—</div>
+        <p class="pos">非信创的性价比路线</p>
+        <ul class="pros">
+          <li>生态最成熟、单位算力最便宜(4090 约 1.2~1.5 万/卡)</li>
+        </ul>
+        <ul class="cons grow">
+          <li>不在信创目录</li>
+          <li>受美出口管制,渠道合规存疑</li>
+          <li>4090 为消费卡,无企业保修</li>
+        </ul>
+        <div class="price">10 ~ 30 万(合规风险自担)</div>
+      </article>
+    </div>
+    <div class="verdict"><b>结论:</b>AI 算力不进基础包,以出网政策为触发条件分批决策,避免为不确定需求提前锁定大额投入。</div>
+  </section>
+
+  <footer>
+    <div><b style="color:var(--red-deep)">采购前实测(2026-07-02):</b>现有系统已在 PostgreSQL 10(国产 PG 系数据库内核基线)上完成全链路验证——50 表迁移一次通过、种子全量写入、应用启动、12/12 项 API 冒烟、审计落库实证;海光 x64 与鲲鹏 arm64 双平台离线部署包全部组件拉取核实可行。详见《采购前运行验证报告》。</div>
+    <div>依据:全部关键结论经 6 路联网核实(Prisma 官方源码、Node.js 官方发布、麒麟 / UOS 实测资料、整机集采行情、国密标准与密评法规、AI 算力行情),详见《信创服务器采购需求书》docx 附来源。</div>
+    <div>配套文件:docs/procurement/ 下 需求书(.docx) · 采购清单(.xlsx,小计公式联动) · 本页(.html)。生成日期 2026-07-02。</div>
+  </footer>
+</div>
