@@ -5,7 +5,9 @@ import {
   SettingsIcon, RefreshCwIcon, SaveIcon, RotateCcwIcon,
   TagIcon, ImageIcon, MegaphoneIcon, LinkIcon, PaletteIcon,
   PlusIcon, TrashIcon, GlobeIcon, MenuIcon, GripVerticalIcon,
+  TrophyIcon,
 } from "lucide-react";
+import { api } from "@/shared/api/client";
 import {
   siteSettingApi,
   FALLBACK_SITE_SETTINGS,
@@ -14,7 +16,7 @@ import {
 
 const PARTY = "var(--party-primary)";
 
-type TabId = "brand" | "hero" | "topNav" | "footer" | "theme";
+type TabId = "brand" | "hero" | "topNav" | "footer" | "theme" | "portal";
 
 const TABS: { id: TabId; label: string; icon: React.ElementType; desc: string }[] = [
   { id: "brand", label: "基础品牌", icon: TagIcon, desc: "决定前台头部的站点身份呈现" },
@@ -22,6 +24,7 @@ const TABS: { id: TabId; label: string; icon: React.ElementType; desc: string }[
   { id: "topNav", label: "首页顶端", icon: MenuIcon, desc: "头部 logo 右侧的 N 个文字链接(党务公开 / 学习园地 等)" },
   { id: "footer", label: "页脚信息", icon: LinkIcon, desc: "底部备案、版权与友情链接" },
   { id: "theme", label: "主题配色", icon: PaletteIcon, desc: "影响前台头部、按钮、Hero 等关键视觉" },
+  { id: "portal", label: "首页板块", icon: TrophyIcon, desc: "首页「考核排行榜」板块显示哪张考核表" },
 ];
 
 export default function SiteSettingsPage() {
@@ -103,6 +106,10 @@ export default function SiteSettingsPage() {
   }
   function updateTheme(patch: Partial<SiteSettingsData["theme"]>) {
     setForm((f) => ({ ...f, theme: { ...f.theme, ...patch } }));
+    setDirty(true);
+  }
+  function updatePortal(patch: Partial<SiteSettingsData["portal"]>) {
+    setForm((f) => ({ ...f, portal: { ...f.portal, ...patch } }));
     setDirty(true);
   }
 
@@ -229,8 +236,10 @@ export default function SiteSettingsPage() {
               <TopNavForm value={form.topNav} onChange={updateTopNav} />
             ) : tab === "footer" ? (
               <FooterForm value={form.footer} onChange={updateFooter} />
-            ) : (
+            ) : tab === "theme" ? (
               <ThemeForm value={form.theme} onChange={updateTheme} />
+            ) : (
+              <PortalForm value={form.portal} onChange={updatePortal} />
             )}
           </div>
         </div>
@@ -677,6 +686,62 @@ function ColorField({
   );
 }
 
+
+/* ─── Portal(首页板块) ─── */
+
+/** 考核表精简形状(只取下拉展示所需;经 shared api 直取,不 import assessment feature —— 那边已引用本 feature,互引会成环) */
+interface SchemeLite {
+  id: string;
+  name: string;
+  year: number;
+}
+
+function PortalForm({
+  value,
+  onChange,
+}: {
+  value: SiteSettingsData["portal"];
+  onChange: (p: Partial<SiteSettingsData["portal"]>) => void;
+}) {
+  const { data } = useQuery({
+    queryKey: ["assessment", "schemes"],
+    queryFn: () => api.get<SchemeLite[]>("/assessment/schemes").then((r) => r.data),
+  });
+  const schemes = data ?? [];
+  const selectClass =
+    "w-full border border-[#E9E9E9] rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:border-[var(--party-primary)] focus:ring-1 focus:ring-party-primary-20 transition-colors";
+  const known = schemes.some((s) => s.id === value.assessmentSchemeId);
+  return (
+    <div>
+      <div className="mb-5">
+        <FieldLabel
+          label="考核排行榜显示哪张考核表"
+          hint="首页右栏「党建考核排行榜」板块的数据来源。「自动」= 显示最新发起的考核;指定后固定显示该表的实时排名。"
+        />
+        <select
+          value={known ? value.assessmentSchemeId : ""}
+          onChange={(e) => onChange({ assessmentSchemeId: e.target.value })}
+          className={selectClass}
+        >
+          <option value="">自动(显示最新发起的考核)</option>
+          {schemes.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}({s.year} 年)
+            </option>
+          ))}
+        </select>
+        {value.assessmentSchemeId && !known && (
+          <p className="text-[11px] text-amber-600 mt-1">
+            当前指定的考核表已不存在,首页在自动回落显示最新考核;重新选择并保存即可修正。
+          </p>
+        )}
+      </div>
+      <p className="text-[12px] text-[#9CA3AF]">
+        指定的考核表若被删除或还没发起考核,首页会自动回落显示最新考核,不会出现空板块。改完点右上「保存」生效。
+      </p>
+    </div>
+  );
+}
 
 function SkeletonForm() {
   return (
