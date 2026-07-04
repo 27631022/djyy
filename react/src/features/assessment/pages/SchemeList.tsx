@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ClipboardCheck, ClipboardList, Copy, FileText, Home, Plus, Trophy, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
+import { useAuth } from "@/stores/auth";
 import { siteSettingApi } from "@/features/site-setting";
 import {
   assessmentApi,
@@ -60,7 +61,11 @@ export default function SchemeList() {
     onError: (e) => toast.error(assessmentErrorMessage(e, "复制失败")),
   });
 
-  // 首页榜单控制:门户首页「考核排行榜」显示哪张表(存站点设置 portal.assessmentSchemeId,空=自动最新)
+  // 首页榜单控制:门户首页「考核排行榜」显示哪张表(存站点设置 portal.assessmentSchemeId,空=自动最新)。
+  // 仅管理员可设(admin:menu,与后端 PUT /site-settings 同门)—— 建考核的人不能把首页榜单点来点去;
+  // 「首页展示中」徽标所有人可见(知道当前首页展示的是哪张)。
+  const { me } = useAuth();
+  const canPinPortal = (me?.isPlatformAdmin || me?.permissions?.includes("admin:menu")) ?? false;
   const siteSettings = useQuery({ queryKey: ["site-settings"], queryFn: () => siteSettingApi.get(), staleTime: 60_000 });
   const pinnedSchemeId = siteSettings.data?.portal?.assessmentSchemeId || "";
   const pinPortal = useMutation({
@@ -133,7 +138,7 @@ export default function SchemeList() {
               onRanking={() => navigate(`/admin/assessment/schemes/${s.id}/results`)}
               onCheckup={() => navigate(`/admin/assessment/schemes/${s.id}/checkup`)}
               pinnedOnPortal={pinnedSchemeId === s.id}
-              onTogglePortal={() => pinPortal.mutate(pinnedSchemeId === s.id ? "" : s.id)}
+              onTogglePortal={canPinPortal ? () => pinPortal.mutate(pinnedSchemeId === s.id ? "" : s.id) : undefined}
             />
           ))}
         </div>
@@ -172,7 +177,8 @@ function SchemeCard({
   onCheckup: () => void;
   /** 门户首页「考核排行榜」当前显示的就是这张表 */
   pinnedOnPortal: boolean;
-  onTogglePortal: () => void;
+  /** 设/取消首页榜单;undefined = 无权限(按钮不显示,徽标照常) */
+  onTogglePortal?: () => void;
 }) {
   const leaves = countLeaves(parseIndicators(scheme));
   const st = parseSettings(scheme);
@@ -243,16 +249,18 @@ function SchemeCard({
         <CardBtn icon={ClipboardList} label="考核打分" onClick={onScore} title="进入年度考核打分(没有则自动开始;一张表只一轮)" />
         <CardBtn icon={Trophy} label="考核排名" onClick={onRanking} title="各单位总分排名 + 我负责指标合计排名,支持下钻" />
         <CardBtn icon={FileText} label="单位体检" onClick={onCheckup} title="单位体检单:雷达图画像 + 逐项得分/名次 + 短板诊断(单位账号自动看自己单位)" />
-        <CardBtn
-          icon={Home}
-          label={pinnedOnPortal ? "取消首页展示" : "设为首页榜单"}
-          onClick={onTogglePortal}
-          title={
-            pinnedOnPortal
-              ? "取消后,门户首页恢复自动显示最新考核的排名"
-              : "让门户首页「考核排行榜」显示这张考核表的排名(全站只指定一张)"
-          }
-        />
+        {onTogglePortal && (
+          <CardBtn
+            icon={Home}
+            label={pinnedOnPortal ? "取消首页展示" : "设为首页榜单"}
+            onClick={onTogglePortal}
+            title={
+              pinnedOnPortal
+                ? "取消后,门户首页恢复自动显示最新考核的排名"
+                : "让门户首页「考核排行榜」显示这张考核表的排名(全站只指定一张;仅管理员可设)"
+            }
+          />
+        )}
       </div>
     </div>
   );

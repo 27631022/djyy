@@ -9,6 +9,7 @@ import {
 import type { Request } from 'express';
 import { SiteSettingService } from './site-setting.service';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
+import { Permission } from '../permission';
 import { UpdateSiteSettingDto } from './dto/update-site-setting.dto';
 
 @Controller('site-settings')
@@ -25,10 +26,13 @@ export class SiteSettingController {
   }
 
   /**
-   * 更新 — 仅认证用户可调用(后期可叠加 permission guard 限制为 admin 角色)
+   * 更新 — 仅管理员(admin:menu,与「系统设置」菜单同门)。
+   * 站点设置承载 品牌/主题/首页榜单指定,原先只判登录 —— 任何账号都能改站名/主题色/
+   * 把首页考核榜单点来点去,风险面太大;platform_admin 直通,enterprise_admin 有 admin:menu。
    */
   @Put()
   @UseGuards(AuthGuard)
+  @Permission('admin:menu')
   async update(
     @Body() dto: UpdateSiteSettingDto,
     @CurrentUser() me: AuthPayload,
