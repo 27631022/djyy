@@ -39,6 +39,11 @@ export interface SiteSettingsData {
     primary: string;
     accent: string;
   };
+  /** 门户首页板块控制 */
+  portal: {
+    /** 首页「考核排行榜」显示哪张考核表(schemeId);空 = 自动取最新轮次。在考核表列表页「设为首页榜单」维护。 */
+    assessmentSchemeId: string;
+  };
 }
 
 /** 前台 NavPage 在 brand 字段缺失时显示的兜底,避免初次加载白屏 */
@@ -77,6 +82,9 @@ export const FALLBACK_SITE_SETTINGS: SiteSettingsData = {
   theme: {
     primary: "#C8001E",
     accent: "#F5A623",
+  },
+  portal: {
+    assessmentSchemeId: "",
   },
 };
 

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/stores/auth";
+import { siteSettingApi } from "@/features/site-setting";
 import { assessmentApi } from "./api";
 
 /**
@@ -36,13 +37,24 @@ export function usePortalAssessmentBoard(): PortalBoard {
   const { me } = useAuth();
   const loggedIn = !!me;
 
+  // 后台指定的首页考核表(站点设置 portal.assessmentSchemeId,考核表列表页「设为首页榜单」维护)。
+  // 公开接口 + 与 ThemeBootstrap 同 queryKey → 首页早已拉过,零额外请求。
+  const settings = useQuery({
+    queryKey: ["site-settings"],
+    queryFn: () => siteSettingApi.get(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const pinnedSchemeId = settings.data?.portal?.assessmentSchemeId || "";
+
   const rounds = useQuery({
     queryKey: ["assessment", "rounds", "portal"],
     queryFn: () => assessmentApi.listRounds(),
     enabled: loggedIn,
     staleTime: 60_000,
   });
-  const round = rounds.data?.[0];
+  // 指定了考核表 → 取它的最新轮次;指定失效(表被删/没发起考核)→ 回落全局最新,首页不显示空板
+  const list = rounds.data ?? [];
+  const round = (pinnedSchemeId ? list.find((r) => r.schemeId === pinnedSchemeId) : undefined) ?? list[0];
 
   const live = useQuery({
     queryKey: ["assess-live", round?.id],
@@ -61,7 +73,7 @@ export function usePortalAssessmentBoard(): PortalBoard {
   }));
   return {
     loggedOut: !loggedIn,
-    loading: loggedIn && (rounds.isLoading || (!!round && live.isLoading)),
+    loading: loggedIn && (settings.isLoading || rounds.isLoading || (!!round && live.isLoading)),
     roundName: round?.name ?? null,
     schemeId: round?.schemeId ?? null,
     rows,

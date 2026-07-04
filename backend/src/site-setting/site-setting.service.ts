@@ -102,5 +102,6 @@ function mergeWithDefaults(part: Partial<SiteSettingsData>): SiteSettingsData {
       items: part.topNav?.items ?? DEFAULT_SITE_SETTINGS.topNav.items,
     },
     theme: { ...DEFAULT_SITE_SETTINGS.theme, ...(part.theme ?? {}) },
+    portal: { ...DEFAULT_SITE_SETTINGS.portal, ...(part.portal ?? {}) },
   };
 }

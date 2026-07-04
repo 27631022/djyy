@@ -57,6 +57,12 @@ export interface SiteSettingsData {
     /** 强调色(金黄),如 "#F5A623" */
     accent: string;
   };
+  /** 门户首页板块控制 */
+  portal: {
+    /** 首页「考核排行榜」显示哪张考核表(schemeId);空 = 自动取最新轮次。
+     *  在「考核表」列表页每张卡的「设为首页榜单」维护,不在站点设置页单独出 UI。 */
+    assessmentSchemeId: string;
+  };
 }
 
 /** 数据库初始化时写入的默认配置,与 NavPage 现有硬编码值保持一致 */
@@ -95,6 +101,9 @@ export const DEFAULT_SITE_SETTINGS: SiteSettingsData = {
   theme: {
     primary: '#C8001E',
     accent: '#F5A623',
+  },
+  portal: {
+    assessmentSchemeId: '',
   },
 };
 

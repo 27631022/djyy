@@ -2,8 +2,9 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ClipboardCheck, ClipboardList, Copy, FileText, Plus, Trophy, Trash2 } from "lucide-react";
+import { ClipboardCheck, ClipboardList, Copy, FileText, Home, Plus, Trophy, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
+import { siteSettingApi } from "@/features/site-setting";
 import {
   assessmentApi,
   assessmentErrorMessage,
@@ -57,6 +58,24 @@ export default function SchemeList() {
       navigate(`/admin/assessment/schemes/${s.id}`);
     },
     onError: (e) => toast.error(assessmentErrorMessage(e, "复制失败")),
+  });
+
+  // 首页榜单控制:门户首页「考核排行榜」显示哪张表(存站点设置 portal.assessmentSchemeId,空=自动最新)
+  const siteSettings = useQuery({ queryKey: ["site-settings"], queryFn: () => siteSettingApi.get(), staleTime: 60_000 });
+  const pinnedSchemeId = siteSettings.data?.portal?.assessmentSchemeId || "";
+  const pinPortal = useMutation({
+    // 站点设置是整体替换式 PUT:取当前值只改 portal 节,避免覆盖别人刚改的品牌/主题
+    mutationFn: async (schemeId: string) => {
+      const cur = await siteSettingApi.get();
+      return siteSettingApi.update({ ...cur, portal: { ...cur.portal, assessmentSchemeId: schemeId } });
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(["site-settings"], data);
+      toast.success(
+        data.portal.assessmentSchemeId ? "已设为首页榜单,门户首页将显示该考核的排名" : "已取消指定,首页恢复自动显示最新考核",
+      );
+    },
+    onError: (e) => toast.error(assessmentErrorMessage(e, "设置失败(需登录管理员账号)")),
   });
 
   // 「考核打分」(年度考核 = 一张表一轮):进该表的轮次,没有就建一次、有就直接进 —— 不再每次开新轮
@@ -113,6 +132,8 @@ export default function SchemeList() {
               onScore={() => goScore(s.id)}
               onRanking={() => navigate(`/admin/assessment/schemes/${s.id}/results`)}
               onCheckup={() => navigate(`/admin/assessment/schemes/${s.id}/checkup`)}
+              pinnedOnPortal={pinnedSchemeId === s.id}
+              onTogglePortal={() => pinPortal.mutate(pinnedSchemeId === s.id ? "" : s.id)}
             />
           ))}
         </div>
@@ -139,6 +160,8 @@ function SchemeCard({
   onScore,
   onRanking,
   onCheckup,
+  pinnedOnPortal,
+  onTogglePortal,
 }: {
   scheme: AssessmentScheme;
   onOpen: () => void;
@@ -147,6 +170,9 @@ function SchemeCard({
   onScore: () => void;
   onRanking: () => void;
   onCheckup: () => void;
+  /** 门户首页「考核排行榜」当前显示的就是这张表 */
+  pinnedOnPortal: boolean;
+  onTogglePortal: () => void;
 }) {
   const leaves = countLeaves(parseIndicators(scheme));
   const st = parseSettings(scheme);
@@ -207,11 +233,26 @@ function SchemeCard({
         <span className="px-2 py-0.5 rounded-full text-[11px] bg-party-soft text-[var(--party-primary)]">{leaves} 个指标</span>
         <span className="px-2 py-0.5 rounded-full text-[11px] bg-[#f1f5f9] text-[#475467]">{targetCount} 个对象</span>
         <span className="px-2 py-0.5 rounded-full text-[11px] bg-[#f1f5f9] text-[#475467]">{STATUS_LABEL[scheme.status] ?? scheme.status}</span>
+        {pinnedOnPortal && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-amber-50 text-amber-700 border border-amber-200">
+            <Home className="w-3 h-3" /> 首页展示中
+          </span>
+        )}
       </div>
       <div className="mt-3 pt-3 border-t border-[#f1f5f9] flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <CardBtn icon={ClipboardList} label="考核打分" onClick={onScore} title="进入年度考核打分(没有则自动开始;一张表只一轮)" />
         <CardBtn icon={Trophy} label="考核排名" onClick={onRanking} title="各单位总分排名 + 我负责指标合计排名,支持下钻" />
         <CardBtn icon={FileText} label="单位体检" onClick={onCheckup} title="单位体检单:雷达图画像 + 逐项得分/名次 + 短板诊断(单位账号自动看自己单位)" />
+        <CardBtn
+          icon={Home}
+          label={pinnedOnPortal ? "取消首页展示" : "设为首页榜单"}
+          onClick={onTogglePortal}
+          title={
+            pinnedOnPortal
+              ? "取消后,门户首页恢复自动显示最新考核的排名"
+              : "让门户首页「考核排行榜」显示这张考核表的排名(全站只指定一张)"
+          }
+        />
       </div>
     </div>
   );

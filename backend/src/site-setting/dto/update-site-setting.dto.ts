@@ -72,10 +72,16 @@ class ThemeDto {
   accent!: string;
 }
 
+class PortalDto {
+  /** 首页考核排行榜显示的考核表 id;空串 = 自动取最新轮次 */
+  @IsString()
+  assessmentSchemeId!: string;
+}
+
 /**
  * PUT /site-settings 请求体
  *
- * 4 个 section 都必填 — 前端发的是完整对象,后端整体替换。
+ * 各 section 都必填 — 前端发的是完整对象(从 GET 初始化),后端整体替换。
  * 这样避免"部分更新"导致字段丢失或合并冲突。
  */
 export class UpdateSiteSettingDto {
@@ -103,4 +109,9 @@ export class UpdateSiteSettingDto {
   @ValidateNested()
   @Type(() => ThemeDto)
   theme!: ThemeDto;
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => PortalDto)
+  portal!: PortalDto;
 }
