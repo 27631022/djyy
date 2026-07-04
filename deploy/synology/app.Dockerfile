@@ -14,13 +14,8 @@ RUN npm config set registry https://registry.npmmirror.com
 COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-# 后端源码
+# 后端源码(2026-07-03 起开发/生产统一 postgresql,schema/迁移原生即 PG,无需再替换)
 COPY backend/ ./
-
-# 生产切 PostgreSQL:provider 一行切换 + 换用 PG 方言迁移(开发期 SQLite 迁移不适用)
-RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma \
-    && rm -rf prisma/migrations
-COPY migrations-pg/ prisma/migrations/
 
 RUN npx prisma generate && npm run build
 

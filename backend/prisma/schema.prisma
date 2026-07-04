@@ -1,15 +1,17 @@
 // 党建益友 平台底座 Prisma Schema
 //
-// 开发期 SQLite,生产切 Postgres 只需把 provider 改成 "postgresql"
-// 注意:模型已避开 SQLite 不支持的类型 (enum / array / native JSON),
-// 切换 Postgres 时迁移可直接生成,模型本身无需改动。
+// 2026-07-03 起开发/生产统一 PostgreSQL(本地 = D:\web\pg10-portable 便携版,
+// 群晖生产 = postgres:16 容器)。开发期 PG10 比生产更旧,天然兜住将来
+// 信创库(瀚高/金仓,内核≈PG10)的兼容性。
+// 注意:模型延续「避开 enum / array / native JSON」的约定 —— JSON 一律存 String
+// 列由应用解析,保证任何 PG 系国产库都能跑;新表别引入原生 JSON/enum。
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

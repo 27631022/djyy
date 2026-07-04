@@ -383,9 +383,9 @@ export class ExternalApiService {
 
   /** 取声明了某能力的所有行(不论是否可用),按优先级降序 */
   private async rowsForCapability(tag: AiCapability): Promise<ExternalApi[]> {
-    // SQLite 无 array contains:先 LIKE 粗筛,再逗号精确二筛(防 'reasoning' 误命中 'chat')
+    // capabilities 是逗号串(非 array 列):先 LIKE 粗筛,再逗号精确二筛(防 'reasoning' 误命中 'chat')
     const candidates = await this.prisma.externalApi.findMany({
-      where: { capabilities: { contains: tag } },
+      where: { capabilities: { contains: tag, mode: 'insensitive' } },
       orderBy: [{ priority: 'desc' }, { updatedAt: 'desc' }],
     });
     return candidates.filter((r) => {

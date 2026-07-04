@@ -57,7 +57,7 @@ export class AuditService {
     const { take = 50, skip = 0, action, actorId, pluginName, since, until } = query;
     const records = await this.prisma.auditLog.findMany({
       where: {
-        ...(action ? { action: { contains: action } } : {}),
+        ...(action ? { action: { contains: action, mode: 'insensitive' } } : {}),
         ...(actorId ? { actorId } : {}),
         ...(pluginName ? { pluginName } : {}),
         ...(since || until
@@ -75,7 +75,7 @@ export class AuditService {
     });
     const total = await this.prisma.auditLog.count({
       where: {
-        ...(action ? { action: { contains: action } } : {}),
+        ...(action ? { action: { contains: action, mode: 'insensitive' } } : {}),
         ...(actorId ? { actorId } : {}),
         ...(pluginName ? { pluginName } : {}),
         ...(since || until

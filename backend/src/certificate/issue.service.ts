@@ -663,7 +663,7 @@ export class CertificateIssueService {
 
     // 2. 模糊
     const fuzzy = await this.prisma.certificate.findMany({
-      where: { certNo: { contains: trimmed } },
+      where: { certNo: { contains: trimmed, mode: 'insensitive' } },
       orderBy: { issueDate: 'desc' },
       take: 20,
       include: { template: { select: { id: true, name: true, honorCode: true } } },

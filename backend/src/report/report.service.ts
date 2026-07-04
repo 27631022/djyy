@@ -151,14 +151,14 @@ export class ReportService {
   }
 
   /* ─── 派发对象「快捷组」(每人自己,服务端持久化,跟账号走)─── */
-  // 走 raw SQL(ReportUnitGroup 表已由迁移建好):列全 TEXT,避开 SQLite DateTime 写入坑。
+  // createdAt 列是 String(ISO 时间串,历史上为避 SQLite DateTime 坑),排序语义不变。
+  // 2026-07 切 PostgreSQL 后由 raw SQL 改回 typed 调用(PG 不认 `?` 占位符)。
   async listUnitGroups(actorId: string) {
-    const rows = await this.prisma.$queryRawUnsafe<
-      { id: string; name: string; orgIdsJson: string }[]
-    >(
-      'SELECT "id", "name", "orgIdsJson" FROM "ReportUnitGroup" WHERE "userId" = ? ORDER BY "createdAt" ASC, "name" ASC',
-      actorId,
-    );
+    const rows = await this.prisma.reportUnitGroup.findMany({
+      where: { userId: actorId },
+      orderBy: [{ createdAt: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, orgIdsJson: true },
+    });
     return rows.map((r) => ({ id: r.id, name: r.name, orgIds: parseIdArray(r.orgIdsJson) }));
   }
 
@@ -167,24 +167,21 @@ export class ReportService {
     if (!nm) throw new BadRequestException('快捷组需要名称');
     const ids = [...new Set((orgIds || []).filter((x) => typeof x === 'string' && x))].slice(0, 500);
     if (ids.length === 0) throw new BadRequestException('请先选中若干单位再存为快捷组');
-    const id = randomUUID();
-    await this.prisma.$executeRawUnsafe(
-      'INSERT INTO "ReportUnitGroup" ("id","userId","name","orgIdsJson","createdAt") VALUES (?,?,?,?,?)',
-      id,
-      actorId,
-      nm,
-      JSON.stringify(ids),
-      new Date().toISOString(),
-    );
-    return { id, name: nm, orgIds: ids };
+    const created = await this.prisma.reportUnitGroup.create({
+      data: {
+        id: randomUUID(),
+        userId: actorId,
+        name: nm,
+        orgIdsJson: JSON.stringify(ids),
+        createdAt: new Date().toISOString(),
+      },
+    });
+    return { id: created.id, name: nm, orgIds: ids };
   }
 
   async deleteUnitGroup(actorId: string, id: string) {
-    await this.prisma.$executeRawUnsafe(
-      'DELETE FROM "ReportUnitGroup" WHERE "id" = ? AND "userId" = ?',
-      id,
-      actorId,
-    );
+    // deleteMany 保持原 raw DELETE 的静默语义(不存在/不属于本人时不报错)
+    await this.prisma.reportUnitGroup.deleteMany({ where: { id, userId: actorId } });
     return { ok: true };
   }
 

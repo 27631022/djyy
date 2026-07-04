@@ -12,10 +12,10 @@ foreach ($p in @("$repo\react\dist\index.html", "$repo\exhibition-client\dist\in
 if (Test-Path $Out) { Remove-Item -Recurse -Force $Out }
 New-Item -ItemType Directory -Force $Out | Out-Null
 
+# backend/prisma/migrations 已是 PG 方言(2026-07-03 起开发/生产统一 postgresql),随 backend 一并进包
 robocopy "$repo\backend" "$Out\backend" /E /NFL /NDL /NJH /XD node_modules dist storage-data /XF dev.db dev.db-journal | Out-Null
 robocopy "$repo\react\dist" "$Out\web-dist" /E /NFL /NDL /NJH | Out-Null
 robocopy "$repo\exhibition-client\dist" "$Out\exhibition-dist" /E /NFL /NDL /NJH | Out-Null
-robocopy "$kit\migrations-pg" "$Out\migrations-pg" /E /NFL /NDL /NJH | Out-Null
 
 # 拷贝套件顶层文件(compose/Dockerfile/入口脚本/nginx/手册),打包脚本自身除外
 Get-ChildItem $kit -File | Where-Object { $_.Name -ne "make-bundle.ps1" } | Copy-Item -Destination $Out

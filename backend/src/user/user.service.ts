@@ -47,10 +47,11 @@ export class UserService {
     // 拼装 where
     const where: Prisma.UserWhereInput = {};
     if (query.search) {
+      // mode: 'insensitive' 保持 SQLite 时代的大小写不敏感搜索(PG 默认大小写敏感)
       where.OR = [
-        { name: { contains: query.search } },
-        { username: { contains: query.search } },
-        { email: { contains: query.search } },
+        { name: { contains: query.search, mode: 'insensitive' } },
+        { username: { contains: query.search, mode: 'insensitive' } },
+        { email: { contains: query.search, mode: 'insensitive' } },
       ];
     }
     if (query.active === 'true') where.active = true;

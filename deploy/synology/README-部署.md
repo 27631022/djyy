@@ -17,7 +17,7 @@
    ```
    /volume1/docker/djyy/
      docker-compose.yml   app.Dockerfile   entrypoint.sh   nginx.conf
-     backend/             web-dist/        exhibition-dist/  migrations-pg/
+     backend/             web-dist/        exhibition-dist/
    ```
 2. **改两处配置**(编辑 docker-compose.yml):
    - `POSTGRES_PASSWORD` 与 `DATABASE_URL` 里的密码改成强密码(两处保持一致);
@@ -50,7 +50,7 @@
 
 1. **文件区**:`storage/` 目录整体拷贝到新服务器的 `STORAGE_LOCAL_DIR`(按字节拷贝,勿转码文件名);
 2. **数据库**(目标为瀚高/金仓等 PG 系):
-   - 新库上先跑 `npx prisma migrate deploy` 建空表结构(与本部署同一套 migrations-pg);
+   - 新库上先跑 `npx prisma migrate deploy` 建空表结构(与本部署同一套 `backend/prisma/migrations`,已是 PG 方言);
    - 再导数据:`pg_dump -U djyy --data-only --disable-triggers -Fc djyy` → 目标库 `pg_restore --data-only --disable-triggers`;若目标库版本工具不兼容,退回 `--data-only --inserts` 纯 SQL 方式,量级小(GB 内)无压力;
 3. **切换**:新服务器上改 `DATABASE_URL`/`CORS_ORIGIN`,用户改访问新 IP;群晖转回"备份 + 文件存储"角色(把新服务器的 `STORAGE_LOCAL_DIR` 挂到群晖共享盘即可延续 File Station 浏览习惯)。
 4. **提示**:迁移前一天全量备份;迁移后跑一遍 12 项冒烟(脚本随验证报告留档)再对外切换。
@@ -72,7 +72,7 @@ npm run release                # = .\deploy\synology\release.ps1
 | 发布后跑 12 项接口冒烟 | `npm run release -- -Smoke` |
 | 回滚到上一版 | `npm run release -- -RollbackZip deploy\releases\<某历史包>.zip` |
 
-**升级纪律(唯一要记的)**:本次改动若动了 `backend/prisma/schema.prisma`,发布前先执行 `.\deploy\synology\new-pg-migration.ps1 -Name <变更名>` 生成 PG 方言迁移(脚本自动起停本地临时 PostgreSQL 完成对比),否则远端表结构不会变。
+**升级纪律**:2026-07-03 起开发/生产统一 PostgreSQL(本地开发库 = PG10 便携版),改了 `backend/prisma/schema.prisma` 只需照常在 backend 下 `npx prisma migrate dev --name <变更名>` —— 生成的就是 PG 方言迁移,发布后容器 `migrate deploy` 自动应用。(旧的 `new-pg-migration.ps1` 双方言流程已随统一退役。)
 
 ### 一次性配置(约 10 分钟,配好才有"一条命令")
 

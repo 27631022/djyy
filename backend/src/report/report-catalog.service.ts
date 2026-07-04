@@ -91,10 +91,16 @@ export class ReportCatalogService {
     const where: Prisma.ReportCatalogItemWhereInput = {
       catalogTag,
       ...(query.category ? { category: query.category } : {}),
-      ...(query.recommendOrg ? { recommendOrg: { contains: query.recommendOrg } } : {}),
-      ...(query.origin ? { origin: { contains: query.origin } } : {}),
+      ...(query.recommendOrg
+        ? { recommendOrg: { contains: query.recommendOrg, mode: 'insensitive' } }
+        : {}),
+      ...(query.origin ? { origin: { contains: query.origin, mode: 'insensitive' } } : {}),
       ...(terms.length
-        ? { AND: terms.map((t) => ({ OR: SEARCH_COLS.map((c) => ({ [c]: { contains: t } })) })) }
+        ? {
+            AND: terms.map((t) => ({
+              OR: SEARCH_COLS.map((c) => ({ [c]: { contains: t, mode: 'insensitive' } })),
+            })),
+          }
         : {}),
     };
     const [total, items] = await Promise.all([

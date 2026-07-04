@@ -205,7 +205,7 @@ export class StorageService {
         ownerModule: opts.ownerModule,
         ...(folder ? { folder } : {}),
         ...(opts.originalNameContains
-          ? { originalName: { contains: opts.originalNameContains } }
+          ? { originalName: { contains: opts.originalNameContains, mode: 'insensitive' } }
           : {}),
       },
       orderBy: { createdAt: 'desc' },

@@ -22,8 +22,8 @@
 |---|---|---|
 | 前端 | React 19 + Vite 7 + TypeScript + Tailwind 4 + shadcn/ui | 不用 Vue / Element Plus —— 用户已经写了 NavPage 不重写 |
 | 状态 | zustand + @tanstack/react-query | |
-| 后端 | NestJS 10 + Prisma 5 + SQLite(dev)→ PostgreSQL(prod) | 不用 Java/Spring —— 用户明确拒绝 |
-| 认证 | Casdoor(规划中,未接入) | 不自建 IdP —— 6-12 人月的安全工程,不值得 |
+| 后端 | NestJS 10 + Prisma 5 + **PostgreSQL(2026-07-03 起开发/生产统一,不再用 SQLite)** | 不用 Java/Spring —— 用户明确拒绝。本地=PG10 便携版(兜信创兼容),群晖生产=postgres:16 |
+| 认证 | 接入单位现有 SSO(规划中;无 SSO 才自建 Casdoor) | 不自建 IdP —— 6-12 人月的安全工程,不值得 |
 | 应用拓展 | **模块化单体**(NestJS module 边界 + features/shared 前端分层)| ~~wujie 微前端 / .djyy 插件包~~ 两个方案都试过,solo dev 都过重,2026-05 改回 monolith |
 | 部署 | Docker Compose(MVP) → K8s(规模化) | |
 | 信创/达梦/麒麟 | **延后,等真实客户需求出现** | 不要预先适配 |
@@ -123,9 +123,13 @@ npm run dev                # http://localhost:5173
 cd backend
 npm run start:dev          # http://localhost:3001/api
 
+# 本地数据库 = PostgreSQL 10 便携版(2026-07-03 起,不再用 SQLite)
+# 开机自启(计划任务 djyy-postgres);手动启动 = D:\web\pg10-portable\start-djyy-pg.cmd
+# 连接串在 backend/.env:postgresql://djyy@localhost:5432/djyy(trust 认证,仅 localhost)
+
 # 数据库初始化(首次或重置后)
 cd backend
-npx prisma migrate dev
+npx prisma migrate dev     # 生成/应用的就是 PG 方言迁移,发布即生产可用
 npm run db:seed
 ```
 
@@ -478,6 +482,7 @@ npm run db:seed
 | 权限模型暂不 enforce | 多次确认 | 单人 MVP 没必要,等多角色冲突真发生再补(4-6 小时即可上) |
 | 文件存储:driver 抽象 + 本地盘默认,群晖走挂载 | 2026-06-01 | 单位用群晖;挂载共享盘后 LocalDiskDriver 零改即用,文件落成 File Station 可浏览目录;SynologyDriver(File Station API)/ S3 留占位。消费方用 fileId 松引用、不建跨模块外键(守「表归属 + DAG」) |
 | 企业虚拟展厅用 Babylon.js 独立 3D 客户端,不用 Unity/Unreal | 2026-06-07 | 非游戏企业应用免付费授权 +「开网址即进」+ WebXR 开箱 VR;单人浏览=普通网页访问,无多人/语音并发难点(剔除 Colyseus/LiveKit/声网);复用现有 NestJS 后台 + storage(MinIO),连接器对接荣誉/党务,数据与鉴权收敛后台。详见 docs/specs/2026-06-07-virtual-exhibition-hall.md |
+| **开发/生产统一 PostgreSQL,弃 SQLite + 双方言迁移** | 2026-07-03 | 边上线边升级要求 dev/prod 一致。本地=PG10 便携版(D:\web\pg10-portable,比群晖 postgres:16 更旧 → 天然兜住信创瀚高/金仓≈PG10 的兼容性);迁移历史重置为单条 PG 基线 `20260703013028_init_postgres`(51 条 SQLite 迁移随 git 历史留档);dev.db 数据 50 表 9885 行已全量迁入本地 PG(行数逐表核对)。改 schema 后直接 `prisma migrate dev`,`new-pg-migration.ps1` 双方言流程退役。PG 专属修复:report 快捷组 raw SQL(`?` 占位符 PG 不认)改 typed;6 文件 12 处 `contains` 搜索补 `mode:'insensitive'`(PG 默认大小写敏感,SQLite 时代不敏感) |
 
 ---
 
