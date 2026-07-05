@@ -12,6 +12,7 @@ import { AuthService, AuthPayload } from './auth.service';
 import { PrismaService } from '../prisma';
 import { AuthGuard } from './auth.guard';
 import { CurrentUser } from './current-user.decorator';
+import { OidcService } from './oidc.service';
 import { DevLoginDto } from './dto/dev-login.dto';
 import type { Request } from 'express';
 
@@ -25,14 +26,18 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly prisma: PrismaService,
+    private readonly oidc: OidcService,
   ) {}
 
   /**
    * Mock 登录:接受 username,验证用户存在且激活,签发 dev JWT。
-   * Casdoor 接入后此接口下线,改由 OIDC 回调签发。
+   * AUTH_MODE=oidc(统一登录)时默认禁用,ALLOW_DEV_LOGIN=1 可临时放行做内网兜底。
    */
   @Post('dev-login')
   async devLogin(@Body() dto: DevLoginDto, @Req() req: Request) {
+    if (!this.oidc.devLoginAllowed) {
+      throw new UnauthorizedException('演示登录已停用,请使用统一账号登录');
+    }
     const user = await this.prisma.user.findUnique({ where: { username: dto.username } });
     if (!user || !user.active) {
       throw new UnauthorizedException('用户不存在或已禁用');

@@ -28,6 +28,10 @@ export class AuthService {
 
   constructor() {
     this.secret = process.env.AUTH_SECRET ?? 'dev-secret-CHANGE-IN-PROD';
+    // 生产漏配 AUTH_SECRET = 用源码公开默认密钥签发会话 JWT,任何人可伪造 → 启动即拒绝(fail-fast)
+    if (process.env.NODE_ENV === 'production' && (this.secret === 'dev-secret-CHANGE-IN-PROD' || this.secret.length < 16)) {
+      throw new Error('生产环境必须配置足够强的 AUTH_SECRET(≥16 字符);当前缺失或过弱,拒绝启动');
+    }
     if (this.secret === 'dev-secret-CHANGE-IN-PROD') {
       this.logger.warn('AUTH_SECRET 未配置,正在使用开发密钥。生产环境必须设置 .env 中的 AUTH_SECRET');
     }

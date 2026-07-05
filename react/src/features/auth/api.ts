@@ -1,4 +1,4 @@
-import { api } from "@/shared/api/client";
+import { api, apiOrigin } from "@/shared/api/client";
 
 export interface AuthMembership {
   userId: string;
@@ -63,7 +63,19 @@ export const authApi = {
     api.post<DevLoginResponse>("/auth/dev-login", { username }).then((r) => r.data),
 
   me: () => api.get<AuthMe>("/auth/me").then((r) => r.data),
+
+  /** 后端登录模式:mock=开发演示账号面板,oidc=统一账号登录(Casdoor / 单位 SSO) */
+  mode: () => api.get<{ mode: "mock" | "oidc" }>("/auth/mode").then((r) => r.data),
 };
+
+/**
+ * 统一登录入口 URL(整页跳转,非 XHR)。
+ * returnTo = 登录成功后回跳的前端完整地址(后端按 CORS 白名单校验,防 open redirect);
+ * 回跳时 token 挂在 URL fragment:<returnTo>#djyy_token=<token>,由登录页解析入库。
+ */
+export function oidcLoginUrl(returnTo: string): string {
+  return `${apiOrigin}/api/auth/oidc/login?return=${encodeURIComponent(returnTo)}`;
+}
 
 export function readStoredToken(): string | null {
   try {

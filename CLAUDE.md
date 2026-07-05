@@ -23,7 +23,7 @@
 | 前端 | React 19 + Vite 7 + TypeScript + Tailwind 4 + shadcn/ui | 不用 Vue / Element Plus —— 用户已经写了 NavPage 不重写 |
 | 状态 | zustand + @tanstack/react-query | |
 | 后端 | NestJS 10 + Prisma 5 + **PostgreSQL(2026-07-03 起开发/生产统一,不再用 SQLite)** | 不用 Java/Spring —— 用户明确拒绝。本地=PG10 便携版(兜信创兼容),群晖生产=postgres:16 |
-| 认证 | 接入单位现有 SSO(规划中;无 SSO 才自建 Casdoor) | 不自建 IdP —— 6-12 人月的安全工程,不值得 |
+| 认证 | **统一登录已落地(2026-07-04)**:标准 OIDC 授权码流,自建 Casdoor 容器;`AUTH_MODE=mock/oidc` 双模式,dev 保留 Mock 秒切账号 | 代码按标准 OIDC 写(discovery),单位 SSO 将来开放时改 `OIDC_ISSUER` 四件套即可,零代码改动 |
 | 应用拓展 | **模块化单体**(NestJS module 边界 + features/shared 前端分层)| ~~wujie 微前端 / .djyy 插件包~~ 两个方案都试过,solo dev 都过重,2026-05 改回 monolith |
 | 部署 | Docker Compose(MVP) → K8s(规模化) | |
 | 信创/达梦/麒麟 | **延后,等真实客户需求出现** | 不要预先适配 |
@@ -66,7 +66,7 @@ djyy/                              ← git 根 + monorepo
 │   │   ├── layouts/AdminLayout.tsx
 │   │   ├── pages/                 ← 全局/跨模块页面
 │   │   │   ├── NavPage.tsx        ← 前台门户首页
-│   │   │   ├── Login.tsx          ← Mock 登录(待换 Casdoor)
+│   │   │   ├── Login.tsx          ← 双模式登录(GET /auth/mode 决定:mock 演示面板 / oidc 统一登录按钮)
 │   │   │   └── NotFound.tsx
 │   │   ├── stores/auth.tsx        ← AuthProvider + me 状态
 │   │   ├── App.tsx                ← 路由 + QueryClient + ThemeBootstrap
@@ -82,7 +82,7 @@ djyy/                              ← git 根 + monorepo
     │   └── migrations/
     ├── eslint.config.js           ← + eslint-plugin-boundaries(模块只能走 index.ts 入口)
     └── src/
-        ├── auth/                  ← JWT HS256(Mock,待换 Casdoor OIDC) + index.ts
+        ├── auth/                  ← JWT HS256 会话 + OIDC 统一登录(oidc.service/controller,Casdoor)+ index.ts
         ├── audit/                 ← 审计日志 + index.ts
         ├── prisma/                ← PrismaService + index.ts
         ├── organization/          ← 双树(党 + 行政)+ index.ts
@@ -445,7 +445,13 @@ npm run db:seed
   - **上传上限**:`storage.EXT_MAX_BYTES` 视频/3D 模型 300/100 → **500MB**。⚠ nest --watch 改常量不重启 node,要手动重启后端;本次排查耗时主因 = 旧僵尸 node 占着 3001 跑旧代码,kill 后才生效(`Get-NetTCPConnection -LocalPort 3001` 查占用)。
   - **展厅素材中心**(菜单「3D 展厅→素材中心」,`/admin/exhibition-assets`,`exhibition:manage`):新表 `ExhibitionGuidePreset`(迁移 `add_exhibition_guide_preset`)+ `ExhibitionLibraryService`/`ExhibitionLibraryController` —— **讲解员形象包**(整套 立绘/3D + 音色 + 肩点,`configJson` 只存 fileId、响应旁补 url、剥 url+name+enabled)跨厅一键套用 + **音色/墙面贴图/墙面装饰** 文件库(storage `library-voice`/`library-wall-texture`/`library-wall-decor` 文件夹 + 复用 `ModelLibraryMeta` 标签)。`ExhibitionAssets` 页四 tab(形象包 列表/改名/删 + 三类文件 上传/预览/改名/删);解说员设置加 `GuidePresetBar`(套用/存为形象包)+ `VoiceLibraryPicker`(从库选音色)。**孤儿 GC**:`ExhibitionService.collectInUseFileIds` 聚合 `library.collectInUseFileIds()`(形象包引用 fileId + 素材库文件夹全部文件)防误删 —— 新增引用 storage 的展厅子功能务必在此补。墙贴/墙饰本期先收录,「贴到墙面」留下轮。
   - 验证:三端门禁绿(react/backend 0 error·0 warning·0 cycle、client build)+ 后端干净启动 + 新路由 401 注册。⚠ 本提交同批裹入工作区既有未提交工作(report 报送模块、TTS 配音、exhibition-client 漫游等,与本次共用文件无法干净拆分);排除临时 dump `xlsx_dump1/2.txt`。
-1. **Casdoor 真集成**:替换 `auth/dev-login` 为 OIDC,Login.tsx 跳 Casdoor
+- **(2026-07-04)统一登录(Casdoor / OIDC)落地**:auth 模块加 `oidc.service.ts`(**标准 OIDC 授权码流**:discovery 5min 缓存 + HMAC state 防 CSRF/携带回跳 + code→token→userinfo + 用户映射)+ `oidc.controller.ts`(`GET /auth/mode` 公开、`/auth/oidc/login` 302 IdP、`/auth/oidc/callback` 回签本地会话)。**设计不变量**:IdP 只认证,角色/组织/权限全留本地;IdP sub 一律解析成本地 `User.id` 再 `auth.signToken` 签原有 HS256 会话 → AuthGuard/PermissionGuard/业务模块**零改动**;公开口不受影响。
+  - **用户映射(安全收紧)**:externalId 精确 → **单一 `OIDC_USERNAME_CLAIM`**(=工号列 username)命中即回填 externalId;**不用显示名/email 隐式匹配**(否则攻击者改 Casdoor 显示名/邮箱=admin 即首登抢绑超管);都不中默认拒登,`OIDC_JIT_CREATE=1` 才自动开通(无角色)。**⚠ Casdoor claim 语义与标准 OIDC 相反**(Casdoor:name=登录名、preferred_username=显示名)→ `OIDC_USERNAME_CLAIM` 默认 `name`(契合 Casdoor),接单位 SSO 改 `preferred_username`。**部署要求**:Casdoor 关自助注册、登录名由管理员按工号下发。
+  - **安全加固(对抗审查后)**:`AUTH_SECRET` 生产漏配/过弱→启动即 fail-fast(不回退公开默认密钥);OIDC state 绑 HttpOnly nonce cookie 防登录 CSRF + 回调二次校验 returnUrl;回跳白名单 dev 旁路收紧为私有网段主机(原 `[^/]+` 放行任意公网站点→token 外泄);错误信息泛化防账号枚举。详见 [[casdoor-oidc-login]] memory。
+  - **双模式**:`AUTH_MODE=mock`(默认,dev 保留点头像秒切)| `oidc`(dev-login 401 禁用,`ALLOW_DEV_LOGIN=1` 兜底)。前端 `Login.tsx` 按 `GET /auth/mode` 渲染演示面板或「统一账号登录」按钮;回跳 token 挂 **URL fragment**(`#djyy_token=`,不进服务器日志),`/login` 页兼任回调落地(挂载时解析入库,无新路由);回跳地址按 CORS 白名单校验防 open redirect。
+  - **部署**:compose 加 `casdoor` 服务(casbin/casdoor,PG 独立 casdoor 库,`initdb/01-create-casdoor-db.sql` 首次自动建库)+ app 的 OIDC 环境变量(首次部署留 mock,配好 Casdoor 应用再切 oidc);一次性配置手册 = README-部署.md **第七节**(改 admin 密码/建应用/回调 URL/用户名=工号对齐)。**将来单位 SSO 开放**:Casdoor 挂上游 IdP 或直接换 `OIDC_ISSUER` 四件套,平台零改码。
+  - 验证:**fake OIDC IdP 本地 E2E 全过**(authorize→callback→本地 token→me=朱海君带本地角色;externalId 回填 psql 实查;二次登录用户数不变;未开通拒绝;伪造 state 拒绝;JIT 开通无角色;oidc 模式 dev-login 401)+ 双端门禁 0 error/0 cycle + 浏览器 mock 面板登录跳门户 0 console error。测试痕迹已清(假绑定/JIT 用户/临时 env)。
+1. ~~Casdoor 真集成~~ — **已落地(2026-07-04,见已完成)**;剩生产侧一次性配置(README-部署.md 第七节)
 2. **访问量/点赞统计**:NavItem.likes/views 接真实计数 + Redis 缓存
 3. **审计日志查询页**:AuditLog 表已有数据,加 `/admin/audit` 浏览界面
 4. **首页综合查询**:`<CertificateSearchBox embedded />` 已具备,把它和其他业务的查询入口拼到 NavPage / 新首页查询板块

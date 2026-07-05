@@ -17,7 +17,7 @@
    ```
    /volume1/docker/djyy/
      docker-compose.yml   app.Dockerfile   entrypoint.sh   nginx.conf
-     backend/             web-dist/        exhibition-dist/
+     backend/             web-dist/        exhibition-dist/   initdb/
    ```
 2. **改两处配置**(编辑 docker-compose.yml):
    - `POSTGRES_PASSWORD` 与 `DATABASE_URL` 里的密码改成强密码(两处保持一致);
@@ -95,3 +95,35 @@ npm run release                # = .\deploy\synology\release.ps1
 - **5173/3001 端口被占**:群晖上有其它服务占用时,改 compose 左侧端口(3001 见上文注意事项)。
 - **登录后接口全红**:多为 CORS_ORIGIN 与实际访问地址不一致(端口/IP 任一不同都算),改后重启 app 容器。
 - **AI 功能不可用**:检查 NAS 出网;或后台"外部 API 接入"页更换可达的服务商地址。
+
+## 七、统一登录(Casdoor)一次性配置
+
+部署包自带 Casdoor 容器(`http://<NAS_IP>:8000`,数据存 PG 的独立 casdoor 库)。**首次部署时 `AUTH_MODE=mock`(演示登录),按下面步骤配好后再切 oidc**——顺序不能反,否则没人能登录。
+
+1. **建库确认**:全新部署 initdb 脚本已自动建 casdoor 库;老库(pgdata 已存在)手动执行一次
+   `docker exec djyy-db createdb -U djyy casdoor`,再重启 casdoor 容器。
+2. **改管理员密码**:浏览器开 `http://<NAS_IP>:8000`,内置管理员 `admin` / `123` 登录,
+   立即到 用户 → admin → 修改密码(★必做,默认密码等于裸奔)。
+3. **建应用**:身份认证 → 应用 → 添加:
+   - 名称/显示名:`djyy`(任意);组织:`built-in`(或自建组织后选它);
+   - **重定向 URLs** 添加:`http://<NAS_IP>:3001/api/auth/oidc/callback`(必须与 compose 里
+     `OIDC_REDIRECT_URI` 一字不差);
+   - 保存后复制 **客户端 ID / 客户端密钥**。
+4. **开通用户**:身份认证 → 用户 → 添加(或 CSV 批量导入)。**用户名 = 员工编号(工号)**,
+   与平台 User.username 对齐——首次统一登录时按工号自动绑定(回填 externalId),
+   角色/权限仍在平台「用户管理」里授,Casdoor 只管认证。
+   > ⚠ **安全要求**:平台按「登录名(工号)」这一个字段绑定账号,所以 Casdoor 必须
+   > **关闭自助注册**(应用页 Enable signup 取消),用户一律由管理员按工号下发;否则有人
+   > 自行注册一个工号=他人账号 的用户即可抢绑。显示名/邮箱不参与绑定,可随意。
+   平台没有对应账号的人默认拒登(「请联系管理员」);要自动开通设 `OIDC_JIT_CREATE: "1"`
+   (开出来无任何角色)。
+5. **切换 app 到统一登录**:compose 里 `AUTH_MODE` 改 `oidc`、填入第 3 步的
+   `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET`,核对 `OIDC_ISSUER`/`OIDC_REDIRECT_URI` 的 IP,
+   重启 app 容器。前端登录页自动变成「统一账号登录」按钮。
+6. **验证**:无痕窗口开 `http://<NAS_IP>:5173` → 统一账号登录 → Casdoor 输工号+密码 →
+   自动回到平台且右上角显示本人;演示登录接口此时应已禁用(需要临时兜底设
+   `ALLOW_DEV_LOGIN: "1"`,用完删)。
+
+> 将来单位统一 SSO 开放接入时:Casdoor 后台把它挂成上游身份提供商(Identity Providers,
+> 支持 OIDC/SAML/CAS),或直接把 compose 的 `OIDC_ISSUER` 等四项换成单位 SSO 的参数——
+> 平台侧代码零改动(标准 OIDC 授权码流)。

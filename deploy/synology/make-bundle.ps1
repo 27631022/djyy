@@ -19,6 +19,8 @@ robocopy "$repo\exhibition-client\dist" "$Out\exhibition-dist" /E /NFL /NDL /NJH
 
 # 拷贝套件顶层文件(compose/Dockerfile/入口脚本/nginx/手册),打包脚本自身除外
 Get-ChildItem $kit -File | Where-Object { $_.Name -ne "make-bundle.ps1" } | Copy-Item -Destination $Out
+# PG 首次初始化脚本(建 casdoor 库)
+robocopy "$kit\initdb" "$Out\initdb" /E /NFL /NDL /NJH | Out-Null
 
 # zip 格式不接受 1980 年前的时间戳(如 vite.svg 的 1979 假时间戳),先修正
 Get-ChildItem $Out -Recurse -File | Where-Object { $_.LastWriteTime -lt (Get-Date "1980-01-02") } |

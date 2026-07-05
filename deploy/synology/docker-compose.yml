@@ -13,6 +13,8 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - ./pgdata:/var/lib/postgresql/data
+      # 首次初始化时自动建 casdoor 库(仅 pgdata 为空时执行;老库见 README「统一登录」节手动建库)
+      - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U djyy -d djyy"]
       interval: 5s
@@ -35,6 +37,9 @@ services:
       DATABASE_URL: postgresql://djyy:djyy_2026_pg@db:5432/djyy # ★密码与上面同步改
       PORT: "3001"
       NODE_ENV: production
+      # ★必填:会话 JWT + OIDC state 的签名密钥。生成一个长随机串(如 openssl rand -base64 32)。
+      #   生产漏填会导致后端拒绝启动(防止用源码公开默认密钥裸奔)。
+      AUTH_SECRET: "CHANGE-ME-到一个长随机串-openssl-rand-base64-32"
       TZ: Asia/Shanghai # 定时任务(超期自动通过 每天 3:00)按北京时间跑
       STORAGE_DRIVER: local
       STORAGE_LOCAL_DIR: /data/storage
@@ -43,11 +48,40 @@ services:
       CORS_ORIGIN: http://10.185.28.220:5173
       # 首次启动且库为空时写入演示数据(admin 等账号);正式录入数据后建议删除本行
       SEED_ON_FIRST_RUN: "1"
+      # ─── 统一登录(Casdoor)───
+      # 首次部署保持 mock;按 README「七、统一登录」配好 Casdoor 应用后,
+      # 把 AUTH_MODE 改 oidc、填入 client 凭据,重启 app 即切换
+      AUTH_MODE: mock
+      OIDC_ISSUER: http://10.185.28.220:8000 # ★NAS 的 IP:Casdoor 端口
+      OIDC_CLIENT_ID: "" # ★Casdoor 应用页复制
+      OIDC_CLIENT_SECRET: "" # ★Casdoor 应用页复制
+      OIDC_REDIRECT_URI: http://10.185.28.220:3001/api/auth/oidc/callback # ★NAS 的 IP
+      OIDC_JIT_CREATE: "0" # 1=IdP 有账号但平台没有时自动开通(无角色)
     volumes:
       # 业务文件区落在本项目文件夹 storage/ 下,File Station 里可直接浏览
       - ./storage:/data/storage
     ports:
       - "3001:3001"
+
+  # 统一身份认证(Casdoor)。首次启动后按 README「七、统一登录」做一次性配置。
+  casdoor:
+    image: casbin/casdoor:latest
+    container_name: djyy-casdoor
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      RUNNING_IN_DOCKER: "true"
+      runmode: prod
+      driverName: postgres
+      # ★密码与上面 POSTGRES_PASSWORD 同步改;库名 casdoor 由 initdb 脚本自动创建
+      dataSourceName: user=djyy password=djyy_2026_pg host=db port=5432 sslmode=disable dbname=casdoor
+      dbName: casdoor
+      # ★Casdoor 对外地址(浏览器访问的 URL,NAS 的 IP)
+      origin: http://10.185.28.220:8000
+    ports:
+      - "8000:8000"
 
   web:
     image: nginx:alpine
