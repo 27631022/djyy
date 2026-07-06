@@ -809,6 +809,40 @@ export class KnowledgeService {
     return { fileId: att.fileId, name: att.name };
   }
 
+  /* ═══════════ 文章模板(正文框架复用) ═══════════ */
+
+  listTemplates() {
+    return this.prisma.knowledgeTemplate.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
+  }
+
+  async createTemplate(
+    dto: { name: string; description?: string; contentMd: string },
+    ctx: ActorCtx & { actorName: string },
+  ) {
+    const t = await this.prisma.knowledgeTemplate.create({
+      data: {
+        name: dto.name.trim(),
+        description: dto.description?.trim() || null,
+        contentMd: dto.contentMd,
+        createdById: ctx.actorId,
+        createdByName: ctx.actorName,
+      },
+    });
+    await this.audit.log({ ...ctx, action: 'knowledge.template.create', target: t.id, detail: { name: t.name } });
+    return t;
+  }
+
+  async removeTemplate(id: string, ctx: ActorCtx) {
+    const t = await this.prisma.knowledgeTemplate.findUnique({ where: { id } });
+    if (!t) throw new NotFoundException('模板不存在');
+    if (t.createdById !== ctx.actorId && !(await this.hasManage(ctx.actorId))) {
+      throw new ForbiddenException('只能删除自己创建的模板');
+    }
+    await this.prisma.knowledgeTemplate.delete({ where: { id } });
+    await this.audit.log({ ...ctx, action: 'knowledge.template.delete', target: id, detail: { name: t.name } });
+    return { ok: true };
+  }
+
   /* ═══════════ 孤儿 GC 协议(MaintenanceService 聚合调用) ═══════════ */
 
   /** 在用 storage 文件:附件 + 封面 + 正文内嵌引用。漏报会被孤儿 GC 误删。 */

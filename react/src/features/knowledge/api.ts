@@ -317,7 +317,24 @@ export const knowledgeApi = {
   closeFeedback: (feedbackId: string) =>
     api.patch<{ ok: true }>(`/knowledge/feedback/${feedbackId}/close`).then((r) => r.data),
   stats: () => api.get<KnowledgeStats>("/knowledge/stats").then((r) => r.data),
+
+  /* ─── 文章模板(正文框架复用) ─── */
+  listTemplates: () => api.get<KnowledgeTemplate[]>("/knowledge/templates").then((r) => r.data),
+  createTemplate: (data: { name: string; description?: string; contentMd: string }) =>
+    api.post<KnowledgeTemplate>("/knowledge/templates", data).then((r) => r.data),
+  deleteTemplate: (id: string) =>
+    api.delete<{ ok: true }>(`/knowledge/templates/${id}`).then((r) => r.data),
 };
+
+export interface KnowledgeTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  contentMd: string;
+  createdById: string;
+  createdByName: string;
+  createdAt: string;
+}
 
 /** 浏览时长上报 URL(useViewTracking 用 navigator.sendBeacon 发,公开口) */
 export function knowledgeViewBeaconUrl(): string {

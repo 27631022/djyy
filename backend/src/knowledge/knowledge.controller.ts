@@ -26,6 +26,7 @@ import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
 import { ReviewArticleDto } from './dto/review-article.dto';
 import { AddAttachmentDto } from './dto/add-attachment.dto';
+import { CreateTemplateDto } from './dto/create-template.dto';
 
 /** multipart 中文文件名 latin1→utf8 还原(同 storage.controller) */
 function decodeMulterName(name: string): string {
@@ -210,6 +211,24 @@ export class KnowledgeController {
   @Delete('articles/:id')
   removeArticle(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.svc.removeArticle(id, this.ctx(me, req));
+  }
+
+  /* ─── 文章模板(正文框架复用) ─── */
+
+  @Get('templates')
+  listTemplates() {
+    return this.svc.listTemplates();
+  }
+
+  @Permission('knowledge:publish')
+  @Post('templates')
+  createTemplate(@Body() dto: CreateTemplateDto, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.createTemplate(dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  @Delete('templates/:id')
+  removeTemplate(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.removeTemplate(id, this.ctx(me, req));
   }
 
   /* ─── 资源上传(规范命名:标题-序号,集中 article-<id>)——图片/视频/附件共用 ─── */

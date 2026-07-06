@@ -1425,3 +1425,17 @@ model KnowledgeViewLog {
   @@index([articleId, createdAt])
   @@index([userId, createdAt])
 }
+
+// 文章模板(正文框架复用):人人可「存为模板」,别人新建时套用其 contentMd 框架。
+// @module: knowledge
+model KnowledgeTemplate {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  contentMd     String // 正文框架
+  createdById   String // 松引用 User.id
+  createdByName String // 快照
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+}

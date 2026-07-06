@@ -27,6 +27,7 @@ import { MdEditor } from "../components/MdEditor";
 import { CategoryPicker } from "../components/CategoryPicker";
 import { TagsInput } from "../components/TagsInput";
 import { VersionLinkPicker, type RevisionTarget } from "../components/VersionLinkPicker";
+import { TemplateBar } from "../components/TemplateBar";
 
 /** 外壳:编辑已有文章时取数 → key 重挂载内层;新建直接进内层 */
 export default function KnowledgeEditorPage() {
@@ -355,6 +356,12 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
         </div>
 
         {/* 正文 */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">正文</span>
+          <span className="ml-auto">
+            <TemplateBar contentMd={contentMd} onApply={setContentMd} />
+          </span>
+        </div>
         <MdEditor
           value={contentMd}
           onChange={setContentMd}
