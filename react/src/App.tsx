@@ -43,6 +43,7 @@ import {
 } from "@/features/certificate";
 import { SchemeListPage, SchemeEditorPage, RoundListPage, RoundDetailPage, AssessmentResultsPage, MyAssessmentsPage, MyManagedSchemesPage, NodeMaintainPage, UnitCheckupPage } from "@/features/assessment";
 import { ReportTasksPage, ReportCatalogPage, ReportCreatePage, PublishChooserPage, ReportFillPage, ReportDetailPage } from "@/features/report";
+import { DataImportPage } from "@/features/import";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
 import { Toaster } from "@/shared/components/ui/sonner";
@@ -96,6 +97,7 @@ const ADMIN_ROUTES: RouteObject[] = [
   { path: "organizations", element: <OrganizationsPage /> },
   { path: "users", element: <UsersPage /> },
   { path: "roles", element: <RolesPage /> },
+  { path: "data-import", element: <DataImportPage /> },
   { path: "dictionaries", element: <DictionariesPage /> },
   { path: "custom-fields", element: <UserCustomFieldsPage /> },
   { path: "site-settings", element: <SiteSettingsPage /> },

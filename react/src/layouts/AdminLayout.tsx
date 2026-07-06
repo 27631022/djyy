@@ -80,6 +80,7 @@ const CATEGORIES: Category[] = [
       { path: "/admin/organizations", label: "党组织 / 行政机构", icon: BuildingIcon, perm: "admin:org:read" },
       { path: "/admin/users",         label: "用户管理",           icon: UserIcon,    perm: "admin:user:read" },
       { path: "/admin/roles",         label: "角色与权限",         icon: ShieldIcon,  perm: "admin:role:read" },
+      { path: "/admin/data-import",   label: "数据导入",           icon: UploadIcon,  perm: "admin:user:write" },
     ],
   },
   {
