@@ -29,3 +29,8 @@ export const TAG_MAX_LEN = 24;
  * 用于:删文联动删文件、maintenance 孤儿 GC 的「在用集合」上报。
  */
 export const CONTENT_FILE_REF_RE = /\/public\/knowledge\/files\/([a-zA-Z0-9]+)/g;
+
+/** 正文内嵌图片/附件引用的相对路径(渲染时前端拼 origin)。导入改写引用时用。 */
+export function knowledgeFileRefFromId(fileId: string): string {
+  return `/api/public/knowledge/files/${fileId}`;
+}

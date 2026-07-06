@@ -224,6 +224,56 @@ export const knowledgeApi = {
     api.post<{ fileId: string; name: string }>(`/knowledge/attachments/${attachmentId}/download`).then((r) => r.data),
 };
 
+/* ─── 批量导入(P2) ─── */
+
+export interface ImportItem {
+  path: string;
+  title: string;
+  dirSegments: string[];
+  assetsFound: number;
+  assetsMissing: number;
+  dup: boolean;
+}
+
+export interface ImportAnalysis {
+  importFileId: string;
+  items: ImportItem[];
+  sidebarIgnored: boolean;
+  skippedNonMd: number;
+}
+
+export interface ImportExecuteItem {
+  path: string;
+  title: string;
+  categoryPath: string[];
+  typeCode: string;
+  action: "create" | "skip";
+}
+
+export interface ImportResult {
+  created: number;
+  skipped: number;
+  failed: number;
+  warnings: string[];
+}
+
+export const knowledgeImportApi = {
+  analyze: (file: File) => {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    return api
+      .post<ImportAnalysis>("/knowledge/import/analyze", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 120_000,
+      })
+      .then((r) => r.data);
+  },
+  execute: (importFileId: string, items: ImportExecuteItem[]) =>
+    api
+      .post<ImportResult>("/knowledge/import/execute", { importFileId, items }, { timeout: 300_000 })
+      .then((r) => r.data),
+};
+
 /** 从 axios 错误里提取后端 message(表单校验/409/403 的中文提示) */
 export function knowledgeErrMsg(e: unknown, fallback: string): string {
   const err = e as { response?: { data?: { message?: string | string[] } } };

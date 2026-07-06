@@ -10,6 +10,7 @@ export const EXT_MAX_BYTES: Record<string, number> = {
   webm: 500 * 1024 * 1024,
   glb: 500 * 1024 * 1024, // 500 MB:Seed3D 产物/手动模型(Maya 角色带贴图/动画偏大)
   gltf: 500 * 1024 * 1024,
+  zip: 200 * 1024 * 1024, // 200 MB:知识库存量 md 批量导入包(含图片资产)
 };
 
 /** 某扩展名的实际上限 */
@@ -37,6 +38,8 @@ export const ALLOWED_EXT_MIME: Record<string, string> = {
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   txt: 'text/plain',
   csv: 'text/csv',
+  md: 'text/markdown', // 知识库文章原文
+  zip: 'application/zip', // 知识库存量批量导入包(临时,导入完即软删)
   // 3D 模型(Seed3D 生成 / 3D 展厅用)
   glb: 'model/gltf-binary',
   gltf: 'model/gltf+json',

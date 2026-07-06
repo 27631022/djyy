@@ -54,7 +54,7 @@
 ## 分期(P3/P4 可对调)
 
 - **P1(✅ 2026-07-05)地基**:9 表 + 模块 + 门户/阅读/我的/编辑器 + 后台分类/审核管理 + 版本链 + 标签 + 浏览计数(30min 去重)。
-- **P2 存量迁移 + 首页**:storage 放行 md/zip;zip 导入两步式(analyze 预览:_sidebar.md/目录 → 分类映射、dup 标 skip;execute:相对图片引用上传改写、模板成附件、首图=封面、每篇独立事务);NavPage 搜索跳 /knowledge?q= + 知识园地卡片(usePortalKnowledgeBoard)。
+- **P2 存量迁移 + 首页**:storage 放行 md/zip;zip 导入两步式(analyze 预览:_sidebar.md/目录 → 分类映射、dup 标 skip;execute:相对图片引用上传改写、模板成附件、首图=封面、每篇独立事务)【✅ 导入部分 2026-07-05,见下】;NavPage 搜索跳 /knowledge?q= + 知识园地卡片(usePortalKnowledgeBoard)【首页接入待做】。
 - **P3 互动统计**:评论/点赞/收藏/吐槽 + useViewTracking(visibilitychange 累计可见时长 + sendBeacon)+ 后台点亮 数据统计 3 个占位(/admin/stats/views、/admin/stats/likes、/admin/feedback)。
 - **P4 AI**:提示词 `knowledge.clean`(→{title,contentMd,categoryHint})/`knowledge.guide`(→{summary,tags[]})/`knowledge.faq`;消费点 `knowledge.{clean,guide,faq,search}.text`;LlmClientService;fetch-url 正文提取;归档向导(检索按钮按 capabilities 显隐/贴URL/贴全文 → 清洗 → 预览 → 可关联修订版)。
 - **P5 积分称号**:points 模块全套 + knowledge 埋点接线 + 我的积分/排行/后台三 tab(规则/称号/账户调分)+ 阈值自动授称号 + @Cron 兜底补授。
@@ -83,6 +83,23 @@
 - **[前端] 后台「全部文章」缺「全部状态」选项**(死代码 status==='any')→ 加选项 + 后端 manage `status=any` 不加过滤。
 - 否决 1 条(attachmentDownloaded 无鉴权刷计数:边际泄露为零)。
 - 修复后:双端门禁复绿;API 冒烟(原 10/10 + 修复项 6/6:javascript: 400 / 超长 400 / 管理员改删自己发布件 / status=any 含归档 / 共用文件不误删);浏览器验(TagsInput IME 守卫、TOC 去重 4 锚点全命中无重复)。
+
+## P2 批量导入落地(2026-07-05)
+
+用户指定导入 `功能参考文件夹\党建制度`(15 md,含 历史制度/名词解释 子目录;`_sidebar.md` 是 docsify 模板残留、图片全为死链)——正是"docsify 是空壳"。
+
+- **后端**:`knowledge-import.service`(JSZip.loadAsync + `decodeFileName` UTF-8→GBK 兜底;`mdEntries` 跳过 docsify 空壳/README;`stripCommonRoot` 剥打包多套的顶层文件夹;`extractTitle`+`cleanHeading`(去 `**`/`<br>`/链接);`extractAssetRefs`(仅相对引用);`resolveZipPath`(处理 `./ ..`);`processAssets`(图片上传 storage、正文引用改写、缺失保留告警、首图设封面、同图去重);`ensureCategoryPath` 幂等建两级)+ `knowledge-import.controller`(analyze multipart / execute,`@Permission knowledge:manage`)+ `import-execute.dto`。storage 放行 md/zip(zip 200MB)。
+- **两步式**:analyze 上传 zip → 存 storage `import-temp` → 返回 `{importFileId, items[{path,title,dirSegments,assetsFound/Missing,dup}], sidebarIgnored, skippedNonMd}`;execute `{importFileId, items[{path,title,categoryPath,typeCode,action}]}` → 从 storage 取回 → 逐篇独立 try 入库(published/source=import)→ softDelete 临时 zip。sidebar 无效(引用文件都不在包内)自动忽略回退目录结构。
+- **前端** `KnowledgeImport` 3 步向导(上传 → 预览表:根领域分类 + 默认类型 + 逐行 标题/二级分类/类型/勾选 → 执行 + 结果报告)+ AdminLayout「批量导入」。
+- **验证**:双端门禁绿 + 端到端(党建制度 zip → analyze 14 md/sidebarIgnored=true → execute 13 篇(批内同名去重 1)入库,历史制度作二级分类、党徽党旗条例 5 图缺失告警保留、《党章》21625 字符 published、搜索"纪律"命中 11)。**这批党建制度已实际导入 dev 库**。
+- **P2 对抗审查修复(2 镜头,确认 9 修复,否决 2)**:
+  - [高] `processAssets` 字面量全局替换(短 ref 是长 ref 子串 / 单字符 ref 时误伤正文)→ 改**锚定图片语法**的正则回调替换(只换 `](ref)` / `src="ref"` 内的 ref)+ 去重。实测 `a.png` vs `sub/a.png` 各自独立 url、散字母 `aaa` 不被误替换。
+  - [高] execute 无事务残留半成品已发布文章 → 改**补偿式**:失败删已建文章 + 软删已上传图片(「失败=库中无残留」)。
+  - [中] importFileId 只校验 ownerModule → 收紧 `folder==='import-temp'`(防末尾 softDelete 误删其他 knowledge 文件字节)。实测拿 article 图片 fileId 当导入包 → 404。
+  - [中] execute 不校验 typeCode 存在 → 导入路径补 `validTypes` 校验,非法记 failed+warning(不静默入库悬空类型)。实测非法 typeCode → 跳过。
+  - [低] zip bomb → `declaredSize` 前置守卫(单文档 20MB / 单资产 50MB,读中央目录不解压)。
+  - [前端] 导入按钮 disabled 补 `!effectiveType`;execute 只发 create 行 + `>1000` 提示禁用;标题 `maxLength=200`;行组件 `React.memo` + 稳定 `onPatch`(上千篇不卡)。
+  - 否决:分类 TOCTOU(既有设计,手动建分类同款)、双击重复导入(React 19 离散更新 click 间已 disabled)。
 
 ## 后续路线:主流知识网站功能增强(P6 候选,2026-07-05 与用户对齐)
 

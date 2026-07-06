@@ -63,6 +63,7 @@ const CATEGORIES: Category[] = [
       { path: "/admin/reports/catalog",          label: "报送清单",        icon: PackageIcon,        group: "报送管理", perm: "report:manage" },
       { path: "/admin/knowledge",                label: "知识文章",        icon: BookOpenIcon,       group: "知识管理", perm: "knowledge:manage" },
       { path: "/admin/knowledge/categories",     label: "分类管理",        icon: FolderTreeIcon,     group: "知识管理", perm: "knowledge:manage" },
+      { path: "/admin/knowledge/import",         label: "批量导入",        icon: UploadIcon,         group: "知识管理", perm: "knowledge:manage" },
     ],
   },
   {

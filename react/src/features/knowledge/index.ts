@@ -7,3 +7,4 @@ export { default as KnowledgeMinePage } from "./pages/KnowledgeMine";
 export { default as KnowledgeEditorPage } from "./pages/KnowledgeEditor";
 export { default as KnowledgeCategoriesPage } from "./pages/admin/KnowledgeCategories";
 export { default as KnowledgeManagePage } from "./pages/admin/KnowledgeManage";
+export { default as KnowledgeImportPage } from "./pages/admin/KnowledgeImport";
