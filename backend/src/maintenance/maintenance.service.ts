@@ -7,6 +7,7 @@ import { RoleService } from '../role';
 import { AuditService } from '../audit';
 import { ExhibitionService } from '../exhibition';
 import { ReportService } from '../report';
+import { KnowledgeService } from '../knowledge';
 
 /** 上传超过这么多天仍无人引用,才算孤儿(宽限,避免误删「正在走向导、还没提交」的上传)。 */
 const ORPHAN_GRACE_DAYS = 30;
@@ -38,17 +39,19 @@ export class MaintenanceService {
     private readonly audit: AuditService,
     private readonly exhibitions: ExhibitionService,
     private readonly reports: ReportService,
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   /** 聚合所有业务模块「在用」的 storage fileId。漏一个消费方都可能误删 —— 新增引用文件的模块要在这里加。 */
   private async inUseFileIds(): Promise<Set<string>> {
-    const [cert, task, hall, report] = await Promise.all([
+    const [cert, task, hall, report, know] = await Promise.all([
       this.certificates.collectInUseFileIds(),
       this.tasks.collectInUseFileIds(),
       this.exhibitions.collectInUseFileIds(),
       this.reports.collectInUseFileIds(),
+      this.knowledge.collectInUseFileIds(),
     ]);
-    return new Set<string>([...cert, ...task, ...hall, ...report]);
+    return new Set<string>([...cert, ...task, ...hall, ...report, ...know]);
   }
 
   /** 候选过滤:剔除资料库模块(avatar/model3d,常驻文件,见 LIBRARY_MODULES) */

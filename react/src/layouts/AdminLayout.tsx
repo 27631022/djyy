@@ -10,6 +10,7 @@ import {
   PanelLeftCloseIcon, PanelLeftOpenIcon,
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon, MoreHorizontalIcon,
   ArmchairIcon, PlusIcon, LandmarkIcon, PackageIcon, LibraryIcon,
+  BookOpenIcon, FolderTreeIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 import type { AuthMe } from "@/features/auth";
@@ -60,6 +61,8 @@ const CATEGORIES: Category[] = [
       { path: "/admin/assessment/managed",       label: "我维护的考核",    icon: SlidersHorizontalIcon, group: "考核管理" }, // 无 perm = 人人可见(节点管理员入口;非节点管理员看到空页)
       { path: "/admin/reports",                  label: "多次报送",        icon: ClipboardCheckIcon, group: "报送管理", perm: "report:manage" },
       { path: "/admin/reports/catalog",          label: "报送清单",        icon: PackageIcon,        group: "报送管理", perm: "report:manage" },
+      { path: "/admin/knowledge",                label: "知识文章",        icon: BookOpenIcon,       group: "知识管理", perm: "knowledge:manage" },
+      { path: "/admin/knowledge/categories",     label: "分类管理",        icon: FolderTreeIcon,     group: "知识管理", perm: "knowledge:manage" },
     ],
   },
   {

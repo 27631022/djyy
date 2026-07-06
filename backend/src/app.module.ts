@@ -29,6 +29,7 @@ import { VenueModule } from './venue';
 import { AssessmentModule } from './assessment';
 import { ReportModule } from './report';
 import { ImportModule } from './import';
+import { KnowledgeModule } from './knowledge';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { ImportModule } from './import';
     AssessmentModule,
     ReportModule,
     ImportModule,
+    KnowledgeModule,
   ],
   providers: [
     // 全局权限守卫:仅 @Permission() 装饰的接口实际校验,其他不影响

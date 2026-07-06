@@ -1,0 +1,333 @@
+import { useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  ArchiveIcon,
+  BookOpenIcon,
+  ChevronLeftIcon,
+  DownloadIcon,
+  EyeIcon,
+  FileTextIcon,
+  GitBranchIcon,
+  HelpCircleIcon,
+  HomeIcon,
+  LinkIcon,
+  ListIcon,
+  MessageSquareIcon,
+  PencilLineIcon,
+  SparklesIcon,
+  StarIcon,
+  ThumbsUpIcon,
+} from "lucide-react";
+import { api } from "@/shared/api/client";
+import { downloadBlob } from "@/shared/lib/download";
+import { Button } from "@/shared/components/ui/button";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/shared/components/ui/accordion";
+import { useAuth } from "@/stores/auth";
+import {
+  ARTICLE_STATUS_CHIP,
+  ARTICLE_STATUS_LABEL,
+  knowledgeApi,
+  knowledgeErrMsg,
+  type ArticleDetail,
+} from "../api";
+import { MarkdownView } from "../components/MarkdownView";
+import { extractToc } from "../components/markdownToc";
+
+function fmtDateTime(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function fmtSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
+}
+
+/** 仅放行 http(s) 链接;其余(javascript:/data: 等)一律不作为可点链接 —— 纵深防御,后端也已校验 */
+function safeHttpUrl(url: string | null): string | null {
+  if (!url) return null;
+  return /^https?:\/\//i.test(url.trim()) ? url : null;
+}
+
+/** 外壳:取数 → key 重挂载内层(零 effect 同步范式) */
+export default function KnowledgeArticlePage() {
+  const { id = "" } = useParams();
+  const detail = useQuery({
+    queryKey: ["knowledge", "article", id],
+    queryFn: () => knowledgeApi.getArticle(id),
+    enabled: !!id,
+  });
+
+  if (detail.isLoading) {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-gray-400">加载中…</div>;
+  }
+  if (!detail.data) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-sm text-gray-400">
+        文章不存在或无权查看
+        <Button variant="outline" size="sm" onClick={() => window.history.back()}>返回</Button>
+      </div>
+    );
+  }
+  return <ArticleView key={detail.data.id} article={detail.data} />;
+}
+
+function ArticleView({ article: a }: { article: ArticleDetail }) {
+  const navigate = useNavigate();
+  const { me } = useAuth();
+  const toc = extractToc(a.contentMd);
+  const isAuthor = me?.id === a.authorId;
+  const latestPublished = a.versions.find((v) => v.status === "published");
+  const safeSource = safeHttpUrl(a.sourceUrl);
+
+  // 记浏览(纯副作用 POST,无 setState;viewLogId 供 P3 时长 beacon 使用)
+  useEffect(() => {
+    knowledgeApi.recordView(a.id).catch(() => {});
+  }, [a.id]);
+
+  async function downloadAttachment(attId: string, fileId: string, name: string) {
+    try {
+      await knowledgeApi.attachmentDownloaded(attId).catch(() => {});
+      const blob = await api
+        .get<Blob>(`/public/knowledge/files/${fileId}`, { responseType: "blob", timeout: 120_000 })
+        .then((r) => r.data);
+      downloadBlob(blob, name);
+    } catch (e) {
+      toast.error(knowledgeErrMsg(e, "下载失败,请重试"));
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-[#FBF7F2] via-[#FDFCFA] to-white">
+      <header className="sticky top-0 z-20 bg-white/85 backdrop-blur border-b border-gray-100">
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/knowledge")}
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-[var(--party-primary)]"
+          >
+            <ChevronLeftIcon className="w-4 h-4" /> 知识园地
+          </button>
+          <span className="text-gray-200">|</span>
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-[var(--party-primary)]"
+          >
+            <HomeIcon className="w-4 h-4" /> 首页
+          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {isAuthor && ["draft", "rejected"].includes(a.status) && (
+              <Button size="sm" variant="outline" onClick={() => navigate(`/knowledge/edit/${a.id}`)}>
+                <PencilLineIcon className="w-4 h-4 mr-1" /> 继续编辑
+              </Button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-6xl mx-auto px-4 py-8 grid grid-cols-[1fr_240px] gap-8 items-start">
+        <main className="min-w-0">
+          {/* 已归档横幅 */}
+          {a.status === "archived" && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <ArchiveIcon className="w-4 h-4 shrink-0" />
+              此版本已归档{a.versionLabel ? `(${a.versionLabel})` : ""},内容可能已被新版本取代。
+              {latestPublished && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/knowledge/articles/${latestPublished.id}`)}
+                  className="ml-auto shrink-0 text-[var(--party-primary)] font-medium hover:underline"
+                >
+                  查看最新版 →
+                </button>
+              )}
+            </div>
+          )}
+          {a.status !== "published" && a.status !== "archived" && (
+            <div className="mb-4 flex items-center gap-2 text-sm">
+              <span className={`px-2 py-0.5 rounded ${ARTICLE_STATUS_CHIP[a.status]}`}>
+                {ARTICLE_STATUS_LABEL[a.status]}
+              </span>
+              {a.status === "rejected" && a.rejectReason && (
+                <span className="text-red-500">驳回原因:{a.rejectReason}</span>
+              )}
+            </div>
+          )}
+
+          {/* 标题与元信息 */}
+          <h1 className="text-3xl font-bold text-gray-900 leading-snug">
+            {a.title}
+            {a.versionLabel && <span className="ml-2 text-base font-normal text-amber-600">({a.versionLabel})</span>}
+          </h1>
+          <div className="mt-3 flex items-center gap-3 text-[13px] text-gray-400 flex-wrap">
+            <span className="px-1.5 py-0.5 rounded bg-party-soft text-[var(--party-primary)]">{a.categoryName}</span>
+            <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">{a.typeName}</span>
+            <span>{a.authorName}</span>
+            <span>{fmtDateTime(a.publishedAt ?? a.createdAt)}</span>
+            {safeSource && (
+              <a
+                href={safeSource}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-0.5 hover:text-[var(--party-primary)]"
+              >
+                <LinkIcon className="w-3.5 h-3.5" /> 原文
+              </a>
+            )}
+            <span className="ml-auto flex items-center gap-3">
+              <span className="flex items-center gap-1"><EyeIcon className="w-4 h-4" />{a.viewCount}</span>
+              <span className="flex items-center gap-1"><ThumbsUpIcon className="w-4 h-4" />{a.likeCount}</span>
+              <span className="flex items-center gap-1"><StarIcon className="w-4 h-4" />{a.favoriteCount}</span>
+              <span className="flex items-center gap-1"><MessageSquareIcon className="w-4 h-4" />{a.commentCount}</span>
+            </span>
+          </div>
+
+          {/* 导读 */}
+          {a.summary && (
+            <div className="mt-5 rounded-xl border border-amber-100 bg-amber-50/60 p-4">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-amber-700 mb-1.5">
+                <SparklesIcon className="w-4 h-4" /> 导读
+              </div>
+              <p className="text-sm leading-6 text-gray-700 whitespace-pre-wrap">{a.summary}</p>
+            </div>
+          )}
+
+          {/* 正文 */}
+          <article className="mt-4 rounded-xl border border-gray-100 bg-white/90 shadow-sm px-6 py-5">
+            <MarkdownView md={a.contentMd} />
+          </article>
+
+          {/* 标签 */}
+          {a.tags.length > 0 && (
+            <div className="mt-4 flex items-center gap-2 flex-wrap">
+              {a.tags.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => navigate(`/knowledge?tag=${encodeURIComponent(t)}`)}
+                  className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 text-xs hover:bg-party-soft hover:text-[var(--party-primary)] transition-colors"
+                >
+                  #{t}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* 常见问题答疑(P4 AI 生成后展示) */}
+          {a.faqs.length > 0 && (
+            <div className="mt-6 rounded-xl border border-gray-100 bg-white/90 shadow-sm px-6 py-4">
+              <div className="flex items-center gap-1.5 font-medium text-gray-800 mb-1">
+                <HelpCircleIcon className="w-4 h-4 text-[var(--party-primary)]" /> 常见问题答疑
+              </div>
+              <Accordion type="single" collapsible>
+                {a.faqs.map((f, i) => (
+                  <AccordionItem key={i} value={`faq-${i}`}>
+                    <AccordionTrigger className="text-sm text-left">{f.q}</AccordionTrigger>
+                    <AccordionContent className="text-sm leading-6 text-gray-600 whitespace-pre-wrap">
+                      {f.a}
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </div>
+          )}
+
+          {/* 附件(模板下载) */}
+          {a.attachments.length > 0 && (
+            <div className="mt-6 rounded-xl border border-gray-100 bg-white/90 shadow-sm px-6 py-4">
+              <div className="flex items-center gap-1.5 font-medium text-gray-800 mb-2">
+                <FileTextIcon className="w-4 h-4 text-[var(--party-primary)]" /> 附件与模板下载
+              </div>
+              <div className="divide-y divide-gray-50">
+                {a.attachments.map((att) => (
+                  <div key={att.id} className="flex items-center gap-3 py-2.5">
+                    <FileTextIcon className="w-4 h-4 text-gray-300 shrink-0" />
+                    <span className="flex-1 truncate text-sm text-gray-700">{att.name}</span>
+                    <span className="text-xs text-gray-400">{fmtSize(att.size)}</span>
+                    <span className="text-xs text-gray-300">已下载 {att.downloadCount}</span>
+                    <Button size="sm" variant="outline" onClick={() => void downloadAttachment(att.id, att.fileId, att.name)}>
+                      <DownloadIcon className="w-3.5 h-3.5 mr-1" /> 下载
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 历史版本 */}
+          {a.versions.length > 0 && (
+            <div className="mt-6 rounded-xl border border-gray-100 bg-white/90 shadow-sm px-6 py-4">
+              <div className="flex items-center gap-1.5 font-medium text-gray-800 mb-2">
+                <GitBranchIcon className="w-4 h-4 text-[var(--party-primary)]" /> 历史版本
+              </div>
+              <div className="divide-y divide-gray-50">
+                {a.versions.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => navigate(`/knowledge/articles/${v.id}`)}
+                    className="w-full flex items-center gap-3 py-2.5 text-left hover:bg-gray-50/60 rounded px-1 transition-colors"
+                  >
+                    <span className="flex-1 truncate text-sm text-gray-700">
+                      {v.title}
+                      {v.versionLabel && <span className="ml-1.5 text-xs text-amber-600">({v.versionLabel})</span>}
+                    </span>
+                    <span className={`px-1.5 py-0.5 rounded text-[11px] ${ARTICLE_STATUS_CHIP[v.status]}`}>
+                      {ARTICLE_STATUS_LABEL[v.status]}
+                    </span>
+                    <span className="text-xs text-gray-400">{fmtDateTime(v.publishedAt)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 互动占位:P3 接 评论/点赞/收藏/吐槽 */}
+          <div className="mt-6 rounded-xl border border-dashed border-gray-200 px-6 py-5 text-center text-sm text-gray-300">
+            评论 · 点赞 · 收藏 · 意见反馈 —— 下一期上线
+          </div>
+        </main>
+
+        {/* 右:目录 */}
+        <aside className="sticky top-20 hidden lg:block">
+          {toc.length >= 2 && (
+            <div className="rounded-xl border border-gray-100 bg-white/90 shadow-sm p-4">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-gray-400 mb-2">
+                <ListIcon className="w-3.5 h-3.5" /> 本文目录
+              </div>
+              <nav className="space-y-1 max-h-[60vh] overflow-y-auto">
+                {toc.map((t, i) => (
+                  <a
+                    key={`${t.id}-${i}`}
+                    href={`#${t.id}`}
+                    className={`block text-[13px] leading-5 text-gray-500 hover:text-[var(--party-primary)] truncate ${
+                      t.level === 1 ? "" : t.level === 2 ? "pl-3" : "pl-6"
+                    }`}
+                  >
+                    {t.text}
+                  </a>
+                ))}
+              </nav>
+            </div>
+          )}
+          <div className="mt-4 rounded-xl border border-gray-100 bg-white/90 shadow-sm p-4 text-xs text-gray-400 leading-5">
+            <BookOpenIcon className="w-4 h-4 text-gray-300 mb-1" />
+            知识由 {a.authorName} 分享
+            {a.reviewedByName && <div>审核:{a.reviewedByName}</div>}
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}

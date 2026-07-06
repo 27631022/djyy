@@ -1241,3 +1241,187 @@ model ReportUnitGroup {
 
   @@index([userId])
 }
+
+// ─────────────────────────────────────────────────────────
+// 知识分享平台 (knowledge)
+// 三个正交维度:领域分类(党建/设备/安全,两级树)× 内容类型(条例/制度/经验/操作指南,
+// 审核开关挂这里)× 标签(tagsJson 自由维度)。制度支持版本链(versionGroupId)。
+// 设计规格:docs/specs/2026-07-05-knowledge-platform.md
+// ─────────────────────────────────────────────────────────
+
+// 领域分类(党建/设备/安全…)。两级:parentId=null 为顶级;深度≤2 与同级重名
+// 由 service 校验(PG 的 UNIQUE 对 parentId=NULL 的行不生效,复合唯一约束靠不住)。
+// @module: knowledge
+model KnowledgeCategory {
+  id          String              @id @default(cuid())
+  name        String
+  parentId    String?
+  parent      KnowledgeCategory?  @relation("KnowledgeCategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children    KnowledgeCategory[] @relation("KnowledgeCategoryTree")
+  description String?
+  icon        String? // lucide 图标名(IconPicker)
+  sortOrder   Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  articles KnowledgeArticle[]
+
+  @@index([parentId, sortOrder])
+}
+
+// 内容类型 + 审核开关(「按内容类型可配审核」的唯一开关处:条例/制度默认需审,
+// 经验分享/操作指南直发)。管理员可增改;code 被文章松引用,删除前 service 校验无文章。
+// @module: knowledge
+model KnowledgeType {
+  code          String   @id // regulation | policy | experience | guide | 自定义
+  name          String
+  requireReview Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// 知识文章。contentMd 直接存库(PG text,ILIKE 全文搜索 + AI 处理都在库内);
+// 正文图片/附件走 storage 只留引用(图片引用烤在 contentMd 里,GC 靠正则扫)。
+// 版本链:versionGroupId 相同 = 同一制度的多个版本;发布新版时旧版转 archived
+// (不进列表/搜索,详情页「历史版本」可查)。
+// @module: knowledge
+model KnowledgeArticle {
+  id             String            @id @default(cuid())
+  title          String
+  categoryId     String
+  category       KnowledgeCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  typeCode       String // → KnowledgeType.code(松引用,service 校验存在)
+  contentMd      String // Markdown 正文
+  summary        String? // AI 导读(人工可改)
+  faqJson        String? // 常见问题 [{q,a}] JSON 串
+  tagsJson       String? // 标签 ["党务","入党"] JSON 串(轻量,不建 Tag 表)
+  versionGroupId String? // 版本链 id:首版=自身 id;修订版=旧文章的 versionGroupId ?? 旧文章 id
+  versionLabel   String? // 版本说明,如「2026年修订」
+  status         String            @default("draft") // draft | pending | published | rejected | archived
+  rejectReason   String?
+  source         String            @default("manual") // manual | import | ai_archive
+  sourceUrl      String? // ai_archive 的原文链接
+  authorId       String // 松引用 User.id
+  authorName     String // 快照
+  reviewedById   String?
+  reviewedByName String?
+  reviewedAt     DateTime?
+  publishedAt    DateTime?
+  pinned         Boolean           @default(false)
+  coverFileId    String? // 松引用 StoredFile(列表卡片封面,可空)
+  viewCount      Int               @default(0) // 冗余计数列,原子 increment
+  likeCount      Int               @default(0)
+  favoriteCount  Int               @default(0)
+  commentCount   Int               @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  attachments KnowledgeAttachment[]
+  comments    KnowledgeComment[]
+  reactions   KnowledgeReaction[]
+  feedbacks   KnowledgeFeedback[]
+
+  @@index([categoryId, status])
+  @@index([status, pinned, publishedAt])
+  @@index([authorId, status])
+  @@index([versionGroupId])
+}
+
+// 展示型附件(模板下载/视频等,阅读页附件卡);正文内嵌图片不入此表。
+// @module: knowledge
+model KnowledgeAttachment {
+  id            String           @id @default(cuid())
+  articleId     String
+  article       KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  fileId        String // 松引用 StoredFile
+  name          String // 展示名(默认原始文件名)
+  size          Int              @default(0)
+  downloadCount Int              @default(0)
+  sortOrder     Int              @default(0)
+  createdAt     DateTime         @default(now())
+
+  @@index([articleId])
+}
+
+// 评论:单层 + replyToId(@回复)。content 纯文本渲染(零 XSS 面);
+// replyToId 松引用同文章另一条评论,被回复删除时前端显示「原评论已删除」。
+// @module: knowledge
+model KnowledgeComment {
+  id              String           @id @default(cuid())
+  articleId       String
+  article         KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId          String // 松引用 User.id
+  userName        String // 快照
+  content         String
+  replyToId       String?
+  replyToUserName String?
+  createdAt       DateTime         @default(now())
+
+  @@index([articleId, createdAt])
+}
+
+// 点赞/收藏(type 区分),一人一文一类型一条。
+// @module: knowledge
+model KnowledgeReaction {
+  id        String           @id @default(cuid())
+  articleId String
+  article   KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId    String // 松引用 User.id
+  type      String // like | favorite
+  createdAt DateTime         @default(now())
+
+  @@unique([userId, articleId, type])
+  @@index([articleId, type])
+  @@index([userId, type, createdAt])
+}
+
+// 吐槽 = 不公开的意见反馈通道(与评论分开):仅作者与管理员可见并回复。
+// userId 始终存(防刷/审计),anonymous 只影响展示(对作者与管理员均显「匿名用户」)。
+// @module: knowledge
+model KnowledgeFeedback {
+  id        String           @id @default(cuid())
+  articleId String
+  article   KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId    String // 松引用 User.id
+  userName  String // 快照
+  anonymous Boolean          @default(false)
+  content   String
+  status    String           @default("open") // open | replied | closed
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  replies KnowledgeFeedbackReply[]
+
+  @@index([articleId, status])
+  @@index([status, createdAt])
+}
+
+// 反馈回复(作者或管理员,实名)。
+// @module: knowledge
+model KnowledgeFeedbackReply {
+  id         String            @id @default(cuid())
+  feedbackId String
+  feedback   KnowledgeFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  userId     String // 松引用 User.id
+  userName   String // 快照
+  content    String
+  createdAt  DateTime          @default(now())
+
+  @@index([feedbackId])
+}
+
+// 原始浏览日志(量级 ~几千行/天,PG 带索引聚合无压力,不建日聚合表)。
+// articleId 松引用(删文留日志,统计口径需要);durationSec 由离开时 beacon 回填
+// (取 max 幂等,封顶 14400 秒 = 4h)。
+// @module: knowledge
+model KnowledgeViewLog {
+  id          String   @id @default(cuid())
+  articleId   String // 松引用 KnowledgeArticle(不建 FK,删文留日志)
+  userId      String // 松引用 User.id
+  durationSec Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([articleId, createdAt])
+  @@index([userId, createdAt])
+}

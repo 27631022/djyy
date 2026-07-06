@@ -328,6 +328,9 @@ async function seedRolesAndPermissions() {
     { code: 'report:review',             name: '报送审核(通过/退回)',     category: 'operation' },
     { code: 'report:reception',          name: '报送接收(认领/指派/对口)', category: 'operation' },
     { code: 'report:fill',               name: '报送填报',                category: 'operation' },
+    // 知识分享(knowledge)— manage:分类/类型/审核/导入/反馈/删任意文章;publish:发布文章(人人可发,审核靠内容类型开关兜底)
+    { code: 'knowledge:manage',          name: '知识管理(分类/审核/导入)', category: 'operation' },
+    { code: 'knowledge:publish',         name: '发布知识文章',            category: 'operation' },
   ];
   for (const p of permissions) {
     await prisma.permission.upsert({
@@ -342,12 +345,12 @@ async function seedRolesAndPermissions() {
     // 企业管理员:全套企业管理权限(不含 角色授权 admin:role:write / 插件 / 删除证书 / 删除文件 等高危权限,留 platform_admin)。
     // 一级 vs 二级 = 同角色不同 scope:分配时 scope=all(一级,全集团)或 scope=subtree(二级,自动锚到派发人所在单位的子树)。
     // 任务域已按 scope 强制;组织/用户管理的范围限制后续按需加。
-    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage', 'assessment:manage', 'assessment:score', 'assessment:view', 'assessment:export', 'report:manage', 'report:review', 'report:reception', 'report:fill'] },
-    { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill'] },
-    { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill'] },
+    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage', 'assessment:manage', 'assessment:score', 'assessment:view', 'assessment:export', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:manage', 'knowledge:publish'] },
+    { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:manage', 'knowledge:publish'] },
+    { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:publish'] },
     // 任务派发:给各级机关部门的派发人;配合 UserRole.scope(本组织+下级 / 自定义单位)限定派发范围
     { code: 'task_dispatcher', name: '任务派发',     perms: ['portal:view', 'task:manage', 'task:review', 'file:upload', 'report:manage', 'report:review'] },
-    { code: 'member',          name: '普通用户',     perms: ['portal:view', 'task:fill', 'report:fill'] },
+    { code: 'member',          name: '普通用户',     perms: ['portal:view', 'task:fill', 'report:fill', 'knowledge:publish'] },
   ];
   for (const r of roles) {
     const role = await prisma.role.upsert({
@@ -364,6 +367,40 @@ async function seedRolesAndPermissions() {
         });
       }
     }
+  }
+}
+
+/* ─── 知识分享:内容类型(审核开关唯一配置处)+ 示例领域分类 ─── */
+async function seedKnowledgeDefaults() {
+  // 内容类型:条例/制度需审核,经验分享/操作指南直发(管理员可在「分类管理」页增改)
+  const types = [
+    { code: 'regulation', name: '条例',     requireReview: true,  sortOrder: 1 },
+    { code: 'policy',     name: '制度',     requireReview: true,  sortOrder: 2 },
+    { code: 'experience', name: '经验分享', requireReview: false, sortOrder: 3 },
+    { code: 'guide',      name: '操作指南', requireReview: false, sortOrder: 4 },
+  ];
+  for (const t of types) {
+    await prisma.knowledgeType.upsert({
+      where: { code: t.code },
+      // 已存在则不动 —— 名称/排序/审核开关都是管理员在 UI 可改的运营配置,reseed 不能冲掉
+      update: {},
+      create: t,
+    });
+  }
+
+  // 示例领域分类(固定 id 幂等;仅起步示例,管理员可改可删)
+  const cats = [
+    { id: 'seed-kcat-party',  name: '党建', icon: 'Flag',     sortOrder: 1, description: '党务条例、制度与经验' },
+    { id: 'seed-kcat-device', name: '设备', icon: 'Wrench',   sortOrder: 2, description: '设备管理与操作' },
+    { id: 'seed-kcat-safety', name: '安全', icon: 'ShieldCheck', sortOrder: 3, description: '安全生产制度与规程' },
+    { id: 'seed-kcat-misc',   name: '综合', icon: 'BookOpen', sortOrder: 4, description: '其他综合知识' },
+  ];
+  for (const c of cats) {
+    await prisma.knowledgeCategory.upsert({
+      where: { id: c.id },
+      update: {}, // 已存在不动(用户可能已改名/挂了子类)
+      create: c,
+    });
   }
 }
 
@@ -1070,6 +1107,9 @@ async function main() {
 
   await seedExhibitionHall();
   console.log('  ✓ 示例展厅「企业文化展厅」已写入');
+
+  await seedKnowledgeDefaults();
+  console.log('  ✓ 知识分享 内容类型 + 示例领域分类已写入');
 
   // 收尾清理:此时所有 user 归属 / 虚拟组织都已重新指向 KL-* 节点,
   // 老的 PARTY-*/ADMIN-* 节点既无业务引用也无 children,可放心删。

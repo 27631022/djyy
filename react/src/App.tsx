@@ -44,6 +44,14 @@ import {
 import { SchemeListPage, SchemeEditorPage, RoundListPage, RoundDetailPage, AssessmentResultsPage, MyAssessmentsPage, MyManagedSchemesPage, NodeMaintainPage, UnitCheckupPage } from "@/features/assessment";
 import { ReportTasksPage, ReportCatalogPage, ReportCreatePage, PublishChooserPage, ReportFillPage, ReportDetailPage } from "@/features/report";
 import { DataImportPage } from "@/features/import";
+import {
+  KnowledgePortalPage,
+  KnowledgeArticlePage,
+  KnowledgeMinePage,
+  KnowledgeEditorPage,
+  KnowledgeCategoriesPage,
+  KnowledgeManagePage,
+} from "@/features/knowledge";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
 import { Toaster } from "@/shared/components/ui/sonner";
@@ -140,6 +148,9 @@ const ADMIN_ROUTES: RouteObject[] = [
   { path: "assessment/rounds/:id", element: <RoundDetailPage /> },
   { path: "assessment/mine", element: <MyAssessmentsPage /> },
   { path: "assessment/managed", element: <MyManagedSchemesPage /> },
+  // 知识分享(knowledge)后台管理
+  { path: "knowledge", element: <KnowledgeManagePage /> },
+  { path: "knowledge/categories", element: <KnowledgeCategoriesPage /> },
   // 通用报送平台(report)
   { path: "reports", element: <ReportTasksPage /> },
   { path: "reports/publish", element: <PublishChooserPage /> },
@@ -161,6 +172,12 @@ const App = () => (
           {/* 证书公开验证:完全公开,不走 AdminLayout/ProtectedRoute */}
           <Route path="/verify" element={<CertificateVerifyPage />} />
           <Route path="/verify/:token" element={<CertificateVerifyPage />} />
+          {/* 知识分享前台门户(独立于 AdminLayout;内部条例制度 → 登录可见) */}
+          <Route path="/knowledge" element={<ProtectedRoute><KnowledgePortalPage /></ProtectedRoute>} />
+          <Route path="/knowledge/articles/:id" element={<ProtectedRoute><KnowledgeArticlePage /></ProtectedRoute>} />
+          <Route path="/knowledge/mine" element={<ProtectedRoute><KnowledgeMinePage /></ProtectedRoute>} />
+          <Route path="/knowledge/edit" element={<ProtectedRoute><KnowledgeEditorPage /></ProtectedRoute>} />
+          <Route path="/knowledge/edit/:id" element={<ProtectedRoute><KnowledgeEditorPage /></ProtectedRoute>} />
           {/* 桌面任务小组件(Tauri 挂件加载的透明页;浏览器也可直接开 /widget 调试)。
               挂件自行处理登录(未登录显示紧凑登录),不套 ProtectedRoute,保持透明圆角壳 */}
           <Route path="/widget" element={<TaskWidgetPage />} />
