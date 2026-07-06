@@ -229,12 +229,13 @@ export class OidcService {
   }
 
   /**
-   * ⚠ Casdoor 与标准 OIDC 的 claim 语义相反:Casdoor `name`=登录名、`preferred_username`=显示名;
-   *   标准 OIDC `preferred_username`=登录名、`name`=全名。OIDC_USERNAME_CLAIM 指定「登录名」取哪个,
-   *   默认 `name`(契合自建 Casdoor);接标准 OIDC 单位 SSO 时配 `preferred_username`。
+   * 「登录名」取哪个 claim。默认 `preferred_username` —— 标准 OIDC 约定,**实测真 Casdoor 的
+   * OIDC userinfo 也遵循**(preferred_username=登录名/工号,name=显示名)。
+   * ⚠ 别被「Casdoor 数据模型里 user.Name=登录名」误导:那是它内部字段名,对外 OIDC claim 是标准的。
+   * 个别非标 IdP 若把登录名放 name,配 OIDC_USERNAME_CLAIM=name 兜底。
    */
   private get usernameClaim(): 'name' | 'preferred_username' {
-    return process.env.OIDC_USERNAME_CLAIM === 'preferred_username' ? 'preferred_username' : 'name';
+    return process.env.OIDC_USERNAME_CLAIM === 'name' ? 'name' : 'preferred_username';
   }
 
   /* ─── IdP 身份 → 本地 User ───
