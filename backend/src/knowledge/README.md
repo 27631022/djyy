@@ -36,8 +36,9 @@
 
 ## 文件与 GC
 
-前端上传一律 `storageApi.upload(file, { ownerModule: 'knowledge', folder: 'article-<id>' })`;
-正文图片以相对路径 `/api/public/knowledge/files/<fileId>` 烤进 markdown(渲染时拼 origin)。
+文章资源(图片/视频/附件)统一走 `POST /knowledge/articles/:id/upload`(`uploadResource`)——
+**规范命名**:文件名=「文章标题-序号.扩展名」,集中 `article-<id>` 文件夹(挂群晖 File Station 一看即知)。
+正文图片以相对路径 `/api/public/knowledge/files/<fileId>` 烤进 markdown(渲染时拼 origin);视频插 `<video controls>`。
 `collectInUseFileIds()` 上报 附件 + 封面 + 正文引用,**已接入 MaintenanceService**;
 新增引用 storage 的字段务必同步该方法,否则孤儿 GC 会误删。
 删文章联动软删其 storage 文件。

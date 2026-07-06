@@ -1,7 +1,17 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FolderTreeIcon, PlusIcon, PencilIcon, Trash2Icon, ShieldCheckIcon } from "lucide-react";
+import { FolderTreeIcon, PlusIcon, PencilIcon, Trash2Icon, ShieldCheckIcon, GripVerticalIcon } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Switch } from "@/shared/components/ui/switch";
@@ -47,10 +57,63 @@ export default function KnowledgeCategories() {
 
 /* ─── 领域分类 ─── */
 
+/** 一行分类(带拖拽手柄) */
+function SortableRow({
+  cat,
+  isChild,
+  onAddChild,
+  onEdit,
+  onDelete,
+}: {
+  cat: KnowledgeCategory;
+  isChild: boolean;
+  onAddChild?: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cat.id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex items-center gap-2 py-2.5 px-2 rounded-lg hover:bg-gray-50 bg-white ${
+        isChild ? "ml-8" : ""
+      } ${isDragging ? "opacity-60 shadow" : ""}`}
+    >
+      <button
+        type="button"
+        className="text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing touch-none"
+        {...attributes}
+        {...listeners}
+        title="拖拽排序"
+      >
+        <GripVerticalIcon className="w-4 h-4" />
+      </button>
+      <span className={`flex-1 truncate ${isChild ? "text-sm text-gray-600" : "font-medium text-gray-800"}`}>
+        {cat.name}
+        {cat.description && <span className="ml-2 text-xs text-gray-400">{cat.description}</span>}
+      </span>
+      <span className="text-xs text-gray-400">{cat.articleCount} 篇</span>
+      {onAddChild && (
+        <Button size="sm" variant="ghost" className="text-gray-400" onClick={onAddChild}>
+          <PlusIcon className="w-3.5 h-3.5 mr-0.5" /> 子分类
+        </Button>
+      )}
+      <Button size="sm" variant="ghost" className="text-gray-400" onClick={onEdit}>
+        <PencilIcon className="w-3.5 h-3.5" />
+      </Button>
+      <Button size="sm" variant="ghost" className="text-gray-300 hover:text-red-500" onClick={onDelete}>
+        <Trash2Icon className="w-3.5 h-3.5" />
+      </Button>
+    </div>
+  );
+}
+
 function CategoriesTab() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["knowledge", "categories"], queryFn: knowledgeApi.listCategories });
   const [dialog, setDialog] = useState<CatDialogState>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const del = useMutation({
     mutationFn: (id: string) => knowledgeApi.deleteCategory(id),
@@ -61,65 +124,97 @@ function CategoriesTab() {
     onError: (e) => toast.error(knowledgeErrMsg(e, "删除失败")),
   });
 
-  function row(cat: KnowledgeCategory, isChild: boolean) {
-    return (
-      <div
-        key={cat.id}
-        className={`flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-50 ${isChild ? "ml-8" : ""}`}
-      >
-        <span className={`flex-1 truncate ${isChild ? "text-sm text-gray-600" : "font-medium text-gray-800"}`}>
-          {isChild && <span className="text-gray-300 mr-1">└</span>}
-          {cat.name}
-          {cat.description && <span className="ml-2 text-xs text-gray-400">{cat.description}</span>}
-        </span>
-        <span className="text-xs text-gray-400">{cat.articleCount} 篇</span>
-        {!isChild && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-gray-400"
-            onClick={() => setDialog({ mode: "create", parentId: cat.id, parentName: cat.name })}
-          >
-            <PlusIcon className="w-3.5 h-3.5 mr-0.5" /> 子分类
-          </Button>
-        )}
-        <Button size="sm" variant="ghost" className="text-gray-400" onClick={() => setDialog({ mode: "edit", cat })}>
-          <PencilIcon className="w-3.5 h-3.5" />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="text-gray-300 hover:text-red-500"
-          onClick={() => {
-            if (window.confirm(`确定删除分类「${cat.name}」?(有子分类或文章时不可删)`)) del.mutate(cat.id);
-          }}
-        >
-          <Trash2Icon className="w-3.5 h-3.5" />
-        </Button>
-      </div>
+  const reorder = useMutation({
+    mutationFn: (items: Array<{ id: string; sortOrder: number }>) => knowledgeApi.reorderCategories(items),
+    // 乐观更新已在 onDragEnd 里 setQueryData;失败回滚 + 提示
+    onError: (e) => {
+      toast.error(knowledgeErrMsg(e, "排序失败"));
+      qc.invalidateQueries({ queryKey: ["knowledge", "categories"] });
+    },
+  });
+
+  const catKey = ["knowledge", "categories"] as const;
+
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const data = qc.getQueryData<KnowledgeCategory[]>(catKey);
+    if (!data) return;
+    const aId = String(active.id);
+    const oId = String(over.id);
+
+    // 顶级之间排序
+    const rootIds = data.map((r) => r.id);
+    if (rootIds.includes(aId) && rootIds.includes(oId)) {
+      const next = arrayMove(data, rootIds.indexOf(aId), rootIds.indexOf(oId));
+      qc.setQueryData(catKey, next);
+      reorder.mutate(next.map((c, i) => ({ id: c.id, sortOrder: i })));
+      return;
+    }
+    // 同一父下的子级排序(跨父不移动)
+    const parent = data.find(
+      (r) => r.children.some((c) => c.id === aId) && r.children.some((c) => c.id === oId),
     );
+    if (parent) {
+      const ids = parent.children.map((c) => c.id);
+      const newChildren = arrayMove(parent.children, ids.indexOf(aId), ids.indexOf(oId));
+      const next = data.map((r) => (r.id === parent.id ? { ...r, children: newChildren } : r));
+      qc.setQueryData(catKey, next);
+      reorder.mutate(newChildren.map((c, i) => ({ id: c.id, sortOrder: i })));
+    }
   }
+
+  const roots = list.data ?? [];
 
   return (
     <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-4">
-      <div className="flex justify-end mb-2">
-        <Button size="sm" onClick={() => setDialog({ mode: "create", parentId: null })}>
+      <div className="flex items-center mb-2">
+        <span className="text-xs text-gray-400 flex items-center gap-1">
+          <GripVerticalIcon className="w-3.5 h-3.5" /> 拖动手柄可排序(同级之间);顺序即门户左侧分类的展示顺序
+        </span>
+        <Button size="sm" className="ml-auto" onClick={() => setDialog({ mode: "create", parentId: null })}>
           <PlusIcon className="w-4 h-4 mr-1" /> 新建顶级分类
         </Button>
       </div>
       {list.isLoading ? (
         <div className="py-10 text-center text-sm text-gray-400">加载中…</div>
-      ) : (list.data?.length ?? 0) === 0 ? (
+      ) : roots.length === 0 ? (
         <div className="py-10 text-center text-sm text-gray-400">还没有分类</div>
       ) : (
-        <div className="divide-y divide-gray-50">
-          {list.data!.map((root) => (
-            <div key={root.id} className="py-0.5">
-              {row(root, false)}
-              {root.children.map((c) => row(c, true))}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={roots.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+            <div className="divide-y divide-gray-50">
+              {roots.map((root) => (
+                <div key={root.id} className="py-0.5">
+                  <SortableRow
+                    cat={root}
+                    isChild={false}
+                    onAddChild={() => setDialog({ mode: "create", parentId: root.id, parentName: root.name })}
+                    onEdit={() => setDialog({ mode: "edit", cat: root })}
+                    onDelete={() => {
+                      if (window.confirm(`确定删除分类「${root.name}」?(有子分类或文章时不可删)`)) del.mutate(root.id);
+                    }}
+                  />
+                  {root.children.length > 0 && (
+                    <SortableContext items={root.children.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+                      {root.children.map((c) => (
+                        <SortableRow
+                          key={c.id}
+                          cat={c}
+                          isChild
+                          onEdit={() => setDialog({ mode: "edit", cat: c })}
+                          onDelete={() => {
+                            if (window.confirm(`确定删除分类「${c.name}」?(有文章时不可删)`)) del.mutate(c.id);
+                          }}
+                        />
+                      ))}
+                    </SortableContext>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       )}
       {dialog && (
         <CategoryDialog

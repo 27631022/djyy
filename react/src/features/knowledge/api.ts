@@ -177,6 +177,8 @@ export const knowledgeApi = {
     api.patch<KnowledgeCategory>(`/knowledge/categories/${id}`, data).then((r) => r.data),
   deleteCategory: (id: string) =>
     api.delete<{ ok: true }>(`/knowledge/categories/${id}`).then((r) => r.data),
+  reorderCategories: (items: Array<{ id: string; sortOrder: number }>) =>
+    api.post<{ ok: true }>("/knowledge/categories/reorder", { items }).then((r) => r.data),
 
   /* 内容类型 */
   listTypes: () => api.get<KnowledgeType[]>("/knowledge/types").then((r) => r.data),
@@ -214,6 +216,19 @@ export const knowledgeApi = {
     api.post<ArticleDetail>(`/knowledge/articles/${id}/unpublish`).then((r) => r.data),
   deleteArticle: (id: string) =>
     api.delete<{ ok: true }>(`/knowledge/articles/${id}`).then((r) => r.data),
+
+  /* 资源上传(规范命名「标题-序号」,集中 article-<id>)—— 图片/视频/附件共用 */
+  uploadResource: (articleId: string, file: File | Blob, filename?: string) => {
+    const form = new FormData();
+    const name = filename ?? (file instanceof File ? file.name : "upload.bin");
+    form.append("file", file, name);
+    return api
+      .post<{ fileId: string; url: string; name: string }>(`/knowledge/articles/${articleId}/upload`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 300_000,
+      })
+      .then((r) => r.data);
+  },
 
   /* 附件 */
   addAttachment: (articleId: string, data: { fileId: string; name?: string }) =>

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,19 +9,39 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { Permission } from '../permission';
 import { KnowledgeService } from './knowledge.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { ReorderCategoriesDto } from './dto/reorder-categories.dto';
 import { CreateTypeDto, UpdateTypeDto } from './dto/create-type.dto';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
 import { ReviewArticleDto } from './dto/review-article.dto';
 import { AddAttachmentDto } from './dto/add-attachment.dto';
+
+/** multipart 中文文件名 latin1→utf8 还原(同 storage.controller) */
+function decodeMulterName(name: string): string {
+  try {
+    return Buffer.from(name, 'latin1').toString('utf8') || name;
+  } catch {
+    return name;
+  }
+}
+
+interface UploadedResource {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
 
 /**
  * 知识分享平台(登录态)。
@@ -59,6 +80,12 @@ export class KnowledgeController {
     @Req() req: Request,
   ) {
     return this.svc.updateCategory(id, dto, this.ctx(me, req));
+  }
+
+  @Permission('knowledge:manage')
+  @Post('categories/reorder')
+  reorderCategories(@Body() dto: ReorderCategoriesDto, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.reorderCategories(dto.items, this.ctx(me, req));
   }
 
   @Permission('knowledge:manage')
@@ -183,6 +210,24 @@ export class KnowledgeController {
   @Delete('articles/:id')
   removeArticle(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.svc.removeArticle(id, this.ctx(me, req));
+  }
+
+  /* ─── 资源上传(规范命名:标题-序号,集中 article-<id>)——图片/视频/附件共用 ─── */
+
+  @Post('articles/:id/upload')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadResource(
+    @Param('id') id: string,
+    @UploadedFile() file: UploadedResource | undefined,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    if (!file) throw new BadRequestException('未收到文件');
+    return this.svc.uploadResource(
+      id,
+      { originalName: decodeMulterName(file.originalname), mimeType: file.mimetype, buffer: file.buffer },
+      this.ctx(me, req),
+    );
   }
 
   /* ─── 附件 ─── */

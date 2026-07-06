@@ -127,9 +127,9 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
             <HomeIcon className="w-4 h-4" /> 首页
           </button>
           <div className="ml-auto flex items-center gap-2">
-            {isAuthor && ["draft", "rejected"].includes(a.status) && (
+            {isAuthor && a.status !== "archived" && (
               <Button size="sm" variant="outline" onClick={() => navigate(`/knowledge/edit/${a.id}`)}>
-                <PencilLineIcon className="w-4 h-4 mr-1" /> 继续编辑
+                <PencilLineIcon className="w-4 h-4 mr-1" /> 编辑
               </Button>
             )}
           </div>

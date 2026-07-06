@@ -48,14 +48,17 @@ export default function KnowledgeMine() {
   });
 
   function rowActions(a: ArticleListItem) {
-    const editable = ["draft", "rejected"].includes(a.status);
+    const editable = a.status !== "archived"; // 作者可编辑自己任意状态(含已发布,直接生效)
+    const submittable = ["draft", "rejected"].includes(a.status);
     return (
       <span className="flex items-center gap-1.5 shrink-0">
         {editable && (
+          <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); navigate(`/knowledge/edit/${a.id}`); }}>
+            <PencilLineIcon className="w-3.5 h-3.5 mr-1" /> 编辑
+          </Button>
+        )}
+        {submittable && (
           <>
-            <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); navigate(`/knowledge/edit/${a.id}`); }}>
-              <PencilLineIcon className="w-3.5 h-3.5 mr-1" /> 编辑
-            </Button>
             <Button
               size="sm"
               className="bg-[var(--party-primary)] hover:opacity-90 text-white"

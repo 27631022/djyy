@@ -185,6 +185,21 @@ export class KnowledgeService {
     return { ok: true };
   }
 
+  /** 拖拽排序:批量更新同批分类的 sortOrder(前端拖完提交受影响组的新顺序) */
+  async reorderCategories(items: Array<{ id: string; sortOrder: number }>, ctx: ActorCtx) {
+    await this.prisma.$transaction(
+      items.map((it) =>
+        this.prisma.knowledgeCategory.update({ where: { id: it.id }, data: { sortOrder: it.sortOrder } }),
+      ),
+    );
+    await this.audit.log({
+      ...ctx,
+      action: 'knowledge.category.reorder',
+      detail: { count: items.length },
+    });
+    return { ok: true };
+  }
+
   /** 同级重名校验(PG 的 UNIQUE 对 parentId=NULL 行不生效,只能在应用层保证) */
   private async assertCategoryNameFree(name: string, parentId: string | null, exceptId?: string) {
     const dup = await this.prisma.knowledgeCategory.findFirst({
@@ -467,9 +482,10 @@ export class KnowledgeService {
     const a = await this.prisma.knowledgeArticle.findUnique({ where: { id } });
     if (!a) throw new NotFoundException('文章不存在');
     const byManage = await this.assertAuthorOrManage(a, ctx.actorId, '编辑该文章');
-    // 作者只能改草稿/被驳回稿;管理员可改任意状态(修正错别字等)
-    if (!byManage && !['draft', 'rejected'].includes(a.status)) {
-      throw new BadRequestException('已提交/已发布的文章不能直接编辑,请联系管理员或另发修订版');
+    // 作者可直接编辑自己任意状态(含已发布)的文章,直接生效不重新审核(用户拍板);
+    // 仅历史归档版不允许作者改(避免篡改版本链留痕),管理员可改。
+    if (a.status === 'archived' && !byManage) {
+      throw new BadRequestException('历史归档版本不能编辑');
     }
     if (dto.pinned !== undefined && !byManage) {
       throw new ForbiddenException('仅知识管理员可置顶');
@@ -679,6 +695,46 @@ export class KnowledgeService {
   }
 
   /* ═══════════ 附件 ═══════════ */
+
+  /**
+   * 规范命名上传:同一篇文章的图片/视频/附件统一存 `article-<id>` 文件夹,
+   * 文件名 = 「文章标题-序号.扩展名」(挂群晖 File Station 一看即知属哪篇、第几个)。
+   * 图片/视频(MdEditor)与附件(编辑器)都走它,集中管理 + 规范命名。
+   */
+  async uploadResource(
+    articleId: string,
+    file: { originalName: string; mimeType: string; buffer: Buffer },
+    ctx: ActorCtx,
+  ): Promise<{ fileId: string; url: string; name: string }> {
+    const a = await this.prisma.knowledgeArticle.findUnique({
+      where: { id: articleId },
+      select: { id: true, authorId: true, title: true },
+    });
+    if (!a) throw new NotFoundException('文章不存在');
+    await this.assertAuthorOrManage(a, ctx.actorId, '上传该文章资源');
+
+    const folder = `article-${articleId}`;
+    const seq = (await this.storage.countInFolder('knowledge', folder)) + 1;
+    const dot = file.originalName.lastIndexOf('.');
+    const ext = dot > 0 ? file.originalName.slice(dot + 1).toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+    // 标题去文件名非法字符 + 截断;空标题兜底「资源」
+    const cleanTitle = (a.title.replace(/[\\/:*?"<>|]/g, '').trim() || '资源').slice(0, 40);
+    const originalName = ext ? `${cleanTitle}-${seq}.${ext}` : `${cleanTitle}-${seq}`;
+
+    const meta = await this.storage.put(
+      {
+        buffer: file.buffer,
+        originalName,
+        mimeType: file.mimeType,
+        ownerModule: 'knowledge',
+        folder,
+        visibility: 'private',
+        createdById: ctx.actorId,
+      },
+      ctx,
+    );
+    return { fileId: meta.id, url: `/api/public/knowledge/files/${meta.id}`, name: meta.originalName };
+  }
 
   async addAttachment(articleId: string, dto: AddAttachmentDto, ctx: ActorCtx) {
     const a = await this.prisma.knowledgeArticle.findUnique({ where: { id: articleId } });

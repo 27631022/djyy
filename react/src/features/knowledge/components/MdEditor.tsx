@@ -1,31 +1,31 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { BoldIcon, HeadingIcon, ImageIcon, LinkIcon, ListIcon, Loader2Icon, TableIcon, EyeIcon, PencilLineIcon, ColumnsIcon } from "lucide-react";
-import { storageApi } from "@/features/storage";
-import { knowledgeFileRef } from "../api";
+import { BoldIcon, HeadingIcon, ImageIcon, LinkIcon, ListIcon, Loader2Icon, TableIcon, EyeIcon, PencilLineIcon, ColumnsIcon, VideoIcon } from "lucide-react";
 import { MarkdownView } from "./MarkdownView";
 
 type ViewMode = "split" | "edit" | "preview";
 
 /**
- * Markdown 编辑器:textarea + 实时预览分栏 + 最小工具栏 + 粘贴/选择图片直传 storage。
- * 图片以相对路径 `/api/public/knowledge/files/<id>` 插入正文(渲染时拼 origin)。
- * 受控 value/onChange;上传归属 `{ownerModule:'knowledge', folder}`。
+ * Markdown 编辑器:textarea + 实时预览分栏 + 最小工具栏 + 图片/视频上传(粘贴/选择)。
+ * 上传由外部 `uploadFile` 回调完成(知识库走规范命名端点:标题-序号、集中 article-<id>),
+ * 返回可访问 url;图片插 `![]()`、视频插 `<video controls>`(MarkdownView 已支持渲染)。
+ * 无 uploadFile(草稿未保存)时上传按钮禁用并提示先保存。受控 value/onChange。
  */
 export function MdEditor({
   value,
   onChange,
-  folder,
+  uploadFile,
   minHeight = 420,
 }: {
   value: string;
   onChange: (v: string) => void;
-  /** storage 业务子文件夹(有文章 id 用 article-<id>,新建未保存用 drafts) */
-  folder: string;
+  /** 上传一个文件返回 { url }(无则禁用图片/视频上传,提示先保存草稿) */
+  uploadFile?: (file: File) => Promise<{ url: string }>;
   minHeight?: number;
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
+  const imgRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLInputElement | null>(null);
   const [mode, setMode] = useState<ViewMode>("split");
   const [uploading, setUploading] = useState(false);
   // 最新 value 的 ref —— 异步循环(多图上传)里读它,避免闭包捕获旧 value 互相覆盖
@@ -56,24 +56,29 @@ export function MdEditor({
     });
   }
 
-  /** 追加到末尾(批量图片场景,顺序稳定不依赖光标);基于 valueRef 取最新值 */
+  /** 追加到末尾(批量上传场景,顺序稳定不依赖光标);基于 valueRef 取最新值 */
   function append(text: string) {
     const next = valueRef.current + text;
     valueRef.current = next;
     onChange(next);
   }
 
-  async function uploadImages(files: File[]) {
-    const images = files.filter((f) => f.type.startsWith("image/"));
-    if (!images.length) return;
+  async function uploadMedia(files: File[], kind: "image" | "video") {
+    if (!uploadFile) {
+      toast.error("请先「保存草稿」,之后即可上传图片/视频");
+      return;
+    }
+    const picked = files.filter((f) => f.type.startsWith(kind + "/"));
+    if (!picked.length) return;
     setUploading(true);
     try {
-      for (const f of images) {
-        const meta = await storageApi.upload(f, { ownerModule: "knowledge", folder });
-        append(`\n![${f.name.replace(/\.[^.]+$/, "")}](${knowledgeFileRef(meta.id)})\n`);
+      for (const f of picked) {
+        const { url } = await uploadFile(f);
+        if (kind === "image") append(`\n![${f.name.replace(/\.[^.]+$/, "")}](${url})\n`);
+        else append(`\n<video src="${url}" controls preload="metadata"></video>\n`);
       }
     } catch {
-      toast.error("图片上传失败,请重试");
+      toast.error(`${kind === "image" ? "图片" : "视频"}上传失败,请重试`);
     } finally {
       setUploading(false);
     }
@@ -83,7 +88,7 @@ export function MdEditor({
     const files = Array.from(e.clipboardData?.files ?? []);
     if (files.some((f) => f.type.startsWith("image/"))) {
       e.preventDefault();
-      void uploadImages(files);
+      void uploadMedia(files, "image");
     }
   }
 
@@ -121,15 +126,24 @@ export function MdEditor({
         <button
           type="button"
           className={toolBtn}
-          onClick={() => fileRef.current?.click()}
+          onClick={() => imgRef.current?.click()}
           disabled={uploading}
-          title="上传图片(也可直接粘贴截图)"
+          title={uploadFile ? "上传图片(也可直接粘贴截图)" : "先保存草稿后可上传"}
         >
           {uploading ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />}
           图片
         </button>
+        <button
+          type="button"
+          className={toolBtn}
+          onClick={() => videoRef.current?.click()}
+          disabled={uploading}
+          title={uploadFile ? "上传视频(mp4/webm),正文内嵌播放" : "先保存草稿后可上传"}
+        >
+          <VideoIcon className="w-3.5 h-3.5" /> 视频
+        </button>
         <input
-          ref={fileRef}
+          ref={imgRef}
           type="file"
           accept="image/*"
           multiple
@@ -137,7 +151,18 @@ export function MdEditor({
           onChange={(e) => {
             const files = Array.from(e.target.files ?? []);
             e.target.value = "";
-            void uploadImages(files);
+            void uploadMedia(files, "image");
+          }}
+        />
+        <input
+          ref={videoRef}
+          type="file"
+          accept="video/mp4,video/webm"
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            e.target.value = "";
+            void uploadMedia(files, "video");
           }}
         />
         <span className="ml-auto flex items-center gap-1">

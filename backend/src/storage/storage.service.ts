@@ -253,6 +253,14 @@ export class StorageService {
     return row ? this.toMeta(row) : null;
   }
 
+  /** 统计某业务文件夹下未删除文件数(知识库资源规范命名的序号用) */
+  async countInFolder(ownerModule: string, folder: string): Promise<number> {
+    const safeFolder = this.sanitizeFolder(folder);
+    return this.prisma.storedFile.count({
+      where: { deletedAt: null, ownerModule, folder: safeFolder || null },
+    });
+  }
+
   /**
    * 软删:置 deletedAt + 删真实字节(显式删除是管理员动作,顺手清字节,避免孤儿)。
    * 元数据行保留(审计可追),字节删除 best-effort(失败不阻断)。

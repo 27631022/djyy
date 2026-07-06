@@ -15,7 +15,6 @@ import {
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Textarea } from "@/shared/components/ui/textarea";
-import { storageApi } from "@/features/storage";
 import { useAuth } from "@/stores/auth";
 import {
   knowledgeApi,
@@ -159,8 +158,9 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
     setUploadingAtt(true);
     try {
       for (const f of files) {
-        const meta = await storageApi.upload(f, { ownerModule: "knowledge", folder: `article-${articleId}` });
-        const att = await knowledgeApi.addAttachment(articleId, { fileId: meta.id });
+        const up = await knowledgeApi.uploadResource(articleId, f);
+        // 展示名用原始文件名(友好下载名);storage 落盘名是规范的「标题-序号」
+        const att = await knowledgeApi.addAttachment(articleId, { fileId: up.fileId, name: f.name });
         setAttachments((cur) => [...cur, att]);
       }
       toast.success("附件已添加");
@@ -301,7 +301,7 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
         <MdEditor
           value={contentMd}
           onChange={setContentMd}
-          folder={articleId ? `article-${articleId}` : "drafts"}
+          uploadFile={articleId ? (f) => knowledgeApi.uploadResource(articleId, f) : undefined}
         />
 
         {/* 附件 */}
