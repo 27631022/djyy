@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  CheckCircle2Icon,
   ChevronLeftIcon,
   FileTextIcon,
   GitBranchIcon,
@@ -70,11 +71,15 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
   // 且**不再 navigate 触发外壳重挂载** —— 避免丢失编辑中的输入、避免重试重复建文、避免读到陈旧缓存。
   const [articleId, setArticleId] = useState<string | null>(article?.id ?? null);
   const [savedAt, setSavedAt] = useState<string | null>(article?.updatedAt ?? null);
+  const status = article?.status ?? "draft"; // 编辑期间状态不变(保存不改状态)
 
   const types = useQuery({ queryKey: ["knowledge", "types"], queryFn: knowledgeApi.listTypes });
   const canManage = !!me?.isPlatformAdmin || (me?.permissions ?? []).includes("knowledge:manage");
   const selectedType = (types.data ?? []).find((t) => t.code === typeCode);
   const inVersionChain = !!article?.versionGroupId || !!revisionOf;
+  // 已发布/待审核 → 编辑即「保存」直接生效(不再走提交,避免「仅草稿或被驳回可提交」报错);
+  // 新建/草稿/被驳回 → 「保存草稿 + 提交」两步。
+  const liveEdit = status === "published" || status === "pending";
 
   function payload() {
     return {
@@ -111,11 +116,39 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
   const save = useMutation({
     mutationFn: persist,
     onSuccess: () => {
-      toast.success("草稿已保存");
+      toast.success(liveEdit ? "已保存" : "草稿已保存");
       setSavedAt(new Date().toISOString());
+      lastSavedSigRef.current = sig();
     },
     onError: (e) => toast.error(knowledgeErrMsg(e, "保存失败")),
   });
+
+  /* ─── 实时自动保存(已落库后:articleId 存在)——防抖 1.5s,内容变了且校验通过就静默 update(不弹 toast)─── */
+  const lastSavedSigRef = useRef<string>("");
+  const [autoSaving, setAutoSaving] = useState(false);
+  function sig() {
+    return JSON.stringify(payload());
+  }
+  useEffect(() => {
+    if (!articleId) return; // 新建未保存不自动建文(避免手一抖就产出草稿);首存后开始自动保存
+    if (validate() !== null) return;
+    const current = sig();
+    if (current === lastSavedSigRef.current) return;
+    const t = setTimeout(() => {
+      setAutoSaving(true);
+      persist()
+        .then(() => {
+          lastSavedSigRef.current = current;
+          setSavedAt(new Date().toISOString());
+        })
+        .catch(() => {})
+        .finally(() => setAutoSaving(false));
+    }, 1500);
+    return () => clearTimeout(t);
+    // 防抖自动保存:只需监听表单字段变化重排定时器;validate/sig/persist 是稳定读取当下 state 的闭包,
+    // 不放进 deps(否则每渲染重建函数会误触发);这是「表单变化→防抖副作用」的合法用法。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [articleId, title, categoryId, typeCode, contentMd, summary, tags, versionLabel]);
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -194,29 +227,53 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
             <ChevronLeftIcon className="w-4 h-4" /> 返回
           </button>
           <div className="font-bold text-gray-900">{article ? "编辑知识" : "发布知识"}</div>
-          {savedAt && (
-            <span className="text-xs text-gray-400">
-              上次保存 {new Date(savedAt).toLocaleString("zh-CN")}
+          {/* 自动保存指示 */}
+          {autoSaving ? (
+            <span className="flex items-center gap-1 text-xs text-gray-400">
+              <Loader2Icon className="w-3 h-3 animate-spin" /> 自动保存中…
             </span>
-          )}
+          ) : savedAt ? (
+            <span className="flex items-center gap-1 text-xs text-gray-400">
+              <CheckCircle2Icon className="w-3 h-3 text-emerald-500" /> 已保存 {new Date(savedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          ) : null}
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => {
-              const err = validate();
-              if (err) { toast.error(err); return; }
-              save.mutate();
-            }}>
-              {save.isPending ? <Loader2Icon className="w-4 h-4 mr-1 animate-spin" /> : <SaveIcon className="w-4 h-4 mr-1" />}
-              保存草稿
-            </Button>
-            <Button
-              size="sm"
-              className="bg-[var(--party-primary)] hover:opacity-90 text-white"
-              disabled={busy}
-              onClick={onSubmit}
-            >
-              {submit.isPending ? <Loader2Icon className="w-4 h-4 mr-1 animate-spin" /> : <SendIcon className="w-4 h-4 mr-1" />}
-              提交
-            </Button>
+            {liveEdit ? (
+              // 已发布/待审核:编辑即保存直接生效(无「提交」这一步)
+              <Button
+                size="sm"
+                className="bg-[var(--party-primary)] hover:opacity-90 text-white"
+                disabled={busy}
+                onClick={() => {
+                  const err = validate();
+                  if (err) { toast.error(err); return; }
+                  save.mutate();
+                }}
+              >
+                {save.isPending ? <Loader2Icon className="w-4 h-4 mr-1 animate-spin" /> : <SaveIcon className="w-4 h-4 mr-1" />}
+                保存
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" disabled={busy} onClick={() => {
+                  const err = validate();
+                  if (err) { toast.error(err); return; }
+                  save.mutate();
+                }}>
+                  {save.isPending ? <Loader2Icon className="w-4 h-4 mr-1 animate-spin" /> : <SaveIcon className="w-4 h-4 mr-1" />}
+                  保存草稿
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-[var(--party-primary)] hover:opacity-90 text-white"
+                  disabled={busy}
+                  onClick={onSubmit}
+                >
+                  {submit.isPending ? <Loader2Icon className="w-4 h-4 mr-1 animate-spin" /> : <SendIcon className="w-4 h-4 mr-1" />}
+                  提交
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </header>

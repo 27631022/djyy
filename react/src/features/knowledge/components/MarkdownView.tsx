@@ -26,6 +26,39 @@ function resolveSrc(src?: string): string | undefined {
   return src;
 }
 
+/** 提醒框语法归一:docsify `?>`/`!>` + GitHub `> [!NOTE]` → 带 emoji 标签的引用块(再由 blockquote 上色) */
+const GH_ALERT: Record<string, string> = {
+  NOTE: "📌 **说明**",
+  TIP: "💡 **提示**",
+  IMPORTANT: "❗ **重要**",
+  WARNING: "⚠️ **警告**",
+  CAUTION: "🚫 **注意**",
+};
+function expandCallouts(md: string): string {
+  return md
+    .split("\n")
+    .map((line) => {
+      let m = /^\?>\s?(.*)$/.exec(line);
+      if (m) return `> 💡 **提示** ${m[1]}`.trimEnd();
+      m = /^!>\s?(.*)$/.exec(line);
+      if (m) return `> ⚠️ **注意** ${m[1]}`.trimEnd();
+      m = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$/i.exec(line);
+      if (m) return `> ${GH_ALERT[m[1].toUpperCase()]} ${m[2]}`.trimEnd();
+      return line;
+    })
+    .join("\n");
+}
+
+/** 按引用块首个 emoji 判定提醒框类型 → 配色 */
+function calloutClass(text: string): string {
+  const t = text.trimStart();
+  if (t.startsWith("💡")) return "border-emerald-400 bg-emerald-50/60";
+  if (t.startsWith("⚠️")) return "border-amber-400 bg-amber-50/60";
+  if (t.startsWith("❗") || t.startsWith("🚫")) return "border-red-400 bg-red-50/60";
+  if (t.startsWith("📌")) return "border-blue-400 bg-blue-50/60";
+  return "border-[var(--party-primary)] bg-party-soft";
+}
+
 function textOf(node: React.ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
   if (Array.isArray(node)) return node.map(textOf).join("");
@@ -69,7 +102,7 @@ export function MarkdownView({ md, className = "" }: { md: string; className?: s
           ul: ({ children }) => <ul className="my-3 pl-6 list-disc space-y-1">{children}</ul>,
           ol: ({ children }) => <ol className="my-3 pl-6 list-decimal space-y-1">{children}</ol>,
           blockquote: ({ children }) => (
-            <blockquote className="my-4 border-l-4 border-[var(--party-primary)] bg-party-soft px-4 py-2 text-gray-700 rounded-r">
+            <blockquote className={`my-4 border-l-4 px-4 py-2 text-gray-700 rounded-r ${calloutClass(textOf(children))}`}>
               {children}
             </blockquote>
           ),
@@ -128,7 +161,7 @@ export function MarkdownView({ md, className = "" }: { md: string; className?: s
           hr: () => <hr className="my-6 border-gray-200" />,
         }}
       >
-        {md}
+        {expandCallouts(md)}
       </ReactMarkdown>
     </div>
   );

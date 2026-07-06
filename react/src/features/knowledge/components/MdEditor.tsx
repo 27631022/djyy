@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { BoldIcon, HeadingIcon, ImageIcon, LinkIcon, ListIcon, Loader2Icon, TableIcon, EyeIcon, PencilLineIcon, ColumnsIcon, VideoIcon } from "lucide-react";
+import { BoldIcon, HeadingIcon, ImageIcon, LinkIcon, ListIcon, Loader2Icon, TableIcon, EyeIcon, PencilLineIcon, ColumnsIcon, VideoIcon, LightbulbIcon, Undo2Icon, Redo2Icon } from "lucide-react";
 import { MarkdownView } from "./MarkdownView";
 
 type ViewMode = "split" | "edit" | "preview";
@@ -34,21 +34,64 @@ export function MdEditor({
     valueRef.current = value;
   }, [value]);
 
+  // 撤销/重做历史栈:输入按 700ms 停顿合并成一个快照(撤销以「停顿」为粒度,不逐字回退)。
+  // canUndo/canRedo 用 state(不在 render 期读 ref,避开 React Compiler 报错)。
+  const past = useRef<string[]>([]);
+  const future = useRef<string[]>([]);
+  const lastSnap = useRef(0);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const syncHist = () => {
+    setCanUndo(past.current.length > 0);
+    setCanRedo(future.current.length > 0);
+  };
+
+  /** 提交一次内容变更:记历史(合并快速输入)+ 上抛 onChange */
+  function commit(next: string, discrete = false) {
+    const now = Date.now();
+    const prev = valueRef.current;
+    if (prev !== next && (discrete || now - lastSnap.current > 700)) {
+      past.current.push(prev);
+      if (past.current.length > 100) past.current.shift();
+      future.current = [];
+      lastSnap.current = now;
+      syncHist();
+    }
+    valueRef.current = next;
+    onChange(next);
+  }
+
+  function undo() {
+    if (!past.current.length) return;
+    future.current.push(valueRef.current);
+    const prev = past.current.pop()!;
+    lastSnap.current = 0;
+    valueRef.current = prev;
+    onChange(prev);
+    syncHist();
+  }
+  function redo() {
+    if (!future.current.length) return;
+    past.current.push(valueRef.current);
+    const nxt = future.current.pop()!;
+    lastSnap.current = 0;
+    valueRef.current = nxt;
+    onChange(nxt);
+    syncHist();
+  }
+
   /** 在光标处插入文本(选中文本时包裹);基于 valueRef.current 取最新值 */
   function insert(before: string, after = "", placeholder = "") {
     const cur = valueRef.current;
     const ta = taRef.current;
     if (!ta) {
-      const next = cur + before + placeholder + after;
-      valueRef.current = next;
-      onChange(next);
+      commit(cur + before + placeholder + after, true);
       return;
     }
     const { selectionStart: s, selectionEnd: e } = ta;
     const sel = cur.slice(s, e) || placeholder;
     const next = cur.slice(0, s) + before + sel + after + cur.slice(e);
-    valueRef.current = next; // 立即前移,供同一异步循环的下一次 insert 读到
-    onChange(next);
+    commit(next, true); // 工具栏插入=离散快照(单独一步可撤销)
     requestAnimationFrame(() => {
       ta.focus();
       const pos = s + before.length + sel.length;
@@ -58,9 +101,7 @@ export function MdEditor({
 
   /** 追加到末尾(批量上传场景,顺序稳定不依赖光标);基于 valueRef 取最新值 */
   function append(text: string) {
-    const next = valueRef.current + text;
-    valueRef.current = next;
-    onChange(next);
+    commit(valueRef.current + text, true);
   }
 
   async function uploadMedia(files: File[], kind: "image" | "video") {
@@ -103,6 +144,25 @@ export function MdEditor({
     <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
       {/* 工具栏 */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-100 bg-gray-50/70 flex-wrap">
+        <button
+          type="button"
+          className={`${toolBtn} disabled:opacity-30`}
+          onClick={undo}
+          disabled={!canUndo}
+          title="撤销 (Ctrl+Z)"
+        >
+          <Undo2Icon className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          className={`${toolBtn} disabled:opacity-30`}
+          onClick={redo}
+          disabled={!canRedo}
+          title="重做 (Ctrl+Y)"
+        >
+          <Redo2Icon className="w-3.5 h-3.5" />
+        </button>
+        <span className="w-px h-4 bg-gray-200 mx-0.5" />
         <button type="button" className={toolBtn} onClick={() => insert("## ", "", "标题")} title="插入标题">
           <HeadingIcon className="w-3.5 h-3.5" /> 标题
         </button>
@@ -111,6 +171,14 @@ export function MdEditor({
         </button>
         <button type="button" className={toolBtn} onClick={() => insert("\n- ", "", "列表项")} title="无序列表">
           <ListIcon className="w-3.5 h-3.5" /> 列表
+        </button>
+        <button
+          type="button"
+          className={toolBtn}
+          onClick={() => insert("\n?> ", "", "提示内容")}
+          title="插入提示框(?> 提示 / !> 警告)"
+        >
+          <LightbulbIcon className="w-3.5 h-3.5" /> 提示框
         </button>
         <button
           type="button"
@@ -184,9 +252,18 @@ export function MdEditor({
           <textarea
             ref={taRef}
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => commit(e.target.value)}
             onPaste={onPaste}
-            placeholder={"用 Markdown 书写正文…\n\n支持:# 标题、**加粗**、- 列表、表格、图片(直接粘贴截图即可上传)"}
+            onKeyDown={(e) => {
+              if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+                e.preventDefault();
+                undo();
+              } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
+                e.preventDefault();
+                redo();
+              }
+            }}
+            placeholder={"用 Markdown 书写正文…\n\n支持:# 标题、**加粗**、- 列表、表格、图片(直接粘贴截图即可上传)、?> 提示框"}
             className="w-full h-full p-4 text-sm font-mono leading-6 resize-none outline-none"
             style={{ minHeight }}
             spellCheck={false}
