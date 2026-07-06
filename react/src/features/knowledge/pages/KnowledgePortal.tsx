@@ -1,10 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   BookOpenIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   ClockIcon,
   EyeIcon,
   FlameIcon,
@@ -38,23 +36,27 @@ export default function KnowledgePortal() {
   const [categoryId, setCategoryId] = useState("");
   const [typeCode, setTypeCode] = useState("");
   const [sort, setSort] = useState<"latest" | "hot">("latest");
-  const [page, setPage] = useState(1);
 
   const categories = useQuery({ queryKey: ["knowledge", "categories"], queryFn: knowledgeApi.listCategories });
   const types = useQuery({ queryKey: ["knowledge", "types"], queryFn: knowledgeApi.listTypes });
-  const list = useQuery({
-    queryKey: ["knowledge", "articles", { q, tag, categoryId, typeCode, sort, page }],
-    queryFn: () =>
+  // 无限滚动:筛选条件进 queryKey,变了自动重置到第一页
+  const list = useInfiniteQuery({
+    queryKey: ["knowledge", "articles", { q, tag, categoryId, typeCode, sort }],
+    queryFn: ({ pageParam }) =>
       knowledgeApi.listArticles({
         q: q || undefined,
         tag: tag || undefined,
         categoryId: categoryId || undefined,
         typeCode: typeCode || undefined,
         sort,
-        page,
+        page: pageParam,
         pageSize: PAGE_SIZE,
       }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page * lastPage.pageSize < lastPage.total ? lastPage.page + 1 : undefined,
   });
+  const items = list.data?.pages.flatMap((p) => p.items) ?? [];
 
   // 右侧栏三块榜单(独立于中间筛选,展示全局)
   const fav = useQuery({
@@ -75,17 +77,30 @@ export default function KnowledgePortal() {
   const openArticle = (id: string) => navigate(`/knowledge/articles/${id}`);
 
   function applySearch(next: string) {
-    setPage(1);
     setSearchParams(next.trim() ? { q: next.trim() } : {}, { replace: true });
   }
 
   function pickCategory(id: string) {
     setCategoryId((cur) => (cur === id ? "" : id));
-    setPage(1);
   }
 
-  const total = list.data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const total = list.data?.pages[0]?.total ?? 0;
+
+  // 底部哨兵进入视口 → 自动加载下一页(无限滚动)
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = list;
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasNextPage) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isFetchingNextPage) fetchNextPage();
+      },
+      { rootMargin: "300px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#FBF7F2] via-[#FDFCFA] to-white">
@@ -166,7 +181,6 @@ export default function KnowledgePortal() {
                     const next = new URLSearchParams(searchParams);
                     next.delete("tag");
                     setSearchParams(next, { replace: true });
-                    setPage(1);
                   }}
                   aria-label="清除标签"
                 >
@@ -230,7 +244,7 @@ export default function KnowledgePortal() {
           <div className="flex items-center gap-2 flex-wrap mb-4">
             <button
               type="button"
-              onClick={() => { setTypeCode(""); setPage(1); }}
+              onClick={() => setTypeCode("")}
               className={`px-3 py-1 rounded-full text-[13px] border transition-colors ${
                 typeCode === ""
                   ? "border-[var(--party-primary)] bg-party-soft text-[var(--party-primary)]"
@@ -243,7 +257,7 @@ export default function KnowledgePortal() {
               <button
                 key={t.code}
                 type="button"
-                onClick={() => { setTypeCode((cur) => (cur === t.code ? "" : t.code)); setPage(1); }}
+                onClick={() => setTypeCode((cur) => (cur === t.code ? "" : t.code))}
                 className={`px-3 py-1 rounded-full text-[13px] border transition-colors ${
                   typeCode === t.code
                     ? "border-[var(--party-primary)] bg-party-soft text-[var(--party-primary)]"
@@ -258,7 +272,7 @@ export default function KnowledgePortal() {
               <span className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => { setSort("latest"); setPage(1); }}
+                  onClick={() => setSort("latest")}
                   className={`flex items-center gap-1 px-3 py-1 rounded-full transition-colors ${
                     sort === "latest" ? "bg-[var(--party-primary)] text-white" : "text-gray-500 hover:bg-gray-100"
                   }`}
@@ -267,7 +281,7 @@ export default function KnowledgePortal() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setSort("hot"); setPage(1); }}
+                  onClick={() => setSort("hot")}
                   className={`flex items-center gap-1 px-3 py-1 rounded-full transition-colors ${
                     sort === "hot" ? "bg-[var(--party-primary)] text-white" : "text-gray-500 hover:bg-gray-100"
                   }`}
@@ -280,7 +294,7 @@ export default function KnowledgePortal() {
 
           {list.isLoading ? (
             <div className="py-24 text-center text-sm text-gray-400">加载中…</div>
-          ) : (list.data?.items.length ?? 0) === 0 ? (
+          ) : items.length === 0 ? (
             <div className="py-24 text-center">
               <BookOpenIcon className="w-10 h-10 mx-auto text-gray-200" />
               <div className="mt-3 text-sm text-gray-400">
@@ -288,28 +302,21 @@ export default function KnowledgePortal() {
               </div>
             </div>
           ) : (
-            /* 瀑布流:CSS 多列 + break-inside-avoid 防卡片被截断 */
-            <div className="columns-1 sm:columns-2 gap-4 [column-fill:balance]">
-              {list.data!.items.map((a) => (
-                <div key={a.id} className="mb-4 break-inside-avoid">
-                  <ArticleCard article={a} onOpen={openArticle} />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {pageCount > 1 && (
-            <div className="mt-6 flex items-center justify-center gap-3 text-sm">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                <ChevronLeftIcon className="w-4 h-4" /> 上一页
-              </Button>
-              <span className="text-gray-500">
-                {page} / {pageCount}
-              </span>
-              <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => p + 1)}>
-                下一页 <ChevronRightIcon className="w-4 h-4" />
-              </Button>
-            </div>
+            /* 单列信息流,下滑自动加载(哨兵进视口触发 fetchNextPage) */
+            <>
+              <div className="space-y-4">
+                {items.map((a) => (
+                  <ArticleCard key={a.id} article={a} onOpen={openArticle} />
+                ))}
+              </div>
+              <div ref={sentinelRef} className="h-4" />
+              {isFetchingNextPage && (
+                <div className="py-4 text-center text-sm text-gray-400">加载中…</div>
+              )}
+              {!hasNextPage && (
+                <div className="py-4 text-center text-xs text-gray-300">已到底 · 共 {total} 篇</div>
+              )}
+            </>
           )}
         </main>
 
