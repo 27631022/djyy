@@ -1,5 +1,7 @@
-import { Controller, Get, NotFoundException, Param, StreamableFile } from '@nestjs/common';
+import { Body, Controller, Get, NotFoundException, Param, Post, StreamableFile } from '@nestjs/common';
 import { StorageService } from '../storage';
+import { KnowledgeInteractionService } from './knowledge-interaction.service';
+import { ViewBeaconDto } from './dto/interaction.dto';
 
 /**
  * 知识分享公开口(**免登录**)—— 「/knowledge 登录可见」原则的受控豁免:
@@ -10,7 +12,10 @@ import { StorageService } from '../storage';
  */
 @Controller('public/knowledge')
 export class KnowledgePublicController {
-  constructor(private readonly storage: StorageService) {}
+  constructor(
+    private readonly storage: StorageService,
+    private readonly interaction: KnowledgeInteractionService,
+  ) {}
 
   @Get('files/:id')
   async serveFile(@Param('id') id: string): Promise<StreamableFile> {
@@ -24,5 +29,14 @@ export class KnowledgePublicController {
       disposition: `inline; filename*=UTF-8''${encodeURIComponent(meta.originalName)}`,
       length: meta.size,
     });
+  }
+
+  /**
+   * 浏览时长回填(**公开**)—— 离开页面时 navigator.sendBeacon 上报,带不了 auth 头故公开。
+   * 只允许对已存在的 viewLog(cuid 不可枚举)更新时长、取 max、封顶 4h,攻击面可控。
+   */
+  @Post('view-beacon')
+  viewBeacon(@Body() dto: ViewBeaconDto) {
+    return this.interaction.recordDuration(dto.viewLogId, dto.durationSec);
   }
 }

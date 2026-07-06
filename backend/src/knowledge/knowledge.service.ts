@@ -389,6 +389,13 @@ export class KnowledgeService {
       });
     }
 
+    // 当前用户对本文的点赞/收藏状态(阅读页按钮初始态)
+    const myReactions = await this.prisma.knowledgeReaction.findMany({
+      where: { articleId: a.id, userId: actorId },
+      select: { type: true },
+    });
+    const rTypes = new Set(myReactions.map((r) => r.type));
+
     return {
       ...a,
       tags: parseTags(a.tagsJson),
@@ -397,6 +404,8 @@ export class KnowledgeService {
       typeName: type?.name ?? a.typeCode,
       requireReview: type?.requireReview ?? false,
       versions,
+      liked: rTypes.has('like'),
+      favorited: rTypes.has('favorite'),
     };
   }
 

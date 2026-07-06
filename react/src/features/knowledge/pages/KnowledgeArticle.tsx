@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ArchiveIcon,
@@ -14,6 +14,7 @@ import {
   HomeIcon,
   LinkIcon,
   ListIcon,
+  MessageCircleWarningIcon,
   MessageSquareIcon,
   PencilLineIcon,
   SparklesIcon,
@@ -39,6 +40,9 @@ import {
 } from "../api";
 import { MarkdownView } from "../components/MarkdownView";
 import { extractToc } from "../components/markdownToc";
+import { CommentSection } from "../components/CommentSection";
+import { FeedbackDialog } from "../components/FeedbackDialog";
+import { useViewTracking } from "../useViewTracking";
 
 function fmtDateTime(iso: string | null): string {
   if (!iso) return "";
@@ -84,16 +88,30 @@ export default function KnowledgeArticlePage() {
 
 function ArticleView({ article: a }: { article: ArticleDetail }) {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { me } = useAuth();
   const toc = extractToc(a.contentMd);
   const isAuthor = me?.id === a.authorId;
   const latestPublished = a.versions.find((v) => v.status === "published");
   const safeSource = safeHttpUrl(a.sourceUrl);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
-  // 记浏览(纯副作用 POST,无 setState;viewLogId 供 P3 时长 beacon 使用)
-  useEffect(() => {
-    knowledgeApi.recordView(a.id).catch(() => {});
-  }, [a.id]);
+  // 浏览埋点(进入记一次 + 累计可见时长,离开 beacon 回填)
+  useViewTracking(a.id);
+
+  const react = useMutation({
+    mutationFn: ({ type, on }: { type: "like" | "favorite"; on: boolean }) =>
+      knowledgeApi.setReaction(a.id, type, on),
+    onSuccess: (state) => {
+      // 用返回的最新状态就地更新详情缓存,避免整篇重取
+      qc.setQueryData<ArticleDetail>(["knowledge", "article", a.id], (cur) =>
+        cur ? { ...cur, ...state } : cur,
+      );
+      qc.invalidateQueries({ queryKey: ["knowledge", "side"] });
+      qc.invalidateQueries({ queryKey: ["knowledge", "mine"] });
+    },
+    onError: (e) => toast.error(knowledgeErrMsg(e, "操作失败")),
+  });
 
   async function downloadAttachment(attId: string, fileId: string, name: string) {
     try {
@@ -293,10 +311,46 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
             </div>
           )}
 
-          {/* 互动占位:P3 接 评论/点赞/收藏/吐槽 */}
-          <div className="mt-6 rounded-xl border border-dashed border-gray-200 px-6 py-5 text-center text-sm text-gray-300">
-            评论 · 点赞 · 收藏 · 意见反馈 —— 下一期上线
+          {/* 操作栏:点赞 / 收藏 / 吐槽 */}
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              disabled={react.isPending}
+              onClick={() => react.mutate({ type: "like", on: !a.liked })}
+              className={`inline-flex items-center gap-1.5 px-5 py-2 rounded-full border text-sm transition-colors ${
+                a.liked
+                  ? "border-[var(--party-primary)] bg-party-soft text-[var(--party-primary)]"
+                  : "border-gray-200 text-gray-500 hover:border-gray-300"
+              }`}
+            >
+              <ThumbsUpIcon className={`w-4 h-4 ${a.liked ? "fill-current" : ""}`} /> 点赞 {a.likeCount || ""}
+            </button>
+            <button
+              type="button"
+              disabled={react.isPending}
+              onClick={() => react.mutate({ type: "favorite", on: !a.favorited })}
+              className={`inline-flex items-center gap-1.5 px-5 py-2 rounded-full border text-sm transition-colors ${
+                a.favorited
+                  ? "border-amber-400 bg-amber-50 text-amber-600"
+                  : "border-gray-200 text-gray-500 hover:border-gray-300"
+              }`}
+            >
+              <StarIcon className={`w-4 h-4 ${a.favorited ? "fill-current" : ""}`} /> 收藏 {a.favoriteCount || ""}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
+              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full border border-gray-200 text-sm text-gray-500 hover:border-gray-300 transition-colors"
+            >
+              <MessageCircleWarningIcon className="w-4 h-4" /> 吐槽
+            </button>
           </div>
+
+          {/* 评论 */}
+          <div className="mt-6">
+            <CommentSection articleId={a.id} />
+          </div>
+          {feedbackOpen && <FeedbackDialog articleId={a.id} onClose={() => setFeedbackOpen(false)} />}
         </main>
 
         {/* 右:目录 */}

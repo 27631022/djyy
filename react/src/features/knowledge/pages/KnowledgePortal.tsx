@@ -326,7 +326,7 @@ export default function KnowledgePortal() {
             title="我的收藏"
             icon={<StarIcon className="w-3.5 h-3.5 text-amber-500" />}
             items={me ? fav.data?.items ?? [] : []}
-            emptyText={me ? "还没有收藏,阅读时点收藏即可(功能上线中)" : "登录后可收藏"}
+            emptyText={me ? "还没有收藏,阅读时点收藏即可" : "登录后可收藏"}
             onOpen={openArticle}
           />
           <SideCard

@@ -114,6 +114,59 @@ export interface ArticleDetail {
   updatedAt: string;
   attachments: ArticleAttachment[];
   versions: ArticleVersion[];
+  liked: boolean;
+  favorited: boolean;
+}
+
+export interface ReactionState {
+  liked: boolean;
+  favorited: boolean;
+  likeCount: number;
+  favoriteCount: number;
+}
+
+export interface KnowledgeComment {
+  id: string;
+  articleId: string;
+  userId: string;
+  userName: string;
+  content: string;
+  replyToId: string | null;
+  replyToUserName: string | null;
+  createdAt: string;
+}
+
+export interface FeedbackReply {
+  id: string;
+  userName: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface FeedbackItem {
+  id: string;
+  articleId: string;
+  articleTitle: string;
+  userName: string;
+  anonymous: boolean;
+  content: string;
+  status: "open" | "replied" | "closed";
+  createdAt: string;
+  replies: FeedbackReply[];
+}
+
+export interface KnowledgeStats {
+  articleCount: number;
+  totalViews: number;
+  totalLikes: number;
+  totalFavorites: number;
+  totalComments: number;
+  totalViewLogs: number;
+  totalDurationSec: number;
+  feedbackOpen: number;
+  topViewed: Array<{ id: string; title: string; viewCount: number; likeCount: number; commentCount: number }>;
+  topLiked: Array<{ id: string; title: string; likeCount: number; favoriteCount: number; commentCount: number }>;
+  topFavorited: Array<{ id: string; title: string; favoriteCount: number }>;
 }
 
 export interface ArticleListResult {
@@ -237,7 +290,39 @@ export const knowledgeApi = {
     api.delete<{ ok: true }>(`/knowledge/attachments/${attachmentId}`).then((r) => r.data),
   attachmentDownloaded: (attachmentId: string) =>
     api.post<{ fileId: string; name: string }>(`/knowledge/attachments/${attachmentId}/download`).then((r) => r.data),
+
+  /* ─── 互动(P3) ─── */
+  setReaction: (articleId: string, type: "like" | "favorite", on: boolean) =>
+    (on
+      ? api.post<ReactionState>(`/knowledge/articles/${articleId}/reactions/${type}`)
+      : api.delete<ReactionState>(`/knowledge/articles/${articleId}/reactions/${type}`)
+    ).then((r) => r.data),
+  listComments: (articleId: string, page = 1) =>
+    api
+      .get<{ total: number; page: number; pageSize: number; items: KnowledgeComment[] }>(
+        `/knowledge/articles/${articleId}/comments`,
+        { params: { page } },
+      )
+      .then((r) => r.data),
+  addComment: (articleId: string, data: { content: string; replyToId?: string }) =>
+    api.post<KnowledgeComment>(`/knowledge/articles/${articleId}/comments`, data).then((r) => r.data),
+  removeComment: (commentId: string) =>
+    api.delete<{ ok: true }>(`/knowledge/comments/${commentId}`).then((r) => r.data),
+  addFeedback: (articleId: string, data: { content: string; anonymous?: boolean }) =>
+    api.post<{ ok: true }>(`/knowledge/articles/${articleId}/feedback`, data).then((r) => r.data),
+  listFeedback: (scope: "mine" | "all" = "mine", status?: string) =>
+    api.get<FeedbackItem[]>("/knowledge/feedback", { params: { scope, status } }).then((r) => r.data),
+  replyFeedback: (feedbackId: string, content: string) =>
+    api.post<FeedbackReply>(`/knowledge/feedback/${feedbackId}/replies`, { content }).then((r) => r.data),
+  closeFeedback: (feedbackId: string) =>
+    api.patch<{ ok: true }>(`/knowledge/feedback/${feedbackId}/close`).then((r) => r.data),
+  stats: () => api.get<KnowledgeStats>("/knowledge/stats").then((r) => r.data),
 };
+
+/** 浏览时长上报 URL(useViewTracking 用 navigator.sendBeacon 发,公开口) */
+export function knowledgeViewBeaconUrl(): string {
+  return `${apiOrigin}/api/public/knowledge/view-beacon`;
+}
 
 /* ─── 批量导入(P2) ─── */
 

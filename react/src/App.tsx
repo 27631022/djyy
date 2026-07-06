@@ -52,6 +52,9 @@ import {
   KnowledgeCategoriesPage,
   KnowledgeManagePage,
   KnowledgeImportPage,
+  KnowledgeStatsViewsPage,
+  KnowledgeStatsLikesPage,
+  KnowledgeFeedbackPage,
 } from "@/features/knowledge";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
@@ -153,6 +156,9 @@ const ADMIN_ROUTES: RouteObject[] = [
   { path: "knowledge", element: <KnowledgeManagePage /> },
   { path: "knowledge/categories", element: <KnowledgeCategoriesPage /> },
   { path: "knowledge/import", element: <KnowledgeImportPage /> },
+  { path: "stats/views", element: <KnowledgeStatsViewsPage /> },
+  { path: "stats/likes", element: <KnowledgeStatsLikesPage /> },
+  { path: "feedback", element: <KnowledgeFeedbackPage /> },
   // 通用报送平台(report)
   { path: "reports", element: <ReportTasksPage /> },
   { path: "reports/publish", element: <PublishChooserPage /> },

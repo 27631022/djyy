@@ -71,9 +71,9 @@ const CATEGORIES: Category[] = [
     label: "数据统计",
     icon: BarChart2Icon,
     items: [
-      { path: "/admin/stats/views", label: "浏览统计", icon: EyeIcon,         disabled: true, perm: "admin:menu" },
-      { path: "/admin/stats/likes", label: "点赞统计", icon: ThumbsUpIcon,    disabled: true, perm: "admin:menu" },
-      { path: "/admin/feedback",    label: "用户反馈", icon: MessageSquareIcon, disabled: true, perm: "admin:menu" },
+      { path: "/admin/stats/views", label: "浏览统计", icon: EyeIcon,         perm: "knowledge:manage" },
+      { path: "/admin/stats/likes", label: "点赞统计", icon: ThumbsUpIcon,    perm: "knowledge:manage" },
+      { path: "/admin/feedback",    label: "用户反馈", icon: MessageSquareIcon, perm: "knowledge:manage" },
     ],
   },
   {

@@ -55,7 +55,7 @@
 
 - **P1(✅ 2026-07-05)地基**:9 表 + 模块 + 门户/阅读/我的/编辑器 + 后台分类/审核管理 + 版本链 + 标签 + 浏览计数(30min 去重)。
 - **P2 存量迁移 + 首页**:storage 放行 md/zip;zip 导入两步式(analyze 预览:_sidebar.md/目录 → 分类映射、dup 标 skip;execute:相对图片引用上传改写、模板成附件、首图=封面、每篇独立事务)【✅ 导入部分 2026-07-05,见下】;NavPage 搜索跳 /knowledge?q= + 知识园地卡片(usePortalKnowledgeBoard)【首页接入待做】。
-- **P3 互动统计**:评论/点赞/收藏/吐槽 + useViewTracking(visibilitychange 累计可见时长 + sendBeacon)+ 后台点亮 数据统计 3 个占位(/admin/stats/views、/admin/stats/likes、/admin/feedback)。
+- **P3 互动统计**【✅ 2026-07-06,见下】:评论/点赞/收藏/吐槽 + useViewTracking(visibilitychange 累计可见时长 + sendBeacon)+ 后台点亮 数据统计 3 个占位(/admin/stats/views、/admin/stats/likes、/admin/feedback)。
 - **P4 AI**:提示词 `knowledge.clean`(→{title,contentMd,categoryHint})/`knowledge.guide`(→{summary,tags[]})/`knowledge.faq`;消费点 `knowledge.{clean,guide,faq,search}.text`;LlmClientService;fetch-url 正文提取;归档向导(检索按钮按 capabilities 显隐/贴URL/贴全文 → 清洗 → 预览 → 可关联修订版)。
 - **P5 积分称号**:points 模块全套 + knowledge 埋点接线 + 我的积分/排行/后台三 tab(规则/称号/账户调分)+ 阈值自动授称号 + @Cron 兜底补授。
 
@@ -100,6 +100,13 @@
   - [低] zip bomb → `declaredSize` 前置守卫(单文档 20MB / 单资产 50MB,读中央目录不解压)。
   - [前端] 导入按钮 disabled 补 `!effectiveType`;execute 只发 create 行 + `>1000` 提示禁用;标题 `maxLength=200`;行组件 `React.memo` + 稳定 `onPatch`(上千篇不卡)。
   - 否决:分类 TOCTOU(既有设计,手动建分类同款)、双击重复导入(React 19 离散更新 click 间已 disabled)。
+
+## P3 互动统计落地(2026-07-06)
+
+- **后端** `knowledge-interaction.service`(setReaction toggle 事务内计数 increment/decrement + reactionState、评论单层+@回复 commentCount 联动、吐槽反馈可匿名 + listFeedback scope=mine|all 隐名、replyFeedback/closeFeedback 作者或 manage、recordDuration 公开 beacon 取 max 封顶 4h、stats 聚合)+ `knowledge-interaction.controller`(stats=knowledge:manage,其余登录态权限在 service 判)+ public-controller 加 `POST /public/knowledge/view-beacon`(sendBeacon 带不了 auth 头的公开口,只更新已存在 viewLog 时长)+ getArticle 加当前用户 liked/favorited。
+- **前端** `useViewTracking`(挂载 POST view 拿 viewLogId、visibilitychange 累计可见时长、hidden/pagehide/卸载 sendBeacon 回填)+ `CommentSection`(评论/@回复/删自己或 manage)+ `FeedbackDialog`(吐槽,可匿名)+ 阅读页操作栏(点赞/收藏 toggle,setQueryData 就地更新;吐槽按钮)+ 后台 3 页(`KnowledgeStatsViews` 浏览+平均时长+Top10、`KnowledgeStatsLikes` 点赞/收藏 Top、`KnowledgeFeedback` 反馈处理:回复/关闭)+ AdminLayout「数据统计」3 占位点亮(perm→knowledge:manage)。
+- **收藏** 让「我的收藏」tab + 门户右栏收藏卡片有了真实数据(P1/P2 已接口就绪)。
+- **验证**:双端门禁绿 + API 端到端(点赞 toggle 幂等/计数、收藏进列表、评论 @回复 commentCount、删自己 200 删他人 403、匿名反馈显「匿名用户」+ 回复 replied + member 看全部 403、view-beacon 公开 201 + 超上限 400、统计 manage + member 403)。
 
 ## 后续路线:主流知识网站功能增强(P6 候选,2026-07-05 与用户对齐)
 

@@ -129,7 +129,7 @@ export default function KnowledgeMine() {
                 "还没有发布过知识,点右上角「发布知识」开始"
               ) : (
                 <span className="inline-flex items-center gap-1">
-                  <StarIcon className="w-4 h-4" /> 还没有收藏(收藏功能下一期上线)
+                  <StarIcon className="w-4 h-4" /> 还没有收藏,阅读文章时点「收藏」即可
                 </span>
               )}
             </div>

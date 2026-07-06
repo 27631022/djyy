@@ -8,3 +8,6 @@ export { default as KnowledgeEditorPage } from "./pages/KnowledgeEditor";
 export { default as KnowledgeCategoriesPage } from "./pages/admin/KnowledgeCategories";
 export { default as KnowledgeManagePage } from "./pages/admin/KnowledgeManage";
 export { default as KnowledgeImportPage } from "./pages/admin/KnowledgeImport";
+export { default as KnowledgeStatsViewsPage } from "./pages/admin/KnowledgeStatsViews";
+export { default as KnowledgeStatsLikesPage } from "./pages/admin/KnowledgeStatsLikes";
+export { default as KnowledgeFeedbackPage } from "./pages/admin/KnowledgeFeedback";
