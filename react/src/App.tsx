@@ -66,6 +66,8 @@ import {
   EntryEditorPage,
   ShowcaseStageReviewPage,
   ShowcaseEntryReviewPage,
+  ShowcaseCategoriesPage,
+  ShowcaseFeedbackPage,
 } from "@/features/showcase";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
@@ -173,6 +175,8 @@ const ADMIN_ROUTES: RouteObject[] = [
   // 先锋晒场(showcase)后台管理
   { path: "showcase/stages", element: <ShowcaseStageReviewPage /> },
   { path: "showcase/entries", element: <ShowcaseEntryReviewPage /> },
+  { path: "showcase/categories", element: <ShowcaseCategoriesPage /> },
+  { path: "showcase/feedback", element: <ShowcaseFeedbackPage /> },
   // 通用报送平台(report)
   { path: "reports", element: <ReportTasksPage /> },
   { path: "reports/publish", element: <PublishChooserPage /> },

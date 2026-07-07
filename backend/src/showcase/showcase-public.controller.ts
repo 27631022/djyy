@@ -1,18 +1,29 @@
-import { Controller, Get, NotFoundException, Param, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, NotFoundException, Param, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { StorageService, type StoredFileMeta } from '../storage';
+import { ShowcaseInteractionService } from './showcase-interaction.service';
+import { ViewBeaconDto } from './dto/interaction.dto';
 
 /**
  * 先锋晒场公开口(**免登录**)—— 「登录可见」原则的受控豁免:
- *   GET /public/showcase/files/:id  区块图片 / 视频 / 全景图流式
- * 理由:<img>/<video> 无法带 Authorization 头(与 /public/knowledge/files 同一硬约束)。
- * 安全:只放行 ownerModule=showcase 的文件;fileId 是 cuid 不可枚举。
+ *   GET  /public/showcase/files/:id   区块图片 / 视频 / 全景图流式
+ *   POST /public/showcase/view-beacon 浏览时长回填
+ * 理由:<img>/<video> 无法带 Authorization 头;sendBeacon 也带不了(与 knowledge 同一硬约束)。
+ * 安全:只放行 ownerModule=showcase 的文件;fileId/viewLogId 是 cuid 不可枚举;
+ * beacon 只能对已存在日志更新、取 max、封顶 4h,攻击面可控。
  * **带 HTTP Range**(照 exhibition-asset.controller 范本)—— 视频拖动进度 / 全景大图分段必需。
- * (P3 批次加 POST view-beacon —— sendBeacon 也带不了 auth 头。)
  */
 @Controller('public/showcase')
 export class ShowcasePublicController {
-  constructor(private readonly storage: StorageService) {}
+  constructor(
+    private readonly storage: StorageService,
+    private readonly interaction: ShowcaseInteractionService,
+  ) {}
+
+  @Post('view-beacon')
+  viewBeacon(@Body() dto: ViewBeaconDto) {
+    return this.interaction.recordDuration(dto.viewLogId, dto.durationSec);
+  }
 
   @Get('files/:id')
   async serveFile(

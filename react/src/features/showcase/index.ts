@@ -7,3 +7,5 @@ export { default as StageEditorPage } from "./pages/StageEditor";
 export { default as EntryEditorPage } from "./pages/EntryEditor";
 export { default as ShowcaseStageReviewPage } from "./pages/admin/ShowcaseStageReview";
 export { default as ShowcaseEntryReviewPage } from "./pages/admin/ShowcaseEntryReview";
+export { default as ShowcaseCategoriesPage } from "./pages/admin/ShowcaseCategories";
+export { default as ShowcaseFeedbackPage } from "./pages/admin/ShowcaseFeedback";

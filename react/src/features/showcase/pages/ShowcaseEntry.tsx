@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, Medal, PencilLine, Send, ThumbsUp, Trash2 } from "lucide-react";
+import { ChevronLeft, Medal, MessageSquareText, PencilLine, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -11,8 +12,11 @@ import {
   type EntryDetail,
 } from "../api";
 import { BlocksRenderer } from "../components/BlocksRenderer";
+import { FeedbackDialog } from "../components/FeedbackDialog";
+import { LikeButton } from "../components/LikeButton";
 import { ReviewBar } from "../components/ReviewBar";
 import { MEDAL_COLORS } from "../tools/shared";
+import { useShowcaseViewTracking } from "../useViewTracking";
 
 /** 参晒作品详情(/showcase/entries/:id):申报值 + 当前名次 + 区块内容;作者/台主操作区。 */
 export default function ShowcaseEntry() {
@@ -59,6 +63,8 @@ function Shell({ children, backTo }: { children: React.ReactNode; backTo?: { id:
 function EntryView({ entry: e }: { entry: EntryDetail }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  useShowcaseViewTracking("entry", e.id);
 
   const submit = useMutation({
     mutationFn: () => showcaseApi.submitEntry(e.id),
@@ -109,10 +115,6 @@ function EntryView({ entry: e }: { entry: EntryDetail }) {
               当前第 {e.rank} 名
             </span>
           )}
-          <span className="ml-auto flex items-center gap-1 text-xs text-gray-400">
-            <ThumbsUp className="h-3.5 w-3.5" />
-            {e.likeCount}
-          </span>
         </div>
         <div className="mt-1.5 text-xs text-gray-400">
           {e.authorName}
@@ -128,6 +130,15 @@ function EntryView({ entry: e }: { entry: EntryDetail }) {
 
         {/* 操作区 */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
+          <LikeButton kind="entry" id={e.id} liked={e.liked} likeCount={e.likeCount} />
+          <button
+            type="button"
+            className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3.5 py-1.5 text-sm text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700"
+            onClick={() => setFeedbackOpen(true)}
+          >
+            <MessageSquareText className="h-4 w-4" />
+            吐槽
+          </button>
           {e.canEdit && (
             <Button variant="outline" size="sm" onClick={() => navigate(`/showcase/entries/${e.id}/edit`)}>
               <PencilLine className="mr-1 h-4 w-4" />
@@ -162,6 +173,10 @@ function EntryView({ entry: e }: { entry: EntryDetail }) {
           {e.canReview && e.status === "pending" && <ReviewBar kind="entry" id={e.id} />}
         </div>
       </div>
+
+      {feedbackOpen && (
+        <FeedbackDialog targetType="entry" targetId={e.id} onClose={() => setFeedbackOpen(false)} />
+      )}
 
       {/* 展示内容 */}
       <div className="mt-4 rounded-2xl border border-gray-100 bg-white/90 p-5 shadow-sm">

@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   Lock,
   LockOpen,
+  MessageSquareText,
   PencilLine,
   Sparkles,
   Trophy,
@@ -24,9 +25,12 @@ import {
 } from "../api";
 import { BlocksRenderer } from "../components/BlocksRenderer";
 import { EntryCard } from "../components/EntryCard";
+import { FeedbackDialog } from "../components/FeedbackDialog";
+import { LikeButton } from "../components/LikeButton";
 import { RankingBoard } from "../components/RankingBoard";
 import { ReviewBar } from "../components/ReviewBar";
 import { fmtNumber } from "../tools/shared";
+import { useShowcaseViewTracking } from "../useViewTracking";
 
 /** 晒台详情(/showcase/stages/:id):台头 + 排位榜 + 作品流 + 台主待审区。外壳取数 + key 重挂载内层。 */
 export default function ShowcaseStage() {
@@ -74,6 +78,8 @@ function StageView({ stage: s }: { stage: StageDetail }) {
   const qc = useQueryClient();
   const [tab, setTab] = useState<"ranking" | "entries">("ranking");
   const [entrySort, setEntrySort] = useState<"rank" | "latest">("rank");
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  useShowcaseViewTracking("stage", s.id);
 
   const ranking = useQuery({
     queryKey: ["showcase", "ranking", s.id],
@@ -160,6 +166,15 @@ function StageView({ stage: s }: { stage: StageDetail }) {
 
           {/* 操作区 */}
           <div className="mt-4 flex flex-wrap items-center gap-2">
+            <LikeButton kind="stage" id={s.id} liked={s.liked} likeCount={s.likeCount} />
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3.5 py-1.5 text-sm text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700"
+              onClick={() => setFeedbackOpen(true)}
+            >
+              <MessageSquareText className="h-4 w-4" />
+              吐槽
+            </button>
             {canJoin && (
               <Button
                 className="bg-[var(--party-primary)] text-white hover:opacity-90"
@@ -202,13 +217,17 @@ function StageView({ stage: s }: { stage: StageDetail }) {
         </div>
       </div>
 
+      {feedbackOpen && (
+        <FeedbackDialog targetType="stage" targetId={s.id} onClose={() => setFeedbackOpen(false)} />
+      )}
+
       {/* 比拼规则 + 台头介绍 */}
       {(s.rulesMd || s.introBlocks.length > 0) && (
         <div className="mt-4 rounded-2xl border border-gray-100 bg-white/90 p-5 shadow-sm">
           {s.rulesMd && (
             <>
               <h2 className="mb-2 text-sm font-semibold text-gray-700">比拼规则</h2>
-              <MarkdownView md={s.rulesMd} className="text-sm" />
+              <MarkdownView md={s.rulesMd} fontPx={14} />
             </>
           )}
           {s.introBlocks.length > 0 && (

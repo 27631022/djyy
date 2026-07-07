@@ -66,6 +66,8 @@ const CATEGORIES: Category[] = [
       { path: "/admin/knowledge/import",         label: "批量导入",        icon: UploadIcon,         group: "知识管理", perm: "knowledge:manage" },
       { path: "/admin/showcase/stages",          label: "晒台审核",        icon: TrophyIcon,         group: "先锋晒场", perm: "showcase:manage" },
       { path: "/admin/showcase/entries",         label: "作品审核",        icon: FileCheckIcon,      group: "先锋晒场", perm: "showcase:manage" },
+      { path: "/admin/showcase/categories",      label: "分类管理",        icon: FolderTreeIcon,     group: "先锋晒场", perm: "showcase:manage" },
+      { path: "/admin/showcase/feedback",        label: "吐槽处理",        icon: MessageSquareTextIcon, group: "先锋晒场", perm: "showcase:manage" },
     ],
   },
   {
