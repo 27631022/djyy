@@ -97,6 +97,11 @@ export class UpdateExternalApiDto {
   @MaxLength(128)
   capabilities?: string;
 
+  /** 该模型支持联网搜索(千问 enable_search) */
+  @IsOptional()
+  @IsBoolean()
+  webSearch?: boolean;
+
   @IsOptional()
   @IsBoolean()
   active?: boolean;
@@ -214,6 +219,11 @@ export class CreateExternalApiDto {
   @IsString()
   @MaxLength(128)
   capabilities?: string;
+
+  /** 该模型支持联网搜索(千问 enable_search) */
+  @IsOptional()
+  @IsBoolean()
+  webSearch?: boolean;
 
   @IsOptional()
   @IsBoolean()

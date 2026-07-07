@@ -51,6 +51,7 @@ export interface ExternalApiPublic {
   rechargeUrl: string | null;
   priority: number;
   capabilities: string;
+  webSearch: boolean;
   active: boolean;
   meta: string | null;
   createdAt: string;
@@ -70,6 +71,8 @@ export interface ActiveProviderConfig {
   voice?: string;
   /** 'cloud' | 'internal' */
   kind: string;
+  /** 该模型是否开启联网搜索(千问 enable_search);知识库 AI 归档据此显隐「一键联网检索」 */
+  webSearch: boolean;
   source: 'db';
 }
 
@@ -172,6 +175,7 @@ function toPublic(
     rechargeUrl: row.rechargeUrl,
     priority: row.priority,
     capabilities: row.capabilities,
+    webSearch: row.webSearch,
     active: row.active,
     meta: row.meta,
     createdAt: row.createdAt.toISOString(),
@@ -428,6 +432,7 @@ export class ExternalApiService {
       model: this.modelForCapability(r, tag),
       voice: r.ttsVoice ?? undefined,
       kind: r.kind,
+      webSearch: r.webSearch ?? false,
       source: 'db',
     };
   }
@@ -542,6 +547,7 @@ export class ExternalApiService {
         rechargeUrl: dto.rechargeUrl,
         priority: dto.priority ?? 50,
         capabilities: dto.capabilities ?? 'chat',
+        webSearch: dto.webSearch ?? false,
         active: dto.active ?? true,
         meta: dto.meta,
       },
@@ -599,6 +605,7 @@ export class ExternalApiService {
         rechargeUrl: dto.rechargeUrl ?? undefined,
         priority: dto.priority ?? undefined,
         capabilities: dto.capabilities ?? undefined,
+        webSearch: dto.webSearch ?? undefined,
         active: dto.active ?? undefined,
         meta: dto.meta ?? undefined,
       },

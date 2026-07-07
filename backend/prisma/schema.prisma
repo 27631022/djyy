@@ -411,6 +411,7 @@ model ExternalApi {
   rechargeUrl  String? // 平台充值/计费控制台 URL
   priority     Int      @default(50) // 业务优先级,大者优先。getActive*() 按此降序选
   capabilities String   @default("chat") // 能力标签逗号分隔:chat/vision/reasoning
+  webSearch    Boolean  @default(false) // 该模型支持联网搜索(千问 enable_search);知识库 AI 归档「一键联网检索」据此显隐
   active       Boolean  @default(true)
   meta         String? // JSON 扩展(超时/温度等)
   createdAt    DateTime @default(now())

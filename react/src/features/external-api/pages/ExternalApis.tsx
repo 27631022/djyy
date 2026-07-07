@@ -822,6 +822,7 @@ function EditDialog({
   const [rechargeUrl, setRechargeUrl] = useState(api.rechargeUrl ?? "");
   const [priority, setPriority] = useState(api.priority);
   const [capabilities, setCapabilities] = useState(api.capabilities);
+  const [webSearch, setWebSearch] = useState(api.webSearch);
   const [active, setActive] = useState(api.active);
   const [testResult, setTestResult] = useState<ExternalApiTestResult | null>(null);
 
@@ -859,6 +860,7 @@ function EditDialog({
         rechargeUrl: rechargeUrl || undefined,
         priority,
         capabilities,
+        webSearch,
         active,
       }),
     onSuccess: () => {
@@ -973,6 +975,15 @@ function EditDialog({
         </label>
         {/* 能力标签(点选) */}
         <CapabilitiesPicker value={capabilities} onChange={setCapabilities} />
+
+        <label className="flex items-center gap-2 text-xs cursor-pointer">
+          <input
+            type="checkbox"
+            checked={webSearch}
+            onChange={(e) => setWebSearch(e.target.checked)}
+          />
+          联网搜索(千问 enable_search;知识库「AI 联网检索归档」据此显隐)
+        </label>
 
         <label className="flex items-center gap-2 text-xs cursor-pointer">
           <input

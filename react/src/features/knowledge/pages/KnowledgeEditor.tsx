@@ -7,10 +7,12 @@ import {
   ChevronLeftIcon,
   FileTextIcon,
   GitBranchIcon,
+  HelpCircleIcon,
   Loader2Icon,
   PaperclipIcon,
   SaveIcon,
   SendIcon,
+  SparklesIcon,
   Trash2Icon,
 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
@@ -18,6 +20,7 @@ import { Input } from "@/shared/components/ui/input";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { useAuth } from "@/stores/auth";
 import {
+  knowledgeAiApi,
   knowledgeApi,
   knowledgeErrMsg,
   type ArticleAttachment,
@@ -68,6 +71,7 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
   const [revisionOf, setRevisionOf] = useState<RevisionTarget | null>(null);
   const [attachments, setAttachments] = useState<ArticleAttachment[]>(article?.attachments ?? []);
   const [uploadingAtt, setUploadingAtt] = useState(false);
+  const [faqCount, setFaqCount] = useState(article?.faqs?.length ?? 0);
   // 已落库的文章 id:新建首次保存后置为服务器返回的 id。之后 save/submit 都走 update,
   // 且**不再 navigate 触发外壳重挂载** —— 避免丢失编辑中的输入、避免重试重复建文、避免读到陈旧缓存。
   const [articleId, setArticleId] = useState<string | null>(article?.id ?? null);
@@ -204,6 +208,26 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
       setUploadingAtt(false);
     }
   }
+
+  // AI 生成导读(填 summary + 建议标签)/ FAQ(写库,显示条数)——需先保存(有 articleId)
+  const aiGuide = useMutation({
+    mutationFn: () => knowledgeAiApi.guide(articleId!),
+    onSuccess: (d) => {
+      // 设 summary/tags 会改变表单签名 → 自动保存 effect 随后把新导读/标签落库(无需手动触发)
+      if (d.summary) setSummary(d.summary);
+      if (d.tags?.length) setTags((cur) => [...new Set([...cur, ...d.tags])].slice(0, 12));
+      toast.success("已生成导读" + (d.tags?.length ? " + 建议标签" : ""));
+    },
+    onError: (e) => toast.error(knowledgeErrMsg(e, "生成导读失败")),
+  });
+  const aiFaq = useMutation({
+    mutationFn: () => knowledgeAiApi.faq(articleId!),
+    onSuccess: (d) => {
+      setFaqCount(d.faqs.length);
+      toast.success(`已生成 ${d.faqs.length} 条常见问题(阅读页可见)`);
+    },
+    onError: (e) => toast.error(knowledgeErrMsg(e, "生成 FAQ 失败")),
+  });
 
   async function removeAttachment(att: ArticleAttachment) {
     try {
@@ -343,9 +367,23 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
           </div>
         </div>
 
-        {/* 导读(可选,P4 可 AI 生成) */}
+        {/* 导读(可选,AI 可生成) */}
         <div className="rounded-xl border border-gray-100 bg-white/90 shadow-sm p-5">
-          <div className="text-xs text-gray-400 mb-1.5">导读(可选 —— 一段话让读者快速了解本文;后续版本支持 AI 生成)</div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-xs text-gray-400">导读(可选 —— 一段话让读者快速了解本文)</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="ml-auto text-[var(--party-primary)] h-7"
+              disabled={!articleId || aiGuide.isPending}
+              title={articleId ? "AI 读正文生成导读 + 建议标签" : "先保存草稿后可用"}
+              onClick={() => aiGuide.mutate()}
+            >
+              {aiGuide.isPending ? <Loader2Icon className="w-3.5 h-3.5 mr-1 animate-spin" /> : <SparklesIcon className="w-3.5 h-3.5 mr-1" />}
+              AI 生成导读
+            </Button>
+          </div>
           <Textarea
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
@@ -353,6 +391,27 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
             placeholder="例:本制度适用于全体在岗员工,明确了……"
             className="text-sm"
           />
+        </div>
+
+        {/* 常见问题(AI 生成,写库;阅读页折叠展示) */}
+        <div className="rounded-xl border border-gray-100 bg-white/90 shadow-sm p-5 flex items-center gap-2">
+          <HelpCircleIcon className="w-4 h-4 text-[var(--party-primary)]" />
+          <span className="text-sm text-gray-700 font-medium">常见问题答疑</span>
+          <span className="text-xs text-gray-400">
+            {faqCount > 0 ? `已生成 ${faqCount} 条(阅读页可见)` : "还没有 —— AI 读正文自动生成问答"}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="ml-auto"
+            disabled={!articleId || aiFaq.isPending}
+            title={articleId ? "AI 读正文生成 5~8 条问答" : "先保存草稿后可用"}
+            onClick={() => aiFaq.mutate()}
+          >
+            {aiFaq.isPending ? <Loader2Icon className="w-3.5 h-3.5 mr-1 animate-spin" /> : <SparklesIcon className="w-3.5 h-3.5 mr-1" />}
+            {faqCount > 0 ? "重新生成" : "AI 生成 FAQ"}
+          </Button>
         </div>
 
         {/* 正文 */}

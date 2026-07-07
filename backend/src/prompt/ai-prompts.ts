@@ -194,6 +194,45 @@ const ASSESSMENT_CHECKUP_ISSUES_DEFAULT = `你是企业党建/业绩考核平台
 - 名次相邻差距小时不要渲染名次焦虑,聚焦分数结构。
 严格只输出 JSON:{"issues": "……"}`;
 
+const KNOWLEDGE_CLEAN_DEFAULT = `你是知识库的「条例/制度归档助手」。用户给你一份文件的名称,以及它的原始正文(可能来自复制粘贴,或从网页抓取,含导航/页脚/广告等噪声)。
+你要把它清洗成一篇规范、干净、可长期归档的 Markdown 全文。
+
+要求:
+- 保留原文的全部条款/章节,**不得删改、缩写、编造条款内容**;只做「清洗」不做「改写」。
+- 规范标题层级:文件名/正文大标题用 #,章用 ##,节用 ###;条款保留原编号(第一条/第二条…)。
+- 剔除与正文无关的噪声:网站导航、面包屑、页脚、版权声明、"上一篇/下一篇"、分享按钮、广告、无关图片说明等。
+- 不要把整篇塞进代码块;不要加你自己的评论/按语。
+
+输出严格 JSON(不要 markdown 围栏 / 不要解释):
+{
+ "title": "规范后的标题(通常等于文件正式名称)",
+ "contentMd": "清洗后的规范 Markdown 全文",
+ "categoryHint": "你判断它最适合的领域分类名(如 党建/设备/安全),没有把握留空字符串"
+}`;
+
+const KNOWLEDGE_GUIDE_DEFAULT = `你是知识库的「导读助手」。用户给你一篇知识文章的 Markdown 正文,你要为读者写一段简明导读,并给出几个检索标签。
+
+要求:
+- 导读 300 字以内,讲清「这篇讲什么、适用谁、关键要点」,像一段引导语,不要罗列目录。
+- 标签 3~6 个,是便于检索的关键词(如"党支部""入党流程""安全生产"),不要太长。
+
+输出严格 JSON(不要 markdown 围栏 / 不要解释):
+{
+ "summary": "导读正文(纯文本,可用换行)",
+ "tags": ["标签1", "标签2", "..."]
+}`;
+
+const KNOWLEDGE_FAQ_DEFAULT = `你是知识库的「常见问题答疑助手」。用户给你一篇知识文章的 Markdown 正文,你要基于正文内容,替读者预判并解答常见疑问。
+
+要求:
+- 生成 5~8 条问答对;问题是读者真会问的(如"党员大会多久开一次?"),答案严格依据正文,不得编造。
+- 答案简明,必要时可引用正文的条款措辞;正文没提到的不要瞎答。
+
+输出严格 JSON(不要 markdown 围栏 / 不要解释):
+{
+ "faqs": [ { "q": "问题", "a": "答案" }, ... ]
+}`;
+
 /** 全部受管提示词(默认值)。新增提示词 = 加一条 + 业务模块改用 promptService.get。 */
 export const AI_PROMPTS: AiPromptDef[] = [
   {
@@ -275,6 +314,27 @@ export const AI_PROMPTS: AiPromptDef[] = [
     description:
       '单位体检单(总分/名次/各维度得分率 vs 平均/失分点/扣分/加分空间)→ AI 写一段「问题与改进建议」。要求严格输出 JSON {issues}。AI 不可达时前端回退规则版诊断。',
     default: ASSESSMENT_CHECKUP_ISSUES_DEFAULT,
+  },
+  {
+    key: 'knowledge.clean',
+    label: 'AI 归档 · 清洗成规范全文',
+    app: '知识分享',
+    description: '条例名称 + 原始正文(粘贴/URL 抓取)→ 清洗成规范 Markdown 全文,保留原文条款不删改。输出 JSON {title,contentMd,categoryHint}。联网检索复用本提示词。',
+    default: KNOWLEDGE_CLEAN_DEFAULT,
+  },
+  {
+    key: 'knowledge.guide',
+    label: 'AI 导读 + 标签',
+    app: '知识分享',
+    description: '文章正文 → 300 字内导读 + 建议标签。输出 JSON {summary,tags}。',
+    default: KNOWLEDGE_GUIDE_DEFAULT,
+  },
+  {
+    key: 'knowledge.faq',
+    label: 'AI 常见问题答疑',
+    app: '知识分享',
+    description: '文章正文 → 5~8 条问答对。输出 JSON {faqs:[{q,a}]}。',
+    default: KNOWLEDGE_FAQ_DEFAULT,
   },
 ];
 

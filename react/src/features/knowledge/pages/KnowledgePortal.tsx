@@ -12,6 +12,7 @@ import {
   SparklesIcon,
   StarIcon,
   UserIcon,
+  WandSparklesIcon,
   XIcon,
 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
@@ -122,6 +123,9 @@ export default function KnowledgePortal() {
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => navigate("/knowledge/mine")}>
               <UserIcon className="w-4 h-4 mr-1" /> 我的发布 / 收藏
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/knowledge/archive")}>
+              <WandSparklesIcon className="w-4 h-4 mr-1" /> AI 归档
             </Button>
             <Button
               size="sm"

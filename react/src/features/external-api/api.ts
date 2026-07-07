@@ -30,6 +30,8 @@ export interface ExternalApiDto {
   priority: number;
   /** 能力标签,逗号分隔。已知值:chat / vision / reasoning */
   capabilities: string;
+  /** 该模型支持联网搜索(千问 enable_search) */
+  webSearch: boolean;
   active: boolean;
   meta: string | null;
   createdAt: string;
@@ -77,6 +79,7 @@ export interface UpdateExternalApiInput {
   rechargeUrl?: string;
   priority?: number;
   capabilities?: string;
+  webSearch?: boolean;
   active?: boolean;
   meta?: string;
 }

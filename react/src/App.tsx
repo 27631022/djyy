@@ -49,6 +49,7 @@ import {
   KnowledgeArticlePage,
   KnowledgeMinePage,
   KnowledgeEditorPage,
+  KnowledgeArchivePage,
   KnowledgeCategoriesPage,
   KnowledgeManagePage,
   KnowledgeImportPage,
@@ -186,6 +187,7 @@ const App = () => (
           <Route path="/knowledge/mine" element={<ProtectedRoute><KnowledgeMinePage /></ProtectedRoute>} />
           <Route path="/knowledge/edit" element={<ProtectedRoute><KnowledgeEditorPage /></ProtectedRoute>} />
           <Route path="/knowledge/edit/:id" element={<ProtectedRoute><KnowledgeEditorPage /></ProtectedRoute>} />
+          <Route path="/knowledge/archive" element={<ProtectedRoute><KnowledgeArchivePage /></ProtectedRoute>} />
           {/* 桌面任务小组件(Tauri 挂件加载的透明页;浏览器也可直接开 /widget 调试)。
               挂件自行处理登录(未登录显示紧凑登录),不套 ProtectedRoute,保持透明圆角壳 */}
           <Route path="/widget" element={<TaskWidgetPage />} />

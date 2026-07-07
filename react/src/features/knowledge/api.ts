@@ -336,6 +336,26 @@ export interface KnowledgeTemplate {
   createdAt: string;
 }
 
+/* ─── AI(P4) ─── */
+export interface CleanResult {
+  title: string;
+  contentMd: string;
+  categoryHint: string;
+}
+export const knowledgeAiApi = {
+  capabilities: () => api.get<{ webSearch: boolean }>("/knowledge/ai/capabilities").then((r) => r.data),
+  fetchUrl: (url: string) =>
+    api.post<{ title: string; text: string }>("/knowledge/ai/fetch-url", { url }, { timeout: 30_000 }).then((r) => r.data),
+  clean: (name: string, text: string) =>
+    api.post<CleanResult>("/knowledge/ai/clean", { name, text }, { timeout: 180_000 }).then((r) => r.data),
+  search: (name: string, hint?: string) =>
+    api.post<CleanResult>("/knowledge/ai/search", { name, hint }, { timeout: 200_000 }).then((r) => r.data),
+  guide: (articleId: string) =>
+    api.post<{ summary: string; tags: string[] }>(`/knowledge/ai/articles/${articleId}/guide`, {}, { timeout: 120_000 }).then((r) => r.data),
+  faq: (articleId: string) =>
+    api.post<{ faqs: Array<{ q: string; a: string }> }>(`/knowledge/ai/articles/${articleId}/faq`, {}, { timeout: 120_000 }).then((r) => r.data),
+};
+
 /** 浏览时长上报 URL(useViewTracking 用 navigator.sendBeacon 发,公开口) */
 export function knowledgeViewBeaconUrl(): string {
   return `${apiOrigin}/api/public/knowledge/view-beacon`;

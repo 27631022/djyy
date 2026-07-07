@@ -108,6 +108,15 @@
 - **收藏** 让「我的收藏」tab + 门户右栏收藏卡片有了真实数据(P1/P2 已接口就绪)。
 - **验证**:双端门禁绿 + API 端到端(点赞 toggle 幂等/计数、收藏进列表、评论 @回复 commentCount、删自己 200 删他人 403、匿名反馈显「匿名用户」+ 回复 replied + member 看全部 403、view-beacon 公开 201 + 超上限 400、统计 manage + member 403)。
 
+## P4 AI 落地(2026-07-06)
+
+- **external-api**:新增 `LlmClientService`(泛化 task 的 callLlm,OpenAI 兼容 /chat/completions + JSON 模式 + `enableWebSearch`/`extraBody`;放 @Global external-api 模块,knowledge 直接注入)+ `ExternalApi.webSearch` 列(migrate `add_external_api_web_search`;seed update 块不含它,reseed 不冲 UI 设置)+ AI 接入管理页「联网搜索」开关。
+- **ai-consumers +4**(knowledge.clean/guide/faq/search.text,均 chat)+ **ai-prompts +3**(knowledge.clean/guide/faq)。
+- **knowledge-ai.service**:`capabilities`(据 knowledge.search.text 绑定模型的 webSearch+qwen 显隐)/ `fetchUrl`(SSRF 防护:仅 http(s)、DNS 后拒私网/环回/CGNAT、**手动逐跳跟随重定向每跳复验 host**、15s/5MB;GBK 兜底;**线性非回溯正文提取** 800KB 截断 + unrolled 噪声剥除 + indexOf 取 article/main)/ `clean`(名称+正文→规范 md)/ `search`(联网检索,未配 400 引导)/ `generateGuide`(→summary+tags,写库)/ `generateFaq`(→faqJson,写库);作者或 manage 判。
+- **前端**:`KnowledgeArchive` 向导(名称 → 联网检索(据 capabilities 显隐)/贴URL(抓正文)/贴全文 → AI 清洗 → 预览 → 建草稿进编辑器)+ 编辑器「AI 生成导读/FAQ」按钮 + 门户「AI 归档」入口。
+- **验证**:双端门禁绿 + **真实 deepseek 全链路真调成功**(clean 清洗去噪、导读 77 字+4 标签、FAQ 引用条款,均落库)+ SSRF(127.0.0.1/file:// 400)+ 未配联网 search 400 + webSearch 落库 + capabilities。
+- **P4 对抗审查修 3 缺陷**:① [高] extractMainText 惰性+反向引用正则 ReDoS(5MB 恶意 HTML→分钟级阻塞事件循环)→ 800KB 截断 + unrolled 线性正则(实测恶意 800KB 1ms);② [中] SSRF 重定向绕过(assertPublicHost 只验初始 host,axios 跟随重定向不复验)→ 手动逐跳复验;③ [低] LlmClientService extraBody 可覆盖 model/messages → 固定字段后置覆盖 extraBody。
+
 ## 后续路线:主流知识网站功能增强(P6 候选,2026-07-05 与用户对齐)
 
 对照语雀/飞书知识库、知乎/SO 问答、CSDN/掘金、Zendesk 帮助中心、学习强国督学,筛出**契合企业内网 KM、且能复用已有基建**的增强项(按价值/成本排序),不动 P1–P5 主线,P2 存量导入后按实际体感定序:

@@ -5,6 +5,7 @@ export { default as KnowledgePortalPage } from "./pages/KnowledgePortal";
 export { default as KnowledgeArticlePage } from "./pages/KnowledgeArticle";
 export { default as KnowledgeMinePage } from "./pages/KnowledgeMine";
 export { default as KnowledgeEditorPage } from "./pages/KnowledgeEditor";
+export { default as KnowledgeArchivePage } from "./pages/KnowledgeArchive";
 export { default as KnowledgeCategoriesPage } from "./pages/admin/KnowledgeCategories";
 export { default as KnowledgeManagePage } from "./pages/admin/KnowledgeManage";
 export { default as KnowledgeImportPage } from "./pages/admin/KnowledgeImport";

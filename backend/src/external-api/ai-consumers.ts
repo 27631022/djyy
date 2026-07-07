@@ -121,6 +121,36 @@ export const AI_CONSUMERS: AiConsumer[] = [
     description:
       '在线解说员「党建小益」:把每个展品的解说词文本合成成语音(TTS),走到展品前点击时播报。需配 ttsModel(语音合成模型)+ ttsVoice(音色)',
   },
+  {
+    key: 'knowledge.clean.text',
+    app: '知识分享',
+    label: 'AI 归档 · 清洗成规范全文',
+    capability: 'chat',
+    description:
+      '把粘贴的条例/制度原始正文(或从 URL 抓取的网页正文)清洗成规范 Markdown:标题层级、条款编号、剔除导航/页脚噪声,保留原文不删改条款',
+  },
+  {
+    key: 'knowledge.guide.text',
+    app: '知识分享',
+    label: 'AI 导读 + 标签',
+    capability: 'chat',
+    description: '读一篇知识文章正文 → 生成 300 字内的导读 + 建议标签,供作者确认',
+  },
+  {
+    key: 'knowledge.faq.text',
+    app: '知识分享',
+    label: 'AI 常见问题答疑(FAQ)',
+    capability: 'chat',
+    description: '读一篇知识文章正文 → 生成 5~8 条常见问题问答对',
+  },
+  {
+    key: 'knowledge.search.text',
+    app: '知识分享',
+    label: 'AI 联网检索归档',
+    capability: 'chat',
+    description:
+      '输入条例名称 → 联网搜索最新全文并清洗归档。**需给本条绑定一个开启了「联网搜索」的模型**(如千问 qwen,勾上联网),否则「一键联网检索」不可用',
+  },
 ];
 
 export function getConsumer(key: string): AiConsumer | undefined {
