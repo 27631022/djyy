@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { api } from "@/shared/api/client";
 import { downloadBlob } from "@/shared/lib/download";
+import { flashHighlight, useLocateQuery } from "@/shared/hooks/useLocateQuery";
 import { Button } from "@/shared/components/ui/button";
 import {
   Accordion,
@@ -39,6 +40,7 @@ import {
   knowledgeErrMsg,
   type ArticleDetail,
 } from "../api";
+import { FONT_OPTIONS, initialFontPx, storeFontPx } from "../readingFont";
 import { MarkdownView } from "../components/MarkdownView";
 import { extractToc } from "../components/markdownToc";
 import { CommentSection } from "../components/CommentSection";
@@ -64,20 +66,7 @@ function safeHttpUrl(url: string | null): string | null {
   return /^https?:\/\//i.test(url.trim()) ? url : null;
 }
 
-/** 阅读字号档位(正文/导读/问答基础字号 px);标题等相对它按 em 缩放。默认「标准 17」比旧 15 更大。 */
-const FONT_OPTIONS = [
-  { px: 15, label: "小" },
-  { px: 17, label: "标准" },
-  { px: 19, label: "大" },
-  { px: 22, label: "特大" },
-];
-const FONT_STORAGE_KEY = "knowledge-font-px";
-const DEFAULT_FONT_PX = 17;
-
-function initialFontPx(): number {
-  const v = Number(localStorage.getItem(FONT_STORAGE_KEY));
-  return FONT_OPTIONS.some((o) => o.px === v) ? v : DEFAULT_FONT_PX;
-}
+// 阅读字号档位/存取抽到 ../readingFont —— 与「个人设置 · 阅读偏好」共用同一 localStorage key
 
 /** 外壳:取数 → key 重挂载内层(零 effect 同步范式) */
 export default function KnowledgeArticlePage() {
@@ -114,50 +103,45 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
   const [fontPx, setFontPx] = useState<number>(initialFontPx);
   function pickFont(px: number) {
     setFontPx(px);
-    try {
-      localStorage.setItem(FONT_STORAGE_KEY, String(px));
-    } catch {
-      /* 隐私模式写不了忽略 */
-    }
+    storeFontPx(px);
   }
 
-  // 从搜索联想带来的关键词 → 进文章后定位并高亮「相关行」
+  // 从搜索联想带来的关键词 → 进文章后定位并高亮「相关行」(逻辑抽到 shared/hooks/useLocateQuery,全站搜索共用)
   const [searchParams] = useSearchParams();
   const highlightQ = (searchParams.get("q") ?? "").trim();
+  const faqParam = (searchParams.get("faq") ?? "").trim();
   const mainRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (!highlightQ) return;
-    const root = mainRef.current;
-    if (!root) return;
-    // 等 markdown/图片布局稳定再定位
-    const raf = requestAnimationFrame(() => {
-      const ql = highlightQ.toLowerCase();
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      let node: Node | null;
-      while ((node = walker.nextNode())) {
-        if ((node.textContent ?? "").toLowerCase().includes(ql)) {
-          const el = (node.parentElement?.closest(
-            "p,li,td,th,h1,h2,h3,h4,h5,h6,blockquote,pre",
-          ) ?? node.parentElement) as HTMLElement | null;
-          if (el) {
-            el.scrollIntoView({ block: "center", behavior: "smooth" });
-            el.classList.add("kb-search-hit");
-            window.setTimeout(() => el.classList.remove("kb-search-hit"), 2600);
-          }
-          break;
-        }
-      }
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [a.id, highlightQ]);
+  // ?faq= 深链优先(FAQ 折叠在 Radix 里 TreeWalker 扫不到,且双滚动打架),此时跳过正文定位
+  useLocateQuery(mainRef, faqParam ? "" : highlightQ, a.id);
 
   // FAQ 展开即计一次点击热度(每次进入每条只计一次,避免反复开合刷量)
   const clickedFaqs = useRef(new Set<string>());
-  function onFaqOpen(faqId: string) {
-    if (!faqId || clickedFaqs.current.has(faqId)) return;
-    clickedFaqs.current.add(faqId);
-    knowledgeApi.recordFaqClick(a.id, faqId).catch(() => {});
-  }
+  const onFaqOpen = useCallback(
+    (faqId: string) => {
+      if (!faqId || clickedFaqs.current.has(faqId)) return;
+      clickedFaqs.current.add(faqId);
+      knowledgeApi.recordFaqClick(a.id, faqId).catch(() => {});
+    },
+    [a.id],
+  );
+
+  // FAQ 手风琴受控:?faq= 深链(全站搜索 FAQ 命中)初始展开;用户操作后以用户为准
+  const [userFaq, setUserFaq] = useState<string | null>(null);
+  const openFaq = userFaq ?? faqParam;
+
+  // ?faq= 深链:滚动定位到该问答 + 金黄闪烁 + 计一次点击(视为点开)
+  useEffect(() => {
+    if (!faqParam) return;
+    const raf = requestAnimationFrame(() => {
+      const el = document.getElementById(`faq-${faqParam}`);
+      if (el) {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        flashHighlight(el);
+      }
+    });
+    onFaqOpen(faqParam);
+    return () => cancelAnimationFrame(raf);
+  }, [a.id, faqParam, onFaqOpen]);
 
   // 浏览埋点(进入记一次 + 累计可见时长,离开 beacon 回填)
   useViewTracking(a.id);
@@ -343,9 +327,17 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
               <div className="flex items-center gap-1.5 font-medium text-gray-800 mb-1">
                 <HelpCircleIcon className="w-4 h-4 text-[var(--party-primary)]" /> 常见问题答疑
               </div>
-              <Accordion type="single" collapsible onValueChange={onFaqOpen}>
+              <Accordion
+                type="single"
+                collapsible
+                value={openFaq}
+                onValueChange={(v) => {
+                  setUserFaq(v);
+                  onFaqOpen(v);
+                }}
+              >
                 {a.faqs.map((f) => (
-                  <AccordionItem key={f.id} value={f.id}>
+                  <AccordionItem key={f.id} value={f.id} id={`faq-${f.id}`}>
                     <AccordionTrigger className="text-left" style={{ fontSize: `${fontPx}px` }}>
                       {f.pinned && <PinIcon className="w-3.5 h-3.5 mr-1 shrink-0 text-[var(--party-primary)] fill-current" />}
                       {f.q}

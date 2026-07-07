@@ -1,4 +1,5 @@
 export * from "./api";
+export * from "./readingFont";
 export { MarkdownView } from "./components/MarkdownView";
 export { extractToc, headingId, type TocItem } from "./components/markdownToc";
 export { default as KnowledgePortalPage } from "./pages/KnowledgePortal";

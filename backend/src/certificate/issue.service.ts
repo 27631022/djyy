@@ -279,6 +279,67 @@ export class CertificateIssueService {
     });
   }
 
+  /**
+   * 我的证书搜索(全站搜索聚合模块调用)。
+   * ⚠ recipientUserId 由服务端注入 actorId,绝不接受客户端入参(区别于 list(filter) 的信任语义)——
+   * 否则登录用户可枚举他人证书。含已撤销(items 带 revoked,前端标记)。
+   */
+  async searchMine(actorId: string, rawQ: string, page = 1, pageSize = 10) {
+    const q = rawQ.trim();
+    const empty = {
+      total: 0,
+      items: [] as Array<{
+        id: string; certNo: string; templateName: string; honorType: string | null;
+        yearLabel: string; issueDate: Date; revoked: boolean; publicToken: string;
+      }>,
+    };
+    if (!q) return empty;
+    const p = Math.max(page, 1);
+    const size = Math.min(Math.max(pageSize, 1), 50);
+    const where = {
+      recipientUserId: actorId,
+      OR: [
+        { certNo: { contains: q, mode: 'insensitive' as const } },
+        { yearLabel: { contains: q, mode: 'insensitive' as const } },
+        { honorCode: { contains: q, mode: 'insensitive' as const } },
+        // 关系过滤:template 为 null(外部录入)自然不命中,无需特判
+        { template: { name: { contains: q, mode: 'insensitive' as const } } },
+      ],
+    };
+    const [total, rows] = await Promise.all([
+      this.prisma.certificate.count({ where }),
+      this.prisma.certificate.findMany({
+        where,
+        orderBy: { issueDate: 'desc' },
+        skip: (p - 1) * size,
+        take: size,
+        select: {
+          id: true,
+          certNo: true,
+          yearLabel: true,
+          honorType: true,
+          issueDate: true,
+          revoked: true,
+          publicToken: true,
+          template: { select: { name: true } },
+        },
+      }),
+    ]);
+    return {
+      total,
+      items: rows.map((c) => ({
+        id: c.id,
+        certNo: c.certNo,
+        templateName: c.template?.name ?? '',
+        honorType: c.honorType,
+        yearLabel: c.yearLabel,
+        issueDate: c.issueDate,
+        revoked: c.revoked,
+        publicToken: c.publicToken,
+      })),
+    };
+  }
+
   /** 详情 — 含 pdfData / externalFileData,下载/预览用 */
   async get(id: string) {
     const cert = await this.prisma.certificate.findUnique({

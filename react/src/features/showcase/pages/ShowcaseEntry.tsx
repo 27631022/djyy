@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, Medal, MessageSquareText, PencilLine, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
+import { useLocateQuery } from "@/shared/hooks/useLocateQuery";
 import {
   ENTRY_STATUS_CHIP,
   ENTRY_STATUS_LABEL,
@@ -39,7 +40,15 @@ export default function ShowcaseEntry() {
   return <EntryView key={entry.data.id} entry={entry.data} />;
 }
 
-function Shell({ children, backTo }: { children: React.ReactNode; backTo?: { id: string; title: string } }) {
+function Shell({
+  children,
+  backTo,
+  contentRef,
+}: {
+  children: React.ReactNode;
+  backTo?: { id: string; title: string };
+  contentRef?: React.Ref<HTMLDivElement>;
+}) {
   const navigate = useNavigate();
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#FBF7F2] via-[#FDFCFA] to-white">
@@ -55,7 +64,7 @@ function Shell({ children, backTo }: { children: React.ReactNode; backTo?: { id:
           </button>
         </div>
       </header>
-      <div className="mx-auto max-w-4xl px-4 pb-16">{children}</div>
+      <div ref={contentRef} className="mx-auto max-w-4xl px-4 pb-16">{children}</div>
     </div>
   );
 }
@@ -65,6 +74,12 @@ function EntryView({ entry: e }: { entry: EntryDetail }) {
   const qc = useQueryClient();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   useShowcaseViewTracking("entry", e.id);
+
+  // 全站搜索带 ?q= 进来 → 标题/说明/图文区块里定位并高亮相关行(本组件在数据就绪后 key 挂载,rAF 定位可靠)
+  const [searchParams] = useSearchParams();
+  const highlightQ = (searchParams.get("q") ?? "").trim();
+  const rootRef = useRef<HTMLDivElement>(null);
+  useLocateQuery(rootRef, highlightQ, e.id);
 
   const submit = useMutation({
     mutationFn: () => showcaseApi.submitEntry(e.id),
@@ -86,7 +101,7 @@ function EntryView({ entry: e }: { entry: EntryDetail }) {
   });
 
   return (
-    <Shell backTo={{ id: e.stage.id, title: e.stage.title }}>
+    <Shell backTo={{ id: e.stage.id, title: e.stage.title }} contentRef={rootRef}>
       {/* 状态横幅 */}
       {e.status !== "published" && (
         <div

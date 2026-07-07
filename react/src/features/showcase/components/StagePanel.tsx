@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardCheck,
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
+import { useLocateQuery } from "@/shared/hooks/useLocateQuery";
 import { MarkdownView } from "@/features/knowledge";
 import {
   showcaseApi,
@@ -63,6 +64,12 @@ function StageView({ stage: s }: { stage: StageDetail }) {
   const [entrySort, setEntrySort] = useState<"rank" | "latest">("rank");
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
+  // 全站搜索带 ?q= 进来 → 台头/报送要求里定位并高亮相关行(本组件在数据就绪后才挂载,rAF 定位可靠)
+  const [searchParams] = useSearchParams();
+  const highlightQ = (searchParams.get("q") ?? "").trim();
+  const rootRef = useRef<HTMLDivElement>(null);
+  useLocateQuery(rootRef, highlightQ, s.id);
+
   const ranking = useQuery({
     queryKey: ["showcase", "ranking", s.id],
     queryFn: () => showcaseApi.getRanking(s.id),
@@ -94,7 +101,7 @@ function StageView({ stage: s }: { stage: StageDetail }) {
     s.rankBy === "metric" ? `比拼「${s.metricLabel ?? "数值"}」${s.metricUnit ? `(${s.metricUnit})` : ""}` : "按作品获赞数排位";
 
   return (
-    <div>
+    <div ref={rootRef}>
       {/* 状态横幅(非公开态给台主/管理员看) */}
       {s.status !== "published" && (
         <div

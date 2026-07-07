@@ -389,36 +389,88 @@ export class KnowledgeService {
    * 每条给一段**围绕命中处**的摘要片段(点击到文章后前端据 q 定位并高亮相关行)。
    */
   async searchSuggest(rawQ: string, limit = 8) {
-    const q = rawQ.trim();
-    if (!q) return [];
     const capped = Math.min(Math.max(limit, 1), 15);
-    const rows = await this.prisma.knowledgeArticle.findMany({
-      where: {
-        status: 'published',
-        OR: [
-          { title: { contains: q, mode: 'insensitive' } },
-          { contentMd: { contains: q, mode: 'insensitive' } },
-          { summary: { contains: q, mode: 'insensitive' } },
-          { tagsJson: { contains: q, mode: 'insensitive' } },
-        ],
-      },
-      orderBy: [{ pinned: 'desc' }, { viewCount: 'desc' }, { publishedAt: 'desc' }],
-      take: capped,
-      select: { id: true, title: true, categoryId: true, typeCode: true, contentMd: true, summary: true },
-    });
-    const [types, cats] = await Promise.all([
+    // 联想只要前 N 条、不用 total → countTotal=false 省一次 contentMd 无索引 ILIKE 全扫
+    const { items } = await this.searchArticles(rawQ, 1, capped, false);
+    return items;
+  }
+
+  /**
+   * 文章分页搜索(全站搜索聚合模块调用,searchSuggest 也委托到这):
+   * 可见性本方法自持 = 仅 published;where/排序与原联想一致。
+   * countTotal=false(联想场景)跳过 count 查询,total 回退为本页条数。
+   */
+  async searchArticles(rawQ: string, page = 1, pageSize = 10, countTotal = true) {
+    const q = rawQ.trim();
+    const empty = { total: 0, items: [] as Array<{ id: string; title: string; categoryName: string; typeName: string; snippet: string }> };
+    if (!q) return empty;
+    const p = Math.max(page, 1);
+    const size = Math.min(Math.max(pageSize, 1), 50);
+    const where = {
+      status: 'published',
+      OR: [
+        { title: { contains: q, mode: 'insensitive' as const } },
+        { contentMd: { contains: q, mode: 'insensitive' as const } },
+        { summary: { contains: q, mode: 'insensitive' as const } },
+        { tagsJson: { contains: q, mode: 'insensitive' as const } },
+      ],
+    };
+    const [total, rows, types, cats] = await Promise.all([
+      countTotal ? this.prisma.knowledgeArticle.count({ where }) : Promise.resolve(0),
+      this.prisma.knowledgeArticle.findMany({
+        where,
+        orderBy: [{ pinned: 'desc' }, { viewCount: 'desc' }, { publishedAt: 'desc' }],
+        skip: (p - 1) * size,
+        take: size,
+        select: { id: true, title: true, categoryId: true, typeCode: true, contentMd: true, summary: true },
+      }),
       this.prisma.knowledgeType.findMany({ select: { code: true, name: true } }),
       this.prisma.knowledgeCategory.findMany({ select: { id: true, name: true } }),
     ]);
     const typeName = new Map(types.map((t) => [t.code, t.name]));
     const catName = new Map(cats.map((c) => [c.id, c.name]));
-    return rows.map((r) => ({
-      id: r.id,
-      title: r.title,
-      categoryName: catName.get(r.categoryId) ?? '',
-      typeName: typeName.get(r.typeCode) ?? r.typeCode,
-      snippet: buildSnippet(q, r.summary, r.contentMd),
-    }));
+    return {
+      total: countTotal ? total : rows.length,
+      items: rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        categoryName: catName.get(r.categoryId) ?? '',
+        typeName: typeName.get(r.typeCode) ?? r.typeCode,
+        snippet: buildSnippet(q, r.summary, r.contentMd),
+      })),
+    };
+  }
+
+  /**
+   * FAQ 搜索(全站搜索):已发布文章 faqJson 内存过滤问/答命中。
+   * 不做 faqJson ILIKE 预筛 —— JSON 转义(中文\uXXXX 等)会漏检;量级同 hotFaqs 全扫可接受。
+   */
+  async searchFaqs(rawQ: string, page = 1, pageSize = 10) {
+    const q = rawQ.trim();
+    if (!q) return { total: 0, items: [] as Array<{ articleId: string; articleTitle: string; faqId: string; question: string; snippet: string }> };
+    const p = Math.max(page, 1);
+    const size = Math.min(Math.max(pageSize, 1), 50);
+    const ql = q.toLowerCase();
+    const articles = await this.prisma.knowledgeArticle.findMany({
+      where: { status: 'published' },
+      select: { id: true, title: true, faqJson: true },
+    });
+    const flat: Array<{ articleId: string; articleTitle: string; faqId: string; question: string; snippet: string }> = [];
+    for (const a of articles) {
+      for (const f of parseFaqsRaw(a.faqJson)) {
+        const hitA = f.a.toLowerCase().indexOf(ql);
+        if (!f.q.toLowerCase().includes(ql) && hitA < 0) continue;
+        flat.push({
+          articleId: a.id,
+          articleTitle: a.title,
+          faqId: f.id,
+          question: f.q,
+          snippet: faqSnippet(f.a, hitA, q.length),
+        });
+      }
+    }
+    // 全量匹配已在内存(量级同 hotFaqs 全扫),按页切片 → 第 50 条之后也可达
+    return { total: flat.length, items: flat.slice((p - 1) * size, p * size) };
   }
 
   /** 详情:published/archived 登录可见;draft/pending/rejected 仅作者或 manage */
@@ -1061,6 +1113,21 @@ function buildSnippet(q: string, summary: string | null, contentMd: string): str
     return snip.slice(0, 140);
   }
   return mdExcerpt(raw, 90); // 标题命中:给正文开头
+}
+
+/** FAQ 答案摘要:答案命中处取一段(~110 字);答案未命中(仅问题命中)给答案开头。 */
+function faqSnippet(answer: string, hitIdx: number, qLen: number): string {
+  const clean = (s: string) => s.replace(/\s+/g, ' ').trim();
+  if (hitIdx >= 0) {
+    const start = Math.max(0, hitIdx - 20);
+    const end = hitIdx + qLen + 70;
+    let snip = clean(answer.slice(start, end));
+    if (start > 0) snip = `…${snip}`;
+    if (end < answer.length) snip = `${snip}…`;
+    return snip.slice(0, 110);
+  }
+  const s = clean(answer);
+  return s.length > 100 ? `${s.slice(0, 100)}…` : s;
 }
 
 /** 粗剥 markdown 语法取列表摘要(不求完美,summary 缺失时兜底) */

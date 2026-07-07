@@ -18,25 +18,11 @@ import {
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { useAuth } from "@/stores/auth";
+import { highlightText } from "@/shared/lib/highlight";
 import { knowledgeApi, type ArticleListItem } from "../api";
 import { ArticleCard } from "./../components/ArticleCard";
 
 const PAGE_SIZE = 12;
-
-/** 片段里高亮首个命中词(大小写不敏感) */
-function highlightText(text: string, q: string): ReactNode {
-  const kw = q.trim();
-  if (!kw) return text;
-  const idx = text.toLowerCase().indexOf(kw.toLowerCase());
-  if (idx < 0) return text;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <mark className="rounded bg-yellow-200/70 px-0.5 text-inherit">{text.slice(idx, idx + kw.length)}</mark>
-      {text.slice(idx + kw.length)}
-    </>
-  );
-}
 
 /**
  * 知识门户(/knowledge):左侧领域分类树 + 顶部搜索 + 类型/标签筛选 + 最新/最热 + 分页。
@@ -237,8 +223,18 @@ export default function KnowledgePortal() {
                       )}
                     </button>
                   ))}
-                  <div className="border-t border-gray-50 px-4 py-2 text-[11px] text-gray-400">
-                    回车查看「{debInput}」的全部结果
+                  <div className="border-t border-gray-50 px-4 py-2 flex items-center justify-between text-[11px] text-gray-400">
+                    <span>回车查看「{debInput}」的全部结果</span>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        navigate(`/search?q=${encodeURIComponent(debInput)}`);
+                      }}
+                      className="text-[var(--party-primary)] hover:underline"
+                    >
+                      在全站搜索「{debInput}」→
+                    </button>
                   </div>
                 </div>
               )}

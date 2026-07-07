@@ -227,7 +227,7 @@
   .thin-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(120,124,140,0.5); background-clip: content-box; }
   .thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
 
-  /* 搜索联想点进文章后,命中「相关行」闪一下高亮(知识园地搜索) */
+  /* 全站搜索定位高亮:带 ?q=/?faq= 进详情页后,命中「相关行」闪一下(shared/hooks/useLocateQuery 使用) */
   .kb-search-hit {
     animation: kbSearchFlash 2.4s ease-out;
     border-radius: 6px;

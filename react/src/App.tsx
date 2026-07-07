@@ -69,6 +69,7 @@ import {
   ShowcaseCategoriesPage,
   ShowcaseFeedbackPage,
 } from "@/features/showcase";
+import { SearchPage } from "@/features/search";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
 import { Toaster } from "@/shared/components/ui/sonner";
@@ -198,6 +199,8 @@ const App = () => (
           {/* 证书公开验证:完全公开,不走 AdminLayout/ProtectedRoute */}
           <Route path="/verify" element={<CertificateVerifyPage />} />
           <Route path="/verify/:token" element={<CertificateVerifyPage />} />
+          {/* 全站搜索结果页(首页/知识门户搜索框回车落地;内容都要登录,访客自动跳登录并回跳) */}
+          <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
           {/* 知识分享前台门户(独立于 AdminLayout;内部条例制度 → 登录可见) */}
           <Route path="/knowledge" element={<ProtectedRoute><KnowledgePortalPage /></ProtectedRoute>} />
           <Route path="/knowledge/articles/:id" element={<ProtectedRoute><KnowledgeArticlePage /></ProtectedRoute>} />

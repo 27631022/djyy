@@ -3,15 +3,14 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  SearchIcon, UserIcon, StarIcon, ChevronRightIcon,
+  UserIcon, StarIcon, ChevronRightIcon,
   TrendingUpIcon, CrownIcon, FileTextIcon,
   BookOpenIcon, ClipboardListIcon, UsersIcon,
-  ClockIcon, XIcon, MegaphoneIcon, ShieldIcon,
-  AlertCircleIcon, BuildingIcon, LayoutDashboardIcon,
+  MegaphoneIcon, ShieldIcon,
+  BuildingIcon, LayoutDashboardIcon,
   SettingsIcon, FlameIcon,
   LockIcon, LogOutIcon, ChevronDownIcon,
 } from "lucide-react";
-import { Input } from "@/shared/components/ui/input";
 import { Badge } from "@/shared/components/ui/badge";
 import { Separator } from "@/shared/components/ui/separator";
 import { useAuth } from "../stores/auth";
@@ -19,6 +18,7 @@ import { siteSettingApi, FALLBACK_SITE_SETTINGS, SiteLogo } from "@/features/sit
 import { navApi, type NavCategoryDto, type NavItemDto } from "@/features/nav-category";
 import { resolveAvatarUrl } from "@/features/avatar";
 import { knowledgeApi } from "@/features/knowledge";
+import { GlobalSearchBox } from "@/features/search";
 import { rankBarGradient } from "@/shared/lib/ranking-demo";
 import { usePortalAssessmentBoard } from "@/features/assessment";
 import { LucideIcon } from "@/shared/components/IconPicker";
@@ -74,14 +74,7 @@ const HOT_TASKS = [
   { id: 6, icon: ShieldIcon, color: "var(--party-primary)", bg: "color-mix(in srgb, var(--party-primary) 8%, white)", title: `廉政风险防控排查`, tag: `专项行动`, tagColor: `bg-red-100 text-red-700`, date: `2025-Q2` },
 ];
 
-/* ─── Search ─── */
-const HOT_WORDS = [`党章学习`, `两学一做`, `主题教育`, `党费缴纳`, `廉洁自律`, `组织生活`];
-const SUGGEST_POOL = [
-  `党章学习资料`, `党章全文下载`, `党章考试题库`, `两学一做学习教育`, `主题教育学习安排`,
-  `主题教育心得体会`, `党费缴纳标准`, `党费缴纳流程`, `廉洁自律准则`, `廉洁风险排查`,
-  `组织生活会记录`, `组织关系转移`, `党员发展流程`, `党员民主评议`, `党建统计报表`,
-  `党支部工作计划`, `入党申请书模板`, `学习强国积分`, `党务公开内容`,
-];
+/* ─── Search:真搜索已抽到 @/features/search 的 GlobalSearchBox(联想/历史/热门词都在组件内) ─── */
 const NEWS_LIST = [
   { title: `关于做好2025年度党员发展工作的通知`, date: `2025-06-18`, hot: true },
   { title: `组织开展"学党史·强信念·跟党走"专题活动`, date: `2025-06-12`, hot: false },
@@ -743,13 +736,6 @@ function HeaderUserArea() {
    Main NavPage Component
    ══════════════════════════════════ */
 export default function NavPage() {
-  const [searchValue, setSearchValue] = useState("");
-  const [searchResult, setSearchResult] = useState<string | null>(null);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [recentWords, setRecentWords] = useState<string[]>([`党章`, `廉洁`]);
-  const searchWrapRef = useRef<HTMLDivElement>(null);
-
   /* ─── 站点配置(后台「站点设置」页面维护) ─── */
   const settingsQuery = useQuery({
     queryKey: ["site-settings"],
@@ -759,46 +745,6 @@ export default function NavPage() {
   const settings = settingsQuery.data ?? FALLBACK_SITE_SETTINGS;
   // theme 已通过 App.tsx 的 ThemeBootstrap 注入到 :root,这里只解构需要文案的字段
   const { brand, hero, footer, topNav } = settings;
-
-  const suggestions = searchValue.trim()
-    ? SUGGEST_POOL.filter(w => w.includes(searchValue.trim())).slice(0, 8)
-    : [];
-  const showHistoryPanel = panelOpen && !searchValue && recentWords.length > 0;
-  const showSuggestPanel = panelOpen && !!searchValue && suggestions.length > 0;
-
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) {
-        setPanelOpen(false);
-        setSearchFocused(false);
-      }
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
-
-  function handleSearch() {
-    if (searchValue.trim()) {
-      setRecentWords(prev => [searchValue.trim(), ...prev.filter(w => w !== searchValue.trim())].slice(0, 6));
-      setSearchResult(searchValue.trim());
-      setPanelOpen(false);
-    } else {
-      setPanelOpen(true);
-    }
-  }
-
-  function handleSelectWord(word: string) {
-    setSearchValue(word);
-    setRecentWords(prev => [word, ...prev.filter(w => w !== word)].slice(0, 6));
-    setSearchResult(null);
-    setPanelOpen(false);
-  }
-
-  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setSearchValue(e.target.value);
-    setSearchResult(null);
-    setPanelOpen(true);
-  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F8FA]">
@@ -848,106 +794,8 @@ export default function NavPage() {
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-2 leading-tight">{hero.mainSlogan}</h1>
           <p className="text-white/75 text-base mb-8 tracking-wide">{hero.subSlogan}</p>
 
-          {/* Search box */}
-          <div className="w-full max-w-xl relative" ref={searchWrapRef}>
-            <div className={`flex bg-white rounded-xl overflow-hidden shadow-xl transition-all duration-200 ${searchFocused ? "ring-2 ring-party-accent-40" : ""}`}>
-              <Input
-                value={searchValue}
-                onChange={handleInputChange}
-                onFocus={() => { setSearchFocused(true); setPanelOpen(true); }}
-                onKeyDown={e => {
-                  if (e.key === "Enter") handleSearch();
-                  if (e.key === "Escape") { setPanelOpen(false); setSearchFocused(false); }
-                }}
-                placeholder="请输入党建相关关键词，如：党章、党费、廉洁..."
-                className="flex-1 border-0 focus-visible:ring-0 text-base h-12 px-4 text-[#1A1A1A] placeholder:text-[#9CA3AF] rounded-none"
-              />
-              <button
-                onClick={handleSearch}
-                className="px-6 h-12 text-white font-semibold text-base flex items-center gap-2 flex-shrink-0 transition-colors"
-                style={{ backgroundColor: searchFocused ? "color-mix(in srgb, var(--party-primary) 80%, black)" : "var(--party-primary)" }}
-                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "color-mix(in srgb, var(--party-primary) 80%, black)")}
-                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = searchFocused ? "color-mix(in srgb, var(--party-primary) 80%, black)" : "var(--party-primary)")}
-              >
-                <SearchIcon className="w-4 h-4" />
-                搜索
-              </button>
-            </div>
-
-            {/* History panel */}
-            <div className={`absolute left-0 right-0 top-[calc(100%+8px)] z-40 bg-white rounded-xl shadow-xl border border-[#E9E9E9] overflow-hidden transition-all duration-200 origin-top ${showHistoryPanel ? "opacity-100 scale-y-100 pointer-events-auto" : "opacity-0 scale-y-95 pointer-events-none"}`}>
-              <div className="px-4 py-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] text-[#9CA3AF] font-semibold flex items-center gap-1">
-                    <ClockIcon className="w-3 h-3" /> 最近搜索
-                  </p>
-                  <button onMouseDown={() => setRecentWords([])} className="text-[12px] text-[#9CA3AF] hover:text-[var(--party-primary)] transition-colors">清空</button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {recentWords.map(word => (
-                    <button
-                      key={word}
-                      onMouseDown={() => handleSelectWord(word)}
-                      className="group flex items-center gap-1 text-sm px-3 py-1 rounded-full bg-[#F7F8FA] text-[#4B5563] border border-[#E9E9E9] hover:bg-party-soft hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] transition-all"
-                    >
-                      {word}
-                      <XIcon className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onMouseDown={e => { e.stopPropagation(); setRecentWords(p => p.filter(w => w !== word)); }} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Suggest panel */}
-            <div className={`absolute left-0 right-0 top-[calc(100%+8px)] z-40 bg-white rounded-xl shadow-xl border border-[#E9E9E9] overflow-hidden transition-all duration-200 origin-top ${showSuggestPanel ? "opacity-100 scale-y-100 pointer-events-auto" : "opacity-0 scale-y-95 pointer-events-none"}`}>
-              <div className="py-1">
-                {suggestions.map((word, idx) => {
-                  const kw = searchValue.trim();
-                  const parts = word.split(kw);
-                  return (
-                    <button key={idx} onMouseDown={() => handleSelectWord(word)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-party-soft transition-colors group">
-                      <SearchIcon className="w-3.5 h-3.5 text-[#D1D5DB] group-hover:text-[var(--party-primary)] flex-shrink-0 transition-colors" />
-                      <span className="text-base text-[#1A1A1A] flex-1 truncate">
-                        {parts.map((part, i) => (
-                          <span key={i}>{part}{i < parts.length - 1 && <span className="text-[var(--party-primary)] font-semibold">{kw}</span>}</span>
-                        ))}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* No result */}
-            {searchResult && (
-              <div className="mt-3 bg-white rounded-lg px-4 py-2.5 flex items-center gap-2.5 shadow-sm border border-red-100">
-                <AlertCircleIcon className="w-4 h-4 text-[var(--party-primary)] flex-shrink-0" />
-                <span className="text-base text-[#1A1A1A]">
-                  <span className="text-[var(--party-primary)] font-medium">「{searchResult}」</span> — 暂无相关结果，请尝试其他关键词
-                </span>
-              </div>
-            )}
-
-            {/* Hot words */}
-            <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
-              <span className="text-white/75 text-sm mr-1">热门搜索：</span>
-              {HOT_WORDS.map(word => (
-                <button
-                  key={word}
-                  onClick={() => handleSelectWord(word)}
-                  className={`text-sm px-3 py-1 rounded-full transition-all border ${
-                    searchValue === word
-                      ? "bg-[var(--party-accent)] text-white border-[var(--party-accent)]"
-                      : "bg-white/20 text-white border-white/30 hover:bg-[var(--party-accent)] hover:text-white hover:border-[var(--party-accent)]"
-                  }`}
-                >
-                  {word}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Search box:全站搜索(登录=分组联想;未登录=导航项过滤+登录提示;回车进 /search) */}
+          <GlobalSearchBox />
         </div>
         {/* Wave */}
         <div className="h-8 bg-[#F7F8FA]" style={{ borderRadius: "50% 50% 0 0 / 100% 100% 0 0", marginTop: "-1px" }} />
