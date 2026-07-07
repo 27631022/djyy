@@ -226,4 +226,15 @@
   }
   .thin-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(120,124,140,0.5); background-clip: content-box; }
   .thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
+
+  /* 搜索联想点进文章后,命中「相关行」闪一下高亮(知识园地搜索) */
+  .kb-search-hit {
+    animation: kbSearchFlash 2.4s ease-out;
+    border-radius: 6px;
+    box-decoration-break: clone;
+  }
+  @keyframes kbSearchFlash {
+    0%, 12%   { background-color: color-mix(in srgb, var(--party-accent) 42%, transparent); }
+    100%      { background-color: transparent; }
+  }
 }

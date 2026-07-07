@@ -23,6 +23,21 @@ import { ArticleCard } from "./../components/ArticleCard";
 
 const PAGE_SIZE = 12;
 
+/** 片段里高亮首个命中词(大小写不敏感) */
+function highlightText(text: string, q: string): ReactNode {
+  const kw = q.trim();
+  if (!kw) return text;
+  const idx = text.toLowerCase().indexOf(kw.toLowerCase());
+  if (idx < 0) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="rounded bg-yellow-200/70 px-0.5 text-inherit">{text.slice(idx, idx + kw.length)}</mark>
+      {text.slice(idx + kw.length)}
+    </>
+  );
+}
+
 /**
  * 知识门户(/knowledge):左侧领域分类树 + 顶部搜索 + 类型/标签筛选 + 最新/最热 + 分页。
  * 搜索词走 URL ?q=(NavPage 首页搜索框 P2 起跳转到这里)。
@@ -37,6 +52,25 @@ export default function KnowledgePortal() {
   const [categoryId, setCategoryId] = useState("");
   const [typeCode, setTypeCode] = useState("");
   const [sort, setSort] = useState<"latest" | "hot">("latest");
+
+  // 搜索联想:输入防抖 220ms → 拉命中片段;聚焦且有词时显示下拉
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [debInput, setDebInput] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebInput(input.trim()), 220);
+    return () => clearTimeout(t);
+  }, [input]);
+  const suggest = useQuery({
+    queryKey: ["knowledge", "suggest", debInput],
+    queryFn: () => knowledgeApi.searchSuggest(debInput, 8),
+    enabled: searchFocused && debInput.length >= 1,
+    staleTime: 30 * 1000,
+  });
+  const showSuggest = searchFocused && debInput.length >= 1;
+  function openSuggest(id: string) {
+    setSearchFocused(false);
+    navigate(`/knowledge/articles/${id}?q=${encodeURIComponent(debInput)}`);
+  }
 
   const categories = useQuery({ queryKey: ["knowledge", "categories"], queryFn: knowledgeApi.listCategories });
   const types = useQuery({ queryKey: ["knowledge", "types"], queryFn: knowledgeApi.listTypes });
@@ -148,23 +182,68 @@ export default function KnowledgePortal() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            setSearchFocused(false);
             applySearch(input);
           }}
           className="relative max-w-2xl mx-auto"
         >
-          <SearchIcon className="absolute left-4 top-3.5 w-5 h-5 text-gray-400" />
+          <SearchIcon className="absolute left-4 top-3.5 w-5 h-5 text-gray-400 z-10" />
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
             placeholder="搜索条例、制度、经验、操作指南…(标题 / 全文 / 标签)"
             className="pl-11 pr-24 h-12 rounded-full text-[15px] shadow-sm border-gray-200"
           />
           <Button
             type="submit"
-            className="absolute right-1.5 top-1.5 h-9 rounded-full px-5 bg-[var(--party-primary)] hover:opacity-90 text-white"
+            className="absolute right-1.5 top-1.5 h-9 rounded-full px-5 bg-[var(--party-primary)] hover:opacity-90 text-white z-10"
           >
             搜索
           </Button>
+
+          {/* 联想下拉:命中文章 + 围绕命中处的片段(点击到文章并定位相关行) */}
+          {showSuggest && (
+            <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden">
+              {suggest.isLoading ? (
+                <div className="px-4 py-4 text-sm text-gray-400">搜索中…</div>
+              ) : (suggest.data?.length ?? 0) === 0 ? (
+                <div className="px-4 py-4 text-sm text-gray-400">没有找到「{debInput}」相关内容</div>
+              ) : (
+                <div className="max-h-[60vh] overflow-y-auto no-scrollbar py-1">
+                  {suggest.data!.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      // onMouseDown(preventDefault) 抢在 input blur 前触发,避免下拉先收起
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        openSuggest(s.id);
+                      }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-party-soft transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 min-w-0 truncate text-sm font-medium text-gray-800">
+                          {highlightText(s.title, debInput)}
+                        </span>
+                        <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{s.typeName}</span>
+                        <span className="shrink-0 text-[11px] text-gray-400">{s.categoryName}</span>
+                      </div>
+                      {s.snippet && (
+                        <div className="mt-0.5 text-xs leading-5 text-gray-500 line-clamp-2">
+                          {highlightText(s.snippet, debInput)}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                  <div className="border-t border-gray-50 px-4 py-2 text-[11px] text-gray-400">
+                    回车查看「{debInput}」的全部结果
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </form>
         {(q || tag) && (
           <div className="max-w-2xl mx-auto mt-2 flex items-center gap-2 text-sm text-gray-500">
@@ -198,8 +277,8 @@ export default function KnowledgePortal() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 pb-16 grid gap-6 items-start grid-cols-1 lg:grid-cols-[200px_1fr] xl:grid-cols-[200px_1fr_280px]">
-        {/* 左:领域分类树 */}
-        <aside className="hidden lg:block sticky top-20 rounded-xl border border-gray-100 bg-white/90 shadow-sm p-3">
+        {/* 左:领域分类树(自身可滚,内容超高时不再顶住整页) */}
+        <aside className="hidden lg:block sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto no-scrollbar rounded-xl border border-gray-100 bg-white/90 shadow-sm p-3">
           <div className="px-2 pb-2 text-xs font-medium text-gray-400">领域分类</div>
           <button
             type="button"
@@ -324,8 +403,9 @@ export default function KnowledgePortal() {
           )}
         </main>
 
-        {/* 右:收藏 / 热点 / 最新 */}
-        <aside className="hidden xl:block sticky top-20 space-y-4">
+        {/* 右:热点问答 / 收藏 / 热点 / 最新(自身可滚,不再等中间信息流滚完) */}
+        <aside className="hidden xl:block sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto no-scrollbar space-y-4">
+          <HotFaqSideCard onOpen={openArticle} />
           <SideCard
             title="我的收藏"
             icon={<StarIcon className="w-3.5 h-3.5 text-amber-500" />}
@@ -349,6 +429,49 @@ export default function KnowledgePortal() {
             onOpen={openArticle}
           />
         </aside>
+      </div>
+    </div>
+  );
+}
+
+/** 右侧栏:热点问答(知识库 FAQ 点击热度榜;无数据自动隐藏,点击跳所属文章) */
+function HotFaqSideCard({ onOpen }: { onOpen: (id: string) => void }) {
+  const hot = useQuery({
+    queryKey: ["knowledge", "hot-faqs", "portal"],
+    queryFn: () => knowledgeApi.hotFaqs(8),
+    staleTime: 60 * 1000,
+  });
+  const items = hot.data ?? [];
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white/90 shadow-sm p-3">
+      <div className="flex items-center gap-1.5 px-1 pb-2 text-xs font-medium text-gray-500">
+        <FlameIcon className="w-3.5 h-3.5 text-[var(--party-primary)]" /> 热点问答
+      </div>
+      <div className="space-y-0.5">
+        {items.map((f, i) => (
+          <button
+            key={`${f.articleId}-${f.id}`}
+            type="button"
+            onClick={() => onOpen(f.articleId)}
+            className="w-full text-left px-1.5 py-1.5 rounded-lg hover:bg-gray-50 flex items-start gap-2 transition-colors"
+          >
+            <span
+              className={`shrink-0 mt-0.5 w-4 h-4 rounded text-[11px] flex items-center justify-center ${
+                i < 3 ? "bg-[var(--party-primary)] text-white" : "bg-gray-100 text-gray-400"
+              }`}
+            >
+              {i + 1}
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[13px] leading-tight text-gray-700 line-clamp-2">{f.q}</span>
+              <span className="mt-0.5 flex items-center gap-2 text-[11px] text-gray-400">
+                <span className="shrink-0">🔥 {f.clicks}</span>
+                <span className="truncate">{f.articleTitle}</span>
+              </span>
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );

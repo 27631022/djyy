@@ -384,6 +384,43 @@ export class KnowledgeService {
     };
   }
 
+  /**
+   * 搜索联想(门户搜索框实时预览):已发布文章里标题/正文/导读/标签命中 q 的前 N 条,
+   * 每条给一段**围绕命中处**的摘要片段(点击到文章后前端据 q 定位并高亮相关行)。
+   */
+  async searchSuggest(rawQ: string, limit = 8) {
+    const q = rawQ.trim();
+    if (!q) return [];
+    const capped = Math.min(Math.max(limit, 1), 15);
+    const rows = await this.prisma.knowledgeArticle.findMany({
+      where: {
+        status: 'published',
+        OR: [
+          { title: { contains: q, mode: 'insensitive' } },
+          { contentMd: { contains: q, mode: 'insensitive' } },
+          { summary: { contains: q, mode: 'insensitive' } },
+          { tagsJson: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: [{ pinned: 'desc' }, { viewCount: 'desc' }, { publishedAt: 'desc' }],
+      take: capped,
+      select: { id: true, title: true, categoryId: true, typeCode: true, contentMd: true, summary: true },
+    });
+    const [types, cats] = await Promise.all([
+      this.prisma.knowledgeType.findMany({ select: { code: true, name: true } }),
+      this.prisma.knowledgeCategory.findMany({ select: { id: true, name: true } }),
+    ]);
+    const typeName = new Map(types.map((t) => [t.code, t.name]));
+    const catName = new Map(cats.map((c) => [c.id, c.name]));
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      categoryName: catName.get(r.categoryId) ?? '',
+      typeName: typeName.get(r.typeCode) ?? r.typeCode,
+      snippet: buildSnippet(q, r.summary, r.contentMd),
+    }));
+  }
+
   /** 详情:published/archived 登录可见;draft/pending/rejected 仅作者或 manage */
   async getArticle(id: string, actorId: string) {
     const a = await this.prisma.knowledgeArticle.findUnique({
@@ -987,6 +1024,43 @@ function normalizeTags(tags?: string[]): string | null {
     if (seen.size >= TAG_MAX_COUNT) break;
   }
   return seen.size ? JSON.stringify([...seen]) : null;
+}
+
+/** 剥 markdown 行内语法(片段用,不截断) */
+function stripMdInline(s: string): string {
+  return s
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/[*_`>|~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** 围绕命中处取一段摘要(正文优先,再导读;仅标题命中→正文开头)。~140 字带省略号。 */
+function buildSnippet(q: string, summary: string | null, contentMd: string): string {
+  const ql = q.toLowerCase();
+  const raw = contentMd ?? '';
+  let src = raw;
+  let idx = raw.toLowerCase().indexOf(ql);
+  if (idx < 0 && summary) {
+    const i = summary.toLowerCase().indexOf(ql);
+    if (i >= 0) {
+      src = summary;
+      idx = i;
+    }
+  }
+  if (idx >= 0) {
+    const start = Math.max(0, idx - 30);
+    const end = idx + q.length + 80;
+    let snip = stripMdInline(src.slice(start, end));
+    if (start > 0) snip = `…${snip}`;
+    if (end < src.length) snip = `${snip}…`;
+    return snip.slice(0, 140);
+  }
+  return mdExcerpt(raw, 90); // 标题命中:给正文开头
 }
 
 /** 粗剥 markdown 语法取列表摘要(不求完美,summary 缺失时兜底) */

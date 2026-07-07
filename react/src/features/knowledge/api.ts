@@ -141,6 +141,15 @@ export interface HotFaqItem {
   clicks: number;
 }
 
+/** 搜索联想:命中文章 + 围绕命中处的片段 */
+export interface SearchSuggestItem {
+  id: string;
+  title: string;
+  categoryName: string;
+  typeName: string;
+  snippet: string;
+}
+
 export interface ReactionState {
   liked: boolean;
   favorited: boolean;
@@ -286,6 +295,8 @@ export const knowledgeApi = {
     api.post<{ ok: boolean; clicks: number }>(`/knowledge/articles/${articleId}/faqs/${faqId}/click`).then((r) => r.data),
   hotFaqs: (limit = 8) =>
     api.get<HotFaqItem[]>("/knowledge/hot-faqs", { params: { limit } }).then((r) => r.data),
+  searchSuggest: (q: string, limit = 8) =>
+    api.get<SearchSuggestItem[]>("/knowledge/search-suggest", { params: { q, limit } }).then((r) => r.data),
   assignMaintainers: (articleId: string, userIds: string[]) =>
     api
       .patch<{ maintainers: Array<{ userId: string; userName: string }> }>(

@@ -72,32 +72,44 @@ function textOf(node: React.ReactNode): string {
  * 知识文章 Markdown 渲染(GFM 表格 + 受控 raw HTML)。
  * 标题带锚点 id(供右侧 TOC 跳转);图片懒加载;/api/ 相对引用自动拼 origin。
  */
-export function MarkdownView({ md, className = "" }: { md: string; className?: string }) {
+export function MarkdownView({
+  md,
+  className = "",
+  fontPx = 16,
+}: {
+  md: string;
+  className?: string;
+  /** 正文基础字号(px)——子元素标题/表格/代码全用 em 相对它缩放,阅读页字号选择器驱动 */
+  fontPx?: number;
+}) {
   // 每次渲染新建去重器,按标题出现顺序追加 -2/-3…,与 extractToc 的去重完全对齐(TOC 锚点不跳错)
   const dedupe = makeDeduper();
   const anchorId = (children: React.ReactNode) => dedupe(headingId(textOf(children)));
   return (
-    <div className={`text-[15px] leading-7 text-gray-800 break-words ${className}`}>
+    <div
+      className={`text-gray-800 break-words leading-[1.85] ${className}`}
+      style={{ fontSize: `${fontPx}px` }}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA]]}
         components={{
           h1: ({ children }) => (
-            <h1 id={anchorId(children)} className="text-2xl font-bold mt-8 mb-4 pb-2 border-b border-gray-200 scroll-mt-24">
+            <h1 id={anchorId(children)} className="text-[1.6em] font-bold mt-8 mb-4 pb-2 border-b border-gray-200 scroll-mt-24">
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 id={anchorId(children)} className="text-xl font-bold mt-7 mb-3 scroll-mt-24">
+            <h2 id={anchorId(children)} className="text-[1.35em] font-bold mt-7 mb-3 scroll-mt-24">
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 id={anchorId(children)} className="text-lg font-semibold mt-6 mb-2 scroll-mt-24">
+            <h3 id={anchorId(children)} className="text-[1.2em] font-semibold mt-6 mb-2 scroll-mt-24">
               {children}
             </h3>
           ),
-          h4: ({ children }) => <h4 className="text-base font-semibold mt-5 mb-2">{children}</h4>,
+          h4: ({ children }) => <h4 className="text-[1.05em] font-semibold mt-5 mb-2">{children}</h4>,
           p: ({ children }) => <p className="my-3">{children}</p>,
           ul: ({ children }) => <ul className="my-3 pl-6 list-disc space-y-1">{children}</ul>,
           ol: ({ children }) => <ol className="my-3 pl-6 list-decimal space-y-1">{children}</ol>,
@@ -110,16 +122,16 @@ export function MarkdownView({ md, className = "" }: { md: string; className?: s
             cls ? (
               <code className={`${cls} block`}>{children}</code>
             ) : (
-              <code className="px-1.5 py-0.5 rounded bg-gray-100 text-[13px] text-rose-600">{children}</code>
+              <code className="px-1.5 py-0.5 rounded bg-gray-100 text-[0.85em] text-rose-600">{children}</code>
             ),
           pre: ({ children }) => (
-            <pre className="my-4 p-4 rounded-lg bg-gray-900 text-gray-100 text-[13px] leading-6 overflow-x-auto">
+            <pre className="my-4 p-4 rounded-lg bg-gray-900 text-gray-100 text-[0.85em] leading-[1.6] overflow-x-auto">
               {children}
             </pre>
           ),
           table: ({ children }) => (
             <div className="my-4 overflow-x-auto">
-              <table className="min-w-full border-collapse text-sm">{children}</table>
+              <table className="min-w-full border-collapse text-[0.92em]">{children}</table>
             </div>
           ),
           th: ({ children }) => (

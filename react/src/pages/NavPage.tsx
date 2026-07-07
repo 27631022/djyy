@@ -460,8 +460,8 @@ function AssessmentRankingCard({ board }: { board: ReturnType<typeof usePortalAs
   );
 }
 
-/* ─── 热点问答(知识库 FAQ 点击热度榜;登录后可见,无数据自动隐藏)─── */
-function HotFaqSection() {
+/* ─── 热点问答(知识库 FAQ 点击热度榜;首页右侧栏卡片,登录后可见、无数据自动隐藏)─── */
+function HotFaqCard() {
   const { isLoggedIn } = useLoginGate();
   const navigate = useNavigate();
   const hot = useQuery({
@@ -474,42 +474,41 @@ function HotFaqSection() {
   if (!isLoggedIn || items.length === 0) return null;
 
   return (
-    <section className="py-8">
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="party-section-title text-xl font-bold text-[#1A1A1A] flex items-center gap-2">
-          <FlameIcon className="w-5 h-5 text-[var(--party-primary)]" /> 热点问答
-        </h2>
+    <div className="bg-white rounded-2xl border border-[#E9E9E9] overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#E9E9E9]">
+        <h3 className="party-section-title text-base font-bold text-[#1A1A1A] flex items-center gap-1.5">
+          <FlameIcon className="w-4 h-4 text-[var(--party-primary)]" /> 热点问答
+        </h3>
         <button
           onClick={() => navigate("/knowledge")}
-          className="text-base text-[var(--party-primary)] flex items-center gap-1 hover:opacity-70"
+          className="text-sm text-[var(--party-primary)] flex items-center gap-0.5 hover:opacity-70 flex-shrink-0"
         >
-          去知识园地 <ChevronRightIcon className="w-4 h-4" />
+          更多 <ChevronRightIcon className="w-3 h-3" />
         </button>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="divide-y divide-[#F5F5F5]">
         {items.map((f, idx) => (
           <button
             key={`${f.articleId}-${f.id}`}
             onClick={() => navigate(`/knowledge/articles/${f.articleId}`)}
-            className="bg-white rounded-xl border border-[#E9E9E9] p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md flex items-start gap-3"
+            className="w-full flex items-start gap-2.5 px-4 py-2.5 text-left hover:bg-party-softer transition-colors"
           >
             <span
-              className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white mt-0.5"
-              style={{ background: idx < 3 ? "var(--party-primary)" : "#C0C6D0" }}
+              className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold mt-0.5 ${
+                idx < 3 ? "text-white" : "text-[#6B7280] bg-[#F0F0F0]"
+              }`}
+              style={idx < 3 ? { background: "var(--party-primary)" } : undefined}
             >
               {idx + 1}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-base font-medium text-[#1A1A1A] line-clamp-1">{f.q}</span>
-              <span className="block text-[12px] text-[#9CA3AF] mt-0.5 truncate">
-                {f.articleTitle} · 🔥 {f.clicks}
-              </span>
+              <span className="block text-sm text-[#1A1A1A] leading-snug line-clamp-2">{f.q}</span>
+              <span className="block text-[11px] text-[#9CA3AF] mt-0.5 truncate">🔥 {f.clicks} · {f.articleTitle}</span>
             </span>
-            <ChevronRightIcon className="w-4 h-4 text-[#D1D5DB] shrink-0 mt-1.5" />
           </button>
         ))}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -968,14 +967,12 @@ export default function NavPage() {
             <div className="flex-1 min-w-0 w-full">
               <NavigationDirectory />
             </div>
-            {/* Right: Rankings sidebar */}
-            <div className="w-full lg:w-72 xl:w-80 lg:flex-shrink-0">
+            {/* Right: Rankings + 热点问答(知识库 FAQ 点击热度;无数据自动隐藏) */}
+            <div className="w-full lg:w-72 xl:w-80 lg:flex-shrink-0 flex flex-col gap-4">
               <RankingSidebar />
+              <HotFaqCard />
             </div>
           </div>
-
-          {/* 热点问答(知识库 FAQ 点击热度;无数据自动隐藏) */}
-          <HotFaqSection />
 
           <Separator className="bg-[#E9E9E9] mt-6" />
 

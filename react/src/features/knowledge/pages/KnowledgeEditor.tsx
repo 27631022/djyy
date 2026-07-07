@@ -346,7 +346,7 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
             placeholder="标题,如:XX 公司安全生产管理制度"
             className="h-11 text-lg font-medium border-0 border-b border-gray-100 rounded-none shadow-none focus-visible:ring-0 px-1"
           />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <div className="text-xs text-gray-400 mb-1">领域分类 *</div>
               <CategoryPicker value={categoryId} onChange={setCategoryId} />
@@ -374,10 +374,6 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
                 <div className="mt-1 text-[11px] text-amber-600">该类型提交后需管理员审核</div>
               )}
             </div>
-            <div>
-              <div className="text-xs text-gray-400 mb-1">标签(可选,回车添加)</div>
-              <TagsInput value={tags} onChange={setTags} />
-            </div>
           </div>
 
           {/* 版本链 */}
@@ -400,6 +396,19 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
             )}
           </div>
         </div>
+
+        {/* 正文(导读 / 标签 / 问答均在正文下方,前台阅读页顺序不变) */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">正文</span>
+          <span className="ml-auto">
+            <TemplateBar contentMd={contentMd} onApply={setContentMd} />
+          </span>
+        </div>
+        <MdEditor
+          value={contentMd}
+          onChange={setContentMd}
+          uploadFile={articleId ? (f) => knowledgeApi.uploadResource(articleId, f) : undefined}
+        />
 
         {/* 导读(可选,AI 可生成) */}
         <div className="rounded-xl border border-gray-100 bg-white/90 shadow-sm p-5">
@@ -425,6 +434,12 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
             placeholder="例:本制度适用于全体在岗员工,明确了……"
             className="text-sm"
           />
+        </div>
+
+        {/* 标签(可选;AI 生成导读时也会建议标签) */}
+        <div className="rounded-xl border border-gray-100 bg-white/90 shadow-sm p-5">
+          <div className="text-xs text-gray-400 mb-2">标签(可选,回车添加)</div>
+          <TagsInput value={tags} onChange={setTags} />
         </div>
 
         {/* 常见问题答疑(AI 生成 + 可手动增删改;阅读页折叠展示) */}
@@ -513,19 +528,6 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
             <PlusIcon className="w-3.5 h-3.5 mr-1" /> 手动添加一条
           </Button>
         </div>
-
-        {/* 正文 */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">正文</span>
-          <span className="ml-auto">
-            <TemplateBar contentMd={contentMd} onApply={setContentMd} />
-          </span>
-        </div>
-        <MdEditor
-          value={contentMd}
-          onChange={setContentMd}
-          uploadFile={articleId ? (f) => knowledgeApi.uploadResource(articleId, f) : undefined}
-        />
 
         {/* 附件 */}
         <div className="rounded-xl border border-gray-100 bg-white/90 shadow-sm p-5">

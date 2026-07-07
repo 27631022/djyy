@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -19,6 +19,7 @@ import {
   PencilLineIcon,
   PinIcon,
   SparklesIcon,
+  TypeIcon,
   StarIcon,
   ThumbsUpIcon,
 } from "lucide-react";
@@ -63,6 +64,21 @@ function safeHttpUrl(url: string | null): string | null {
   return /^https?:\/\//i.test(url.trim()) ? url : null;
 }
 
+/** 阅读字号档位(正文/导读/问答基础字号 px);标题等相对它按 em 缩放。默认「标准 17」比旧 15 更大。 */
+const FONT_OPTIONS = [
+  { px: 15, label: "小" },
+  { px: 17, label: "标准" },
+  { px: 19, label: "大" },
+  { px: 22, label: "特大" },
+];
+const FONT_STORAGE_KEY = "knowledge-font-px";
+const DEFAULT_FONT_PX = 17;
+
+function initialFontPx(): number {
+  const v = Number(localStorage.getItem(FONT_STORAGE_KEY));
+  return FONT_OPTIONS.some((o) => o.px === v) ? v : DEFAULT_FONT_PX;
+}
+
 /** 外壳:取数 → key 重挂载内层(零 effect 同步范式) */
 export default function KnowledgeArticlePage() {
   const { id = "" } = useParams();
@@ -93,6 +109,47 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
   const latestPublished = a.versions.find((v) => v.status === "published");
   const safeSource = safeHttpUrl(a.sourceUrl);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  // 阅读字号(读者可选,localStorage 记住;驱动正文/导读/问答缩放)
+  const [fontPx, setFontPx] = useState<number>(initialFontPx);
+  function pickFont(px: number) {
+    setFontPx(px);
+    try {
+      localStorage.setItem(FONT_STORAGE_KEY, String(px));
+    } catch {
+      /* 隐私模式写不了忽略 */
+    }
+  }
+
+  // 从搜索联想带来的关键词 → 进文章后定位并高亮「相关行」
+  const [searchParams] = useSearchParams();
+  const highlightQ = (searchParams.get("q") ?? "").trim();
+  const mainRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!highlightQ) return;
+    const root = mainRef.current;
+    if (!root) return;
+    // 等 markdown/图片布局稳定再定位
+    const raf = requestAnimationFrame(() => {
+      const ql = highlightQ.toLowerCase();
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let node: Node | null;
+      while ((node = walker.nextNode())) {
+        if ((node.textContent ?? "").toLowerCase().includes(ql)) {
+          const el = (node.parentElement?.closest(
+            "p,li,td,th,h1,h2,h3,h4,h5,h6,blockquote,pre",
+          ) ?? node.parentElement) as HTMLElement | null;
+          if (el) {
+            el.scrollIntoView({ block: "center", behavior: "smooth" });
+            el.classList.add("kb-search-hit");
+            window.setTimeout(() => el.classList.remove("kb-search-hit"), 2600);
+          }
+          break;
+        }
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [a.id, highlightQ]);
 
   // FAQ 展开即计一次点击热度(每次进入每条只计一次,避免反复开合刷量)
   const clickedFaqs = useRef(new Set<string>());
@@ -146,11 +203,38 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
           <button
             type="button"
             onClick={() => navigate("/")}
-            className="flex items-center gap-1 text-sm text-gray-500 hover:text-[var(--party-primary)]"
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-[var(--party-primary)] shrink-0"
           >
             <HomeIcon className="w-4 h-4" /> 首页
           </button>
-          <div className="ml-auto flex items-center gap-2">
+          {/* 文章名固定在顶端(随标题栏常驻,正文在其下滚动) */}
+          <div className="hidden sm:block flex-1 min-w-0 px-2">
+            <span className="block truncate font-semibold text-gray-800" title={a.title}>
+              {a.title}
+              {a.versionLabel && <span className="ml-1.5 text-xs font-normal text-amber-600">({a.versionLabel})</span>}
+            </span>
+          </div>
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            {/* 阅读字号选择 */}
+            <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
+              <span className="hidden sm:flex items-center gap-1 pl-2 pr-1 text-gray-400" title="阅读字号">
+                <TypeIcon className="w-3.5 h-3.5" />
+              </span>
+              {FONT_OPTIONS.map((o) => (
+                <button
+                  key={o.px}
+                  type="button"
+                  onClick={() => pickFont(o.px)}
+                  className={`px-2.5 py-1 text-xs transition-colors ${
+                    fontPx === o.px
+                      ? "bg-party-soft text-[var(--party-primary)] font-medium"
+                      : "text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
             {a.canEdit && a.status !== "archived" && (
               <Button size="sm" variant="outline" onClick={() => navigate(`/knowledge/edit/${a.id}`)}>
                 <PencilLineIcon className="w-4 h-4 mr-1" /> 编辑
@@ -161,7 +245,7 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 py-8 grid grid-cols-[1fr_240px] gap-8 items-start">
-        <main className="min-w-0">
+        <main ref={mainRef} className="min-w-0">
           {/* 已归档横幅 */}
           {a.status === "archived" && (
             <div className="mb-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -223,13 +307,18 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
               <div className="flex items-center gap-1.5 text-sm font-medium text-amber-700 mb-1.5">
                 <SparklesIcon className="w-4 h-4" /> 导读
               </div>
-              <p className="text-sm leading-6 text-gray-700 whitespace-pre-wrap">{a.summary}</p>
+              <p
+                className="leading-[1.85] text-gray-700 whitespace-pre-wrap"
+                style={{ fontSize: `${fontPx}px` }}
+              >
+                {a.summary}
+              </p>
             </div>
           )}
 
           {/* 正文 */}
           <article className="mt-4 rounded-xl border border-gray-100 bg-white/90 shadow-sm px-6 py-5">
-            <MarkdownView md={a.contentMd} />
+            <MarkdownView md={a.contentMd} fontPx={fontPx} />
           </article>
 
           {/* 标签 */}
@@ -257,11 +346,14 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
               <Accordion type="single" collapsible onValueChange={onFaqOpen}>
                 {a.faqs.map((f) => (
                   <AccordionItem key={f.id} value={f.id}>
-                    <AccordionTrigger className="text-sm text-left">
+                    <AccordionTrigger className="text-left" style={{ fontSize: `${fontPx}px` }}>
                       {f.pinned && <PinIcon className="w-3.5 h-3.5 mr-1 shrink-0 text-[var(--party-primary)] fill-current" />}
                       {f.q}
                     </AccordionTrigger>
-                    <AccordionContent className="text-sm leading-6 text-gray-600 whitespace-pre-wrap">
+                    <AccordionContent
+                      className="leading-[1.85] text-gray-600 whitespace-pre-wrap"
+                      style={{ fontSize: `${fontPx}px` }}
+                    >
                       {f.a}
                     </AccordionContent>
                   </AccordionItem>

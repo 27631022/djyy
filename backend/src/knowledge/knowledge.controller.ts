@@ -159,6 +159,12 @@ export class KnowledgeController {
     );
   }
 
+  /** 搜索联想(门户搜索框实时预览 + 命中片段) */
+  @Get('search-suggest')
+  searchSuggest(@Query('q') q?: string, @Query('limit') limit?: string) {
+    return this.svc.searchSuggest(q ?? '', limit ? Number(limit) : undefined);
+  }
+
   @Get('articles/:id')
   getArticle(@Param('id') id: string, @CurrentUser() me: AuthPayload) {
     return this.svc.getArticle(id, me.sub);
