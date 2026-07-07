@@ -38,6 +38,7 @@ import {
   ARTICLE_STATUS_LABEL,
   knowledgeApi,
   knowledgeErrMsg,
+  KNOWLEDGE_LEVEL_LABEL,
   type ArticleDetail,
 } from "../api";
 import { FONT_OPTIONS, initialFontPx, storeFontPx } from "../readingFont";
@@ -265,6 +266,11 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
           <div className="mt-3 flex items-center gap-3 text-[13px] text-gray-400 flex-wrap">
             <span className="px-1.5 py-0.5 rounded bg-party-soft text-[var(--party-primary)]">{a.categoryName}</span>
             <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">{a.typeName}</span>
+            {a.level && (
+              <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-600">
+                {KNOWLEDGE_LEVEL_LABEL[a.level] ?? a.level}
+              </span>
+            )}
             <span>{a.authorName}</span>
             <span>{fmtDateTime(a.publishedAt ?? a.createdAt)}</span>
             {safeSource && (

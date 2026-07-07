@@ -20,6 +20,21 @@ export interface KnowledgeType {
   sortOrder: number;
 }
 
+/**
+ * 内容级别(文件来源级别)—— 门户左侧筛选 + 编辑器勾选。
+ * ⚠ 与后端 knowledge.constants.ts 的 KNOWLEDGE_LEVELS 保持一致(改名/增删同步两处)。
+ */
+export const KNOWLEDGE_LEVELS: Array<{ code: string; name: string }> = [
+  { code: "national", name: "中央国家" },
+  { code: "group", name: "集团公司" },
+  { code: "region", name: "自治区" },
+  { code: "company", name: "公司" },
+  { code: "branch", name: "分公司" },
+];
+export const KNOWLEDGE_LEVEL_LABEL: Record<string, string> = Object.fromEntries(
+  KNOWLEDGE_LEVELS.map((l) => [l.code, l.name]),
+);
+
 export type ArticleStatus = "draft" | "pending" | "published" | "rejected" | "archived";
 
 export const ARTICLE_STATUS_LABEL: Record<ArticleStatus, string> = {
@@ -45,6 +60,7 @@ export interface ArticleListItem {
   categoryName: string;
   typeCode: string;
   typeName: string;
+  level: string | null;
   tags: string[];
   excerpt: string;
   status: ArticleStatus;
@@ -89,6 +105,7 @@ export interface ArticleDetail {
   typeCode: string;
   typeName: string;
   requireReview: boolean;
+  level: string | null;
   contentMd: string;
   summary: string | null;
   faqs: FaqItem[];
@@ -212,6 +229,7 @@ export interface ArticleListParams {
   q?: string;
   categoryId?: string;
   typeCode?: string;
+  level?: string;
   tag?: string;
   mine?: boolean;
   favorite?: boolean;
@@ -228,6 +246,8 @@ export interface SaveArticleInput {
   contentMd: string;
   summary?: string;
   tags?: string[];
+  /** 内容级别 code(national/group/region/company/branch);空串=清空 */
+  level?: string;
   /** 编辑回传:带 id 保留点击热度;新条目 id 留空。clicks 由服务端管理,不提交 */
   faqs?: Array<{ id?: string; q: string; a: string; pinned?: boolean }>;
   revisionOfId?: string;

@@ -19,7 +19,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { useAuth } from "@/stores/auth";
 import { highlightText } from "@/shared/lib/highlight";
-import { knowledgeApi, type ArticleListItem } from "../api";
+import { knowledgeApi, KNOWLEDGE_LEVELS, type ArticleListItem } from "../api";
 import { ArticleCard } from "./../components/ArticleCard";
 
 const PAGE_SIZE = 12;
@@ -37,6 +37,7 @@ export default function KnowledgePortal() {
   const [input, setInput] = useState(q);
   const [categoryId, setCategoryId] = useState("");
   const [typeCode, setTypeCode] = useState("");
+  const [levelCode, setLevelCode] = useState("");
   const [sort, setSort] = useState<"latest" | "hot">("latest");
 
   // 搜索联想:输入防抖 220ms → 拉命中片段;聚焦且有词时显示下拉
@@ -62,13 +63,14 @@ export default function KnowledgePortal() {
   const types = useQuery({ queryKey: ["knowledge", "types"], queryFn: knowledgeApi.listTypes });
   // 无限滚动:筛选条件进 queryKey,变了自动重置到第一页
   const list = useInfiniteQuery({
-    queryKey: ["knowledge", "articles", { q, tag, categoryId, typeCode, sort }],
+    queryKey: ["knowledge", "articles", { q, tag, categoryId, typeCode, levelCode, sort }],
     queryFn: ({ pageParam }) =>
       knowledgeApi.listArticles({
         q: q || undefined,
         tag: tag || undefined,
         categoryId: categoryId || undefined,
         typeCode: typeCode || undefined,
+        level: levelCode || undefined,
         sort,
         page: pageParam,
         pageSize: PAGE_SIZE,
@@ -316,6 +318,34 @@ export default function KnowledgePortal() {
               ))}
             </div>
           ))}
+
+          {/* 内容级别筛选(文件来源级别) */}
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="px-2 pb-1 text-xs font-medium text-gray-400">内容级别</div>
+            <button
+              type="button"
+              onClick={() => setLevelCode("")}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                levelCode === "" ? "bg-party-soft text-[var(--party-primary)] font-medium" : "text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              全部级别
+            </button>
+            {KNOWLEDGE_LEVELS.map((l) => (
+              <button
+                key={l.code}
+                type="button"
+                onClick={() => setLevelCode((cur) => (cur === l.code ? "" : l.code))}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                  levelCode === l.code
+                    ? "bg-party-soft text-[var(--party-primary)] font-medium"
+                    : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {l.name}
+              </button>
+            ))}
+          </div>
         </aside>
 
         {/* 右:筛选 + 列表 */}

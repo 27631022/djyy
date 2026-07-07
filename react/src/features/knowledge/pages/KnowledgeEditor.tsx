@@ -27,6 +27,7 @@ import {
   knowledgeAiApi,
   knowledgeApi,
   knowledgeErrMsg,
+  KNOWLEDGE_LEVELS,
   type ArticleAttachment,
   type ArticleDetail,
 } from "../api";
@@ -69,6 +70,7 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
   const [title, setTitle] = useState(article?.title ?? "");
   const [categoryId, setCategoryId] = useState(article?.categoryId ?? "");
   const [typeCode, setTypeCode] = useState(article?.typeCode ?? "");
+  const [level, setLevel] = useState(article?.level ?? "");
   const [contentMd, setContentMd] = useState(article?.contentMd ?? "");
   const [summary, setSummary] = useState(article?.summary ?? "");
   const [tags, setTags] = useState<string[]>(article?.tags ?? []);
@@ -102,6 +104,7 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
       contentMd,
       summary: summary.trim() || undefined,
       tags,
+      level, // "" = 无级别,后端归一化为 null
       // 只提交问答都填了的行(空行不落库);带 id 让后端保留点击热度,clicks 由服务端管理不提交
       faqs: faqs
         .map((f) => ({ id: f.id, q: f.q.trim(), a: f.a.trim(), pinned: !!f.pinned }))
@@ -165,7 +168,7 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
     // 防抖自动保存:只需监听表单字段变化重排定时器;validate/sig/persist 是稳定读取当下 state 的闭包,
     // 不放进 deps(否则每渲染重建函数会误触发);这是「表单变化→防抖副作用」的合法用法。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [articleId, title, categoryId, typeCode, contentMd, summary, tags, faqs, versionLabel]);
+  }, [articleId, title, categoryId, typeCode, level, contentMd, summary, tags, faqs, versionLabel]);
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -373,6 +376,27 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
               {selectedType?.requireReview && !canManage && (
                 <div className="mt-1 text-[11px] text-amber-600">该类型提交后需管理员审核</div>
               )}
+            </div>
+          </div>
+
+          {/* 内容级别(文件来源级别,可选,单选) */}
+          <div>
+            <div className="text-xs text-gray-400 mb-1">内容级别(可选)</div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {KNOWLEDGE_LEVELS.map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  onClick={() => setLevel((cur) => (cur === l.code ? "" : l.code))}
+                  className={`px-3 py-1.5 rounded-lg text-[13px] border transition-colors ${
+                    level === l.code
+                      ? "border-[var(--party-primary)] bg-party-soft text-[var(--party-primary)] font-medium"
+                      : "border-gray-200 text-gray-500 hover:border-gray-300"
+                  }`}
+                >
+                  {l.name}
+                </button>
+              ))}
             </div>
           </div>
 

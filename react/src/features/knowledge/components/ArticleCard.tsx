@@ -1,6 +1,6 @@
 import { EyeIcon, MessageSquareIcon, PinIcon, ThumbsUpIcon } from "lucide-react";
 import type { ArticleListItem } from "../api";
-import { ARTICLE_STATUS_CHIP, ARTICLE_STATUS_LABEL, knowledgeFileUrl } from "../api";
+import { ARTICLE_STATUS_CHIP, ARTICLE_STATUS_LABEL, KNOWLEDGE_LEVEL_LABEL, knowledgeFileUrl } from "../api";
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "";
@@ -56,6 +56,11 @@ export function ArticleCard({
             {a.categoryName}
           </span>
           <span className="px-1.5 py-0.5 rounded text-[11px] bg-blue-50 text-blue-600">{a.typeName}</span>
+          {a.level && (
+            <span className="px-1.5 py-0.5 rounded text-[11px] bg-purple-50 text-purple-600">
+              {KNOWLEDGE_LEVEL_LABEL[a.level] ?? a.level}
+            </span>
+          )}
           {a.tags.slice(0, 3).map((t) => (
             <span key={t} className="px-1.5 py-0.5 rounded text-[11px] bg-gray-100 text-gray-500">
               #{t}

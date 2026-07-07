@@ -13,6 +13,7 @@ import { UserService } from '../user';
 import {
   CONTENT_FILE_REF_RE,
   LIST_PAGE_SIZE_MAX,
+  normalizeLevel,
   TAG_MAX_COUNT,
   TAG_MAX_LEN,
   VIEW_DEDUP_MINUTES,
@@ -42,6 +43,7 @@ export interface ArticleListQuery {
   q?: string;
   categoryId?: string;
   typeCode?: string;
+  level?: string;
   tag?: string;
   mine?: boolean;
   favorite?: boolean;
@@ -317,6 +319,7 @@ export class KnowledgeService {
       ...statusWhere,
       ...categoryWhere,
       ...(query.typeCode ? { typeCode: query.typeCode } : {}),
+      ...(query.level ? { level: query.level } : {}),
       ...(query.mine ? { authorId: actorId } : {}),
       ...(query.favorite
         ? { reactions: { some: { userId: actorId, type: 'favorite' } } }
@@ -363,6 +366,7 @@ export class KnowledgeService {
         categoryName: catName.get(a.categoryId) ?? '',
         typeCode: a.typeCode,
         typeName: typeName.get(a.typeCode) ?? a.typeCode,
+        level: a.level,
         tags: parseTags(a.tagsJson),
         excerpt: a.summary?.trim() || mdExcerpt(a.contentMd),
         status: a.status,
@@ -660,6 +664,7 @@ export class KnowledgeService {
         summary: dto.summary,
         tagsJson: normalizeTags(dto.tags),
         faqJson: mergeFaqs(null, dto.faqs),
+        level: normalizeLevel(dto.level),
         versionGroupId,
         versionLabel: dto.versionLabel,
         coverFileId: dto.coverFileId,
@@ -704,6 +709,7 @@ export class KnowledgeService {
         ...(dto.tags !== undefined ? { tagsJson: normalizeTags(dto.tags) } : {}),
         // faqs 走表单持久化;mergeFaqs 按 id 保留既有 clicks(编辑不清热度)。未传则不动。
         ...(dto.faqs !== undefined ? { faqJson: mergeFaqs(a.faqJson, dto.faqs) } : {}),
+        ...(dto.level !== undefined ? { level: normalizeLevel(dto.level) } : {}),
         versionLabel: dto.versionLabel,
         coverFileId: dto.coverFileId,
         sourceUrl: dto.sourceUrl,

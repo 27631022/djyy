@@ -56,6 +56,12 @@ export class UpdateArticleDto {
   @MaxLength(60)
   versionLabel?: string;
 
+  /** 内容级别 code(national/group/region/company/branch);service 归一化,非法置空 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  level?: string;
+
   @IsOptional()
   @IsString()
   coverFileId?: string;

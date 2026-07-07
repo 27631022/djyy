@@ -24,6 +24,26 @@ export const TAG_MAX_COUNT = 12;
 export const TAG_MAX_LEN = 24;
 
 /**
+ * 内容级别(文件来源级别)—— 固定小表,门户左侧筛选 + 编辑器勾选。
+ * 顺序 = 由高到低的机构层级。要改名/增删就动这一处(前端 api.ts 有一份镜像常量需同步)。
+ */
+export const KNOWLEDGE_LEVELS = [
+  { code: 'national', name: '中央国家' },
+  { code: 'group', name: '集团公司' },
+  { code: 'region', name: '自治区' },
+  { code: 'company', name: '公司' },
+  { code: 'branch', name: '分公司' },
+] as const;
+
+export const KNOWLEDGE_LEVEL_CODES: readonly string[] = KNOWLEDGE_LEVELS.map((l) => l.code);
+
+/** 归一化级别:合法 code 原样返回,空/非法 → null */
+export function normalizeLevel(level?: string | null): string | null {
+  const v = (level ?? '').trim();
+  return v && KNOWLEDGE_LEVEL_CODES.includes(v) ? v : null;
+}
+
+/**
  * 正文里 storage 图片/附件引用的提取正则 —— 匹配「/public/knowledge/files/<fileId>」
  * (前端存相对路径 /api/public/knowledge/files/<id>,渲染时再拼后端 origin)。
  * 用于:删文联动删文件、maintenance 孤儿 GC 的「在用集合」上报。
