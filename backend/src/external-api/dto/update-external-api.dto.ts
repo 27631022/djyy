@@ -81,6 +81,12 @@ export class UpdateExternalApiDto {
   @MaxLength(64)
   ttsVoice?: string;
 
+  /** TTS 播报风格控制指令(语速/停顿/顿挫等自然语言提示)。空 = 用内置默认 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  ttsControlInstruction?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(512)
@@ -203,6 +209,12 @@ export class CreateExternalApiDto {
   @IsString()
   @MaxLength(64)
   ttsVoice?: string;
+
+  /** TTS 播报风格控制指令(语速/停顿/顿挫等自然语言提示)。空 = 用内置默认 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  ttsControlInstruction?: string;
 
   @IsOptional()
   @IsString()

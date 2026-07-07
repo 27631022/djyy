@@ -48,6 +48,7 @@ export interface ExternalApiPublic {
   model3d: string | null;
   ttsModel: string | null;
   ttsVoice: string | null;
+  ttsControlInstruction: string | null;
   rechargeUrl: string | null;
   priority: number;
   capabilities: string;
@@ -69,6 +70,8 @@ export interface ActiveProviderConfig {
   model: string;
   /** TTS 音色(仅 tts 能力时有意义;来自 ExternalApi.ttsVoice,可空) */
   voice?: string;
+  /** TTS 播报风格控制指令(仅 tts;来自 ExternalApi.ttsControlInstruction,可空 → 调用方兜底默认) */
+  controlInstruction?: string;
   /** 'cloud' | 'internal' */
   kind: string;
   /** 该模型是否开启联网搜索(千问 enable_search);知识库 AI 归档据此显隐「一键联网检索」 */
@@ -172,6 +175,7 @@ function toPublic(
     model3d: row.model3d,
     ttsModel: row.ttsModel,
     ttsVoice: row.ttsVoice,
+    ttsControlInstruction: row.ttsControlInstruction,
     rechargeUrl: row.rechargeUrl,
     priority: row.priority,
     capabilities: row.capabilities,
@@ -431,6 +435,7 @@ export class ExternalApiService {
       apiUrl: r.apiUrl ?? '',
       model: this.modelForCapability(r, tag),
       voice: r.ttsVoice ?? undefined,
+      controlInstruction: r.ttsControlInstruction ?? undefined,
       kind: r.kind,
       webSearch: r.webSearch ?? false,
       source: 'db',
@@ -544,6 +549,7 @@ export class ExternalApiService {
         model3d: dto.model3d,
         ttsModel: dto.ttsModel,
         ttsVoice: dto.ttsVoice,
+        ttsControlInstruction: dto.ttsControlInstruction,
         rechargeUrl: dto.rechargeUrl,
         priority: dto.priority ?? 50,
         capabilities: dto.capabilities ?? 'chat',
@@ -602,6 +608,7 @@ export class ExternalApiService {
         model3d: dto.model3d ?? undefined,
         ttsModel: dto.ttsModel ?? undefined,
         ttsVoice: dto.ttsVoice ?? undefined,
+        ttsControlInstruction: dto.ttsControlInstruction ?? undefined,
         rechargeUrl: dto.rechargeUrl ?? undefined,
         priority: dto.priority ?? undefined,
         capabilities: dto.capabilities ?? undefined,

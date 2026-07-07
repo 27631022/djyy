@@ -795,6 +795,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 /* ─── 编辑 dialog ─── */
 
+/**
+ * TTS 播报风格控制指令默认值(与后端 exhibition-narration.service.ts 的
+ * DEFAULT_TTS_CONTROL_INSTRUCTION 保持一致;改一处两处同步)。
+ */
+const DEFAULT_TTS_CONTROL_INSTRUCTION =
+  "国企展厅专职讲解员,面向参观者娓娓道来。整体放慢语速、沉稳舒缓:短语之间短促停顿,长句在自然换气处停顿,段落结尾留长停顿;核心关键词重读突出,朗读富于起伏顿挫、层次分明,每处分层都留出思考的间隙,咬字放慢、气息松弛。切忌语速过快、机械匀速、一口气念完长句或赶稿式速读——宁可慢一点、稳一点,也不要平铺直叙、通篇赶语速。";
+
 function EditDialog({
   api,
   onCancel,
@@ -819,6 +826,9 @@ function EditDialog({
   const [imageModel, setImageModel] = useState(api.imageModel ?? "");
   const [ttsModel, setTtsModel] = useState(api.ttsModel ?? "");
   const [ttsVoice, setTtsVoice] = useState(api.ttsVoice ?? "");
+  const [ttsControlInstruction, setTtsControlInstruction] = useState(
+    api.ttsControlInstruction || DEFAULT_TTS_CONTROL_INSTRUCTION,
+  );
   const [rechargeUrl, setRechargeUrl] = useState(api.rechargeUrl ?? "");
   const [priority, setPriority] = useState(api.priority);
   const [capabilities, setCapabilities] = useState(api.capabilities);
@@ -857,6 +867,7 @@ function EditDialog({
         imageModel: imageModel || undefined,
         ttsModel: ttsModel || undefined,
         ttsVoice: ttsVoice || undefined,
+        ttsControlInstruction: ttsControlInstruction.trim() || undefined,
         rechargeUrl: rechargeUrl || undefined,
         priority,
         capabilities,
@@ -952,6 +963,30 @@ function EditDialog({
           placeholder="如 zh_female_xxx / 平台音色名"
           mono
         />
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-medium text-[#6B7280]">
+              播报风格控制指令(Control Instruction;语速/停顿/顿挫,VoxCPM 直接生效)
+            </span>
+            <button
+              type="button"
+              className="text-[10px] text-[var(--party-primary)] hover:underline"
+              onClick={() => setTtsControlInstruction(DEFAULT_TTS_CONTROL_INSTRUCTION)}
+            >
+              恢复默认
+            </button>
+          </div>
+          <textarea
+            value={ttsControlInstruction}
+            onChange={(e) => setTtsControlInstruction(e.target.value)}
+            rows={5}
+            placeholder="留空用内置默认(国企展厅讲解员:慢速、分层停顿、顿挫、不赶语速)"
+            className="w-full px-2 py-1.5 text-xs rounded border border-[#E9E9E9] focus:border-[var(--party-primary)] focus:outline-none resize-y leading-relaxed"
+          />
+          <p className="text-[10px] text-[#9CA3AF] mt-1 leading-relaxed">
+            控制解说员配音的语速与停顿节奏。VoxCPM 走 control_instruction、云 OpenAI 兼容 TTS 走 instructions(gpt-4o-mini-tts 等)、IndexTTS2 作情感描述文本。留空则用内置默认。
+          </p>
+        </div>
         <LabeledInput
           label="充值/管理页 URL(可选)"
           value={rechargeUrl}

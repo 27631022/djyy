@@ -13,6 +13,15 @@ interface AuditCtx {
   ip?: string;
 }
 
+/**
+ * TTS 播报风格控制指令默认值(未在「AI 接入管理」为 TTS 平台单独配置时用此)。
+ * VoxCPM 直接吃 control_instruction;云 OpenAI 兼容 TTS 走 instructions(支持的模型如 gpt-4o-mini-tts);
+ * IndexTTS2 作情感描述文本。国企展厅专职讲解员:慢速、分层停顿、顿挫、重读、不赶语速。
+ * ⚠ 若改此文案,前端 ExternalApis.tsx 的 DEFAULT_TTS_CONTROL_INSTRUCTION 同步。
+ */
+export const DEFAULT_TTS_CONTROL_INSTRUCTION =
+  '国企展厅专职讲解员,面向参观者娓娓道来。整体放慢语速、沉稳舒缓:短语之间短促停顿,长句在自然换气处停顿,段落结尾留长停顿;核心关键词重读突出,朗读富于起伏顿挫、层次分明,每处分层都留出思考的间隙,咬字放慢、气息松弛。切忌语速过快、机械匀速、一口气念完长句或赶稿式速读——宁可慢一点、稳一点,也不要平铺直叙、通篇赶语速。';
+
 export interface NarrationTtsResult {
   /** 生成音频存入 storage 后的 fileId(写进 fixture.narration.audioFileId) */
   fileId: string;
@@ -74,6 +83,8 @@ export class ExhibitionNarrationService {
       throw new BadRequestException(`平台「${cfg.provider}」未配置 endpoint(apiUrl)`);
     }
     const apiUrl = cfg.apiUrl.replace(/\/+$/, '');
+    // 播报风格控制指令:平台单独配了用平台的,否则用内置默认(慢速/分层停顿/顿挫/不赶语速)
+    const control = (cfg.controlInstruction ?? '').trim() || DEFAULT_TTS_CONTROL_INSTRUCTION;
     const started = Date.now();
     let outBuf: Buffer;
     let ext: string;
@@ -87,7 +98,7 @@ export class ExhibitionNarrationService {
           const f = await this.storage.getBuffer(opts.voiceRefFileId);
           ref = { buffer: f.buffer, name: f.meta.originalName };
         }
-        const r = await synthesizeWithIndexTts2(apiUrl, text, ref);
+        const r = await synthesizeWithIndexTts2(apiUrl, text, ref, control);
         outBuf = r.buffer;
         ext = r.ext;
         mime = r.mime;
@@ -109,7 +120,7 @@ export class ExhibitionNarrationService {
           const f = await this.storage.getBuffer(opts.voiceRefFileId);
           ref = { buffer: f.buffer, name: f.meta.originalName };
         }
-        const r = await synthesizeWithVoxcpm(apiUrl, text, ref);
+        const r = await synthesizeWithVoxcpm(apiUrl, text, ref, control);
         outBuf = r.buffer;
         ext = r.ext;
         mime = r.mime;
@@ -130,7 +141,8 @@ export class ExhibitionNarrationService {
       try {
         resp = await axios.post(
           `${apiUrl}/audio/speech`,
-          { model: cfg.model, input: text, ...(voice ? { voice } : {}), response_format: 'mp3' },
+          // instructions:OpenAI 兼容 TTS 的播报风格指令(gpt-4o-mini-tts 等支持;不支持的模型忽略未知字段)
+          { model: cfg.model, input: text, ...(voice ? { voice } : {}), ...(control ? { instructions: control } : {}), response_format: 'mp3' },
           {
             headers: {
               'Content-Type': 'application/json',

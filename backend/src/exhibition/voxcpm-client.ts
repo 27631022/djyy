@@ -98,6 +98,7 @@ export async function synthesizeWithVoxcpm(
   base: string,
   text: string,
   ref?: { buffer: Buffer; name: string },
+  controlInstruction = '',
 ): Promise<{ buffer: Buffer; ext: string; mime: string }> {
   let refWav: { path: string; meta: { _type: 'gradio.FileData' } } | null = null;
   if (ref) {
@@ -111,7 +112,7 @@ export async function synthesizeWithVoxcpm(
     'generate',
     [
       text, // text
-      '', // control_instruction
+      controlInstruction, // control_instruction(播报风格:语速/停顿/顿挫等自然语言指令)
       refWav, // ref_wav(无则 null,用默认音色)
       false, // use_prompt_text
       '', // prompt_text_value(参考音频转写,留空)

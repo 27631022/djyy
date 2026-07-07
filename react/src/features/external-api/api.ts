@@ -24,6 +24,8 @@ export interface ExternalApiDto {
   ttsModel: string | null;
   /** TTS 音色标识(provider 各自的音色名)。空 = 用默认 */
   ttsVoice: string | null;
+  /** TTS 播报风格控制指令(语速/停顿/顿挫等)。空 = 用内置默认 */
+  ttsControlInstruction: string | null;
   /** 平台充值/计费控制台 URL */
   rechargeUrl: string | null;
   /** 业务优先级 0-100,数字大的优先,默认 50 */
@@ -76,6 +78,7 @@ export interface UpdateExternalApiInput {
   imageModel?: string;
   ttsModel?: string;
   ttsVoice?: string;
+  ttsControlInstruction?: string;
   rechargeUrl?: string;
   priority?: number;
   capabilities?: string;

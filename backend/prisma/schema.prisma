@@ -408,6 +408,7 @@ model ExternalApi {
   model3d      String? // 3D 生成模型(Seed3D 等,异步出 .glb 3D 模型)。空 = 不支持 3D 生成
   ttsModel     String? // 语音合成(TTS)模型。空 = 不支持配音
   ttsVoice     String? // TTS 音色标识(provider 各自的音色名,如火山的 voice_type)。空 = 用 provider 默认
+  ttsControlInstruction String? // TTS 播报风格控制指令(VoxCPM control_instruction / 云 OpenAI-tts instructions / IndexTTS2 情感描述);空 = 用内置默认
   rechargeUrl  String? // 平台充值/计费控制台 URL
   priority     Int      @default(50) // 业务优先级,大者优先。getActive*() 按此降序选
   capabilities String   @default("chat") // 能力标签逗号分隔:chat/vision/reasoning

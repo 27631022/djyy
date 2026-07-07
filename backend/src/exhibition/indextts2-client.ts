@@ -97,6 +97,7 @@ export async function synthesizeWithIndexTts2(
   base: string,
   text: string,
   ref?: { buffer: Buffer; name: string },
+  controlInstruction = '',
 ): Promise<{ buffer: Buffer; ext: string; mime: string }> {
   let refPath: string;
   if (ref) {
@@ -111,18 +112,20 @@ export async function synthesizeWithIndexTts2(
     refPath = fd.path;
   }
 
+  // 有控制指令则切「情感描述文本」模式,把指令填进情感描述槽;否则跟随音色参考音频
+  const hasCtrl = !!controlInstruction.trim();
   // gen_single 24 个入参(顺序见 /gradio_api/info);num_beams=1 提速;其余取默认
   const out = await gradioCall(
     base,
     'gen_single',
     [
-      '与音色参考音频相同', // 情感控制方式
+      hasCtrl ? '使用情感描述文本控制' : '与音色参考音频相同', // 情感控制方式(标签按标准 IndexTTS2;不同构建若异需调整)
       { path: refPath, meta: { _type: 'gradio.FileData' } }, // 音色参考音频
       text, // 文本
       null, // 情感参考音频
       0.65, // 情感权重
       0, 0, 0, 0, 0, 0, 0, 0, // 喜/怒/哀/惧/厌恶/低落/惊喜/平静
-      '', // 情感描述文本
+      hasCtrl ? controlInstruction.trim() : '', // 情感描述文本(= 播报风格控制指令)
       false, // 情感随机采样
       120, // 分句最大Token数
       true, // do_sample
