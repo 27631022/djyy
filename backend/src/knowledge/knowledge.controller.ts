@@ -27,6 +27,7 @@ import { UpdateArticleDto } from './dto/update-article.dto';
 import { ReviewArticleDto } from './dto/review-article.dto';
 import { AddAttachmentDto } from './dto/add-attachment.dto';
 import { CreateTemplateDto } from './dto/create-template.dto';
+import { AssignMaintainersDto } from './dto/assign-maintainers.dto';
 
 /** multipart 中文文件名 latin1→utf8 还原(同 storage.controller) */
 function decodeMulterName(name: string): string {
@@ -168,6 +169,18 @@ export class KnowledgeController {
     return this.svc.recordView(id, me.sub);
   }
 
+  /** FAQ 点击计数(阅读页展开问答时上报;热度用于自动排序 + 首页热点 FAQ) */
+  @Post('articles/:id/faqs/:faqId/click')
+  recordFaqClick(@Param('id') id: string, @Param('faqId') faqId: string) {
+    return this.svc.recordFaqClick(id, faqId);
+  }
+
+  /** 首页热点 FAQ:全站已发布文章里点击最多的问答 */
+  @Get('hot-faqs')
+  hotFaqs(@Query('limit') limit?: string) {
+    return this.svc.hotFaqs(limit ? Number(limit) : undefined);
+  }
+
   /* ─── 文章:写侧 ─── */
 
   @Permission('knowledge:publish')
@@ -211,6 +224,17 @@ export class KnowledgeController {
   @Delete('articles/:id')
   removeArticle(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.svc.removeArticle(id, this.ctx(me, req));
+  }
+
+  /** 指派维护人员(作者或管理员;service 内判权) */
+  @Patch('articles/:id/maintainers')
+  assignMaintainers(
+    @Param('id') id: string,
+    @Body() dto: AssignMaintainersDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.assignMaintainers(id, dto.userIds, this.ctx(me, req));
   }
 
   /* ─── 文章模板(正文框架复用) ─── */

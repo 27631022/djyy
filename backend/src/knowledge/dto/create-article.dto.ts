@@ -1,4 +1,15 @@
-import { IsArray, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
+import { FaqItemDto } from './faq-item.dto';
 
 /** 正文长度上限(字符)= 约 40 万字,足够长文;防超大 body 撑爆存储/渲染 */
 export const CONTENT_MD_MAX = 400_000;
@@ -31,6 +42,14 @@ export class CreateArticleDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  /** 常见问题答疑(通常先保存再 AI 生成/编辑;新建时一般为空)—— service 归一化去空/限量 */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FaqItemDto)
+  @ArrayMaxSize(50)
+  faqs?: FaqItemDto[];
 
   /** 「这是某篇现有文章的修订版」—— 传旧文章 id,建立版本链 */
   @IsOptional()

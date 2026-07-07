@@ -91,7 +91,8 @@ export interface ArticleDetail {
   requireReview: boolean;
   contentMd: string;
   summary: string | null;
-  faqs: Array<{ q: string; a: string }>;
+  faqs: FaqItem[];
+  maintainers: Array<{ userId: string; userName: string }>;
   tags: string[];
   versionGroupId: string | null;
   versionLabel: string | null;
@@ -116,6 +117,28 @@ export interface ArticleDetail {
   versions: ArticleVersion[];
   liked: boolean;
   favorited: boolean;
+  /** 当前用户可编辑本文(作者 / 维护人员 / 管理员) */
+  canEdit: boolean;
+  /** 当前用户有知识管理权(可置顶 / 指派维护人员 / 删任意) */
+  canManage: boolean;
+}
+
+/** FAQ 单条:clicks=点击热度、pinned=人工置顶(展示 = 置顶优先 → 热度降序) */
+export interface FaqItem {
+  id: string;
+  q: string;
+  a: string;
+  clicks: number;
+  pinned: boolean;
+}
+
+/** 首页热点 FAQ */
+export interface HotFaqItem {
+  articleId: string;
+  articleTitle: string;
+  id: string;
+  q: string;
+  clicks: number;
 }
 
 export interface ReactionState {
@@ -196,6 +219,8 @@ export interface SaveArticleInput {
   contentMd: string;
   summary?: string;
   tags?: string[];
+  /** 编辑回传:带 id 保留点击热度;新条目 id 留空。clicks 由服务端管理,不提交 */
+  faqs?: Array<{ id?: string; q: string; a: string; pinned?: boolean }>;
   revisionOfId?: string;
   versionLabel?: string;
   coverFileId?: string;
@@ -257,6 +282,17 @@ export const knowledgeApi = {
     api.get<ArticleDetail>(`/knowledge/articles/${id}`).then((r) => r.data),
   recordView: (id: string) =>
     api.post<{ viewLogId: string; counted: boolean }>(`/knowledge/articles/${id}/view`).then((r) => r.data),
+  recordFaqClick: (articleId: string, faqId: string) =>
+    api.post<{ ok: boolean; clicks: number }>(`/knowledge/articles/${articleId}/faqs/${faqId}/click`).then((r) => r.data),
+  hotFaqs: (limit = 8) =>
+    api.get<HotFaqItem[]>("/knowledge/hot-faqs", { params: { limit } }).then((r) => r.data),
+  assignMaintainers: (articleId: string, userIds: string[]) =>
+    api
+      .patch<{ maintainers: Array<{ userId: string; userName: string }> }>(
+        `/knowledge/articles/${articleId}/maintainers`,
+        { userIds },
+      )
+      .then((r) => r.data),
   createArticle: (data: SaveArticleInput) =>
     api.post<ArticleDetail>("/knowledge/articles", data).then((r) => r.data),
   updateArticle: (id: string, data: Partial<SaveArticleInput> & { pinned?: boolean }) =>
@@ -353,7 +389,7 @@ export const knowledgeAiApi = {
   guide: (articleId: string) =>
     api.post<{ summary: string; tags: string[] }>(`/knowledge/ai/articles/${articleId}/guide`, {}, { timeout: 120_000 }).then((r) => r.data),
   faq: (articleId: string) =>
-    api.post<{ faqs: Array<{ q: string; a: string }> }>(`/knowledge/ai/articles/${articleId}/faq`, {}, { timeout: 120_000 }).then((r) => r.data),
+    api.post<{ faqs: FaqItem[] }>(`/knowledge/ai/articles/${articleId}/faq`, {}, { timeout: 120_000 }).then((r) => r.data),
 };
 
 /** 浏览时长上报 URL(useViewTracking 用 navigator.sendBeacon 发,公开口) */

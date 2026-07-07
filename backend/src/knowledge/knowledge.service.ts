@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
 import { StorageService } from '../storage';
 import { RoleService } from '../role';
+import { UserService } from '../user';
 import {
   CONTENT_FILE_REF_RE,
   LIST_PAGE_SIZE_MAX,
@@ -16,6 +17,13 @@ import {
   TAG_MAX_LEN,
   VIEW_DEDUP_MINUTES,
 } from './knowledge.constants';
+import {
+  isMaintainerOf,
+  mergeFaqs,
+  parseFaqsRaw,
+  parseMaintainers,
+  sortFaqsForDisplay,
+} from './knowledge.helpers';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateTypeDto, UpdateTypeDto } from './dto/create-type.dto';
@@ -55,6 +63,7 @@ export class KnowledgeService {
     private readonly audit: AuditService,
     private readonly storage: StorageService,
     private readonly roles: RoleService,
+    private readonly users: UserService,
   ) {}
 
   /* ═══════════ 权限辅助 ═══════════ */
@@ -82,6 +91,24 @@ export class KnowledgeService {
       throw new ForbiddenException(`仅作者本人或知识管理员可${what}`);
     }
     return manage;
+  }
+
+  /**
+   * 校验「作者本人 / 指派的维护人员 / 知识管理员」可编辑本文,返回三种身份标记。
+   * 维护人员(maintainersJson)可编辑正文/附件/生成 AI,但**不含 manage 特权**(不能置顶/改归档版/删文/再指派)。
+   */
+  private async assertCanEditArticle(
+    article: { authorId: string; maintainersJson: string | null },
+    userId: string,
+    what: string,
+  ): Promise<{ manage: boolean; isAuthor: boolean; isMaintainer: boolean }> {
+    const isAuthor = article.authorId === userId;
+    const isMaintainer = isMaintainerOf(article.maintainersJson, userId);
+    const manage = await this.hasManage(userId);
+    if (!isAuthor && !manage && !isMaintainer) {
+      throw new ForbiddenException(`仅作者、指派的维护人员或知识管理员可${what}`);
+    }
+    return { manage, isAuthor, isMaintainer };
   }
 
   /* ═══════════ 领域分类(两级树) ═══════════ */
@@ -364,8 +391,12 @@ export class KnowledgeService {
       include: { attachments: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }, category: true },
     });
     if (!a) throw new NotFoundException('文章不存在');
-    if (!['published', 'archived'].includes(a.status)) {
-      await this.assertAuthorOrManage(a, actorId, '查看未发布的文章');
+    const manage = await this.hasManage(actorId);
+    const canEdit =
+      manage || a.authorId === actorId || isMaintainerOf(a.maintainersJson, actorId);
+    // 未发布(草稿/待审/驳回)仅作者、维护人员、管理员可见
+    if (!['published', 'archived'].includes(a.status) && !canEdit) {
+      throw new ForbiddenException('无权查看未发布的文章');
     }
     const type = await this.prisma.knowledgeType.findUnique({ where: { code: a.typeCode } });
 
@@ -399,14 +430,83 @@ export class KnowledgeService {
     return {
       ...a,
       tags: parseTags(a.tagsJson),
-      faqs: parseFaqs(a.faqJson),
+      faqs: sortFaqsForDisplay(parseFaqsRaw(a.faqJson)),
+      maintainers: parseMaintainers(a.maintainersJson),
       categoryName: a.category.name,
       typeName: type?.name ?? a.typeCode,
       requireReview: type?.requireReview ?? false,
       versions,
       liked: rTypes.has('like'),
       favorited: rTypes.has('favorite'),
+      canEdit,
+      canManage: manage,
     };
+  }
+
+  /**
+   * FAQ 点击计数(阅读页展开某问答时调):事务 + 行锁读改写 faqJson,按 id 递增 clicks。
+   * 写回顺便固化旧数据的 id/字段(自愈)。高频操作不写审计。
+   */
+  async recordFaqClick(articleId: string, faqId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "KnowledgeArticle" WHERE id = ${articleId} FOR UPDATE`;
+      const a = await tx.knowledgeArticle.findUnique({
+        where: { id: articleId },
+        select: { id: true, faqJson: true },
+      });
+      if (!a) throw new NotFoundException('文章不存在');
+      const items = parseFaqsRaw(a.faqJson);
+      const idx = items.findIndex((f) => f.id === faqId);
+      if (idx < 0) return { ok: false, clicks: 0 };
+      items[idx] = { ...items[idx], clicks: items[idx].clicks + 1 };
+      await tx.knowledgeArticle.update({
+        where: { id: articleId },
+        data: { faqJson: JSON.stringify(items) },
+      });
+      return { ok: true, clicks: items[idx].clicks };
+    });
+  }
+
+  /** 热点 FAQ(首页):聚合全部已发布文章的 faqJson,按 clicks 降序取前 N(仅 clicks>0 的才算「热点」)。 */
+  async hotFaqs(limit = 8) {
+    const capped = Math.min(Math.max(limit, 1), 30);
+    const articles = await this.prisma.knowledgeArticle.findMany({
+      where: { status: 'published' },
+      select: { id: true, title: true, faqJson: true },
+    });
+    const flat: Array<{ articleId: string; articleTitle: string; id: string; q: string; clicks: number }> = [];
+    for (const a of articles) {
+      for (const f of parseFaqsRaw(a.faqJson)) {
+        if (f.clicks > 0) {
+          flat.push({ articleId: a.id, articleTitle: a.title, id: f.id, q: f.q, clicks: f.clicks });
+        }
+      }
+    }
+    flat.sort((x, y) => y.clicks - x.clicks);
+    return flat.slice(0, capped);
+  }
+
+  /** 指派维护人员(覆盖式,仅作者或管理员):按 userId 解析姓名快照写 maintainersJson。 */
+  async assignMaintainers(articleId: string, userIds: string[], ctx: ActorCtx) {
+    const a = await this.prisma.knowledgeArticle.findUnique({ where: { id: articleId } });
+    if (!a) throw new NotFoundException('文章不存在');
+    await this.assertAuthorOrManage(a, ctx.actorId, '指派维护人员');
+    const uniqIds = [...new Set(userIds.filter((x) => typeof x === 'string' && x))].slice(0, 20);
+    const names = await this.users.namesByIds(uniqIds);
+    const maintainers = uniqIds
+      .filter((id) => names[id]) // 丢弃不存在/已删的用户 id
+      .map((id) => ({ userId: id, userName: names[id] }));
+    await this.prisma.knowledgeArticle.update({
+      where: { id: articleId },
+      data: { maintainersJson: maintainers.length ? JSON.stringify(maintainers) : null },
+    });
+    await this.audit.log({
+      ...ctx,
+      action: 'knowledge.article.assign-maintainers',
+      target: articleId,
+      detail: { count: maintainers.length, userIds: uniqIds },
+    });
+    return { maintainers };
   }
 
   /**
@@ -470,6 +570,7 @@ export class KnowledgeService {
         contentMd: dto.contentMd,
         summary: dto.summary,
         tagsJson: normalizeTags(dto.tags),
+        faqJson: mergeFaqs(null, dto.faqs),
         versionGroupId,
         versionLabel: dto.versionLabel,
         coverFileId: dto.coverFileId,
@@ -490,7 +591,8 @@ export class KnowledgeService {
   async updateArticle(id: string, dto: UpdateArticleDto, ctx: ActorCtx) {
     const a = await this.prisma.knowledgeArticle.findUnique({ where: { id } });
     if (!a) throw new NotFoundException('文章不存在');
-    const byManage = await this.assertAuthorOrManage(a, ctx.actorId, '编辑该文章');
+    // 作者 / 指派的维护人员 / 管理员均可编辑;byManage 仅管理员为 true(用于置顶、归档版编辑等特权门控)
+    const { manage: byManage } = await this.assertCanEditArticle(a, ctx.actorId, '编辑该文章');
     // 作者可直接编辑自己任意状态(含已发布)的文章,直接生效不重新审核(用户拍板);
     // 仅历史归档版不允许作者改(避免篡改版本链留痕),管理员可改。
     if (a.status === 'archived' && !byManage) {
@@ -511,6 +613,8 @@ export class KnowledgeService {
         contentMd: dto.contentMd,
         summary: dto.summary,
         ...(dto.tags !== undefined ? { tagsJson: normalizeTags(dto.tags) } : {}),
+        // faqs 走表单持久化;mergeFaqs 按 id 保留既有 clicks(编辑不清热度)。未传则不动。
+        ...(dto.faqs !== undefined ? { faqJson: mergeFaqs(a.faqJson, dto.faqs) } : {}),
         versionLabel: dto.versionLabel,
         coverFileId: dto.coverFileId,
         sourceUrl: dto.sourceUrl,
@@ -717,10 +821,10 @@ export class KnowledgeService {
   ): Promise<{ fileId: string; url: string; name: string }> {
     const a = await this.prisma.knowledgeArticle.findUnique({
       where: { id: articleId },
-      select: { id: true, authorId: true, title: true },
+      select: { id: true, authorId: true, title: true, maintainersJson: true },
     });
     if (!a) throw new NotFoundException('文章不存在');
-    await this.assertAuthorOrManage(a, ctx.actorId, '上传该文章资源');
+    await this.assertCanEditArticle(a, ctx.actorId, '上传该文章资源');
 
     const folder = `article-${articleId}`;
     const seq = (await this.storage.countInFolder('knowledge', folder)) + 1;
@@ -748,7 +852,7 @@ export class KnowledgeService {
   async addAttachment(articleId: string, dto: AddAttachmentDto, ctx: ActorCtx) {
     const a = await this.prisma.knowledgeArticle.findUnique({ where: { id: articleId } });
     if (!a) throw new NotFoundException('文章不存在');
-    await this.assertAuthorOrManage(a, ctx.actorId, '管理该文章附件');
+    await this.assertCanEditArticle(a, ctx.actorId, '管理该文章附件');
     const meta = await this.storage.getMeta(dto.fileId); // 不存在/软删 → NotFound
     if (meta.ownerModule !== 'knowledge') {
       throw new BadRequestException('附件必须以 knowledge 模块身份上传');
@@ -778,10 +882,10 @@ export class KnowledgeService {
   async removeAttachment(attachmentId: string, ctx: ActorCtx) {
     const att = await this.prisma.knowledgeAttachment.findUnique({
       where: { id: attachmentId },
-      include: { article: { select: { id: true, authorId: true } } },
+      include: { article: { select: { id: true, authorId: true, maintainersJson: true } } },
     });
     if (!att) throw new NotFoundException('附件不存在');
-    await this.assertAuthorOrManage(att.article, ctx.actorId, '删除该附件');
+    await this.assertCanEditArticle(att.article, ctx.actorId, '删除该附件');
     await this.prisma.knowledgeAttachment.delete({ where: { id: attachmentId } });
     // 交叉校验:同一文件被其他附件/封面/正文引用则不删字节(防误删共用文件)
     if (!(await this.fileStillInUse(att.fileId))) {
@@ -868,20 +972,6 @@ function parseTags(tagsJson: string | null): string[] {
   try {
     const v = JSON.parse(tagsJson);
     return Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-function parseFaqs(faqJson: string | null): Array<{ q: string; a: string }> {
-  if (!faqJson) return [];
-  try {
-    const v = JSON.parse(faqJson);
-    if (!Array.isArray(v)) return [];
-    return v.filter(
-      (x): x is { q: string; a: string } =>
-        !!x && typeof x.q === 'string' && typeof x.a === 'string',
-    );
   } catch {
     return [];
   }

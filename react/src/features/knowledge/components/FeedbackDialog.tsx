@@ -36,14 +36,16 @@ export function FeedbackDialog({ articleId, onClose }: { articleId: string; onCl
             <MessageCircleWarningIcon className="w-4 h-4 text-amber-500" /> 吐槽 / 意见反馈
           </DialogTitle>
         </DialogHeader>
-        <div className="text-xs text-gray-400 -mt-1">
-          反馈<span className="text-gray-600 font-medium">不公开</span>,只有文章作者和管理员能看到并回复。内容有错、过时、看不懂都可以提。
+        <div className="text-xs text-gray-400 -mt-1 leading-5">
+          发现内容<span className="text-gray-600 font-medium">有误、过时、看不懂</span>?在此
+          <span className="text-[var(--party-primary)] font-medium">纠错 / 反馈</span>。
+          反馈<span className="text-gray-600 font-medium">不公开</span>,只有文章作者、维护人员和管理员能看到并回复处理。
         </div>
         <Textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
           rows={4}
-          placeholder="说说这篇有什么问题、可以怎么改进…"
+          placeholder="例:第三条引用的文件已废止,应更新为…（可指出具体位置、错误内容与正确说法）"
           className="text-sm"
           autoFocus
         />

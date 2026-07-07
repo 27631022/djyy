@@ -132,3 +132,33 @@
 9. **有效期管理**:制度带生效/废止日期,到期 @Cron 提醒复核。
 
 **明确不做(与定位冲突)**:协同富文本/段落级评论、推荐算法信息流、外部公开分享、Wiki 双链/知识图谱 —— 工程量远超内网数百用户场景的收益,标签已承担轻量关联。
+
+---
+
+## 增补(2026-07-06):FAQ 可编辑/热度/置顶 · 首页热点问答 · 吐槽纠错/作者可见 · 维护人员
+
+一批用户交互反馈落地(均 P1–P4 之上的打磨,非新阶段)。
+
+### FAQ:可编辑 + 点击热度 + 人工置顶
+- `faqJson` 结构升级:`[{q,a}]` → `[{id,q,a,clicks,pinned}]`。旧数据由 `parseFaqsRaw` 按位置回填 id、`clicks=0/pinned=false`,一旦写回即固化(自愈)。
+- 纯函数集中 `backend/src/knowledge/knowledge.helpers.ts`(跨 knowledge/knowledge-ai/knowledge-interaction 三 service 复用,不 import service 守 DAG):
+  - `parseFaqsRaw` 解析回填、`sortFaqsForDisplay`(**置顶优先 → 点击热度降序 → 存储序**)、`mergeFaqs`(编辑合并,**按 id 保留 clicks**,新条目分配 `f{n}`、clicks 从 0)、`parseMaintainers`/`isMaintainerOf`。
+- **编辑器** FAQ 从「只显条数」改可编辑列表:Q 输入 + A 文本域 + 增删 + **置顶开关** + 🔥点击数(只读)。AI 生成/重新生成填入列表;走表单 payload → 自动保存。`clicks` 服务端拥有,`FaqItemDto` 只收 `{id?,q,a,pinned?}`(防伪造热度)。
+- **点击计数** `POST /knowledge/articles/:id/faqs/:faqId/click`:事务 + `SELECT … FOR UPDATE` 行锁读改写(10 并发实测无丢更新)。阅读页 Accordion 展开即上报,每次进入每条只计一次(前端 `Set` 去重防刷)。
+
+### 首页热点问答
+- `GET /knowledge/hot-faqs?limit=`:聚合全部已发布文章 faqJson,**仅 clicks>0**,按热度降序取 N,带 `articleId/articleTitle/q/clicks`。
+- `NavPage` 加 `HotFaqSection`:登录后可见、无数据自动隐藏、点问题跳文章;**未登录不发请求**(避免 401 拦截器把访客踢登录页,同 `RankingSidebar` 处理)。
+
+### 吐槽纠错 + 作者/维护人可见
+- `FeedbackDialog` 文案强化「纠错」引导 + 更具体的占位示例。
+- 抽 `components/FeedbackCard.tsx`(回复/关闭)供管理端「用户反馈」页与作者复用;`KnowledgeMine` 加「收到反馈」tab(`listFeedback('mine')`)。
+- 后端 `listFeedback('mine')` 及 `replyFeedback`/`closeFeedback` 的可处理者**扩到维护人**(作者 或 `maintainersJson contains userId` 或 manage)。
+
+### 指派维护人员
+- `KnowledgeArticle.maintainersJson`(migrate `add_knowledge_maintainers`)= `[{userId,userName}]` 松引用 User + 姓名快照。
+- `PATCH /knowledge/articles/:id/maintainers`(`{userIds}` 覆盖式):**仅作者或 manage** 指派(`assertAuthorOrManage`);`UserService.namesByIds` 解析姓名。
+- **维护人能力边界**:可编辑正文/附件/AI 生成、处理反馈;**不含 manage 特权**(不能置顶/编辑归档版/删文/再指派)。编辑类调用改走新 `assertCanEditArticle`(author‖manage‖maintainer,返回 `{manage,isAuthor,isMaintainer}`,`manage` 门控保留特权);删文/提交/指派仍 `assertAuthorOrManage`。
+- `getArticle` 返回 `maintainers`/`canEdit`/`canManage`;阅读页「编辑」按钮改按 `canEdit`、aside 显「维护:…」;编辑器加「维护人员」区(`MaintainerPicker` 搜用户 → 专用端点即时落库)。`knowledge.module` 加 `UserModule`。
+
+**验证**:双端门禁绿(后端 0/0/0、前端 0 error/0 warning)+ API 端到端 18/18(点击累计/热度排序/置顶恒前/编辑保留热度/hot-faqs 过滤降序/维护人可编辑但 canManage=false/维护人指派·删文 403/维护人 scope=mine 见反馈并回复)。

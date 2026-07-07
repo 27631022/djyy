@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -17,6 +17,7 @@ import {
   MessageCircleWarningIcon,
   MessageSquareIcon,
   PencilLineIcon,
+  PinIcon,
   SparklesIcon,
   StarIcon,
   ThumbsUpIcon,
@@ -30,7 +31,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/shared/components/ui/accordion";
-import { useAuth } from "@/stores/auth";
 import {
   ARTICLE_STATUS_CHIP,
   ARTICLE_STATUS_LABEL,
@@ -89,12 +89,18 @@ export default function KnowledgeArticlePage() {
 function ArticleView({ article: a }: { article: ArticleDetail }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { me } = useAuth();
   const toc = extractToc(a.contentMd);
-  const isAuthor = me?.id === a.authorId;
   const latestPublished = a.versions.find((v) => v.status === "published");
   const safeSource = safeHttpUrl(a.sourceUrl);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  // FAQ 展开即计一次点击热度(每次进入每条只计一次,避免反复开合刷量)
+  const clickedFaqs = useRef(new Set<string>());
+  function onFaqOpen(faqId: string) {
+    if (!faqId || clickedFaqs.current.has(faqId)) return;
+    clickedFaqs.current.add(faqId);
+    knowledgeApi.recordFaqClick(a.id, faqId).catch(() => {});
+  }
 
   // 浏览埋点(进入记一次 + 累计可见时长,离开 beacon 回填)
   useViewTracking(a.id);
@@ -145,7 +151,7 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
             <HomeIcon className="w-4 h-4" /> 首页
           </button>
           <div className="ml-auto flex items-center gap-2">
-            {isAuthor && a.status !== "archived" && (
+            {a.canEdit && a.status !== "archived" && (
               <Button size="sm" variant="outline" onClick={() => navigate(`/knowledge/edit/${a.id}`)}>
                 <PencilLineIcon className="w-4 h-4 mr-1" /> 编辑
               </Button>
@@ -248,10 +254,13 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
               <div className="flex items-center gap-1.5 font-medium text-gray-800 mb-1">
                 <HelpCircleIcon className="w-4 h-4 text-[var(--party-primary)]" /> 常见问题答疑
               </div>
-              <Accordion type="single" collapsible>
-                {a.faqs.map((f, i) => (
-                  <AccordionItem key={i} value={`faq-${i}`}>
-                    <AccordionTrigger className="text-sm text-left">{f.q}</AccordionTrigger>
+              <Accordion type="single" collapsible onValueChange={onFaqOpen}>
+                {a.faqs.map((f) => (
+                  <AccordionItem key={f.id} value={f.id}>
+                    <AccordionTrigger className="text-sm text-left">
+                      {f.pinned && <PinIcon className="w-3.5 h-3.5 mr-1 shrink-0 text-[var(--party-primary)] fill-current" />}
+                      {f.q}
+                    </AccordionTrigger>
                     <AccordionContent className="text-sm leading-6 text-gray-600 whitespace-pre-wrap">
                       {f.a}
                     </AccordionContent>
@@ -379,6 +388,7 @@ function ArticleView({ article: a }: { article: ArticleDetail }) {
             <BookOpenIcon className="w-4 h-4 text-gray-300 mb-1" />
             知识由 {a.authorName} 分享
             {a.reviewedByName && <div>审核:{a.reviewedByName}</div>}
+            {a.maintainers.length > 0 && <div>维护:{a.maintainers.map((m) => m.userName).join("、")}</div>}
           </div>
         </aside>
       </div>

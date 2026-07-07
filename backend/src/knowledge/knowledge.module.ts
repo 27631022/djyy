@@ -4,6 +4,7 @@ import { AuditModule } from '../audit';
 import { AuthModule } from '../auth';
 import { StorageModule } from '../storage';
 import { RoleModule } from '../role';
+import { UserModule } from '../user';
 import { PromptModule } from '../prompt';
 import { KnowledgeService } from './knowledge.service';
 import { KnowledgeImportService } from './knowledge-import.service';
@@ -20,7 +21,7 @@ import { KnowledgeAiController } from './knowledge-ai.controller';
  * LlmClientService,提示词走 PromptModule)已加;P5 imports PointsModule 埋积分事件。
  */
 @Module({
-  imports: [PrismaModule, AuditModule, AuthModule, StorageModule, RoleModule, PromptModule],
+  imports: [PrismaModule, AuditModule, AuthModule, StorageModule, RoleModule, UserModule, PromptModule],
   controllers: [
     KnowledgeController,
     KnowledgePublicController,

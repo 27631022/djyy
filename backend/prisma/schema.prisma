@@ -1295,8 +1295,9 @@ model KnowledgeArticle {
   typeCode       String // → KnowledgeType.code(松引用,service 校验存在)
   contentMd      String // Markdown 正文
   summary        String? // AI 导读(人工可改)
-  faqJson        String? // 常见问题 [{q,a}] JSON 串
+  faqJson        String? // 常见问题 [{id,q,a,clicks,pinned}] JSON 串(clicks 点击热度 / pinned 人工置顶)
   tagsJson       String? // 标签 ["党务","入党"] JSON 串(轻量,不建 Tag 表)
+  maintainersJson String? // 指派的维护人员 [{userId,userName}] JSON 串(作者/管理员指派,维护人可编辑本文,松引用 User)
   versionGroupId String? // 版本链 id:首版=自身 id;修订版=旧文章的 versionGroupId ?? 旧文章 id
   versionLabel   String? // 版本说明,如「2026年修订」
   status         String            @default("draft") // draft | pending | published | rejected | archived

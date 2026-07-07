@@ -14,6 +14,7 @@ import { RoleService } from '../role';
 import { PromptService } from '../prompt';
 import { ExternalApiService, LlmClientService } from '../external-api';
 import { TAG_MAX_COUNT, TAG_MAX_LEN } from './knowledge.constants';
+import { isMaintainerOf, mergeFaqs, parseFaqsRaw } from './knowledge.helpers';
 
 interface ActorCtx {
   actorId: string;
@@ -183,14 +184,17 @@ export class KnowledgeAiService {
       userContent: a.contentMd.slice(0, 40_000),
     });
     const parsed = parseJson(r.raw);
-    const faqs = Array.isArray(parsed.faqs)
+    const raw = Array.isArray(parsed.faqs)
       ? parsed.faqs
           .filter((f: unknown): f is { q: unknown; a: unknown } => !!f && typeof f === 'object')
           .map((f: { q: unknown; a: unknown }) => ({ q: str(f.q), a: str(f.a) }))
           .filter((f: { q: string; a: string }) => f.q && f.a)
           .slice(0, 12)
       : [];
-    await this.prisma.knowledgeArticle.update({ where: { id: articleId }, data: { faqJson: faqs.length ? JSON.stringify(faqs) : null } });
+    // 重新生成 = 全替换:mergeFaqs(null, …) 分配稳定 id、clicks 从 0 起(旧问题的热度不迁移)
+    const faqJson = mergeFaqs(null, raw);
+    await this.prisma.knowledgeArticle.update({ where: { id: articleId }, data: { faqJson } });
+    const faqs = parseFaqsRaw(faqJson);
     await this.audit.log({ ...ctx, action: 'knowledge.ai.faq', target: articleId, detail: { count: faqs.length, provider: r.provider, model: r.model } });
     return { faqs };
   }
@@ -198,12 +202,14 @@ export class KnowledgeAiService {
   private async requireEditable(articleId: string, userId: string, what: string) {
     const a = await this.prisma.knowledgeArticle.findUnique({
       where: { id: articleId },
-      select: { id: true, authorId: true, contentMd: true },
+      select: { id: true, authorId: true, contentMd: true, maintainersJson: true },
     });
     if (!a) throw new NotFoundException('文章不存在');
-    if (a.authorId !== userId) {
+    if (a.authorId !== userId && !isMaintainerOf(a.maintainersJson, userId)) {
       const { isPlatformAdmin, entries } = await this.roles.getScopesForPermission(userId, 'knowledge:manage');
-      if (!isPlatformAdmin && entries.length === 0) throw new ForbiddenException(`仅作者或管理员可${what}`);
+      if (!isPlatformAdmin && entries.length === 0) {
+        throw new ForbiddenException(`仅作者、维护人员或管理员可${what}`);
+      }
     }
     if (!a.contentMd.trim()) throw new BadRequestException('正文为空,先写点内容再生成');
     return a;

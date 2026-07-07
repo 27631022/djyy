@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
 import { RoleService } from '../role';
 import { REACTION_TYPES, VIEW_DURATION_MAX_SEC, type ReactionType } from './knowledge.constants';
+import { isMaintainerOf } from './knowledge.helpers';
 import {
   CreateCommentDto,
   CreateFeedbackDto,
@@ -40,6 +41,16 @@ export class KnowledgeInteractionService {
       'knowledge:manage',
     );
     return isPlatformAdmin || entries.length > 0;
+  }
+
+  /** 作者 / 指派维护人员 / 管理员可处理(回复/关闭)该文章的反馈 */
+  private async canHandleFeedback(
+    article: { authorId: string; maintainersJson: string | null },
+    userId: string,
+  ): Promise<boolean> {
+    if (article.authorId === userId) return true;
+    if (isMaintainerOf(article.maintainersJson, userId)) return true;
+    return this.hasManage(userId);
   }
 
   private async requireVisibleArticle(articleId: string) {
@@ -190,8 +201,11 @@ export class KnowledgeInteractionService {
     if (scope === 'all') {
       if (!manage) throw new ForbiddenException('无权查看全部反馈');
     } else {
-      // mine:限本人作者的文章
-      const mine = await this.prisma.knowledgeArticle.findMany({ where: { authorId: userId }, select: { id: true } });
+      // mine:限本人作者 **或被指派为维护人员** 的文章(maintainersJson 里含我的 userId,cuid 不会误撞)
+      const mine = await this.prisma.knowledgeArticle.findMany({
+        where: { OR: [{ authorId: userId }, { maintainersJson: { contains: userId } }] },
+        select: { id: true },
+      });
       where.articleId = { in: mine.map((a) => a.id) };
     }
     const rows = await this.prisma.knowledgeFeedback.findMany({
@@ -220,11 +234,11 @@ export class KnowledgeInteractionService {
   async replyFeedback(feedbackId: string, dto: ReplyFeedbackDto, ctx: ActorCtx) {
     const fb = await this.prisma.knowledgeFeedback.findUnique({
       where: { id: feedbackId },
-      include: { article: { select: { authorId: true } } },
+      include: { article: { select: { authorId: true, maintainersJson: true } } },
     });
     if (!fb) throw new NotFoundException('反馈不存在');
-    if (fb.article.authorId !== ctx.actorId && !(await this.hasManage(ctx.actorId))) {
-      throw new ForbiddenException('只有文章作者或管理员可回复反馈');
+    if (!(await this.canHandleFeedback(fb.article, ctx.actorId))) {
+      throw new ForbiddenException('只有文章作者、维护人员或管理员可回复反馈');
     }
     const reply = await this.prisma.$transaction(async (tx) => {
       const r = await tx.knowledgeFeedbackReply.create({
@@ -240,11 +254,11 @@ export class KnowledgeInteractionService {
   async closeFeedback(feedbackId: string, ctx: ActorCtx) {
     const fb = await this.prisma.knowledgeFeedback.findUnique({
       where: { id: feedbackId },
-      include: { article: { select: { authorId: true } } },
+      include: { article: { select: { authorId: true, maintainersJson: true } } },
     });
     if (!fb) throw new NotFoundException('反馈不存在');
-    if (fb.article.authorId !== ctx.actorId && !(await this.hasManage(ctx.actorId))) {
-      throw new ForbiddenException('只有文章作者或管理员可关闭反馈');
+    if (!(await this.canHandleFeedback(fb.article, ctx.actorId))) {
+      throw new ForbiddenException('只有文章作者、维护人员或管理员可关闭反馈');
     }
     await this.prisma.knowledgeFeedback.update({ where: { id: feedbackId }, data: { status: 'closed' } });
     await this.audit.log({ ...ctx, action: 'knowledge.feedback.close', target: feedbackId });

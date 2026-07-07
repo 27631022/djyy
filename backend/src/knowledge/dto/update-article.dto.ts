@@ -1,5 +1,17 @@
-import { IsArray, IsBoolean, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
 import { CONTENT_MD_MAX } from './create-article.dto';
+import { FaqItemDto } from './faq-item.dto';
 
 export class UpdateArticleDto {
   @IsOptional()
@@ -30,6 +42,14 @@ export class UpdateArticleDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  /** 常见问题答疑(AI 生成后可人工增删改;传空数组=清空)—— service 归一化去空/限量 */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FaqItemDto)
+  @ArrayMaxSize(50)
+  faqs?: FaqItemDto[];
 
   @IsOptional()
   @IsString()

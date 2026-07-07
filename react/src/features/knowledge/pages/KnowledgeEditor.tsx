@@ -6,14 +6,18 @@ import {
   CheckCircle2Icon,
   ChevronLeftIcon,
   FileTextIcon,
+  FlameIcon,
   GitBranchIcon,
   HelpCircleIcon,
   Loader2Icon,
   PaperclipIcon,
+  PinIcon,
+  PlusIcon,
   SaveIcon,
   SendIcon,
   SparklesIcon,
   Trash2Icon,
+  UsersIcon,
 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -31,6 +35,7 @@ import { CategoryPicker } from "../components/CategoryPicker";
 import { TagsInput } from "../components/TagsInput";
 import { VersionLinkPicker, type RevisionTarget } from "../components/VersionLinkPicker";
 import { TemplateBar } from "../components/TemplateBar";
+import { MaintainerPicker, type MaintainerRef } from "../components/MaintainerPicker";
 
 /** 外壳:编辑已有文章时取数 → key 重挂载内层;新建直接进内层 */
 export default function KnowledgeEditorPage() {
@@ -71,7 +76,10 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
   const [revisionOf, setRevisionOf] = useState<RevisionTarget | null>(null);
   const [attachments, setAttachments] = useState<ArticleAttachment[]>(article?.attachments ?? []);
   const [uploadingAtt, setUploadingAtt] = useState(false);
-  const [faqCount, setFaqCount] = useState(article?.faqs?.length ?? 0);
+  const [faqs, setFaqs] = useState<Array<{ id?: string; q: string; a: string; clicks?: number; pinned?: boolean }>>(
+    article?.faqs ?? [],
+  );
+  const [maintainers, setMaintainers] = useState<MaintainerRef[]>(article?.maintainers ?? []);
   // 已落库的文章 id:新建首次保存后置为服务器返回的 id。之后 save/submit 都走 update,
   // 且**不再 navigate 触发外壳重挂载** —— 避免丢失编辑中的输入、避免重试重复建文、避免读到陈旧缓存。
   const [articleId, setArticleId] = useState<string | null>(article?.id ?? null);
@@ -94,6 +102,10 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
       contentMd,
       summary: summary.trim() || undefined,
       tags,
+      // 只提交问答都填了的行(空行不落库);带 id 让后端保留点击热度,clicks 由服务端管理不提交
+      faqs: faqs
+        .map((f) => ({ id: f.id, q: f.q.trim(), a: f.a.trim(), pinned: !!f.pinned }))
+        .filter((f) => f.q && f.a),
       versionLabel: versionLabel.trim() || undefined,
     };
   }
@@ -153,7 +165,7 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
     // 防抖自动保存:只需监听表单字段变化重排定时器;validate/sig/persist 是稳定读取当下 state 的闭包,
     // 不放进 deps(否则每渲染重建函数会误触发);这是「表单变化→防抖副作用」的合法用法。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [articleId, title, categoryId, typeCode, contentMd, summary, tags, versionLabel]);
+  }, [articleId, title, categoryId, typeCode, contentMd, summary, tags, faqs, versionLabel]);
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -223,10 +235,32 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
   const aiFaq = useMutation({
     mutationFn: () => knowledgeAiApi.faq(articleId!),
     onSuccess: (d) => {
-      setFaqCount(d.faqs.length);
-      toast.success(`已生成 ${d.faqs.length} 条常见问题(阅读页可见)`);
+      // AI 生成后填入可编辑列表(替换原有);后续人工增删改由自动保存落库
+      setFaqs(d.faqs.map((f) => ({ id: f.id, q: f.q, a: f.a, clicks: f.clicks, pinned: f.pinned })));
+      toast.success(`已生成 ${d.faqs.length} 条常见问题(可编辑)`);
     },
     onError: (e) => toast.error(knowledgeErrMsg(e, "生成 FAQ 失败")),
+  });
+
+  /* ─── FAQ 手动增删改 / 置顶(改动进 faqs state → payload → 自动保存落库) ─── */
+  const addFaq = () => setFaqs((cur) => [...cur, { q: "", a: "", pinned: false }]);
+  const removeFaq = (i: number) => setFaqs((cur) => cur.filter((_, idx) => idx !== i));
+  const setFaqAt = (i: number, patch: Partial<{ q: string; a: string; pinned: boolean }>) =>
+    setFaqs((cur) => cur.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
+  const toggleFaqPin = (i: number) =>
+    setFaqs((cur) => cur.map((f, idx) => (idx === i ? { ...f, pinned: !f.pinned } : f)));
+
+  /* ─── 维护人员指派(作者/管理员;走专用端点即时落库) ─── */
+  const isAuthor = !article || me?.id === article.authorId; // 新建时当前用户即作者
+  const canAssignMaintainers = !!articleId && (canManage || isAuthor);
+  const assignMaintainers = useMutation({
+    mutationFn: (next: MaintainerRef[]) =>
+      knowledgeApi.assignMaintainers(articleId!, next.map((m) => m.userId)),
+    onSuccess: (d) => {
+      setMaintainers(d.maintainers);
+      toast.success("维护人员已更新");
+    },
+    onError: (e) => toast.error(knowledgeErrMsg(e, "指派失败")),
   });
 
   async function removeAttachment(att: ArticleAttachment) {
@@ -393,24 +427,90 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
           />
         </div>
 
-        {/* 常见问题(AI 生成,写库;阅读页折叠展示) */}
-        <div className="rounded-xl border border-gray-100 bg-white/90 shadow-sm p-5 flex items-center gap-2">
-          <HelpCircleIcon className="w-4 h-4 text-[var(--party-primary)]" />
-          <span className="text-sm text-gray-700 font-medium">常见问题答疑</span>
-          <span className="text-xs text-gray-400">
-            {faqCount > 0 ? `已生成 ${faqCount} 条(阅读页可见)` : "还没有 —— AI 读正文自动生成问答"}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="ml-auto"
-            disabled={!articleId || aiFaq.isPending}
-            title={articleId ? "AI 读正文生成 5~8 条问答" : "先保存草稿后可用"}
-            onClick={() => aiFaq.mutate()}
-          >
-            {aiFaq.isPending ? <Loader2Icon className="w-3.5 h-3.5 mr-1 animate-spin" /> : <SparklesIcon className="w-3.5 h-3.5 mr-1" />}
-            {faqCount > 0 ? "重新生成" : "AI 生成 FAQ"}
+        {/* 常见问题答疑(AI 生成 + 可手动增删改;阅读页折叠展示) */}
+        <div className="rounded-xl border border-gray-100 bg-white/90 shadow-sm p-5 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <HelpCircleIcon className="w-4 h-4 text-[var(--party-primary)]" />
+            <span className="text-sm text-gray-700 font-medium">常见问题答疑</span>
+            <span className="text-xs text-gray-400">
+              {faqs.length > 0
+                ? `${faqs.length} 条 · 置顶优先,其余按点击热度自动排序`
+                : "AI 读正文自动生成,也可手动添加"}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+              disabled={!articleId || aiFaq.isPending}
+              title={articleId ? "AI 读正文生成 5~8 条问答(替换现有)" : "先保存草稿后可用"}
+              onClick={() => aiFaq.mutate()}
+            >
+              {aiFaq.isPending ? <Loader2Icon className="w-3.5 h-3.5 mr-1 animate-spin" /> : <SparklesIcon className="w-3.5 h-3.5 mr-1" />}
+              {faqs.length > 0 ? "AI 重新生成" : "AI 生成 FAQ"}
+            </Button>
+          </div>
+
+          {faqs.length > 0 && (
+            <div className="space-y-2.5">
+              {faqs.map((f, i) => (
+                <div key={f.id ?? i} className="rounded-lg border border-gray-100 bg-gray-50/60 p-3 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 text-[11px] font-semibold text-[var(--party-primary)]">Q{i + 1}</span>
+                    <Input
+                      value={f.q}
+                      onChange={(e) => setFaqAt(i, { q: e.target.value })}
+                      placeholder="问题,如:本制度适用于哪些人员?"
+                      className="h-8 text-sm"
+                    />
+                    {(f.clicks ?? 0) > 0 && (
+                      <span
+                        className="shrink-0 inline-flex items-center gap-0.5 text-[11px] text-orange-500"
+                        title="被点击查看次数(热度越高越靠前)"
+                      >
+                        <FlameIcon className="w-3.5 h-3.5" />
+                        {f.clicks}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => toggleFaqPin(i)}
+                      className={`shrink-0 rounded p-1 transition-colors ${
+                        f.pinned
+                          ? "text-[var(--party-primary)] bg-party-soft"
+                          : "text-gray-300 hover:text-gray-500"
+                      }`}
+                      title={f.pinned ? "已置顶(点击取消)" : "置顶该问题"}
+                      aria-label={f.pinned ? "取消置顶" : "置顶"}
+                    >
+                      <PinIcon className={`w-4 h-4 ${f.pinned ? "fill-current" : ""}`} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeFaq(i)}
+                      className="shrink-0 text-gray-300 hover:text-red-500"
+                      aria-label={`删除第 ${i + 1} 条问答`}
+                    >
+                      <Trash2Icon className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 mt-2 text-[11px] font-semibold text-gray-400">A</span>
+                    <Textarea
+                      value={f.a}
+                      onChange={(e) => setFaqAt(i, { a: e.target.value })}
+                      rows={2}
+                      placeholder="答案"
+                      className="text-sm"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <Button type="button" variant="ghost" size="sm" className="text-gray-500" onClick={addFaq}>
+            <PlusIcon className="w-3.5 h-3.5 mr-1" /> 手动添加一条
           </Button>
         </div>
 
@@ -478,6 +578,29 @@ function EditorInner({ article }: { article: ArticleDetail | null }) {
             </div>
           )}
         </div>
+
+        {/* 维护人员(作者/管理员指派;维护人可编辑本文、处理反馈) */}
+        {(canManage || isAuthor) && (
+          <div className="rounded-xl border border-gray-100 bg-white/90 shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-2">
+              <UsersIcon className="w-4 h-4 text-[var(--party-primary)]" />
+              <span className="font-medium text-sm text-gray-800">维护人员</span>
+              <span className="text-xs text-gray-400">指派后,维护人可编辑本文、答复读者反馈</span>
+            </div>
+            {canAssignMaintainers ? (
+              <MaintainerPicker
+                value={maintainers}
+                onChange={(next) => {
+                  setMaintainers(next); // 乐观更新;失败时 mutation 报错(重开可纠正)
+                  assignMaintainers.mutate(next);
+                }}
+                disabled={assignMaintainers.isPending}
+              />
+            ) : (
+              <span className="text-xs text-gray-400">先「保存草稿」后即可指派维护人员</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

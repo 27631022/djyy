@@ -12,6 +12,9 @@ import {
   knowledgeErrMsg,
   type ArticleListItem,
 } from "../api";
+import { FeedbackCard } from "../components/FeedbackCard";
+
+type MineTab = "mine" | "favorite" | "feedback";
 
 /**
  * 我的发布(全状态,可编辑/提交/删除)+ 我的收藏(favorite reaction,P3 起有数据)。
@@ -19,7 +22,7 @@ import {
 export default function KnowledgeMine() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"mine" | "favorite">("mine");
+  const [tab, setTab] = useState<MineTab>("mine");
 
   const list = useQuery({
     queryKey: ["knowledge", "mine", tab],
@@ -27,6 +30,14 @@ export default function KnowledgeMine() {
       tab === "mine"
         ? knowledgeApi.listArticles({ mine: true, pageSize: 50 })
         : knowledgeApi.listArticles({ favorite: true, pageSize: 50 }),
+    enabled: tab !== "feedback",
+  });
+
+  // 收到反馈:我作者/维护的文章上的吐槽(作者视角,可回复/关闭)
+  const feedback = useQuery({
+    queryKey: ["knowledge", "feedback", "mine"],
+    queryFn: () => knowledgeApi.listFeedback("mine"),
+    enabled: tab === "feedback",
   });
 
   const submit = useMutation({
@@ -113,13 +124,27 @@ export default function KnowledgeMine() {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 py-6">
-        <Tabs value={tab} onValueChange={(v) => setTab(v as "mine" | "favorite")}>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as MineTab)}>
           <TabsList>
             <TabsTrigger value="mine">我的发布</TabsTrigger>
             <TabsTrigger value="favorite">我的收藏</TabsTrigger>
+            <TabsTrigger value="feedback">收到反馈</TabsTrigger>
           </TabsList>
         </Tabs>
 
+        {tab === "feedback" ? (
+          <div className="mt-4 space-y-3">
+            {feedback.isLoading ? (
+              <div className="py-16 text-center text-sm text-gray-400">加载中…</div>
+            ) : (feedback.data?.length ?? 0) === 0 ? (
+              <div className="py-16 text-center text-sm text-gray-400">
+                还没有收到反馈。读者在文章页点「吐槽」纠错后会出现在这里。
+              </div>
+            ) : (
+              feedback.data!.map((f) => <FeedbackCard key={f.id} fb={f} />)
+            )}
+          </div>
+        ) : (
         <div className="mt-4 rounded-xl border border-gray-100 bg-white/90 shadow-sm divide-y divide-gray-50">
           {list.isLoading ? (
             <div className="py-16 text-center text-sm text-gray-400">加载中…</div>
@@ -160,6 +185,7 @@ export default function KnowledgeMine() {
             ))
           )}
         </div>
+        )}
       </div>
     </div>
   );

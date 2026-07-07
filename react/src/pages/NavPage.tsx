@@ -8,7 +8,7 @@ import {
   BookOpenIcon, ClipboardListIcon, UsersIcon,
   ClockIcon, XIcon, MegaphoneIcon, ShieldIcon,
   AlertCircleIcon, BuildingIcon, LayoutDashboardIcon,
-  SettingsIcon,
+  SettingsIcon, FlameIcon,
   LockIcon, LogOutIcon, ChevronDownIcon,
 } from "lucide-react";
 import { Input } from "@/shared/components/ui/input";
@@ -18,6 +18,7 @@ import { useAuth } from "../stores/auth";
 import { siteSettingApi, FALLBACK_SITE_SETTINGS, SiteLogo } from "@/features/site-setting";
 import { navApi, type NavCategoryDto, type NavItemDto } from "@/features/nav-category";
 import { resolveAvatarUrl } from "@/features/avatar";
+import { knowledgeApi } from "@/features/knowledge";
 import { rankBarGradient } from "@/shared/lib/ranking-demo";
 import { usePortalAssessmentBoard } from "@/features/assessment";
 import { LucideIcon } from "@/shared/components/IconPicker";
@@ -456,6 +457,59 @@ function AssessmentRankingCard({ board }: { board: ReturnType<typeof usePortalAs
         </>
       )}
     </div>
+  );
+}
+
+/* ─── 热点问答(知识库 FAQ 点击热度榜;登录后可见,无数据自动隐藏)─── */
+function HotFaqSection() {
+  const { isLoggedIn } = useLoginGate();
+  const navigate = useNavigate();
+  const hot = useQuery({
+    queryKey: ["knowledge", "hot-faqs", "portal"],
+    queryFn: () => knowledgeApi.hotFaqs(8),
+    enabled: isLoggedIn, // 未登录不发请求(避免 401 拦截器把访客踢去登录页)
+    staleTime: 60 * 1000,
+  });
+  const items = hot.data ?? [];
+  if (!isLoggedIn || items.length === 0) return null;
+
+  return (
+    <section className="py-8">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="party-section-title text-xl font-bold text-[#1A1A1A] flex items-center gap-2">
+          <FlameIcon className="w-5 h-5 text-[var(--party-primary)]" /> 热点问答
+        </h2>
+        <button
+          onClick={() => navigate("/knowledge")}
+          className="text-base text-[var(--party-primary)] flex items-center gap-1 hover:opacity-70"
+        >
+          去知识园地 <ChevronRightIcon className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {items.map((f, idx) => (
+          <button
+            key={`${f.articleId}-${f.id}`}
+            onClick={() => navigate(`/knowledge/articles/${f.articleId}`)}
+            className="bg-white rounded-xl border border-[#E9E9E9] p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md flex items-start gap-3"
+          >
+            <span
+              className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white mt-0.5"
+              style={{ background: idx < 3 ? "var(--party-primary)" : "#C0C6D0" }}
+            >
+              {idx + 1}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-base font-medium text-[#1A1A1A] line-clamp-1">{f.q}</span>
+              <span className="block text-[12px] text-[#9CA3AF] mt-0.5 truncate">
+                {f.articleTitle} · 🔥 {f.clicks}
+              </span>
+            </span>
+            <ChevronRightIcon className="w-4 h-4 text-[#D1D5DB] shrink-0 mt-1.5" />
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -919,6 +973,9 @@ export default function NavPage() {
               <RankingSidebar />
             </div>
           </div>
+
+          {/* 热点问答(知识库 FAQ 点击热度;无数据自动隐藏) */}
+          <HotFaqSection />
 
           <Separator className="bg-[#E9E9E9] mt-6" />
 
