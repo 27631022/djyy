@@ -160,14 +160,9 @@ function EntryForm({ entry, stageInfo }: { entry?: EntryDetail; stageInfo: Stage
     if (err) return toast.error(err);
     setBusy(true);
     try {
-      let eid = entryId;
-      if (eid) {
-        await showcaseApi.updateEntry(eid, payload());
-      } else {
-        const created = await showcaseApi.createEntry(stageInfo.id, payload());
-        eid = created.id;
-        setEntryId(eid);
-      }
+      // 建稿只走 ensureId 单一路径(savingRef 互斥)—— 防「上传正在建稿 + 点保存」并发建出两个草稿
+      const eid = entryId ?? (await ensureId());
+      if (entryId) await showcaseApi.updateEntry(eid, payload());
       if (thenSubmit) {
         const r = await showcaseApi.submitEntry(eid);
         toast.success(r.status === "published" ? "已直接公开(台主/管理员免审)" : "已提交,等待台主审核");
@@ -178,7 +173,7 @@ function EntryForm({ entry, stageInfo }: { entry?: EntryDetail; stageInfo: Stage
         qc.invalidateQueries({ queryKey: ["showcase"] });
       }
     } catch (e) {
-      toast.error(showcaseErrMsg(e, "保存失败"));
+      toast.error(showcaseErrMsg(e, e instanceof Error ? e.message : "保存失败"));
     } finally {
       setBusy(false);
     }

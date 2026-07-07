@@ -853,6 +853,11 @@ export class ShowcaseService {
     if (e.status !== 'published' && !isAuthor && !isStageOwner && !manage) {
       throw new ForbiddenException('无权查看未公开的参晒作品');
     }
+    // 晒台被下架(unpublish→draft)= 违规内容**整体**隐藏:已公开作品也不能再走直链看
+    // (作品仍保持 published,重新上架自动恢复、entryCount 语义不漂移;仅可见性随台收紧)
+    if (!['published', 'closed'].includes(e.stage.status) && !isAuthor && !isStageOwner && !manage) {
+      throw new ForbiddenException('该作品所属晒台未上架');
+    }
 
     const [myReaction, rank] = await Promise.all([
       this.prisma.showcaseReaction.findFirst({

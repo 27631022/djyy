@@ -149,14 +149,9 @@ function StageForm({ stage }: { stage?: StageDetail }) {
     if (err) return toast.error(err);
     setBusy(true);
     try {
-      let sid = stageId;
-      if (sid) {
-        await showcaseApi.updateStage(sid, payload());
-      } else {
-        const created = await showcaseApi.createStage(payload());
-        sid = created.id;
-        setStageId(sid);
-      }
+      // 建稿只走 ensureId 单一路径(savingRef 互斥)—— 防「上传正在建稿 + 点保存」并发建出两个草稿
+      const sid = stageId ?? (await ensureId());
+      if (stageId) await showcaseApi.updateStage(sid, payload());
       if (thenSubmit) {
         const r = await showcaseApi.submitStage(sid);
         toast.success(r.status === "published" ? "已直接上架(管理员免审)" : "已提交,等待管理员审核上架");
@@ -167,7 +162,7 @@ function StageForm({ stage }: { stage?: StageDetail }) {
         qc.invalidateQueries({ queryKey: ["showcase"] });
       }
     } catch (e) {
-      toast.error(showcaseErrMsg(e, "保存失败"));
+      toast.error(showcaseErrMsg(e, e instanceof Error ? e.message : "保存失败"));
     } finally {
       setBusy(false);
     }

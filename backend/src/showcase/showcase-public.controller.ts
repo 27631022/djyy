@@ -11,6 +11,10 @@ import { ViewBeaconDto } from './dto/interaction.dto';
  * 理由:<img>/<video> 无法带 Authorization 头;sendBeacon 也带不了(与 knowledge 同一硬约束)。
  * 安全:只放行 ownerModule=showcase 的文件;fileId/viewLogId 是 cuid 不可枚举;
  * beacon 只能对已存在日志更新、取 max、封顶 4h,攻击面可控。
+ * ⚠ 已知取舍(与 knowledge/exhibition 公开口同一模型):**不校验所属晒台/作品的发布状态** ——
+ * 作者编辑草稿时 <img> 预览走的就是本口,查状态会把草稿预览一并杀掉;
+ * 拿到 cuid fileId 即可读 = 「能力 URL」语义(fileId 只经鉴权接口下发给可见者)。
+ * 将来上 HTTPS 统一切 storage 签名 URL(/public/files/:id?sig 底座已备)时一并收紧。
  * **带 HTTP Range**(照 exhibition-asset.controller 范本)—— 视频拖动进度 / 全景大图分段必需。
  */
 @Controller('public/showcase')
