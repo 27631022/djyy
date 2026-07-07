@@ -54,3 +54,12 @@ export function findBlockIssue(blocks: ShowcaseBlock[]): { index: number; messag
   }
   return null;
 }
+
+/** 从一组区块里取第一张可当封面的图(报送时自动封面) */
+export function deriveCover(blocks: ShowcaseBlock[]): string | undefined {
+  for (const b of blocks) {
+    const fid = getTool(b.type)?.coverOf?.(b.content);
+    if (fid) return fid;
+  }
+  return undefined;
+}

@@ -14,7 +14,15 @@ import {
   LIST_PAGE_SIZE_MAX,
   STAGE_INTRO_BLOCKS_MAX,
 } from './showcase.constants';
-import { collectBlocksFileIds, normalizeBlocks, parseBlocks } from './showcase-blocks';
+import {
+  assertBlocksSubmittable,
+  collectBlocksFileIds,
+  conformBlocksToTemplate,
+  normalizeBlocks,
+  normalizeTemplate,
+  parseBlocks,
+  parseTemplate,
+} from './showcase-blocks';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateStageDto } from './dto/create-stage.dto';
@@ -271,6 +279,95 @@ export class ShowcaseService {
     };
   }
 
+  /**
+   * 晒台分页搜索(全站搜索聚合模块调用):可见性本方法自持 = published+closed(与门户列表口径一致,含收官仍可看)。
+   */
+  async searchStages(rawQ: string, page = 1, pageSize = 10) {
+    const q = rawQ.trim();
+    const empty = { total: 0, items: [] as Array<{ id: string; title: string; categoryName: string; ownerName: string; intro: string; status: string }> };
+    if (!q) return empty;
+    const p = Math.max(page, 1);
+    const size = Math.min(Math.max(pageSize, 1), LIST_PAGE_SIZE_MAX);
+    const where = {
+      status: { in: ['published', 'closed'] },
+      OR: [
+        { title: { contains: q, mode: 'insensitive' as const } },
+        { intro: { contains: q, mode: 'insensitive' as const } },
+        { ownerName: { contains: q, mode: 'insensitive' as const } },
+      ],
+    };
+    const [total, rows, cats] = await Promise.all([
+      this.prisma.showcaseStage.count({ where }),
+      this.prisma.showcaseStage.findMany({
+        where,
+        orderBy: [{ pinned: 'desc' }, { publishedAt: 'desc' }],
+        skip: (p - 1) * size,
+        take: size,
+        select: { id: true, title: true, categoryId: true, intro: true, ownerName: true, status: true },
+      }),
+      this.prisma.showcaseCategory.findMany({ select: { id: true, name: true } }),
+    ]);
+    const catName = new Map(cats.map((c) => [c.id, c.name]));
+    return {
+      total,
+      items: rows.map((s) => ({
+        id: s.id,
+        title: s.title,
+        categoryName: catName.get(s.categoryId) ?? '',
+        ownerName: s.ownerName,
+        intro: (s.intro ?? '').replace(/\s+/g, ' ').trim().slice(0, 100),
+        status: s.status,
+      })),
+    };
+  }
+
+  /**
+   * 参晒作品分页搜索(全站搜索聚合模块调用):可见性 = 作品 published 且所在晒台 published/closed
+   * (与门户右栏榜 listEntriesBoard 同口径)。不搜 blocksJson(JSON 结构噪声大)。
+   */
+  async searchEntries(rawQ: string, page = 1, pageSize = 10) {
+    const q = rawQ.trim();
+    const empty = { total: 0, items: [] as Array<{ id: string; title: string; stageTitle: string; authorName: string; summary: string }> };
+    if (!q) return empty;
+    const p = Math.max(page, 1);
+    const size = Math.min(Math.max(pageSize, 1), LIST_PAGE_SIZE_MAX);
+    const where = {
+      status: 'published',
+      stage: { status: { in: ['published', 'closed'] } },
+      OR: [
+        { title: { contains: q, mode: 'insensitive' as const } },
+        { summary: { contains: q, mode: 'insensitive' as const } },
+        { authorName: { contains: q, mode: 'insensitive' as const } },
+      ],
+    };
+    const [total, rows] = await Promise.all([
+      this.prisma.showcaseEntry.count({ where }),
+      this.prisma.showcaseEntry.findMany({
+        where,
+        orderBy: [{ likeCount: 'desc' }, { publishedAt: 'desc' }],
+        skip: (p - 1) * size,
+        take: size,
+        select: {
+          id: true,
+          title: true,
+          summary: true,
+          authorName: true,
+          stage: { select: { title: true } },
+        },
+      }),
+    ]);
+    return {
+      total,
+      items: rows.map((e) => ({
+        id: e.id,
+        title: e.title,
+        stageTitle: e.stage.title,
+        authorName: e.authorName,
+        summary: (e.summary ?? '').replace(/\s+/g, ' ').trim().slice(0, 100),
+      })),
+    };
+  }
+
   /** 详情:published/closed 登录可见;draft/pending/rejected 仅台主或 manage */
   async getStage(id: string, actorId: string) {
     const s = await this.prisma.showcaseStage.findUnique({
@@ -304,6 +401,8 @@ export class ShowcaseService {
       category: undefined,
       introBlocks: parseBlocks(s.introBlocksJson),
       introBlocksJson: undefined,
+      template: parseTemplate(s.templateJson),
+      templateJson: undefined,
       liked: !!myReaction,
       isOwner,
       canManage: manage,
@@ -329,6 +428,7 @@ export class ShowcaseService {
         intro: dto.intro,
         rulesMd: dto.rulesMd,
         introBlocksJson: introBlocks.length ? JSON.stringify(introBlocks) : null,
+        templateJson: JSON.stringify(normalizeTemplate(dto.template)),
         coverFileId: dto.coverFileId,
         rankBy: dto.rankBy ?? 'likes',
         metricLabel: dto.metricLabel,
@@ -360,17 +460,26 @@ export class ShowcaseService {
       if (!cat) throw new BadRequestException('晒场分类不存在');
     }
 
-    // 排位配置锁:已有参晒作品(任意状态)后不允许再改 rankBy/metric 四件套(防旧作品申报值失义)
+    // 排位配置/填报规则锁:已有参晒作品(任意状态)后不允许再改(防旧作品申报值/报送结构失义)。
+    // 例外:原规则为空(旧数据)时允许补设一次规则。
+    const newTemplateJson =
+      dto.template !== undefined ? JSON.stringify(normalizeTemplate(dto.template)) : undefined;
+    const templateChanged = newTemplateJson !== undefined && newTemplateJson !== s.templateJson;
     const rankChanged =
       (dto.rankBy !== undefined && dto.rankBy !== s.rankBy) ||
       (dto.metricLabel !== undefined && dto.metricLabel !== s.metricLabel) ||
       (dto.metricUnit !== undefined && dto.metricUnit !== s.metricUnit) ||
       (dto.metricDecimals !== undefined && dto.metricDecimals !== s.metricDecimals) ||
       (dto.metricOrder !== undefined && dto.metricOrder !== s.metricOrder);
-    if (rankChanged) {
+    if (rankChanged || templateChanged) {
       const entryCount = await this.prisma.showcaseEntry.count({ where: { stageId: id } });
       if (entryCount > 0) {
-        throw new BadRequestException('晒台已有参晒作品,排位方式与比拼指标不能再修改');
+        if (rankChanged) {
+          throw new BadRequestException('晒台已有参晒作品,排位方式与比拼指标不能再修改');
+        }
+        if (parseTemplate(s.templateJson).length > 0) {
+          throw new BadRequestException('晒台已有参晒作品,填报规则不能再修改');
+        }
       }
     }
 
@@ -392,6 +501,7 @@ export class ShowcaseService {
               })(),
             }
           : {}),
+        ...(newTemplateJson !== undefined ? { templateJson: newTemplateJson } : {}),
         coverFileId: dto.coverFileId,
         rankBy: dto.rankBy,
         metricLabel: dto.metricLabel,
@@ -420,6 +530,9 @@ export class ShowcaseService {
     }
     if (s.rankBy === 'metric' && !s.metricLabel?.trim()) {
       throw new BadRequestException('按数值比拼的晒台需要先填写比拼指标名称');
+    }
+    if (parseTemplate(s.templateJson).length === 0) {
+      throw new BadRequestException('还没设置填报规则:先在「填报规则」里定好参晒人要报送的内容块');
     }
     if (await this.hasManage(ctx.actorId)) {
       const published = await this.prisma.showcaseStage.update({
@@ -747,6 +860,24 @@ export class ShowcaseService {
     };
   }
 
+  /** 门户右栏榜:全站已公开作品(所在晒台须上架/收官),hot=按赞 latest=按公开时间 */
+  async listEntriesBoard(sort: 'hot' | 'latest', limit: number) {
+    const rows = await this.prisma.showcaseEntry.findMany({
+      where: { status: 'published', stage: { status: { in: ['published', 'closed'] } } },
+      orderBy:
+        sort === 'hot'
+          ? [{ likeCount: 'desc' }, { publishedAt: 'desc' }]
+          : [{ publishedAt: 'desc' }],
+      take: Math.min(Math.max(limit, 1), 20),
+      include: { stage: { select: { id: true, title: true, status: true } } },
+    });
+    return rows.map((e) => ({
+      ...this.entryListItem(e),
+      stageTitle: e.stage.title,
+      stageStatus: e.stage.status,
+    }));
+  }
+
   /** 我的参晒(跨晒台,「我的」页) */
   async listMyEntries(actorId: string) {
     const rows = await this.prisma.showcaseEntry.findMany({
@@ -803,7 +934,10 @@ export class ShowcaseService {
     if (s.status === 'closed') throw new BadRequestException('晒台已收官,不再接收参晒');
     if (s.status !== 'published') throw new BadRequestException('晒台尚未上架,不能投稿');
 
-    const blocks = normalizeBlocks(dto.blocks, { max: ENTRY_BLOCKS_MAX, what: '参晒作品' });
+    // 草稿宽松存(半填可保存);有填报规则时对齐模板(逐块照填、不能增删的服务端兜底)
+    const template = parseTemplate(s.templateJson);
+    let blocks = normalizeBlocks(dto.blocks, { max: ENTRY_BLOCKS_MAX, what: '参晒作品', strict: false });
+    if (template.length) blocks = conformBlocksToTemplate(blocks, template);
     const e = await this.prisma.showcaseEntry.create({
       data: {
         stageId,
@@ -842,6 +976,7 @@ export class ShowcaseService {
             metricUnit: true,
             metricDecimals: true,
             metricOrder: true,
+            templateJson: true,
           },
         },
       },
@@ -873,6 +1008,8 @@ export class ShowcaseService {
       blocksJson: undefined,
       stage: {
         ...e.stage,
+        template: parseTemplate(e.stage.templateJson),
+        templateJson: undefined,
         metricDisplay:
           e.metricValue !== null && e.stage.rankBy === 'metric'
             ? fmtMetric(e.metricValue, e.stage.metricDecimals, e.stage.metricUnit)
@@ -918,7 +1055,7 @@ export class ShowcaseService {
   async updateEntry(id: string, dto: UpdateEntryDto, ctx: ActorCtx) {
     const e = await this.prisma.showcaseEntry.findUnique({
       where: { id },
-      include: { stage: { select: { ownerId: true } } },
+      include: { stage: { select: { ownerId: true, templateJson: true } } },
     });
     if (!e) throw new NotFoundException('参晒作品不存在');
     const manage = await this.hasManage(ctx.actorId);
@@ -935,9 +1072,17 @@ export class ShowcaseService {
       metricValue: dto.metricValue,
       ...(dto.blocks !== undefined
         ? {
-            blocksJson: JSON.stringify(
-              normalizeBlocks(dto.blocks, { max: ENTRY_BLOCKS_MAX, what: '参晒作品' }),
-            ),
+            blocksJson: (() => {
+              // 草稿宽松存;有填报规则时对齐模板(严格必填校验在提交/审核通过时)
+              const template = parseTemplate(e.stage.templateJson);
+              let blocks = normalizeBlocks(dto.blocks, {
+                max: ENTRY_BLOCKS_MAX,
+                what: '参晒作品',
+                strict: false,
+              });
+              if (template.length) blocks = conformBlocksToTemplate(blocks, template);
+              return JSON.stringify(blocks);
+            })(),
           }
         : {}),
       ...(demote ? { status: 'pending', rejectReason: null } : {}),
@@ -968,7 +1113,16 @@ export class ShowcaseService {
     const e = await this.prisma.showcaseEntry.findUnique({
       where: { id },
       include: {
-        stage: { select: { id: true, status: true, ownerId: true, rankBy: true, metricLabel: true } },
+        stage: {
+          select: {
+            id: true,
+            status: true,
+            ownerId: true,
+            rankBy: true,
+            metricLabel: true,
+            templateJson: true,
+          },
+        },
       },
     });
     if (!e) throw new NotFoundException('参晒作品不存在');
@@ -979,9 +1133,12 @@ export class ShowcaseService {
     if (e.stage.status !== 'published') {
       throw new BadRequestException('晒台已收官或未上架,不能提交');
     }
-    if (parseBlocks(e.blocksJson).length === 0) {
-      throw new BadRequestException('作品还没有任何展示内容,先添加至少一个展示区块');
-    }
+    // 严格校验(草稿是宽松存的):按填报规则逐块查必填,过了再把规整后的内容回写
+    const clean = assertBlocksSubmittable(parseBlocks(e.blocksJson), parseTemplate(e.stage.templateJson));
+    await this.prisma.showcaseEntry.update({
+      where: { id },
+      data: { blocksJson: JSON.stringify(clean) },
+    });
     if (e.stage.rankBy === 'metric' && e.metricValue === null) {
       throw new BadRequestException(`请填写申报数值:${e.stage.metricLabel ?? '比拼指标'}`);
     }
@@ -1014,13 +1171,21 @@ export class ShowcaseService {
   async reviewEntry(id: string, dto: ReviewDto, ctx: ActorCtx & { actorName: string }) {
     const e = await this.prisma.showcaseEntry.findUnique({
       where: { id },
-      include: { stage: { select: { id: true, ownerId: true } } },
+      include: { stage: { select: { id: true, ownerId: true, templateJson: true } } },
     });
     if (!e) throw new NotFoundException('参晒作品不存在');
     if (e.stage.ownerId !== ctx.actorId && !(await this.hasManage(ctx.actorId))) {
       throw new ForbiddenException('仅台主或晒场管理员可审核参晒作品');
     }
     if (e.status !== 'pending') throw new BadRequestException('该作品不在待审核状态');
+    if (dto.approve) {
+      // 进 pending 的路径不止 submit(已发布被作者编辑会直接回炉)—— 公开前统一再过严格校验
+      const clean = assertBlocksSubmittable(parseBlocks(e.blocksJson), parseTemplate(e.stage.templateJson));
+      await this.prisma.showcaseEntry.update({
+        where: { id },
+        data: { blocksJson: JSON.stringify(clean) },
+      });
+    }
 
     if (!dto.approve) {
       if (!dto.reason?.trim()) throw new BadRequestException('驳回必须填写原因');

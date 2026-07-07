@@ -38,6 +38,8 @@ export interface ToolDef<C extends Record<string, unknown> = Record<string, unkn
   Display: (p: ToolDisplayProps<C>) => ReactNode;
   /** 提交前拦截:返回问题文案或 null */
   validate?: (value: C) => string | null;
+  /** 从内容里取一张可当封面的图(报送时自动封面用);无图工具不实现 */
+  coverOf?: (value: C) => string | undefined;
 }
 
 export type { ShowcaseBlock, ShowcaseBlockType };

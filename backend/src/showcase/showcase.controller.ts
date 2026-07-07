@@ -102,6 +102,12 @@ export class ShowcaseController {
     return this.svc.listMyEntries(me.sub);
   }
 
+  /** 门户右栏:热赞/最新公开作品(登录即可) */
+  @Get('entries/board')
+  listEntriesBoard(@Query('sort') sort?: string, @Query('limit') limit?: string) {
+    return this.svc.listEntriesBoard(sort === 'hot' ? 'hot' : 'latest', limit ? Number(limit) : 8);
+  }
+
   /** 跨台作品列表(管理员审核页) */
   @Permission('showcase:manage')
   @Get('entries')

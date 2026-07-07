@@ -26,6 +26,10 @@ export class UpdateStageDto {
   @IsOptional()
   introBlocks?: unknown;
 
+  /** 填报规则=区块模板(未传则不动;已有作品且原规则非空时 service 拦截修改) */
+  @IsOptional()
+  template?: unknown;
+
   @IsOptional()
   @IsString()
   coverFileId?: string;

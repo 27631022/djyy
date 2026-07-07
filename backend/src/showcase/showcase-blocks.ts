@@ -237,15 +237,60 @@ const BLOCK_LABEL: Record<ShowcaseBlockType, string> = {
 const BLOCK_ID_RE = /^[a-z0-9_-]{4,40}$/i;
 
 /**
- * 校验并规整一组区块。返回干净的 ShowcaseBlock[](保持数组顺序;id 不合法则按序重发)。
- * 非法直接抛 BadRequestException(带工具中文名 + 第几块,前端 toast 可直读)。
+ * 草稿宽松清洗(通用白名单,不查必填):字符串截断/数字有限/键名白形状/深度与数量上限,
+ * `fileId`/`*FileId` 键校验 cuid 形状(非法丢弃)。半填内容也能存草稿;
+ * **必填校验在提交/审核通过时走严格 normalize**(见 assertBlocksSubmittable)。
  */
-export function normalizeBlocks(raw: unknown, opts: { max: number; what: string }): ShowcaseBlock[] {
+function sanitizeContentLenient(v: unknown, depth = 0): unknown {
+  if (depth > 4) return undefined;
+  if (typeof v === 'string') return v.slice(0, 50_000);
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v === 'boolean') return v;
+  if (Array.isArray(v)) {
+    return v
+      .slice(0, 100)
+      .map((x) => sanitizeContentLenient(x, depth + 1))
+      .filter((x) => x !== undefined);
+  }
+  if (typeof v === 'object' && v !== null) {
+    const out: Record<string, unknown> = {};
+    let n = 0;
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (!/^[a-zA-Z][a-zA-Z0-9]{0,30}$/.test(k)) continue;
+      if (n >= 30) break;
+      if (k === 'fileId' || k.endsWith('FileId')) {
+        if (typeof val === 'string' && FILE_ID_RE.test(val)) {
+          out[k] = val;
+          n += 1;
+        }
+        continue;
+      }
+      const s = sanitizeContentLenient(val, depth + 1);
+      if (s !== undefined) {
+        out[k] = s;
+        n += 1;
+      }
+    }
+    return out;
+  }
+  return undefined;
+}
+
+/**
+ * 校验并规整一组区块。返回干净的 ShowcaseBlock[](保持数组顺序;id 不合法则按序重发)。
+ * strict(默认):必填缺失/非法抛 BadRequestException(带工具中文名 + 第几块,前端 toast 可直读)。
+ * strict=false(存草稿):走通用宽松清洗,半填内容可保存,必填留到提交时卡。
+ */
+export function normalizeBlocks(
+  raw: unknown,
+  opts: { max: number; what: string; strict?: boolean },
+): ShowcaseBlock[] {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) throw new BadRequestException(`${opts.what}的区块必须是数组`);
   if (raw.length > opts.max) {
     throw new BadRequestException(`${opts.what}的区块过多(上限 ${opts.max} 块)`);
   }
+  const strict = opts.strict !== false;
   const seen = new Set<string>();
   return raw.map((item, idx) => {
     if (typeof item !== 'object' || item === null) {
@@ -264,8 +309,99 @@ export function normalizeBlocks(raw: unknown, opts: { max: number; what: string 
       typeof b.content === 'object' && b.content !== null
         ? (b.content as Record<string, unknown>)
         : {};
-    return { id, type, content: BLOCK_SPECS[type].normalize(content, label) };
+    return {
+      id,
+      type,
+      content: strict
+        ? BLOCK_SPECS[type].normalize(content, label)
+        : ((sanitizeContentLenient(content) ?? {}) as Record<string, unknown>),
+    };
   });
+}
+
+/* ─── 填报规则(区块模板):台主定规则,参晒人逐块照填 ─── */
+
+/** 模板块 = 工具类型 + 块标题 + 填报要求(不含内容;参晒作品的 blocks 按同 id 对齐) */
+export interface TemplateBlock {
+  id: string;
+  type: ShowcaseBlockType;
+  title: string;
+  requirement?: string;
+}
+
+export const TEMPLATE_BLOCKS_MAX = 20;
+
+/** 校验并规整填报规则模板(白名单重建;标题必填) */
+export function normalizeTemplate(raw: unknown): TemplateBlock[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) throw new BadRequestException('填报规则必须是数组');
+  if (raw.length > TEMPLATE_BLOCKS_MAX) {
+    throw new BadRequestException(`填报规则的区块过多(上限 ${TEMPLATE_BLOCKS_MAX} 块)`);
+  }
+  const seen = new Set<string>();
+  return raw.map((item, idx) => {
+    if (typeof item !== 'object' || item === null) {
+      throw new BadRequestException(`填报规则第 ${idx + 1} 块格式错误`);
+    }
+    const b = item as Record<string, unknown>;
+    const type = b.type as ShowcaseBlockType;
+    if (!SHOWCASE_BLOCK_TYPES.includes(type)) {
+      throw new BadRequestException(`填报规则第 ${idx + 1} 块的工具类型 "${String(b.type)}" 不支持`);
+    }
+    let id = typeof b.id === 'string' && BLOCK_ID_RE.test(b.id) ? b.id : `tpl_${idx + 1}`;
+    while (seen.has(id)) id = `${id}_x`;
+    seen.add(id);
+    const title = optStr(b.title, 40);
+    if (!title) throw new BadRequestException(`填报规则第 ${idx + 1} 块(${BLOCK_LABEL[type]})缺少块标题`);
+    return { id, type, title, requirement: optStr(b.requirement, 500) };
+  });
+}
+
+/** 安全解析存库的模板 JSON(坏 JSON 返回 []) */
+export function parseTemplate(json: string | null | undefined): TemplateBlock[] {
+  if (!json) return [];
+  try {
+    const v: unknown = JSON.parse(json);
+    return Array.isArray(v) ? (v as TemplateBlock[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 把参晒作品的区块**对齐到模板**:按模板顺序/ id / 类型重建(内容按 id 认领;多余的丢弃、
+ * 缺失的补空)。参晒人「逐块照填、不能增删」的服务端兜底。
+ */
+export function conformBlocksToTemplate(blocks: ShowcaseBlock[], template: TemplateBlock[]): ShowcaseBlock[] {
+  return template.map((tb) => {
+    const b = blocks.find((x) => x.id === tb.id && x.type === tb.type);
+    return { id: tb.id, type: tb.type, content: b?.content ?? {} };
+  });
+}
+
+/**
+ * 提交/审核通过前的严格校验(草稿是宽松存的):每块过严格 normalize,错误信息带模板块标题。
+ * 无模板(旧数据/自由创作)时按工具名报错;返回规整后的区块(调用方可回写)。
+ */
+export function assertBlocksSubmittable(blocks: ShowcaseBlock[], template: TemplateBlock[]): ShowcaseBlock[] {
+  if (template.length > 0) {
+    const aligned = conformBlocksToTemplate(blocks, template);
+    return aligned.map((b, i) => {
+      try {
+        return { ...b, content: BLOCK_SPECS[b.type].normalize(b.content, template[i].title) };
+      } catch (e) {
+        const msg = e instanceof BadRequestException ? e.message : '内容不完整';
+        throw new BadRequestException(`「${template[i].title}」还没填好:${msg}`);
+      }
+    });
+  }
+  if (blocks.length === 0) {
+    throw new BadRequestException('作品还没有任何展示内容');
+  }
+  return blocks.map((b, i) => ({
+    ...b,
+    content: BLOCK_SPECS[b.type].normalize(b.content, `${BLOCK_LABEL[b.type]}(第 ${i + 1} 块)`),
+  }));
 }
 
 /** 安全解析存库的区块 JSON → ShowcaseBlock[](坏 JSON 返回 []) */

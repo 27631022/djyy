@@ -14,8 +14,10 @@ import {
   type SaveStageInput,
   type ShowcaseBlock,
   type StageDetail,
+  type TemplateBlock,
 } from "../api";
 import { BlocksEditor } from "../components/BlocksEditor";
+import { TemplateDesigner } from "../components/TemplateDesigner";
 import { findBlockIssue } from "../tools/registry";
 import { ImagePick } from "../tools/widgets";
 
@@ -87,11 +89,14 @@ function StageForm({ stage }: { stage?: StageDetail }) {
   const [metricDecimals, setMetricDecimals] = useState(stage?.metricDecimals ?? 0);
   const [metricOrder, setMetricOrder] = useState<"desc" | "asc">(stage?.metricOrder ?? "desc");
   const [introBlocks, setIntroBlocks] = useState<ShowcaseBlock[]>(stage?.introBlocks ?? []);
+  const [template, setTemplate] = useState<TemplateBlock[]>(stage?.template ?? []);
   const [showIssues, setShowIssues] = useState(false);
   const [busy, setBusy] = useState(false);
 
   // 已有参晒作品 → 排位配置只读(后端也拦)
   const rankLocked = (stage?.entryCount ?? 0) > 0;
+  // 填报规则同理;例外:原规则为空(旧数据)时允许补设一次
+  const templateLocked = rankLocked && (stage?.template.length ?? 0) > 0;
   const savingRef = useRef(false);
 
   const payload = (): SaveStageInput => ({
@@ -101,6 +106,7 @@ function StageForm({ stage }: { stage?: StageDetail }) {
     rulesMd: rulesMd.trim() || undefined,
     coverFileId,
     introBlocks,
+    ...(templateLocked ? {} : { template }),
     ...(rankLocked
       ? {}
       : {
@@ -132,10 +138,14 @@ function StageForm({ stage }: { stage?: StageDetail }) {
     return showcaseApi.uploadStageFile(sid, file);
   };
 
-  const validateForm = (): string | null => {
+  const validateForm = (forSubmit: boolean): string | null => {
     if (!title.trim()) return "请填写晒台标题";
     if (!categoryId) return "请选择晒场分类";
     if (rankBy === "metric" && !metricLabel.trim()) return "按数值比拼需要填写比拼指标名称(如「安全行驶里程」)";
+    if (template.some((b) => !b.title.trim())) return "填报规则里有块没写块标题";
+    if (forSubmit && template.length === 0) {
+      return "还没设置填报规则:在「填报规则」里定好参晒人要报送的内容块";
+    }
     const issue = findBlockIssue(introBlocks);
     if (issue) {
       setShowIssues(true);
@@ -145,7 +155,7 @@ function StageForm({ stage }: { stage?: StageDetail }) {
   };
 
   const save = async (thenSubmit: boolean) => {
-    const err = validateForm();
+    const err = validateForm(thenSubmit);
     if (err) return toast.error(err);
     setBusy(true);
     try {
@@ -311,6 +321,23 @@ function StageForm({ stage }: { stage?: StageDetail }) {
               </div>
             </div>
           )}
+        </div>
+
+        {/* 填报规则:像多次报送一样,只由台主定规则,参晒人逐块照填 */}
+        <div className="rounded-xl border border-[var(--party-primary)]/25 bg-party-soft/40 p-4">
+          <div className="flex items-center gap-2">
+            <span className={LABEL}>填报规则 *(参晒人按此报送)</span>
+            {templateLocked && (
+              <span className="flex items-center gap-1 text-xs text-amber-600">
+                <Info className="h-3.5 w-3.5" />
+                已有参晒作品,填报规则不能再修改
+              </span>
+            )}
+          </div>
+          <p className="mb-2.5 mt-1 text-xs text-muted-foreground">
+            从展示工具里挑几块排好序、写清要求;参晒人进入晒台后逐块照填即可,不能增删块
+          </p>
+          <TemplateDesigner value={template} onChange={setTemplate} locked={templateLocked} />
         </div>
 
         <div className={FIELD}>

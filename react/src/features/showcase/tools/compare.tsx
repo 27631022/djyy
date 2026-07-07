@@ -148,4 +148,5 @@ export const compareTool: ToolDef<CompareContent> = {
     if (!v.afterFileId) return "前后对比缺「转变后」照片";
     return null;
   },
+  coverOf: (v) => v.afterFileId ?? v.beforeFileId,
 };

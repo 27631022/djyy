@@ -131,4 +131,5 @@ export const spotTool: ToolDef<SpotContent> = {
     if (items.some((it) => !it.fileId)) return "局部图有未上传照片的空行(补上或删除)";
     return null;
   },
+  coverOf: (v) => (v.items ?? []).find((it) => it.fileId)?.fileId,
 };

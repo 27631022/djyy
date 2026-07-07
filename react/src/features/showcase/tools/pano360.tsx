@@ -130,4 +130,5 @@ export const pano360Tool: ToolDef<Pano360Content> = {
   Editor: Pano360Editor,
   Display: Pano360Display,
   validate: (v) => (v.fileId ? null : "360°全景还没上传全景照片"),
+  coverOf: (v) => v.fileId,
 };

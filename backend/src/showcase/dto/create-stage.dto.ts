@@ -28,6 +28,10 @@ export class CreateStageDto {
   @IsOptional()
   introBlocks?: unknown;
 
+  /** 填报规则=区块模板 [{id,type,title,requirement?}](service 过 normalizeTemplate;参晒人逐块照填) */
+  @IsOptional()
+  template?: unknown;
+
   @IsOptional()
   @IsString()
   coverFileId?: string;

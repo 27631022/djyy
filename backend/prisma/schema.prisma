@@ -1472,6 +1472,7 @@ model ShowcaseStage {
   intro           String? // 一段话简介(列表卡)
   rulesMd         String? // 比拼规则(markdown)
   introBlocksJson String? // 台头介绍区块 [{id,type,content}](≤10 块)
+  templateJson    String           @default("[]") // 填报规则=区块模板 [{id,type,title,requirement?}]:台主定规则,参晒人逐块照填(有作品后禁改)
   coverFileId     String? // 松引用 StoredFile
   rankBy          String           @default("likes") // likes(按作品点赞)| metric(按申报数值)
   metricLabel     String? // 比拼指标名(如「安全行驶里程」)

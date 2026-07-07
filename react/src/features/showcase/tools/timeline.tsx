@@ -124,4 +124,5 @@ export const timelineTool: ToolDef<TimelineContent> = {
       return "时间轴有节点缺时间或标题(补上或删除)";
     return null;
   },
+  coverOf: (v) => (v.items ?? []).find((it) => it.fileId)?.fileId,
 };

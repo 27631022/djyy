@@ -124,4 +124,5 @@ export const videoTool: ToolDef<VideoContent> = {
   Editor: VideoEditor,
   Display: VideoDisplay,
   validate: (v) => (v.fileId ? null : "视频还没上传"),
+  coverOf: (v) => v.posterFileId, // 视频文件本身不是图,只有配了封面图才可当作品封面
 };

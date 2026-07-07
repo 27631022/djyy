@@ -55,6 +55,14 @@ export interface ShowcaseBlock {
   content: Record<string, unknown>;
 }
 
+/** 填报规则的模板块:台主定「工具类型+块标题+填报要求」,参晒人逐块照填(不能增删) */
+export interface TemplateBlock {
+  id: string;
+  type: ShowcaseBlockType;
+  title: string;
+  requirement?: string;
+}
+
 export interface ShowcaseCategory {
   id: string;
   name: string;
@@ -90,6 +98,8 @@ export interface StageDetail extends Omit<StageListItem, "intro"> {
   intro: string | null;
   rulesMd: string | null;
   introBlocks: ShowcaseBlock[];
+  /** 填报规则(区块模板);空数组=旧数据/未配置(自由创作兜底) */
+  template: TemplateBlock[];
   metricDecimals: number;
   metricOrder: "desc" | "asc";
   reviewedByName: string | null;
@@ -143,6 +153,7 @@ export interface EntryDetail extends EntryListItem {
     metricDecimals: number;
     metricOrder: "desc" | "asc";
     metricDisplay: string | null;
+    template: TemplateBlock[];
   };
   rank: number | null;
   liked: boolean;
@@ -228,6 +239,7 @@ export interface SaveStageInput {
   intro?: string;
   rulesMd?: string;
   introBlocks?: ShowcaseBlock[];
+  template?: TemplateBlock[];
   coverFileId?: string;
   rankBy?: RankBy;
   metricLabel?: string;
@@ -312,6 +324,8 @@ export const showcaseApi = {
     api
       .get<{ total: number; page: number; pageSize: number; items: MyEntryItem[] }>("/showcase/entries", { params })
       .then((r) => r.data),
+  entriesBoard: (sort: "hot" | "latest", limit = 8) =>
+    api.get<MyEntryItem[]>("/showcase/entries/board", { params: { sort, limit } }).then((r) => r.data),
   createEntry: (stageId: string, data: SaveEntryInput) =>
     api.post<EntryDetail>(`/showcase/stages/${stageId}/entries`, data).then((r) => r.data),
   getEntry: (id: string) => api.get<EntryDetail>(`/showcase/entries/${id}`).then((r) => r.data),
