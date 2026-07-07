@@ -30,6 +30,7 @@ import { AssessmentModule } from './assessment';
 import { ReportModule } from './report';
 import { ImportModule } from './import';
 import { KnowledgeModule } from './knowledge';
+import { ShowcaseModule } from './showcase';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { KnowledgeModule } from './knowledge';
     ReportModule,
     ImportModule,
     KnowledgeModule,
+    ShowcaseModule,
   ],
   providers: [
     // 全局权限守卫:仅 @Permission() 装饰的接口实际校验,其他不影响

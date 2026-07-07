@@ -57,6 +57,16 @@ import {
   KnowledgeStatsLikesPage,
   KnowledgeFeedbackPage,
 } from "@/features/knowledge";
+import {
+  ShowcasePortalPage,
+  ShowcaseStagePage,
+  ShowcaseEntryPage,
+  ShowcaseMinePage,
+  StageEditorPage,
+  EntryEditorPage,
+  ShowcaseStageReviewPage,
+  ShowcaseEntryReviewPage,
+} from "@/features/showcase";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
 import { Toaster } from "@/shared/components/ui/sonner";
@@ -160,6 +170,9 @@ const ADMIN_ROUTES: RouteObject[] = [
   { path: "stats/views", element: <KnowledgeStatsViewsPage /> },
   { path: "stats/likes", element: <KnowledgeStatsLikesPage /> },
   { path: "feedback", element: <KnowledgeFeedbackPage /> },
+  // 先锋晒场(showcase)后台管理
+  { path: "showcase/stages", element: <ShowcaseStageReviewPage /> },
+  { path: "showcase/entries", element: <ShowcaseEntryReviewPage /> },
   // 通用报送平台(report)
   { path: "reports", element: <ReportTasksPage /> },
   { path: "reports/publish", element: <PublishChooserPage /> },
@@ -188,6 +201,15 @@ const App = () => (
           <Route path="/knowledge/edit" element={<ProtectedRoute><KnowledgeEditorPage /></ProtectedRoute>} />
           <Route path="/knowledge/edit/:id" element={<ProtectedRoute><KnowledgeEditorPage /></ProtectedRoute>} />
           <Route path="/knowledge/archive" element={<ProtectedRoute><KnowledgeArchivePage /></ProtectedRoute>} />
+          {/* 先锋晒场前台(擂台型晒实绩;new 路由须排在 :id 前) */}
+          <Route path="/showcase" element={<ProtectedRoute><ShowcasePortalPage /></ProtectedRoute>} />
+          <Route path="/showcase/mine" element={<ProtectedRoute><ShowcaseMinePage /></ProtectedRoute>} />
+          <Route path="/showcase/stages/new" element={<ProtectedRoute><StageEditorPage /></ProtectedRoute>} />
+          <Route path="/showcase/stages/:id" element={<ProtectedRoute><ShowcaseStagePage /></ProtectedRoute>} />
+          <Route path="/showcase/stages/:id/edit" element={<ProtectedRoute><StageEditorPage /></ProtectedRoute>} />
+          <Route path="/showcase/entries/new" element={<ProtectedRoute><EntryEditorPage /></ProtectedRoute>} />
+          <Route path="/showcase/entries/:id" element={<ProtectedRoute><ShowcaseEntryPage /></ProtectedRoute>} />
+          <Route path="/showcase/entries/:id/edit" element={<ProtectedRoute><EntryEditorPage /></ProtectedRoute>} />
           {/* 桌面任务小组件(Tauri 挂件加载的透明页;浏览器也可直接开 /widget 调试)。
               挂件自行处理登录(未登录显示紧凑登录),不套 ProtectedRoute,保持透明圆角壳 */}
           <Route path="/widget" element={<TaskWidgetPage />} />

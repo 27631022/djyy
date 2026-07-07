@@ -10,7 +10,7 @@ import {
   PanelLeftCloseIcon, PanelLeftOpenIcon,
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon, MoreHorizontalIcon,
   ArmchairIcon, PlusIcon, LandmarkIcon, PackageIcon, LibraryIcon,
-  BookOpenIcon, FolderTreeIcon,
+  BookOpenIcon, FolderTreeIcon, TrophyIcon, FileCheckIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 import type { AuthMe } from "@/features/auth";
@@ -64,6 +64,8 @@ const CATEGORIES: Category[] = [
       { path: "/admin/knowledge",                label: "知识文章",        icon: BookOpenIcon,       group: "知识管理", perm: "knowledge:manage" },
       { path: "/admin/knowledge/categories",     label: "分类管理",        icon: FolderTreeIcon,     group: "知识管理", perm: "knowledge:manage" },
       { path: "/admin/knowledge/import",         label: "批量导入",        icon: UploadIcon,         group: "知识管理", perm: "knowledge:manage" },
+      { path: "/admin/showcase/stages",          label: "晒台审核",        icon: TrophyIcon,         group: "先锋晒场", perm: "showcase:manage" },
+      { path: "/admin/showcase/entries",         label: "作品审核",        icon: FileCheckIcon,      group: "先锋晒场", perm: "showcase:manage" },
     ],
   },
   {

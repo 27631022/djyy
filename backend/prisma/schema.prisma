@@ -1441,3 +1441,157 @@ model KnowledgeTemplate {
 
   @@index([createdAt])
 }
+
+// ═══════════════ 先锋晒场(擂台型晒实绩:晒台 + 参晒作品 + 互动) ═══════════════
+
+// 晒场分类(六大先锋榜:业绩/安全/实事/幸福/风貌/人物,seed 预置固定 id,管理员可增改)
+// @module: showcase
+model ShowcaseCategory {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  icon        String? // lucide 图标名(IconPicker)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stages ShowcaseStage[]
+
+  @@index([sortOrder])
+}
+
+// 晒台 = 一次擂台(如「晒安全行驶里程」):台主发起 → 管理员审核上架 → 开放参晒 → 台内排位。
+// introBlocksJson = 台头介绍区块,与作品 blocksJson 同一套展示工具注册表(showcase-blocks.ts)。
+// rankBy=metric 时 metric* 四件套生效;**有作品后禁改 rankBy/metric***(防旧作品申报值失义)。
+// @module: showcase
+model ShowcaseStage {
+  id              String           @id @default(cuid())
+  title           String
+  categoryId      String
+  category        ShowcaseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  intro           String? // 一段话简介(列表卡)
+  rulesMd         String? // 比拼规则(markdown)
+  introBlocksJson String? // 台头介绍区块 [{id,type,content}](≤10 块)
+  coverFileId     String? // 松引用 StoredFile
+  rankBy          String           @default("likes") // likes(按作品点赞)| metric(按申报数值)
+  metricLabel     String? // 比拼指标名(如「安全行驶里程」)
+  metricUnit      String? // 单位(如「万公里」)
+  metricDecimals  Int              @default(0) // 小数位 0..4
+  metricOrder     String           @default("desc") // desc | asc
+  status          String           @default("draft") // draft | pending | published | rejected | closed
+  rejectReason    String?
+  ownerId         String // 台主,松引用 User.id
+  ownerName       String // 快照
+  reviewedById    String?
+  reviewedByName  String?
+  reviewedAt      DateTime?
+  publishedAt     DateTime?
+  closedAt        DateTime? // closed = 停止收稿、榜单定格、仍可浏览
+  pinned          Boolean          @default(false)
+  viewCount       Int              @default(0) // 冗余计数列,原子 increment
+  likeCount       Int              @default(0)
+  entryCount      Int              @default(0) // 已公开作品数(作品过审 +1 / 公开作品被删 -1)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  entries ShowcaseEntry[]
+
+  @@index([categoryId, status])
+  @@index([status, pinned, publishedAt])
+  @@index([ownerId, status])
+}
+
+// 参晒作品:所有登录用户可提交;台主或管理员审核后公开(本人=台主/管理员免审);
+// published 被**作者**再编辑 → 回 pending 重审(防赛后篡改申报值;台主/管理员代改不回炉)。
+// @module: showcase
+model ShowcaseEntry {
+  id             String        @id @default(cuid())
+  stageId        String
+  stage          ShowcaseStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  title          String
+  summary        String? // 一句话说明
+  coverFileId    String? // 松引用 StoredFile
+  blocksJson     String        @default("[]") // 展示区块 [{id,type,content}](≤30 块)
+  metricValue    Float? // 申报数值(台 rankBy=metric 时提交必填)
+  status         String        @default("draft") // draft | pending | published | rejected
+  rejectReason   String?
+  authorId       String // 松引用 User.id
+  authorName     String // 快照
+  reviewedById   String?
+  reviewedByName String?
+  reviewedAt     DateTime?
+  publishedAt    DateTime?
+  viewCount      Int           @default(0)
+  likeCount      Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([stageId, status, likeCount])
+  @@index([stageId, status, metricValue])
+  @@index([authorId, status])
+}
+
+// 点赞(多态:晒台/作品两级)。唯一约束 = 「每个账户对同一对象只能点一次」的地基;
+// targetId 松引用(多态无 FK,删对象由 service 联动清);计数冗余在各自主表,事务内 increment。
+// @module: showcase
+model ShowcaseReaction {
+  id         String   @id @default(cuid())
+  targetType String // stage | entry
+  targetId   String
+  userId     String // 松引用 User.id
+  type       String   @default("like")
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, targetType, targetId, type])
+  @@index([targetType, targetId, type])
+  @@index([userId, type, createdAt])
+}
+
+// 吐槽 = 不公开意见反馈(多态):仅台主(stage)/作者(entry)与管理员可见并回复。
+// userId 始终存(防刷/审计),anonymous 只影响展示。
+// @module: showcase
+model ShowcaseFeedback {
+  id         String   @id @default(cuid())
+  targetType String // stage | entry
+  targetId   String // 松引用(多态无 FK,删对象留吐槽,列表显「已删除」)
+  userId     String // 松引用 User.id
+  userName   String // 快照
+  anonymous  Boolean  @default(false)
+  content    String
+  status     String   @default("open") // open | replied | closed
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  replies ShowcaseFeedbackReply[]
+
+  @@index([targetType, targetId, status])
+  @@index([status, createdAt])
+}
+
+// 吐槽回复(台主/作者或管理员,实名)。
+// @module: showcase
+model ShowcaseFeedbackReply {
+  id         String           @id @default(cuid())
+  feedbackId String
+  feedback   ShowcaseFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  userId     String // 松引用 User.id
+  userName   String // 快照
+  content    String
+  createdAt  DateTime         @default(now())
+
+  @@index([feedbackId])
+}
+
+// 浏览日志(多态,删对象留日志);durationSec 由离开时 beacon 回填(取 max 幂等,封顶 4h)。
+// @module: showcase
+model ShowcaseViewLog {
+  id          String   @id @default(cuid())
+  targetType  String // stage | entry
+  targetId    String // 松引用
+  userId      String // 松引用 User.id
+  durationSec Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([targetType, targetId, createdAt])
+  @@index([userId, createdAt])
+}

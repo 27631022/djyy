@@ -331,6 +331,10 @@ async function seedRolesAndPermissions() {
     // 知识分享(knowledge)— manage:分类/类型/审核/导入/反馈/删任意文章;publish:发布文章(人人可发,审核靠内容类型开关兜底)
     { code: 'knowledge:manage',          name: '知识管理(分类/审核/导入)', category: 'operation' },
     { code: 'knowledge:publish',         name: '发布知识文章',            category: 'operation' },
+    // 先锋晒场(showcase)— publish:发起晒台(「有权限的人可以发起」,不授 member);
+    // manage:分类/晒台审核/下架/吐槽。投稿参晒不设权限点(登录即可,台主/管理员审核把关)。
+    { code: 'showcase:publish',          name: '发起晒台',                category: 'operation' },
+    { code: 'showcase:manage',           name: '晒场管理(分类/审核/吐槽)', category: 'operation' },
   ];
   for (const p of permissions) {
     await prisma.permission.upsert({
@@ -345,9 +349,9 @@ async function seedRolesAndPermissions() {
     // 企业管理员:全套企业管理权限(不含 角色授权 admin:role:write / 插件 / 删除证书 / 删除文件 等高危权限,留 platform_admin)。
     // 一级 vs 二级 = 同角色不同 scope:分配时 scope=all(一级,全集团)或 scope=subtree(二级,自动锚到派发人所在单位的子树)。
     // 任务域已按 scope 强制;组织/用户管理的范围限制后续按需加。
-    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage', 'assessment:manage', 'assessment:score', 'assessment:view', 'assessment:export', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:manage', 'knowledge:publish'] },
-    { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:manage', 'knowledge:publish'] },
-    { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:publish'] },
+    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage', 'assessment:manage', 'assessment:score', 'assessment:view', 'assessment:export', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:manage', 'knowledge:publish', 'showcase:publish', 'showcase:manage'] },
+    { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:manage', 'knowledge:publish', 'showcase:publish', 'showcase:manage'] },
+    { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:publish', 'showcase:publish'] },
     // 任务派发:给各级机关部门的派发人;配合 UserRole.scope(本组织+下级 / 自定义单位)限定派发范围
     { code: 'task_dispatcher', name: '任务派发',     perms: ['portal:view', 'task:manage', 'task:review', 'file:upload', 'report:manage', 'report:review'] },
     { code: 'member',          name: '普通用户',     perms: ['portal:view', 'task:fill', 'report:fill', 'knowledge:publish'] },
@@ -367,6 +371,25 @@ async function seedRolesAndPermissions() {
         });
       }
     }
+  }
+}
+
+/* ─── 先锋晒场:六大先锋榜分类(固定 id 幂等;仅起步预置,管理员可改可删) ─── */
+async function seedShowcaseDefaults() {
+  const cats = [
+    { id: 'seed-sccat-yeji',    name: '业绩先锋榜', icon: 'TrendingUp',  sortOrder: 1, description: '晒经营业绩、生产指标,比学赶超' },
+    { id: 'seed-sccat-anquan',  name: '安全先锋榜', icon: 'ShieldCheck', sortOrder: 2, description: '晒安全行驶里程、安全生产纪录' },
+    { id: 'seed-sccat-shishi',  name: '实事先锋榜', icon: 'Hammer',      sortOrder: 3, description: '晒为群众办实事的成效与转变' },
+    { id: 'seed-sccat-xingfu',  name: '幸福先锋榜', icon: 'Smile',       sortOrder: 4, description: '晒职工幸福工程、暖心服务' },
+    { id: 'seed-sccat-fengmao', name: '风貌先锋榜', icon: 'Sparkles',    sortOrder: 5, description: '晒队伍风貌、阵地面貌焕新' },
+    { id: 'seed-sccat-renwu',   name: '人物先锋榜', icon: 'UserRound',   sortOrder: 6, description: '晒先锋人物、模范事迹' },
+  ];
+  for (const c of cats) {
+    await prisma.showcaseCategory.upsert({
+      where: { id: c.id },
+      update: {}, // 已存在不动(名称/排序是管理员可改的运营配置,reseed 不能冲掉)
+      create: c,
+    });
   }
 }
 
@@ -1110,6 +1133,9 @@ async function main() {
 
   await seedKnowledgeDefaults();
   console.log('  ✓ 知识分享 内容类型 + 示例领域分类已写入');
+
+  await seedShowcaseDefaults();
+  console.log('  ✓ 先锋晒场 六大先锋榜分类已写入');
 
   // 收尾清理:此时所有 user 归属 / 虚拟组织都已重新指向 KL-* 节点,
   // 老的 PARTY-*/ADMIN-* 节点既无业务引用也无 children,可放心删。
