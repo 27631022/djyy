@@ -852,6 +852,8 @@ const CUSTOM_FIELDS: SeedCustomFieldDef[] = [
   { code: 'hire_date',        label: '入职日期',      type: 'date',                                       sortOrder: 40,  builtin: true },
   { code: 'education',        label: '学历',          type: 'select',   dictCode: 'user_education',        sortOrder: 50,  builtin: true },
   { code: 'political_status', label: '政治面貌',      type: 'select',   dictCode: 'user_political_status', sortOrder: 60,  builtin: true },
+  { code: 'party_join_date',  label: '入党日期',      type: 'date',                                       sortOrder: 62,  builtin: true },
+  { code: 'party_confirm_date', label: '转正日期',    type: 'date',                                       sortOrder: 64,  builtin: true },
   { code: 'marital_status',   label: '婚姻状况',      type: 'select',   dictCode: 'user_marital_status',   sortOrder: 70,  builtin: true },
   { code: 'native_place',     label: '籍贯',          type: 'text',     placeholder: '如 山东济南',       sortOrder: 80,  builtin: true },
   { code: 'address',          label: '家庭住址',      type: 'textarea',                                   sortOrder: 90,  builtin: true },

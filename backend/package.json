@@ -17,6 +17,10 @@
     "db:seed:kunlun": "tsx prisma/seed-kunlun.ts",
     "db:import:party": "tsx prisma/import-party-orgs.ts",
     "db:import:admin": "tsx prisma/import-admin-orgs.ts",
+    "db:import:members": "tsx prisma/import-party-members.ts",
+    "db:import:unit-codes": "tsx prisma/import-unit-codes.ts",
+    "db:import:employees": "tsx prisma/import-employees.ts",
+    "db:dedupe:usernames": "tsx prisma/dedupe-usernames.ts",
     "lint": "eslint src",
     "check": "tsc --noEmit && eslint src",
     "check:circular": "madge --circular --extensions ts src"
