@@ -301,7 +301,16 @@ export class StorageService {
     inUse: Set<string>,
     graceDays: number,
   ): Promise<
-    { id: string; storageKey: string; ownerModule: string; originalName: string; size: number; createdAt: Date }[]
+    {
+      id: string;
+      storageKey: string;
+      ownerModule: string;
+      folder: string | null;
+      mimeType: string;
+      originalName: string;
+      size: number;
+      createdAt: Date;
+    }[]
   > {
     const cutoff = new Date(Date.now() - graceDays * 86_400_000);
     const rows = await this.prisma.storedFile.findMany({
@@ -310,6 +319,8 @@ export class StorageService {
         id: true,
         storageKey: true,
         ownerModule: true,
+        folder: true,
+        mimeType: true,
         originalName: true,
         size: true,
         createdAt: true,

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { ReplaceMembershipsDto } from './dto/replace-memberships.dto';
 import { ReplaceRolesDto, SCOPE_VALUES } from './dto/replace-roles.dto';
 import { ListUsersQuery } from './dto/list-users.query';
@@ -297,6 +298,49 @@ export class UserService {
     });
 
     return this.findOne(id);
+  }
+
+  /* ─── 个人设置:自助更新本人资料(email/phone/avatarUrl 白名单)───
+   * undefined = 不更新;null / 空串(含纯空格)= 清空 —— @IsOptional 会放行 null,这里必须同样兜住,
+   * 否则 `null.trim()` 直接 500。 */
+  async selfUpdateProfile(userId: string, input: UpdateMyProfileDto, actor: ActorContext) {
+    const before = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!before) throw new NotFoundException('用户不存在');
+
+    const norm = (v: string | null | undefined): string | null | undefined =>
+      v === undefined ? undefined : v === null || v.trim() === '' ? null : v.trim();
+    const email = norm(input.email);
+    const phone = norm(input.phone);
+    // 空串 avatarUrl 视为「不更新」(清头像不是本端点语义,前端也不会发)
+    const avatarUrl = input.avatarUrl || undefined;
+
+    if (email && email !== before.email) {
+      const dup = await this.prisma.user.findFirst({ where: { email, NOT: { id: userId } } });
+      if (dup) throw new ConflictException(`邮箱 "${email}" 已被其他用户占用`);
+    }
+
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { email, phone, avatarUrl },
+      });
+    } catch (e) {
+      // 并发下预检查不住唯一约束,P2002 兜底转 409(而非裸 500)
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException(`邮箱 "${email}" 已被其他用户占用`);
+      }
+      throw e;
+    }
+
+    await this.audit.log({
+      ...actor,
+      action: 'user.profile.self_update',
+      target: userId,
+      // after 记规范化后的实际落库值(记原始 input 会与库里产生幻影差异)
+      detail: { before: pick(before, ['email', 'phone', 'avatarUrl']), after: { email, phone, avatarUrl } },
+    });
+
+    return this.findOne(userId);
   }
 
   /* ─── 软删 (active=false) ─── */

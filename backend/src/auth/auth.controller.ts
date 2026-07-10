@@ -14,6 +14,7 @@ import { AuthGuard } from './auth.guard';
 import { CurrentUser } from './current-user.decorator';
 import { OidcService } from './oidc.service';
 import { DevLoginDto } from './dto/dev-login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import type { Request } from 'express';
 
 // 不导入 AuditService:auth 写 dev_login 日志 vs audit 用 AuthGuard 保护读接口,
@@ -113,8 +114,11 @@ export class AuthController {
       username: user.username,
       name: user.name,
       email: user.email,
+      phone: user.phone,
       avatarUrl: user.avatarUrl,
       active: user.active,
+      // 统一账号(Casdoor/SSO)是否已绑定 —— 个人设置页「账号安全」展示用,不回传 externalId 本身
+      externalBound: !!user.externalId,
       isPlatformAdmin,
       permissions: [...permSet],
       memberships: {
@@ -133,5 +137,28 @@ export class AuthController {
         grantedAt: r.grantedAt,
       })),
     };
+  }
+
+  /**
+   * 修改密码(个人设置页):平台本地不存密码,转发 Casdoor set-password,旧密码由 IdP 校验。
+   * mock 模式返回明确提示(演示登录无密码)。审计只记动作,不记任何密码内容。
+   */
+  @Post('change-password')
+  @UseGuards(AuthGuard)
+  async changePassword(
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    if (!me) throw new UnauthorizedException();
+    await this.oidc.changePassword(me.sub, dto.oldPassword, dto.newPassword);
+    try {
+      await this.prisma.auditLog.create({
+        data: { actorId: me.sub, actorName: me.name, action: 'auth.change_password', ip: req.ip },
+      });
+    } catch (err) {
+      this.logger.error(`审计日志写入失败 action=auth.change_password: ${(err as Error).message}`);
+    }
+    return { ok: true };
   }
 }

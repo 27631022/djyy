@@ -716,6 +716,13 @@ function HeaderUserArea() {
             管理后台
           </button>
           <button
+            onClick={() => { setMenuOpen(false); navigate("/profile"); }}
+            className="w-full flex items-center gap-2 px-4 py-2.5 text-base text-[#1A1A1A] hover:bg-party-soft hover:text-[var(--party-primary)] transition-colors"
+          >
+            <UserIcon className="w-4 h-4" />
+            个人设置
+          </button>
+          <button
             onClick={() => {
               setMenuOpen(false);
               logout();

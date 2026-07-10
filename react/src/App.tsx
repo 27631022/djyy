@@ -5,7 +5,7 @@ import NavPage from "@/pages/NavPage";
 import WorkbenchHomePage from "@/pages/WorkbenchHome";
 import AdminLayout, { AdminIndexRedirect } from "@/layouts/AdminLayout";
 import { OrganizationsPage } from "@/features/organization";
-import { UsersPage } from "@/features/user";
+import { UsersPage, ProfilePage } from "@/features/user";
 import { RolesPage } from "@/features/role";
 import { DictionariesPage } from "@/features/dictionary";
 import { UserCustomFieldsPage } from "@/features/user-custom-field";
@@ -70,6 +70,11 @@ import {
   ShowcaseFeedbackPage,
 } from "@/features/showcase";
 import { SearchPage } from "@/features/search";
+import {
+  InteractiveConsolePage,
+  InteractiveScreenPage,
+  InteractivePlayPage,
+} from "@/features/interactive";
 import LoginPage from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/stores/auth";
 import { Toaster } from "@/shared/components/ui/sonner";
@@ -110,7 +115,8 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
     );
   }
   if (me === null) {
-    const redirect = encodeURIComponent(location.pathname + location.search);
+    // 带上 hash —— /profile#security 这类锚点路由过期重登后才能回到原位
+    const redirect = encodeURIComponent(location.pathname + location.search + location.hash);
     return <Navigate to={`/login?redirect=${redirect}`} replace />;
   }
   return <>{children}</>;
@@ -178,6 +184,8 @@ const ADMIN_ROUTES: RouteObject[] = [
   { path: "showcase/entries", element: <ShowcaseEntryReviewPage /> },
   { path: "showcase/categories", element: <ShowcaseCategoriesPage /> },
   { path: "showcase/feedback", element: <ShowcaseFeedbackPage /> },
+  // 现场互动(interactive)后台配置台
+  { path: "interactive", element: <InteractiveConsolePage /> },
   // 通用报送平台(report)
   { path: "reports", element: <ReportTasksPage /> },
   { path: "reports/publish", element: <PublishChooserPage /> },
@@ -199,6 +207,8 @@ const App = () => (
           {/* 证书公开验证:完全公开,不走 AdminLayout/ProtectedRoute */}
           <Route path="/verify" element={<CertificateVerifyPage />} />
           <Route path="/verify/:token" element={<CertificateVerifyPage />} />
+          {/* 个人设置(门户风独立页;门户/后台右上角用户菜单进入) */}
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           {/* 全站搜索结果页(首页/知识门户搜索框回车落地;内容都要登录,访客自动跳登录并回跳) */}
           <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
           {/* 知识分享前台门户(独立于 AdminLayout;内部条例制度 → 登录可见) */}
@@ -217,6 +227,10 @@ const App = () => (
           <Route path="/showcase/entries/new" element={<ProtectedRoute><EntryEditorPage /></ProtectedRoute>} />
           <Route path="/showcase/entries/:id" element={<ProtectedRoute><ShowcaseEntryPage /></ProtectedRoute>} />
           <Route path="/showcase/entries/:id/edit" element={<ProtectedRoute><EntryEditorPage /></ProtectedRoute>} />
+          {/* 现场互动:大屏(全屏)+ 手机遥控(扫码免登录)。公开顶层路由,不套 ProtectedRoute。
+              两条路只走 WebSocket + 公开接口;client.ts 的 401 拦截器已豁免 /screen /play 前缀。 */}
+          <Route path="/screen/:room" element={<InteractiveScreenPage />} />
+          <Route path="/play/:room" element={<InteractivePlayPage />} />
           {/* 桌面任务小组件(Tauri 挂件加载的透明页;浏览器也可直接开 /widget 调试)。
               挂件自行处理登录(未登录显示紧凑登录),不套 ProtectedRoute,保持透明圆角壳 */}
           <Route path="/widget" element={<TaskWidgetPage />} />

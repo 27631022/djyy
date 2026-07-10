@@ -9,6 +9,7 @@ import { ExhibitionService } from '../exhibition';
 import { ReportService } from '../report';
 import { KnowledgeService } from '../knowledge';
 import { ShowcaseService } from '../showcase';
+import { InteractiveService } from '../interactive';
 
 /** 上传超过这么多天仍无人引用,才算孤儿(宽限,避免误删「正在走向导、还没提交」的上传)。 */
 const ORPHAN_GRACE_DAYS = 30;
@@ -42,26 +43,44 @@ export class MaintenanceService {
     private readonly reports: ReportService,
     private readonly knowledge: KnowledgeService,
     private readonly showcase: ShowcaseService,
+    private readonly interactive: InteractiveService,
   ) {}
 
   /** 聚合所有业务模块「在用」的 storage fileId。漏一个消费方都可能误删 —— 新增引用文件的模块要在这里加。 */
   private async inUseFileIds(): Promise<Set<string>> {
-    const [cert, task, hall, report, know, show] = await Promise.all([
+    const [cert, task, hall, report, know, show, inter] = await Promise.all([
       this.certificates.collectInUseFileIds(),
       this.tasks.collectInUseFileIds(),
       this.exhibitions.collectInUseFileIds(),
       this.reports.collectInUseFileIds(),
       this.knowledge.collectInUseFileIds(),
       this.showcase.collectInUseFileIds(),
+      this.interactive.collectInUseFileIds(),
     ]);
-    return new Set<string>([...cert, ...task, ...hall, ...report, ...know, ...show]);
+    return new Set<string>([...cert, ...task, ...hall, ...report, ...know, ...show, ...inter]);
   }
 
-  /** 候选过滤:剔除资料库模块(avatar/model3d,常驻文件,见 LIBRARY_MODULES) */
+  /**
+   * 候选过滤:剔除资料库模块(见 LIBRARY_MODULES)。
+   * ⚠ 头像库实际存的是 ownerModule='user' + folder='avatars/…'(avatar.service / AvatarGenerator 上传),
+   * LIBRARY_MODULES 里的 'avatar' 按模块名永远匹配不到它 —— 必须按文件夹豁免,
+   * 否则原图+历史头像超 30 天宽限全进孤儿候选,管理员一点 purge 全站头像裂。
+   * 豁免限定 image/*:ownerModule/folder 是上传方自报的(POST /files 仅登录即可),
+   * 不限 mime 会让任意登录用户把大文件(视频可到 500MB)standing 成「永久免回收」存储位。
+   * (自报 ownerModule 的根因收紧 —— 服务端按端点强制归属 —— 留待后续,LIBRARY_MODULES 同病。)
+   */
   private async orphanCandidates(graceDays: number) {
     const inUse = await this.inUseFileIds();
     const cands = await this.storage.findOrphanCandidates(inUse, graceDays);
-    return cands.filter((c) => !LIBRARY_MODULES.has(c.ownerModule));
+    return cands.filter(
+      (c) =>
+        !LIBRARY_MODULES.has(c.ownerModule) &&
+        !(
+          c.ownerModule === 'user' &&
+          (c.folder ?? '').startsWith('avatars') &&
+          c.mimeType.startsWith('image/')
+        ),
+    );
   }
 
   /** 扫描孤儿文件(只读报告)。 */

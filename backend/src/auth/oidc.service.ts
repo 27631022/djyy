@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma';
 import { AuthService } from './auth.service';
@@ -13,6 +13,7 @@ import { AuthService } from './auth.service';
  *   OIDC_REDIRECT_URI  本服务回调完整 URL,如 http://10.185.28.220:3001/api/auth/oidc/callback
  *   OIDC_JIT_CREATE    "1" = IdP 账号在平台没有对应用户时自动创建(无角色,需管理员授权);默认关
  *   ALLOW_DEV_LOGIN    "1" = oidc 模式下仍放行 dev-login(内网兜底);默认关
+ *   CASDOOR_ORG        Casdoor 组织名(修改密码 set-password 的 userOwner);默认 djyy,与部署手册第七节一致
  *
  * 设计不变量(见 ~/.claude/plans/casdoor-casdoor-groovy-map.md Phase C):
  *   - IdP 只负责认证;角色/组织/权限全在本地库
@@ -307,5 +308,64 @@ export class OidcService {
     const claims = await this.fetchClaims(code);
     const user = await this.resolveLocalUser(claims, ip);
     return this.auth.signToken({ sub: user.id, username: user.username, name: user.name });
+  }
+
+  /* ─── 修改密码(个人设置页;仅 oidc 模式,平台本地不存密码)───
+   * Casdoor 管理 API `POST /api/set-password`(form),Basic auth = clientId:clientSecret
+   * (应用凭据即该组织的管理凭据,复用 OIDC 四件套,不需要额外的管理员账密)。
+   * oldPassword 一并透传由 Casdoor 校验 —— 不能只凭登录态改密,否则 token 泄露即可静默改密。
+   * userOwner = Casdoor 组织名(CASDOOR_ORG,默认 djyy,须与部署手册第七节建的组织一致);
+   * userName = 本地 User.username(工号,首绑约定保证与 Casdoor 登录名一致)。
+   */
+  async changePassword(userId: string, oldPassword: string, newPassword: string): Promise<void> {
+    if (this.mode !== 'oidc') {
+      throw new BadRequestException(
+        '当前为演示登录模式,平台不保存密码;正式环境启用统一登录后方可在此修改密码',
+      );
+    }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.active) throw new UnauthorizedException('用户不存在或已禁用');
+
+    const issuer = this.requireEnv('OIDC_ISSUER').replace(/\/$/, '');
+    const clientId = this.requireEnv('OIDC_CLIENT_ID');
+    const clientSecret = this.requireEnv('OIDC_CLIENT_SECRET');
+    const org = (process.env.CASDOOR_ORG ?? 'djyy').trim();
+
+    const form = new URLSearchParams({
+      userOwner: org,
+      userName: user.username,
+      oldPassword,
+      newPassword,
+    });
+    let resp: Response;
+    try {
+      resp = await fetch(`${issuer}/api/set-password`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept-Language': 'zh',
+        },
+        body: form.toString(),
+        signal: AbortSignal.timeout(8000),
+      });
+    } catch (e) {
+      this.logger.warn(`修改密码失败(IdP 不可达):${(e as Error).message}`);
+      throw new BadRequestException('统一登录服务暂不可达,请稍后再试');
+    }
+    // Casdoor 出错也回 HTTP 200,靠 body 的 status 字段判(真机实测:错误旧密码
+    // → {status:'error', msg:'密码不正确,您还有 N 次尝试的机会'},并带尝试次数锁定)
+    const data = (await resp.json().catch(() => null)) as { status?: string; msg?: string } | null;
+    if (!resp.ok || !data || data.status !== 'ok') {
+      const msg = (data?.msg ?? `HTTP ${resp.status}`).trim();
+      this.logger.warn(`修改密码被 IdP 拒绝 user=${user.username}: ${msg}`);
+      // 旧密码错误是最常见失败,归一化成友好中文(保留剩余尝试次数);其余原样透出(如复杂度不达标)
+      const wrongOld = /password.*(wrong|incorrect|not correct)|密码不正确|密码错误/i.test(msg);
+      if (wrongOld) {
+        const attempts = /还有\s*(\d+)\s*次/.exec(msg)?.[1];
+        throw new BadRequestException(attempts ? `原密码不正确(还可尝试 ${attempts} 次)` : '原密码不正确');
+      }
+      throw new BadRequestException(`修改密码失败:${msg}`);
+    }
   }
 }

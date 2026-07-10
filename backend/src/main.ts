@@ -28,10 +28,11 @@ async function bootstrap() {
       if (!origin) return cb(null, true);
       // 显式白名单
       if (whitelist.includes(origin)) return cb(null, true);
-      // 开发环境:允许局域网内任意主机的 5173/5174/3001
-      // - 5173=react 前端(同源 POST 浏览器也带 Origin,经 vite proxy 透传到这)
+      // 开发环境:允许局域网内任意主机的 517x/3001
+      // - 5173=react 前端(同源 POST 浏览器也带 Origin,经 vite proxy 透传到这);
+      //   vite strictPort=false 端口被占会自动递增(多会话/preview 冒烟),故放行整个 517x 段
       // - 3001=本服务自身(展厅托管在 /exhibition/,<script type="module"> 即使同源也带 Origin!)
-      if (isDev && /^https?:\/\/[^/]+:(517[34]|3001)$/.test(origin)) return cb(null, true);
+      if (isDev && /^https?:\/\/[^/]+:(517\d|3001)$/.test(origin)) return cb(null, true);
       // ⚠ 不要 cb(new Error(...)) —— 那会让请求直接 500。
       // cb(null, false) = 不发 CORS 头:同源请求不受影响,真跨域由浏览器按标准拦截。
       return cb(null, false);

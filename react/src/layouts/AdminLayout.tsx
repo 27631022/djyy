@@ -10,7 +10,7 @@ import {
   PanelLeftCloseIcon, PanelLeftOpenIcon,
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon, MoreHorizontalIcon,
   ArmchairIcon, PlusIcon, LandmarkIcon, PackageIcon, LibraryIcon,
-  BookOpenIcon, FolderTreeIcon, TrophyIcon, FileCheckIcon,
+  BookOpenIcon, FolderTreeIcon, TrophyIcon, FileCheckIcon, Gamepad2Icon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 import type { AuthMe } from "@/features/auth";
@@ -68,6 +68,7 @@ const CATEGORIES: Category[] = [
       { path: "/admin/showcase/entries",         label: "作品审核",        icon: FileCheckIcon,      group: "先锋晒场", perm: "showcase:manage" },
       { path: "/admin/showcase/categories",      label: "分类管理",        icon: FolderTreeIcon,     group: "先锋晒场", perm: "showcase:manage" },
       { path: "/admin/showcase/feedback",        label: "吐槽处理",        icon: MessageSquareTextIcon, group: "先锋晒场", perm: "showcase:manage" },
+      { path: "/admin/interactive",              label: "互动活动",        icon: Gamepad2Icon,       group: "现场互动", perm: "interactive:manage" },
     ],
   },
   {
@@ -927,7 +928,12 @@ function UserSettingsMenu() {
       </button>
 
       {open && (
-        <div className="absolute top-full right-3 mt-1 w-56 bg-white rounded-md shadow-lg border border-[#E9E9E9] py-1 z-50">
+        <div
+          className="absolute top-full right-3 mt-1 w-56 bg-white rounded-md shadow-lg border border-[#E9E9E9] py-1 z-50"
+          // 阻止菜单内 mousedown 抢走触发按钮焦点 —— 否则按住超过 onBlur 的 150ms 再松开,
+          // 菜单先被卸载、click 永不派发(个人设置/修改密码/退出登录都吃这个竞态)
+          onMouseDown={(e) => e.preventDefault()}
+        >
           {/* 身份概要 */}
           {me && (
             <div className="px-3 py-2 border-b border-[#F0F0F0]">
@@ -954,8 +960,22 @@ function UserSettingsMenu() {
               </div>
             </div>
           )}
-          <MenuButton icon={UserIcon} label="个人资料" disabled />
-          <MenuButton icon={KeyIcon}  label="修改密码" disabled />
+          <MenuButton
+            icon={UserIcon}
+            label="个人设置"
+            onClick={() => {
+              setOpen(false);
+              navigate("/profile");
+            }}
+          />
+          <MenuButton
+            icon={KeyIcon}
+            label="修改密码"
+            onClick={() => {
+              setOpen(false);
+              navigate("/profile#security");
+            }}
+          />
           <div className="h-px bg-[#F0F0F0] my-1" />
           <MenuButton icon={LogOutIcon} label="退出登录" onClick={handleLogout} />
         </div>

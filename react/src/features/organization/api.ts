@@ -98,6 +98,8 @@ export interface OrgMember {
 
 export interface CreateOrgInput {
   name: string;
+  /** 全称 — 证书 / 公文 / 印章等正式场合用;为空则不设。日常组织树显示 name(简称) */
+  fullName?: string | null;
   code: string;
   kind: OrgKind;
   type: OrgType;

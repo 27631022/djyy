@@ -1598,3 +1598,98 @@ model ShowcaseViewLog {
   @@index([targetType, targetId, createdAt])
   @@index([userId, createdAt])
 }
+
+// ═══════════════ 现场互动(大屏 + 手机扫码遥控:活动 → 游戏 → 局)═══════════════
+//
+// 一场活动 = 一块大屏 = 一个房间码。活动里放多个游戏(节目单),每个游戏跑多局(如摇奖摇多次)。
+// 运行态(当前词/倒计时/抢答锁/计数)只活在后端内存(room-session.service),活动结束即弃;
+// 这里只落「开过什么活动 + 每局结算快照」的审计线。观众匿名(仅昵称 + 客户端生成 deviceId,
+// 断线重连凭此恢复身份)。均 JSON 存 String、跨模块 userId 松引用不建外键,守 PG 系国产库兼容 + DAG。
+
+// 活动:有 interactive:manage 者创建;roomCode 大屏显示 + 手机扫码/输码入房。
+// @module: interactive
+model InteractiveEvent {
+  id            String    @id @default(cuid())
+  roomCode      String    @unique // 6 位大写房间码,手机扫码/输码入房
+  title         String
+  status        String    @default("draft") // draft | live | ended
+  configJson    String    @default("{}") // 活动级通用配置快照(队伍/主题/BGM 等)
+  createdById   String // 松引用 User.id(创建者=owner)
+  createdByName String // 快照
+  createdAt     DateTime  @default(now())
+  startedAt     DateTime?
+  endedAt       DateTime?
+
+  managers InteractiveManager[]
+  players  InteractivePlayer[]
+  games    InteractiveGame[]
+
+  @@index([createdById, status])
+  @@index([status])
+}
+
+// 共管人:创建者邀请的其他管理人员(逐场授权,不需全局权限点);owner=创建者本人。
+// @module: interactive
+model InteractiveManager {
+  id        String           @id @default(cuid())
+  eventId   String
+  event     InteractiveEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String // 松引用 User.id
+  userName  String // 快照
+  role      String           @default("collaborator") // owner | collaborator
+  createdAt DateTime         @default(now())
+
+  @@unique([eventId, userId])
+  @@index([userId])
+}
+
+// 玩家:观众扫码进活动一次,跨游戏保留身份/队伍/累计;deviceId=客户端生成,断线重连凭此恢复。
+// @module: interactive
+model InteractivePlayer {
+  id         String           @id @default(cuid())
+  eventId    String
+  event      InteractiveEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  deviceId   String // 客户端 localStorage cuid,匿名身份
+  nickname   String
+  avatar     String? // 头像:"p:<idx>"=预设头像 / "f:<fileId>"=手机上传(storage 松引用)
+  teamId     String? // 组队模式所属队(队定义在节目 configJson.grouping)
+  teamName   String?
+  joinedAt   DateTime         @default(now())
+  lastSeenAt DateTime         @default(now())
+
+  @@unique([eventId, deviceId])
+  @@index([eventId])
+}
+
+// 游戏:一场活动里的一个游戏(节目单一项);configJson=该游戏规则快照;gameType 对应双端注册表键。
+// @module: interactive
+model InteractiveGame {
+  id         String           @id @default(cuid())
+  eventId    String
+  event      InteractiveEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  gameType   String // 'tap_race' | 'guess_draw' | 'shake' | 'buzzer' | 'wheel' ...
+  title      String
+  orderIdx   Int              @default(0) // 节目单顺序
+  configJson String           @default("{}") // GameDef.Config 快照(经 validateConfig 归一化)
+  status     String           @default("pending") // pending | active | done
+  createdAt  DateTime         @default(now())
+
+  rounds InteractiveRound[]
+
+  @@index([eventId, orderIdx])
+}
+
+// 局:一个游戏跑多局(摇奖摇多次、抢答一题一局);resultJson=该局结算快照。
+// @module: interactive
+model InteractiveRound {
+  id         String          @id @default(cuid())
+  gameId     String
+  game       InteractiveGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  seq        Int // 本游戏第几局
+  status     String          @default("running") // running | ended
+  resultJson String? // 结算快照 Settlement(ended 时写)
+  startedAt  DateTime        @default(now())
+  endedAt    DateTime?
+
+  @@index([gameId])
+}

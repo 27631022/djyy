@@ -96,7 +96,7 @@ export default tseslint.config(
     // 属于注册表模块而非纯组件模块 —— react-refresh 的「只导出组件」对它无意义(这些只读预览无需热更新)。
     // 关掉后,加新字段类型 = 新建一个 fields/<type>.tsx(惯常 PascalCase 组件写法)+ 在 registry 注册一行,无额外噪声。
     // showcase/tools 同理(先锋晒场展示工具注册表)。
-    files: ["src/features/task/fields/*.tsx", "src/features/report/fields/*.tsx", "src/features/showcase/tools/*.tsx"],
+    files: ["src/features/task/fields/*.tsx", "src/features/report/fields/*.tsx", "src/features/showcase/tools/*.tsx", "src/features/interactive/games/*.tsx"],
     rules: {
       "react-refresh/only-export-components": "off",
     },

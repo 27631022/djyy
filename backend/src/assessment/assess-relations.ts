@@ -9,9 +9,11 @@ import type { Organization } from '@prisma/client';
  *
  * 加新关系 = 这里 RELATIONS 加一条。坐标系/对象推导全在本文件,service 只做编排 + 取成员。
  *
- * 组织结构事实(昆仑物流,见 fixtures/kunlun-logistics-orgs.ts):
- *   行政:level1 公司 → level2 虚拟壳(公司机关/基层单位)→ level3 二级单位(!isDept,34 分公司)
- *         + level3 机关部门(isDept,11)→ level4 三级单位(塔运司下 大队/科室)→ 员工(成员)
+ * 组织结构事实(昆仑物流;分公司层级由 db:import:admin 归位,见 prisma/import-admin-orgs.ts):
+ *   行政:level1 公司 → level2 虚拟壳 公司机关/基层单位(isVirtual)
+ *         · 公司机关(虚拟)→ level2 机关部门(isDept,11;因 isDept 不计为考核「二级单位」,仍是责任部门)
+ *         · 基层单位(虚拟)→ level2 二级单位(34 分公司,!isDept)→ level3 本部部门(isDept)+ 三级单位 → 员工(成员)
+ *   ⚠ 全 admin 不用 level4;二级单位 = level2 !isDept !isVirtual;三级单位 = level3 且在某二级单位子树内(排除机关部门)
  *   党建:党委(root committee)→ 直接下级 35(公司机关党委 + 34 基层党委 committee/general)
  *         → 各自党支部(branch)→ 党员(成员)
  */
@@ -37,13 +39,24 @@ export interface OrgIndex {
 
 /* ─── 结构判定(不写死深度,按 type/isDept/isVirtual)─── */
 
-/** 二级单位 = 行政 level3 实体单位(非部门、非虚拟)*/
+/** 二级单位 = 行政 level2 实体单位(非部门、非虚拟;公司机关/基层单位是 level2 虚拟壳,被 !isVirtual 排除)*/
 export function isUnit2(o: Organization): boolean {
-  return o.kind === 'admin' && o.type === 'level3' && !o.isDept && !o.isVirtual;
+  return o.kind === 'admin' && o.type === 'level2' && !o.isDept && !o.isVirtual;
 }
-/** 三级单位 = 行政 level4 实体(非虚拟;含科室/办公室,用户口径「所有三级单位」)*/
-export function isUnit3(o: Organization): boolean {
-  return o.kind === 'admin' && o.type === 'level4' && !o.isVirtual;
+/** 是否有二级单位祖先 —— 把「三级单位」限定在二级单位子树内,排除公司机关(虚拟壳)下的机关部门(也是 level3)*/
+function hasUnit2Ancestor(o: Organization, idx: OrgIndex): boolean {
+  let cur = o.parentId ? idx.byId.get(o.parentId) : undefined;
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur.id)) {
+    if (isUnit2(cur)) return true;
+    seen.add(cur.id);
+    cur = cur.parentId ? idx.byId.get(cur.parentId) : undefined;
+  }
+  return false;
+}
+/** 三级单位 = 行政 level3 非虚拟、且在某个二级单位子树内(含科室/办公室,用户口径「所有三级单位」)*/
+export function isUnit3(o: Organization, idx: OrgIndex): boolean {
+  return o.kind === 'admin' && o.type === 'level3' && !o.isVirtual && hasUnit2Ancestor(o, idx);
 }
 /** 党委/党总支(可带党支部的层)*/
 function isCommittee(o: Organization): boolean {
@@ -228,7 +241,7 @@ export const RELATIONS: RelationDef[] = [
     subjectLabel: '三级单位',
     objectLabel: '员工',
     objectKind: 'user',
-    subjects: (idx) => [...idx.byId.values()].filter(isUnit3),
+    subjects: (idx) => [...idx.byId.values()].filter((o) => isUnit3(o, idx)),
     objectOrgs: (subject) => [subject],
     deptScope: (subject) => subject.id,
   },
@@ -279,7 +292,7 @@ export function adminSubjectsOf(
     seen.add(cur.id);
     cur = cur.parentId ? idx.byId.get(cur.parentId) : undefined;
   }
-  if (isUnit3(org)) out.unit3 = org.id;
+  if (isUnit3(org, idx)) out.unit3 = org.id;
   return out;
 }
 

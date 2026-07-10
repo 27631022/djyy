@@ -32,8 +32,11 @@ export interface AuthMe {
   username: string;
   name: string;
   email: string | null;
+  phone: string | null;
   avatarUrl: string | null;
   active: boolean;
+  /** 统一账号(Casdoor/SSO)是否已绑定 —— 个人设置「账号安全」展示用 */
+  externalBound: boolean;
   /** platform_admin 超管 = 看全部菜单(直通) */
   isPlatformAdmin: boolean;
   /** 有效权限点(供前端按权限隐藏菜单) */
@@ -66,6 +69,10 @@ export const authApi = {
 
   /** 后端登录模式:mock=开发演示账号面板,oidc=统一账号登录(Casdoor / 单位 SSO) */
   mode: () => api.get<{ mode: "mock" | "oidc" }>("/auth/mode").then((r) => r.data),
+
+  /** 修改密码(仅 oidc 模式;旧密码由统一登录服务校验,mock 模式后端返回明确提示) */
+  changePassword: (oldPassword: string, newPassword: string) =>
+    api.post<{ ok: boolean }>("/auth/change-password", { oldPassword, newPassword }).then((r) => r.data),
 };
 
 /**

@@ -124,6 +124,21 @@ npm run release                # = .\deploy\synology\release.ps1
    自动回到平台且右上角显示本人;演示登录接口此时应已禁用(需要临时兜底设
    `ALLOW_DEV_LOGIN: "1"`,用完删)。
 
+### 登录模式一键切换(AUTH_MODE 开关)
+
+平台有两种登录模式,靠一个环境变量 `AUTH_MODE` 切换,**改后重启后端 / app 容器即生效**:
+
+| `AUTH_MODE` | 登录页表现 | 用途 |
+|---|---|---|
+| `mock`(默认) | 演示账号面板(点头像直进,无密码) | 开发期 / 首次部署 Casdoor 还没配好时 |
+| `oidc` | 「统一账号登录」按钮 → 跳 Casdoor | 生产 / 联调 Casdoor |
+
+- **`OIDC_*` 四件套(`OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_REDIRECT_URI`)在 `mock` 模式下被忽略**,可以一直留在配置里,切换时不用重填。
+- **本地开发**:改 `backend/.env` 的 `AUTH_MODE`,重启后端(`npm run start:dev`)。
+- **生产**:改 `docker-compose.yml` 里 `app` 服务的 `AUTH_MODE`,重启 app 容器。
+- `oidc` 模式下演示登录接口(`dev-login`)自动返回 401;需要临时兜底登录设 `ALLOW_DEV_LOGIN=1`(用完删)。
+- ⚠ 顺序:**先把 Casdoor 应用/用户配好,再切 `oidc`**;反了会没人能登。
+
 > 将来单位统一 SSO 开放接入时:Casdoor 后台把它挂成上游身份提供商(Identity Providers,
 > 支持 OIDC/SAML/CAS),或直接把 compose 的 `OIDC_ISSUER` 等四项换成单位 SSO 的参数——
 > 平台侧代码零改动(标准 OIDC 授权码流)。

@@ -16,6 +16,7 @@ import { UserService } from './user.service';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { ReplaceMembershipsDto } from './dto/replace-memberships.dto';
 import { AddMembershipDto } from './dto/add-membership.dto';
 import { ReplaceRolesDto } from './dto/replace-roles.dto';
@@ -50,6 +51,15 @@ export class UserController {
   @Post('lookup-by-name')
   lookupByName(@Body() dto: LookupByNameDto) {
     return this.users.lookupByName(dto);
+  }
+
+  /**
+   * 个人设置:更新本人资料。身份取自登录态(me.sub),字段白名单见 UpdateMyProfileDto ——
+   * 不复用 PATCH /users/:id(那是管理向,收 name/active)。同样必须排在 `:id` 之前。
+   */
+  @Patch('me/profile')
+  updateMyProfile(@Body() dto: UpdateMyProfileDto, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.users.selfUpdateProfile(me.sub, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
   @Get(':id')

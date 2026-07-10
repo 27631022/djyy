@@ -63,9 +63,16 @@ api.interceptors.response.use(
       } catch {
         /* ignore */
       }
-      // 不在 /login 时跳转,避免死循环;/widget(桌面挂件)自行处理登录,401 只清 token 不跳整页
+      // 不在 /login 时跳转,避免死循环;/widget(桌面挂件)、/screen /play(现场互动匿名大屏/遥控)
+      // 自行处理登录,401 只清 token 不跳整页(这些页只走公开接口 + WebSocket,访客不该被踢)
       const path = typeof window !== "undefined" ? window.location.pathname : "";
-      if (path && !path.startsWith("/login") && !path.startsWith("/widget")) {
+      if (
+        path &&
+        !path.startsWith("/login") &&
+        !path.startsWith("/widget") &&
+        !path.startsWith("/screen") &&
+        !path.startsWith("/play")
+      ) {
         const redirect = encodeURIComponent(window.location.pathname + window.location.search);
         window.location.assign(`/login?redirect=${redirect}`);
       }

@@ -106,6 +106,13 @@ export interface UpdateUserInput {
   active?: boolean;
 }
 
+/** 个人设置自助改资料 —— 后端白名单只收这三项;email/phone 传空字符串 = 清空 */
+export interface UpdateMyProfileInput {
+  email?: string;
+  phone?: string;
+  avatarUrl?: string;
+}
+
 export interface MembershipInput {
   orgId: string;
   position?: string;
@@ -168,6 +175,10 @@ export const usersApi = {
 
   update: (id: string, input: UpdateUserInput) =>
     api.patch<UserDetail>(`/users/${id}`, input).then((r) => r.data),
+
+  /** 个人设置:更新本人资料(身份取自登录态,改完记得 auth.refresh() 同步全站头像/联系方式) */
+  updateMyProfile: (input: UpdateMyProfileInput) =>
+    api.patch<UserDetail>("/users/me/profile", input).then((r) => r.data),
 
   replaceMemberships: (id: string, memberships: MembershipInput[]) =>
     api.put<UserDetail>(`/users/${id}/memberships`, { memberships }).then((r) => r.data),

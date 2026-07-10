@@ -686,6 +686,7 @@ function OrgFormModal({
 
   const [form, setForm] = useState({
     name: init?.name ?? "",
+    fullName: init?.fullName ?? "",
     code: init?.code ?? "",
     type: (init?.type ?? defaultType) as OrgType,
     isVirtual: init?.isVirtual ?? false,
@@ -739,6 +740,7 @@ function OrgFormModal({
   function handleSubmit() {
     if (!valid) return;
     const payload: Record<string, unknown> = { ...form };
+    payload.fullName = form.fullName.trim() || null; // 空全称存 null,不落空串
     if (isAdmin) payload.meta = buildMeta(init?.meta, counterparts, form.isDept ? ownerUserId : ""); // 行政机构带对口 + 部门负责人
     onSave(payload);
   }
@@ -813,7 +815,7 @@ function OrgFormModal({
             </p>
           )}
 
-          <Field label="名称" required>
+          <Field label={isParty ? "名称(简称)" : "名称"} required>
             <input
               autoFocus
               value={form.name}
@@ -821,6 +823,18 @@ function OrgFormModal({
               placeholder={editing.kind === "party" ? "如:第一党支部·机关综合处" : "如:财务审计处"}
               className="w-full px-3 py-2 text-sm rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[var(--party-primary)]"
             />
+          </Field>
+
+          <Field label="全称">
+            <input
+              value={form.fullName}
+              onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+              placeholder={editing.kind === "party" ? "如:中共××有限公司××分公司委员会" : "如:××有限公司财务审计处"}
+              className="w-full px-3 py-2 text-sm rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[var(--party-primary)]"
+            />
+            <p className="text-[10px] text-[#9CA3AF] mt-1 leading-snug">
+              日常组织树显示「名称(简称)」;全称用于证书 / 公文 / 印章等正式场合,可留空。
+            </p>
           </Field>
 
           <Field label="编码" required>
