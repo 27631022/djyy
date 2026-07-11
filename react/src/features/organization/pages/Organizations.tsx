@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRightIcon,
@@ -22,6 +22,16 @@ import {
   RotateCcwIcon,
   SearchIcon,
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   organizationsApi,
   ORG_TYPE_LABELS,
@@ -61,6 +71,25 @@ const KIND_META: Record<OrgKind, { label: string; icon: React.ElementType; color
   admin: { label: "行政机构", icon: BuildingIcon, color: "rgb(26, 107, 200)", bg: "rgb(238, 244, 255)" },
 };
 
+/**
+ * 默认展开集:行政机构展开 公司机关(code=gsjg)/基层单位(code=jcdw);党组织展开 机关党委(名含「机关党委」)。
+ * 目标节点 + 其所有祖先都要进集合(祖先展开才能看到目标、目标展开才能看到其直接子级);深层仍收起。
+ */
+function defaultExpandedFor(kind: OrgKind, roots: OrgTreeNode[]): Set<string> {
+  const isTarget = (n: OrgTreeNode): boolean =>
+    kind === "admin" ? n.code === "gsjg" || n.code === "jcdw" : n.name.includes("机关党委");
+  const ids = new Set<string>();
+  const walk = (node: OrgTreeNode, ancestors: string[]) => {
+    if (isTarget(node)) {
+      ids.add(node.id);
+      for (const a of ancestors) ids.add(a);
+    }
+    for (const c of node.children) walk(c, [...ancestors, node.id]);
+  };
+  for (const r of roots) walk(r, []);
+  return ids;
+}
+
 /** axios / Error 错误体 → 人话(NestJS 校验 message 可能是 string[]) */
 function errMsgOf(e: unknown, fallback: string): string {
   const err = e as { response?: { data?: { message?: string | string[] } }; message?: string } | null;
@@ -83,6 +112,8 @@ export default function OrganizationsPage() {
         免 effect 内同步 setLoading);reload = tick+1 触发重拉 ── */
   const [loadTick, setLoadTick] = useState(0);
   const [loadedTree, setLoadedTree] = useState<{ key: string; tree: OrgTreeNode[] } | null>(null);
+  // 记录「上次重置展开态」的上下文(kind|过滤);只在切换体系/过滤时收起,重拉(编辑后)保留用户展开
+  const expandCtxRef = useRef<string>("");
   const reqKey = `${kind}|${showInactive}|${loadTick}`;
   const tree = useMemo(() => loadedTree?.tree ?? [], [loadedTree]);
   const loading = loadedTree?.key !== reqKey;
@@ -95,16 +126,13 @@ export default function OrganizationsPage() {
         if (!alive) return;
         setLoadedTree({ key: reqKey, tree: t });
         setError(null);
-        // 默认展开全部有子节点的层级
-        const ids = new Set<string>();
-        const walk = (n: OrgTreeNode) => {
-          if (n.children.length > 0) {
-            ids.add(n.id);
-            n.children.forEach(walk);
-          }
-        };
-        t.forEach(walk);
-        setExpanded(ids);
+        // 默认展开:行政展开 公司机关(gsjg)/基层单位(jcdw),党组织展开 机关党委,其余收起(深层不展开)。
+        // 仅在切换体系(党/行政)或过滤时重置;重拉(编辑后)保留用户展开状态。
+        const ctx = `${kind}|${showInactive}`;
+        if (expandCtxRef.current !== ctx) {
+          setExpanded(defaultExpandedFor(kind, t));
+          expandCtxRef.current = ctx;
+        }
       })
       .catch((e: unknown) => {
         if (!alive) return;
@@ -675,8 +703,8 @@ function OrgFormModal({
   const kindMeta = KIND_META[editing.kind];
   const isParty = editing.kind === "party";
   const isAdmin = editing.kind === "admin";
-  // 行政机构编辑态:抽屉内分「基本属性 / 成员」两个 tab(成员改动即时生效)
-  const showMembers = isAdmin && isEdit && !!init;
+  // 编辑态:抽屉内分「基本属性 / 成员」两个 tab(党组织 + 行政机构都可看成员,改动即时生效)
+  const showMembers = isEdit && !!init;
   // 关联机构 tab:党组织↔行政机构(N:M;党委/党总支当前 1:1),编辑态双向手动维护
   const showLinks = isEdit && !!init;
   const hasTabs = showMembers || showLinks;
@@ -1019,6 +1047,8 @@ function OrgFormModal({
               <OrgMembersPanel
                 orgId={init.id}
                 orgName={form.name || init.name}
+                accent={kindMeta.color}
+                accentBg={kindMeta.bg}
                 onChanged={onMembersChanged}
               />
             </div>
@@ -1546,24 +1576,45 @@ function DeleteConfirmModal({
   );
 }
 
-/* ─── 机构成员分栏(编辑行政机构时右侧栏:看 / 加 / 移成员,改动即时生效)─── */
-const ADMIN_BLUE = "rgb(26,107,200)";
-const ADMIN_BLUE_BG = "rgb(238,244,255)";
+/* ─── 机构成员分栏(编辑机构时右侧栏:看 / 拖拽排序 / 加 / 移成员,改动即时生效)─── */
 
 function OrgMembersPanel({
-  orgId, orgName, onChanged,
+  orgId, orgName, accent, accentBg, onChanged,
 }: {
   orgId: string;
   orgName: string;
+  /** 体系配色:党组织=红、行政=蓝 */
+  accent: string;
+  accentBg: string;
   onChanged: () => void;
 }) {
   const qc = useQueryClient();
+  const membersKey = useMemo(() => ["org-direct-members", orgId], [orgId]);
   const membersQuery = useQuery({
-    queryKey: ["org-direct-members", orgId],
+    queryKey: membersKey,
     queryFn: () => organizationsApi.members(orgId, false),
   });
   const members = useMemo(() => membersQuery.data ?? [], [membersQuery.data]);
   const memberIds = useMemo(() => new Set(members.map((m) => m.userId)), [members]);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  // 拖拽排序:乐观更新列表顺序 → 后端持久化 sortOrder;失败回滚
+  const reorderMut = useMutation({
+    mutationFn: (userIds: string[]) => organizationsApi.reorderMembers(orgId, userIds),
+    onError: (e) => { fail(e); qc.invalidateQueries({ queryKey: membersKey }); },
+  });
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const cur = qc.getQueryData<OrgMember[]>(membersKey) ?? members;
+    const ids = cur.map((m) => m.userId);
+    const from = ids.indexOf(String(active.id));
+    const to = ids.indexOf(String(over.id));
+    if (from < 0 || to < 0) return;
+    const next = arrayMove(cur, from, to);
+    qc.setQueryData(membersKey, next);
+    reorderMut.mutate(next.map((m) => m.userId));
+  }
 
   const [tab, setTab] = useState<"existing" | "new">("existing");
   const [position, setPosition] = useState(""); // 职务(可选),加成员时带上
@@ -1629,16 +1680,23 @@ function OrgMembersPanel({
     <div className="flex-1 min-h-0 flex flex-col bg-[#FCFDFE]">
       {/* 栏头 */}
       <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-[#E9E9E9] bg-[#FAFBFC]">
-        <UsersIcon className="w-4 h-4 flex-shrink-0" style={{ color: ADMIN_BLUE }} />
+        <UsersIcon className="w-4 h-4 flex-shrink-0" style={{ color: accent }} />
         <h3 className="text-sm font-bold text-[#1A1A1A] truncate">本机构成员</h3>
         <span className="text-[10px] text-[#9CA3AF] flex-shrink-0">直接 {members.length} 人</span>
         <span className="ml-auto text-[10px] text-[#9CA3AF] flex-shrink-0">改动即时生效</span>
       </div>
 
       <div className="flex-1 overflow-auto p-4 space-y-4">
-          {/* 当前成员 */}
+          {/* 当前成员(可拖拽排序) */}
           <section>
-            <h4 className="text-xs font-semibold text-[#4B5563] mb-2">当前成员</h4>
+            <div className="flex items-center gap-1.5 mb-2">
+              <h4 className="text-xs font-semibold text-[#4B5563]">当前成员</h4>
+              {members.length > 1 && (
+                <span className="flex items-center gap-0.5 text-[10px] text-[#9CA3AF]">
+                  <GripVerticalIcon className="w-3 h-3" /> 拖动手柄可排序
+                </span>
+              )}
+            </div>
             {membersQuery.isLoading ? (
               <div className="text-xs text-[#9CA3AF] py-4 text-center">加载中…</div>
             ) : members.length === 0 ? (
@@ -1646,23 +1704,29 @@ function OrgMembersPanel({
                 本机构暂无直接成员
               </div>
             ) : (
-              <div className="space-y-1.5">
-                {members.map((m) => (
-                  <MemberRow
-                    key={m.userId}
-                    m={m}
-                    disabled={busy}
-                    onRemove={() => removeMut.mutate(m.userId)}
-                  />
-                ))}
-              </div>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                <SortableContext items={members.map((m) => m.userId)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-1.5">
+                    {members.map((m) => (
+                      <MemberRow
+                        key={m.userId}
+                        m={m}
+                        accent={accent}
+                        accentBg={accentBg}
+                        disabled={busy}
+                        onRemove={() => removeMut.mutate(m.userId)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             )}
           </section>
 
           {/* 添加成员 */}
           <section className="rounded-lg border border-[#E9E9E9] bg-[#FAFBFC] p-3 space-y-3">
             <div className="flex items-center gap-2">
-              <UserPlusIcon className="w-4 h-4" style={{ color: ADMIN_BLUE }} />
+              <UserPlusIcon className="w-4 h-4" style={{ color: accent }} />
               <h4 className="text-xs font-semibold text-[#1A1A1A] truncate">添加成员到「{orgName}」</h4>
             </div>
 
@@ -1673,9 +1737,9 @@ function OrgMembersPanel({
                   onClick={() => { setTab(id); setErr(null); }}
                   className="px-3 py-1.5 rounded-md border transition-colors"
                   style={{
-                    backgroundColor: tab === id ? ADMIN_BLUE_BG : "white",
-                    borderColor: tab === id ? ADMIN_BLUE : "#E9E9E9",
-                    color: tab === id ? ADMIN_BLUE : "#6B7280",
+                    backgroundColor: tab === id ? accentBg : "white",
+                    borderColor: tab === id ? accent : "#E9E9E9",
+                    color: tab === id ? accent : "#6B7280",
                   }}
                 >
                   {label}
@@ -1720,7 +1784,7 @@ function OrgMembersPanel({
                         className="flex items-center gap-2 p-2 rounded-md border border-[#E9E9E9] bg-white"
                       >
                         <div className="w-7 h-7 rounded-full text-white grid place-items-center text-xs font-bold flex-shrink-0"
-                          style={{ backgroundColor: ADMIN_BLUE }}>
+                          style={{ backgroundColor: accent }}>
                           {u.name.charAt(0)}
                         </div>
                         <div className="min-w-0 flex-1">
@@ -1738,7 +1802,7 @@ function OrgMembersPanel({
                           onClick={() => addExistingMut.mutate(u.id)}
                           disabled={busy}
                           className="px-2.5 py-1 rounded-md text-xs font-medium text-white disabled:opacity-50 flex-shrink-0"
-                          style={{ backgroundColor: ADMIN_BLUE }}
+                          style={{ backgroundColor: accent }}
                         >
                           加入
                         </button>
@@ -1771,7 +1835,7 @@ function OrgMembersPanel({
                   onClick={() => createMut.mutate()}
                   disabled={!canCreate || busy}
                   className="w-full px-3 py-1.5 rounded-md text-xs font-medium text-white disabled:opacity-50 flex items-center justify-center gap-1.5"
-                  style={{ backgroundColor: ADMIN_BLUE }}
+                  style={{ backgroundColor: accent }}
                 >
                   {createMut.isPending ? (
                     <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
@@ -1797,12 +1861,34 @@ function OrgMembersPanel({
   );
 }
 
-function MemberRow({ m, onRemove, disabled }: { m: OrgMember; onRemove: () => void; disabled: boolean }) {
+function MemberRow({
+  m, onRemove, disabled, accent, accentBg,
+}: {
+  m: OrgMember;
+  onRemove: () => void;
+  disabled: boolean;
+  accent: string;
+  accentBg: string;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: m.userId });
   return (
-    <div className="flex items-center gap-2 p-2 rounded-md border border-[#E9E9E9]">
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex items-center gap-1.5 p-2 rounded-md border border-[#E9E9E9] bg-white ${isDragging ? "opacity-60 shadow" : ""}`}
+    >
+      <button
+        type="button"
+        className="cursor-grab touch-none text-[#C0C6D0] hover:text-[#6B7280] active:cursor-grabbing flex-shrink-0"
+        title="拖拽排序"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVerticalIcon className="w-4 h-4" />
+      </button>
       <div
         className="w-7 h-7 rounded-full text-white grid place-items-center text-xs font-bold flex-shrink-0"
-        style={{ backgroundColor: ADMIN_BLUE }}
+        style={{ backgroundColor: accent }}
       >
         {m.name.charAt(0)}
       </div>
@@ -1813,7 +1899,7 @@ function MemberRow({ m, onRemove, disabled }: { m: OrgMember; onRemove: () => vo
           {m.isPrimary && (
             <span
               className="text-[9px] font-bold px-1 py-0.5 rounded ml-1"
-              style={{ backgroundColor: ADMIN_BLUE_BG, color: ADMIN_BLUE }}
+              style={{ backgroundColor: accentBg, color: accent }}
             >
               主岗
             </span>

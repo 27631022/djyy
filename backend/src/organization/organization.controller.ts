@@ -55,6 +55,16 @@ export class OrganizationController {
     return this.service.listMembers(id, recursive === 'true');
   }
 
+  /**
+   * POST /api/organizations/:id/members/reorder
+   * Body: { userIds: string[] }  —— 按顺序给本机构直接成员重排 sortOrder(拖拽排序)
+   */
+  @Post(':id/members/reorder')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async reorderMembers(@Param('id') id: string, @Body() body: { userIds?: string[] }) {
+    await this.service.reorderMembers(id, body.userIds ?? []);
+  }
+
   /** GET /api/organizations/:id/links  党↔行政关联(返回对侧机构 + linkId) */
   @Get(':id/links')
   links(@Param('id') id: string) {

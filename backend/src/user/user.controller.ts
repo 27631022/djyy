@@ -62,6 +62,15 @@ export class UserController {
     return this.users.selfUpdateProfile(me.sub, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
+  /**
+   * 统计:总数 / 在职数 / 行政机构未分配 / 党组织未加入(用户管理工具条角标)。
+   * 必须放在 `:id` 之前,否则 'stats' 会被识别成 id。
+   */
+  @Get('stats')
+  stats() {
+    return this.users.stats();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.users.findOne(id);

@@ -93,6 +93,7 @@ model UserOrganization {
   org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   isPrimary Boolean      @default(false)
   position  String? // 兼任职务,如 "支部书记"
+  sortOrder Int          @default(0) // 成员在本机构内的排序(拖拽排序;仅对直接成员有意义)
   joinedAt  DateTime     @default(now())
 
   @@id([userId, orgId])

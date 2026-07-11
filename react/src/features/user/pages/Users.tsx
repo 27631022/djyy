@@ -3,20 +3,22 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   UserPlusIcon, SearchIcon, RefreshCwIcon, XIcon,
   TrashIcon, PowerIcon, PowerOffIcon,
-  ChevronRightIcon, ShieldIcon, NetworkIcon, IdCardIcon,
-  PlusIcon, AlertCircleIcon, CheckIcon, SlidersHorizontalIcon,
+  ChevronRightIcon, ChevronUpIcon, ChevronDownIcon, ShieldIcon, NetworkIcon, IdCardIcon,
+  PlusIcon, AlertCircleIcon, CheckIcon, SlidersHorizontalIcon, FilterIcon,
 } from "lucide-react";
 import {
   usersApi,
   type UserListItem,
   type UserDetail,
   type ListUsersQuery,
+  type UserStats,
   type CreateUserInput,
   type MembershipInput,
   type RoleAssignmentInput,
   type ScopeValue,
   SCOPE_LABELS,
 } from "@/features/user";
+import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import { rolesApi, type RoleListItem } from "@/features/role";
 import { organizationsApi, type OrgTreeNode } from "@/features/organization";
 import {
@@ -26,7 +28,14 @@ import {
 import { userCustomFieldsApi, type UserCustomField } from "@/features/user-custom-field";
 import { AvatarGenerator, resolveAvatarUrl } from "@/features/avatar";
 import { matchesPinyin, highlightMatch } from "@/shared/lib/pinyinSearch";
+import { useAuth } from "@/stores/auth";
 import { OrgPicker } from "../components/OrgPicker";
+import { UserFilterPanel } from "../components/UserFilterPanel";
+import {
+  buildQueryFromFilters,
+  countActiveFilters,
+  type UserFilters,
+} from "../components/userFilters";
 import { toast } from "sonner";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -77,19 +86,69 @@ function flattenTree(tree: OrgTreeNode[], depth = 0, parentPath = ""): FlatOrg[]
 
 export default function UsersPage() {
   const qc = useQueryClient();
-  const [query, setQuery] = useState<ListUsersQuery>({ take: 50, skip: 0, sortBy: "createdAt", sortDir: "desc" });
+  const { me } = useAuth();
+  const [filters, setFiltersRaw] = useState<UserFilters>({});
+  const [take, setTake] = useState(50);
+  const [skip, setSkip] = useState(0);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const usersQuery = useQuery({
-    queryKey: ["users", query],
-    queryFn: () => usersApi.list(query),
-  });
+  /** 改任何筛选条件都回第 1 页 */
+  function setFilters(f: UserFilters) {
+    setFiltersRaw(f);
+    setSkip(0);
+  }
+
+  /* 搜索分流:汉字/工号/邮箱走服务端全库搜索;纯字母视为拼音(服务端 LIKE 搜不到拼音,
+     工号是数字、姓名是汉字)→ 不发服务端,仅在当前页内做拼音过滤 */
+  const debouncedSearch = useDebouncedValue(searchInput.trim(), 300);
+  const pinyinMode = debouncedSearch.length > 0 && /^[a-zA-Z]+$/.test(debouncedSearch);
+  const serverSearch = !debouncedSearch || pinyinMode ? undefined : debouncedSearch;
+
   const adminTreeQuery = useQuery({
     queryKey: ["orgs", "tree", "admin"],
     queryFn: () => organizationsApi.tree("admin"),
     staleTime: 60_000,
+  });
+
+  /* 单一数据源:筛选条件 + 搜索 + 分页 → 派生列表查询参数(子树由后端 adminOrgSubtree 展开) */
+  const query: ListUsersQuery = useMemo(
+    () => ({
+      ...buildQueryFromFilters(filters),
+      search: serverSearch,
+      take,
+      skip,
+      sortBy: "createdAt",
+      sortDir: "desc",
+    }),
+    [filters, serverSearch, take, skip],
+  );
+
+  const usersQuery = useQuery({
+    queryKey: ["users", query],
+    queryFn: () => usersApi.list(query),
+    placeholderData: (prev) => prev, // 翻页/改过滤时保留上一页数据,避免整表闪空
+  });
+
+  /* 渲染期对账(幂等收敛,免 effect 同步;else-if 保证一轮只改一处):
+     ① 服务端搜索词变化 → 回第 1 页(快照比对,一次收敛);
+     ② skip 超出当前过滤的 total → 钳到末页 —— 否则「开未分配过滤翻到后页、逐个分配完」
+        或「fetch 在途时按旧 total 点远页码」都会停在自相矛盾的空页不自愈。
+        isPlaceholderData 时 data 属于旧 queryKey,不能拿来钳(此时 ② 自动跳过)。 */
+  const [searchSnap, setSearchSnap] = useState<string | undefined>(undefined);
+  const freshData = usersQuery.isPlaceholderData ? undefined : usersQuery.data;
+  if (searchSnap !== serverSearch) {
+    setSearchSnap(serverSearch);
+    setSkip(0);
+  } else if (freshData && skip > 0 && skip >= freshData.total) {
+    setSkip(freshData.total === 0 ? 0 : Math.floor((freshData.total - 1) / take) * take);
+  }
+  const statsQuery = useQuery({
+    queryKey: ["users", "stats"],
+    queryFn: () => usersApi.stats(),
+    staleTime: 30_000,
   });
   const partyTreeQuery = useQuery({
     queryKey: ["orgs", "tree", "party"],
@@ -110,20 +169,22 @@ export default function UsersPage() {
     return map;
   }, [adminFlat, partyFlat]);
 
-  /* 客户端拼音过滤 (后端 search 是 LIKE,客户端补一层拼音命中) */
+  /* 拼音模式下的客户端过滤(仅作用于当前页;服务端搜索的结果直接透传) */
   const filteredItems = useMemo(() => {
-    if (!usersQuery.data) return [];
-    if (!searchInput.trim()) return usersQuery.data.items;
-    return usersQuery.data.items.filter(
+    const items = usersQuery.data?.items ?? [];
+    if (!pinyinMode) return items;
+    const q = debouncedSearch.toLowerCase();
+    return items.filter(
       (u) =>
-        matchesPinyin(u.name, searchInput) ||
-        matchesPinyin(u.username, searchInput) ||
-        (u.primaryAdmin && matchesPinyin(u.primaryAdmin.orgName, searchInput)),
+        matchesPinyin(u.name, debouncedSearch) ||
+        matchesPinyin(u.username, debouncedSearch) ||
+        (u.email ? u.email.toLowerCase().includes(q) : false) ||
+        (u.primaryAdmin ? matchesPinyin(u.primaryAdmin.orgName, debouncedSearch) : false),
     );
-  }, [usersQuery.data, searchInput]);
+  }, [usersQuery.data, pinyinMode, debouncedSearch]);
 
   function refreshAll() {
-    qc.invalidateQueries({ queryKey: ["users"] });
+    qc.invalidateQueries({ queryKey: ["users"] }); // 前缀命中,连带 stats / detail
     qc.invalidateQueries({ queryKey: ["roles"] });
   }
 
@@ -131,34 +192,67 @@ export default function UsersPage() {
     <div className="h-full flex flex-col bg-white">
       {/* ════ 工具条 ════ */}
       <Toolbar
-        query={query}
-        setQuery={setQuery}
+        filters={filters}
+        setFilters={setFilters}
         searchInput={searchInput}
         setSearchInput={setSearchInput}
-        adminOrgs={adminFlat}
+        stats={statsQuery.data}
+        pinyinMode={pinyinMode}
+        panelOpen={panelOpen}
+        onTogglePanel={() => setPanelOpen((v) => !v)}
         onRefresh={refreshAll}
         onCreate={() => setCreateOpen(true)}
         total={usersQuery.data?.total ?? 0}
         shown={filteredItems.length}
       />
 
+      {/* ════ 筛选器面板(自定义点选筛选 + 检索模板) ════ */}
+      {panelOpen && (
+        <UserFilterPanel
+          filters={filters}
+          onChange={setFilters}
+          adminTree={adminTreeQuery.data ?? []}
+          roles={rolesQuery.data ?? []}
+          uid={me?.id ?? "anon"}
+        />
+      )}
+
       {/* ════ 表格 ════ */}
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div
+        className="flex-1 min-h-0 overflow-auto transition-opacity"
+        style={{ opacity: usersQuery.isFetching && !usersQuery.isLoading ? 0.6 : 1 }}
+      >
         {usersQuery.isLoading ? (
           <div className="p-8 text-center text-sm text-[#9CA3AF]">加载中…</div>
         ) : usersQuery.isError ? (
           <div className="p-8 text-center text-sm text-red-600">{(usersQuery.error as Error).message}</div>
         ) : filteredItems.length === 0 ? (
-          <div className="p-8 text-center text-sm text-[#9CA3AF]">无匹配用户</div>
+          <div className="p-8 text-center text-sm text-[#9CA3AF]">
+            {pinyinMode
+              ? "当前页无拼音匹配 · 输入汉字、员工编号或完整邮箱可全库搜索"
+              : "无匹配用户"}
+          </div>
         ) : (
           <UsersTable
             items={filteredItems}
-            searchQuery={searchInput}
+            searchQuery={debouncedSearch}
             onSelect={(u) => setSelectedId(u.id)}
             selectedId={selectedId}
           />
         )}
       </div>
+
+      {/* ════ 分页 ════ */}
+      <PaginationBar
+        total={usersQuery.data?.total ?? 0}
+        skip={skip}
+        take={take}
+        onPageChange={setSkip}
+        onTakeChange={(t) => {
+          setTake(t);
+          setSkip(0);
+        }}
+      />
 
       {/* ════ 详情抽屉 ════ */}
       {selectedId && (
@@ -194,19 +288,28 @@ export default function UsersPage() {
    Toolbar (search + filters + create button)
    ═══════════════════════════════════════════════════════════════ */
 
+/** 未分配筛选的警示色(状态语义色,不跟主题色) */
+const WARN = "rgb(194, 65, 12)";
+const WARN_BG = "rgb(255, 247, 237)";
+const WARN_BORDER = "rgb(234, 88, 12)";
+
 function Toolbar({
-  query, setQuery, searchInput, setSearchInput, adminOrgs, onRefresh, onCreate, total, shown,
+  filters, setFilters, searchInput, setSearchInput, stats, pinyinMode, panelOpen, onTogglePanel, onRefresh, onCreate, total, shown,
 }: {
-  query: ListUsersQuery;
-  setQuery: (q: ListUsersQuery) => void;
+  filters: UserFilters;
+  setFilters: (f: UserFilters) => void;
   searchInput: string;
   setSearchInput: (v: string) => void;
-  adminOrgs: FlatOrg[];
+  stats: UserStats | undefined;
+  pinyinMode: boolean;
+  panelOpen: boolean;
+  onTogglePanel: () => void;
   onRefresh: () => void;
   onCreate: () => void;
   total: number;
   shown: number;
 }) {
+  const activeCount = countActiveFilters(filters);
   return (
     <div className="flex-shrink-0 px-4 py-3 border-b border-[#E9E9E9] flex items-center gap-3 flex-wrap">
       <h1 className="text-base font-bold text-[#1A1A1A] flex items-center gap-2">
@@ -214,33 +317,40 @@ function Toolbar({
         用户管理
       </h1>
       <span className="text-xs text-[#9CA3AF]">
-        共 {total} 个用户{searchInput && shown !== total && ` · 匹配 ${shown}`}
+        共 {total} 人{pinyinMode && ` · 当前页拼音匹配 ${shown} 人`}
       </span>
 
       <div className="flex-1" />
 
-      {/* 行政机构过滤 */}
-      <select
-        value={query.adminOrgId ?? ""}
-        onChange={(e) => setQuery({ ...query, adminOrgId: e.target.value || undefined, skip: 0 })}
-        className="text-xs px-2 py-1.5 rounded-md border border-[#E9E9E9] bg-white hover:border-[var(--party-primary)] transition-colors max-w-[200px]"
+      {/* 筛选器(自定义点选筛选 + 检索模板;行政机构/职务/政治面貌/角色/部门负责人都在里面) */}
+      <button
+        onClick={onTogglePanel}
+        className="flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md border transition-colors"
+        style={{
+          backgroundColor: activeCount > 0 || panelOpen ? PARTY_BG : "white",
+          borderColor: activeCount > 0 || panelOpen ? PARTY : "#E9E9E9",
+          color: activeCount > 0 || panelOpen ? PARTY : "#4B5563",
+        }}
       >
-        <option value="">全部行政机构</option>
-        {adminOrgs.map((o) => (
-          <option key={o.id} value={o.id}>
-            {"  ".repeat(o.depth)}
-            {o.isVirtual ? "★ " : ""}
-            {o.name}
-          </option>
-        ))}
-      </select>
+        <FilterIcon className="w-3.5 h-3.5" />
+        筛选器
+        {activeCount > 0 && (
+          <span
+            className="min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold text-white inline-flex items-center justify-center"
+            style={{ backgroundColor: PARTY }}
+          >
+            {activeCount}
+          </span>
+        )}
+        {panelOpen ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />}
+      </button>
 
       {/* 状态过滤 */}
       <select
-        value={query.active === undefined ? "" : String(query.active)}
+        value={filters.active === undefined ? "" : String(filters.active)}
         onChange={(e) => {
           const v = e.target.value;
-          setQuery({ ...query, active: v === "" ? undefined : v === "true", skip: 0 });
+          setFilters({ ...filters, active: v === "" ? undefined : v === "true" });
         }}
         className="text-xs px-2 py-1.5 rounded-md border border-[#E9E9E9] bg-white"
       >
@@ -249,17 +359,68 @@ function Toolbar({
         <option value="false">仅离职</option>
       </select>
 
-      {/* 仅党员 */}
+      {/* 仅党员(与「党组织未分配」互斥) */}
       <button
-        onClick={() => setQuery({ ...query, hasParty: query.hasParty ? undefined : true, skip: 0 })}
+        onClick={() => {
+          const next = !filters.hasParty;
+          setFilters({
+            ...filters,
+            hasParty: next ? true : undefined,
+            noPartyOrg: next ? undefined : filters.noPartyOrg,
+          });
+        }}
         className="text-xs px-2 py-1.5 rounded-md border transition-colors"
         style={{
-          backgroundColor: query.hasParty ? PARTY_BG : "white",
-          borderColor: query.hasParty ? PARTY : "#E9E9E9",
-          color: query.hasParty ? PARTY : "#4B5563",
+          backgroundColor: filters.hasParty ? PARTY_BG : "white",
+          borderColor: filters.hasParty ? PARTY : "#E9E9E9",
+          color: filters.hasParty ? PARTY : "#4B5563",
         }}
       >
         仅党员
+      </button>
+
+      {/* 行政机构未分配(与筛选器里的行政机构/属于部门互斥 —— 组合起来结构性恒空) */}
+      <button
+        onClick={() => {
+          const next = !filters.noAdminOrg;
+          setFilters({
+            ...filters,
+            noAdminOrg: next ? true : undefined,
+            orgId: next ? undefined : filters.orgId,
+            orgSubtree: next ? undefined : filters.orgSubtree,
+            inDept: next ? undefined : filters.inDept,
+          });
+        }}
+        title="只看未挂任何行政机构的人员"
+        className="text-xs px-2 py-1.5 rounded-md border transition-colors"
+        style={{
+          backgroundColor: filters.noAdminOrg ? WARN_BG : "white",
+          borderColor: filters.noAdminOrg ? WARN_BORDER : "#E9E9E9",
+          color: filters.noAdminOrg ? WARN : "#4B5563",
+        }}
+      >
+        行政未分配{stats !== undefined && ` ${stats.noAdminOrg}`}
+      </button>
+
+      {/* 党组织未分配(与「仅党员」互斥) */}
+      <button
+        onClick={() => {
+          const next = !filters.noPartyOrg;
+          setFilters({
+            ...filters,
+            noPartyOrg: next ? true : undefined,
+            hasParty: next ? undefined : filters.hasParty,
+          });
+        }}
+        title="只看政治面貌为中共党员/中共预备党员、但未加入任何党组织的人员"
+        className="text-xs px-2 py-1.5 rounded-md border transition-colors"
+        style={{
+          backgroundColor: filters.noPartyOrg ? WARN_BG : "white",
+          borderColor: filters.noPartyOrg ? WARN_BORDER : "#E9E9E9",
+          color: filters.noPartyOrg ? WARN : "#4B5563",
+        }}
+      >
+        党组织未分配{stats !== undefined && ` ${stats.noPartyOrg}`}
       </button>
 
       {/* 搜索 */}
@@ -267,7 +428,8 @@ function Toolbar({
         <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
         <input
           type="text"
-          placeholder="搜索姓名/员工编号(支持拼音)"
+          placeholder="搜索姓名/员工编号/邮箱"
+          title="汉字、员工编号、邮箱(含 @)走全库搜索;纯字母按拼音在当前页内匹配"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           className="pl-7 pr-2 py-1.5 text-xs rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[var(--party-primary)] w-56"
@@ -298,6 +460,129 @@ function Toolbar({
         <UserPlusIcon className="w-3.5 h-3.5" />
         新建用户
       </button>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PaginationBar — 底部分页条(每页条数 + 页码窗口 + 跳页)
+   ═══════════════════════════════════════════════════════════════ */
+
+/** 页码窗口:首尾 + 当前页 ±1,间隔用省略号(如 1 2 … 41 42 43 … 416 417) */
+function pageWindow(current: number, pages: number): (number | "…")[] {
+  const wanted = new Set([1, 2, pages - 1, pages, current - 1, current, current + 1]);
+  const list = [...wanted].filter((p) => p >= 1 && p <= pages).sort((a, b) => a - b);
+  const out: (number | "…")[] = [];
+  let prev = 0;
+  for (const p of list) {
+    if (p - prev > 1) out.push("…");
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
+
+function PaginationBar({
+  total, skip, take, onPageChange, onTakeChange,
+}: {
+  total: number;
+  skip: number;
+  take: number;
+  /** 传新的 skip(条数偏移) */
+  onPageChange: (skip: number) => void;
+  onTakeChange: (take: number) => void;
+}) {
+  const pages = Math.max(1, Math.ceil(total / take));
+  const current = Math.min(pages, Math.floor(skip / take) + 1);
+  const from = total === 0 ? 0 : skip + 1;
+  const to = Math.min(total, skip + take);
+  const [jumpInput, setJumpInput] = useState("");
+
+  function jump() {
+    const n = parseInt(jumpInput, 10);
+    if (!Number.isFinite(n)) return;
+    const page = Math.min(pages, Math.max(1, n));
+    onPageChange((page - 1) * take);
+    setJumpInput("");
+  }
+
+  return (
+    <div className="flex-shrink-0 px-4 py-2 border-t border-[#E9E9E9] bg-white flex items-center gap-3 flex-wrap text-xs text-[#6B7280]">
+      <span>
+        第 {from}–{to} 条 · 共 {total} 人
+      </span>
+
+      <div className="flex-1" />
+
+      <label className="flex items-center gap-1.5">
+        每页
+        <select
+          value={take}
+          onChange={(e) => onTakeChange(parseInt(e.target.value, 10))}
+          className="px-1.5 py-1 rounded border border-[#E9E9E9] bg-white"
+        >
+          {[20, 50, 100, 200].map((n) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
+        人
+      </label>
+
+      <div className="flex items-center gap-1">
+        <button
+          disabled={current <= 1}
+          onClick={() => onPageChange((current - 2) * take)}
+          className="px-2 py-1 rounded border border-[#E9E9E9] disabled:opacity-40 hover:bg-[#F7F8FA]"
+        >
+          上一页
+        </button>
+        {pageWindow(current, pages).map((p, i) =>
+          p === "…" ? (
+            <span key={`e${i}`} className="px-1 text-[#D1D5DB]">…</span>
+          ) : (
+            <button
+              key={p}
+              onClick={() => onPageChange((p - 1) * take)}
+              className="min-w-[28px] px-1.5 py-1 rounded border text-center"
+              style={
+                p === current
+                  ? { backgroundColor: PARTY, borderColor: PARTY, color: "white", fontWeight: 600 }
+                  : { borderColor: "#E9E9E9" }
+              }
+            >
+              {p}
+            </button>
+          ),
+        )}
+        <button
+          disabled={current >= pages}
+          onClick={() => onPageChange(current * take)}
+          className="px-2 py-1 rounded border border-[#E9E9E9] disabled:opacity-40 hover:bg-[#F7F8FA]"
+        >
+          下一页
+        </button>
+      </div>
+
+      {pages > 5 && (
+        <label className="flex items-center gap-1.5">
+          跳至
+          <input
+            value={jumpInput}
+            onChange={(e) => setJumpInput(e.target.value.replace(/[^0-9]/g, ""))}
+            onKeyDown={(e) => e.key === "Enter" && jump()}
+            placeholder={`1-${pages}`}
+            className="w-16 px-1.5 py-1 rounded border border-[#E9E9E9] focus:outline-none focus:border-[var(--party-primary)]"
+          />
+          页
+          <button
+            onClick={jump}
+            disabled={!jumpInput}
+            className="px-2 py-1 rounded border border-[#E9E9E9] disabled:opacity-40 hover:bg-[#F7F8FA]"
+          >
+            跳转
+          </button>
+        </label>
+      )}
     </div>
   );
 }

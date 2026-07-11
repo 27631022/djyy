@@ -21,6 +21,21 @@ interface ActorContext {
   ip?: string;
 }
 
+/**
+ * 「政治面貌=中共党员 / 中共预备党员」在 customFields JSON 文本里的锚定子串(任一命中即算党员)。
+ * customFields 由 JSON.stringify 落库(无空格、键值紧邻),select 字段存字典项 code
+ * (自定义字段 political_status / 字典 user_political_status)——尾引号保证精确匹配整值。
+ * ⚠ 与 seed / import 模块的字段编码耦合,改编码需同步这里。
+ */
+const PARTY_MEMBER_CF_ANCHORS = [
+  '"political_status":"party_member"',
+  '"political_status":"probationary_member"',
+];
+/** 政治面貌为(预备)党员的 Prisma 条件(OR 任一锚定子串命中) */
+const IS_PARTY_MEMBER_WHERE: Prisma.UserWhereInput = {
+  OR: PARTY_MEMBER_CF_ANCHORS.map((v) => ({ customFields: { contains: v } })),
+};
+
 @Injectable()
 export class UserService {
   constructor(
@@ -57,29 +72,96 @@ export class UserService {
     }
     if (query.active === 'true') where.active = true;
     if (query.active === 'false') where.active = false;
+
+    // 归属过滤收进 AND 数组逐条叠加 —— 原先直接赋值 where.memberships,
+    // 多个条件组合时后一个 spread 会覆盖前一个的 some 键(如 adminOrgId+partyOrgId 只剩 party 生效)
+    const membershipConds: Prisma.UserWhereInput[] = [];
     if (query.adminOrgIds?.length) {
-      where.memberships = {
-        some: { orgId: { in: query.adminOrgIds }, org: { kind: 'admin' } },
-      };
+      membershipConds.push({
+        memberships: { some: { orgId: { in: query.adminOrgIds }, org: { kind: 'admin' } } },
+      });
     } else if (query.adminOrgId) {
-      where.memberships = { some: { orgId: query.adminOrgId, org: { kind: 'admin' } } };
+      // adminOrgSubtree:子树在服务端展开(几百个 id 拼 GET URL 会超 Node 16KB 请求头上限)
+      const orgIds =
+        query.adminOrgSubtree === 'true'
+          ? await this.adminSubtreeIds(query.adminOrgId)
+          : [query.adminOrgId];
+      membershipConds.push({
+        memberships: {
+          some: {
+            orgId: orgIds.length === 1 ? orgIds[0] : { in: orgIds },
+            org: { kind: 'admin' },
+          },
+        },
+      });
     }
     if (query.partyOrgId) {
-      where.memberships = {
-        ...(where.memberships as Prisma.UserOrganizationListRelationFilter | undefined),
-        some: { orgId: query.partyOrgId, org: { kind: 'party' } },
-      };
+      membershipConds.push({
+        memberships: { some: { orgId: query.partyOrgId, org: { kind: 'party' } } },
+      });
     }
     if (query.hasParty === 'true') {
-      where.memberships = {
-        ...(where.memberships as Prisma.UserOrganizationListRelationFilter | undefined),
-        some: { org: { kind: 'party' } },
-      };
+      membershipConds.push({ memberships: { some: { org: { kind: 'party' } } } });
     }
+    if (query.noAdminOrg === 'true') {
+      membershipConds.push({ memberships: { none: { org: { kind: 'admin' } } } });
+    }
+    if (query.noPartyOrg === 'true') {
+      // 「党组织未分配」只看政治面貌=中共党员/预备党员的人(群众/共青团员本就不该挂党组织,不算)
+      membershipConds.push(IS_PARTY_MEMBER_WHERE);
+      membershipConds.push({ memberships: { none: { org: { kind: 'party' } } } });
+    }
+    // 所属机构是否是「部门」(isDept):是 = 挂在任一部门;否 = 有行政归属但不在任何部门
+    if (query.inDept === 'true') {
+      membershipConds.push({ memberships: { some: { org: { kind: 'admin', isDept: true } } } });
+    } else if (query.inDept === 'false') {
+      membershipConds.push({ memberships: { some: { org: { kind: 'admin' } } } });
+      membershipConds.push({ memberships: { none: { org: { kind: 'admin', isDept: true } } } });
+    }
+    // 行政职务关键词:任一「包含」命中即算(职务多为复合串,如「党委委员、副经理」,精确匹配没法用)
+    if (query.positionKeywords?.length) {
+      membershipConds.push({
+        memberships: {
+          some: {
+            org: { kind: 'admin' },
+            OR: query.positionKeywords.map((k) => ({
+              position: { contains: k, mode: 'insensitive' as const },
+            })),
+          },
+        },
+      });
+    }
+    // 政治面貌:任一字典 code 命中即算(锚定子串,同 IS_PARTY_MEMBER_WHERE 的存储格式约定)
+    if (query.politicalStatuses?.length) {
+      const anchors = query.politicalStatuses
+        .filter((c) => /^[a-z0-9_]+$/i.test(c))
+        .map((c) => `"political_status":"${c}"`);
+      // 全部 code 非法 → fail-closed 返回空集(静默放行会把「过滤失效」伪装成全库结果)
+      membershipConds.push(
+        anchors.length > 0
+          ? { OR: anchors.map((a) => ({ customFields: { contains: a } })) }
+          : { id: { in: [] } },
+      );
+    }
+    // 角色:任一命中即算
+    if (query.roleIds?.length) {
+      membershipConds.push({ roles: { some: { roleId: { in: query.roleIds } } } });
+    }
+    // 部门负责人:id 是否出现在任一行政机构的 meta.ownerUserId 里
+    if (query.deptOwner === 'true' || query.deptOwner === 'false') {
+      const ownerIds = await this.adminDeptOwnerIds();
+      membershipConds.push(
+        query.deptOwner === 'true' ? { id: { in: ownerIds } } : { id: { notIn: ownerIds } },
+      );
+    }
+    if (membershipConds.length > 0) where.AND = membershipConds;
 
-    const orderBy: Prisma.UserOrderByWithRelationInput = {
-      [query.sortBy ?? 'createdAt']: query.sortDir ?? 'desc',
-    };
+    // id 副键保证稳定分页:批量导入的 createdAt 大量并列,PG 对并列行顺序不确定,
+    // 无副键时翻页会重复/漏人
+    const orderBy: Prisma.UserOrderByWithRelationInput[] = [
+      { [query.sortBy ?? 'createdAt']: query.sortDir ?? 'desc' },
+      { id: 'asc' },
+    ];
 
     const [total, rows] = await Promise.all([
       this.prisma.user.count({ where }),
@@ -120,6 +202,70 @@ export class UserService {
         };
       }),
     };
+  }
+
+  /** adminOrgId 及其全部后代机构 id(含自身)。机构量级几百,一次全查内存 BFS。 */
+  private async adminSubtreeIds(rootId: string): Promise<string[]> {
+    const rows = await this.prisma.organization.findMany({
+      where: { kind: 'admin' },
+      select: { id: true, parentId: true },
+    });
+    const children = new Map<string, string[]>();
+    for (const r of rows) {
+      if (!r.parentId) continue;
+      const arr = children.get(r.parentId);
+      if (arr) arr.push(r.id);
+      else children.set(r.parentId, [r.id]);
+    }
+    const out: string[] = [];
+    const stack = [rootId];
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      out.push(id);
+      for (const c of children.get(id) ?? []) stack.push(c);
+    }
+    return out;
+  }
+
+  /**
+   * 全部行政机构「部门负责人」的 userId 集合(组织页编辑部门时指定的 meta.ownerUserId)。
+   * 机构量级几百、仅在带 deptOwner 过滤时查一次,直读 meta 文本解析即可。
+   * (user 模块内读 Organization 表已有先例:replaceMemberships/addMembership 的存在性校验)
+   */
+  private async adminDeptOwnerIds(): Promise<string[]> {
+    const rows = await this.prisma.organization.findMany({
+      where: { kind: 'admin', meta: { contains: '"ownerUserId"' } },
+      select: { meta: true },
+    });
+    const ids = new Set<string>();
+    for (const r of rows) {
+      try {
+        const owner = (JSON.parse(r.meta ?? '{}') as { ownerUserId?: unknown }).ownerUserId;
+        if (typeof owner === 'string' && owner) ids.add(owner);
+      } catch {
+        /* 忽略坏 JSON */
+      }
+    }
+    return Array.from(ids);
+  }
+
+  /**
+   * 统计:总数 / 在职数 / 行政机构未分配 / 党组织未分配 —— 用户管理工具条角标用(全库口径,不受列表过滤影响)。
+   * noPartyOrg 只统计政治面貌=中共党员/预备党员的人(与列表 noPartyOrg 过滤同口径,角标数=点击后的 total)。
+   */
+  async stats() {
+    const [total, active, noAdminOrg, noPartyOrg] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.user.count({ where: { active: true } }),
+      this.prisma.user.count({ where: { memberships: { none: { org: { kind: 'admin' } } } } }),
+      this.prisma.user.count({
+        where: {
+          ...IS_PARTY_MEMBER_WHERE,
+          memberships: { none: { org: { kind: 'party' } } },
+        },
+      }),
+    ]);
+    return { total, active, noAdminOrg, noPartyOrg };
   }
 
   /** 批量按 id 查姓名:{ id → name }(展示用;不存在/停用的 id 不在结果里)。跨模块松引用解析名字用。 */

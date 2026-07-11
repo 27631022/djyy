@@ -28,6 +28,8 @@ export interface OrgMember {
   position: string | null;
   isPrimary: boolean;
   isDirect: boolean;
+  /** 成员在本机构内的排序号(拖拽排序;仅直接成员有意义) */
+  sortOrder: number;
 }
 
 @Injectable()
@@ -164,6 +166,7 @@ export class OrganizationService {
         position: r.position,
         isPrimary: r.isPrimary,
         isDirect,
+        sortOrder: r.sortOrder,
       };
       if (!existing) {
         byUser.set(r.userId, m);
@@ -178,9 +181,34 @@ export class OrganizationService {
 
     return Array.from(byUser.values()).sort((a, b) => {
       if (a.isDirect !== b.isDirect) return a.isDirect ? -1 : 1;
+      // 直接成员优先按拖拽 sortOrder 排;传递成员(来自下级)无本机构排序号,退回姓名
+      if (a.isDirect && b.isDirect && a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
       if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
       return a.name.localeCompare(b.name, 'zh');
     });
+  }
+
+  /**
+   * 拖拽排序:按传入的 userId 顺序,给「本机构的直接成员」重排 sortOrder(10,20,30…)。
+   * 只认在本机构里的 userId,其余忽略;不在列表里的直接成员保持原 sortOrder(排到后面)。
+   */
+  async reorderMembers(orgId: string, userIds: string[]): Promise<void> {
+    await this.findOne(orgId);
+    const existing = await this.prisma.userOrganization.findMany({
+      where: { orgId },
+      select: { userId: true },
+    });
+    const valid = new Set(existing.map((e) => e.userId));
+    const ordered = [...new Set(userIds)].filter((u) => valid.has(u));
+    if (!ordered.length) return;
+    await this.prisma.$transaction(
+      ordered.map((userId, i) =>
+        this.prisma.userOrganization.update({
+          where: { userId_orgId: { userId, orgId } },
+          data: { sortOrder: (i + 1) * 10 },
+        }),
+      ),
+    );
   }
 
   async findOne(id: string): Promise<Organization> {

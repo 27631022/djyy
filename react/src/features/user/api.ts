@@ -78,15 +78,41 @@ export interface UserDetail {
 export interface ListUsersQuery {
   search?: string;
   adminOrgId?: string;
+  /** 配合 adminOrgId:true = 该机构及其全部下级(子树在服务端展开,避免超长 URL) */
+  adminOrgSubtree?: boolean;
   /** 行政机构 id 列表(任一命中即匹配);用于「派发对象·个人」按本单位子树过滤 */
   adminOrgIds?: string[];
   partyOrgId?: string;
   active?: boolean;
   hasParty?: boolean;
+  /** 只列「未分配任何行政机构」的用户 */
+  noAdminOrg?: boolean;
+  /** 只列「政治面貌=中共党员/预备党员 且 未加入任何党组织」的用户 */
+  noPartyOrg?: boolean;
+  /** 行政职务关键词(任一「包含」命中)。筛选面板已改用 inDept,保留供 API/旧检索模板 */
+  positionKeywords?: string[];
+  /** 所属机构是否是「部门」:true=挂在任一部门下 / false=有行政归属但不在任何部门 / 不传=不限 */
+  inDept?: boolean;
+  /** 政治面貌字典 code 列表(任一命中) */
+  politicalStatuses?: string[];
+  /** 角色 id 列表(任一命中) */
+  roleIds?: string[];
+  /** 是否部门负责人(组织管理里指定的 meta.ownerUserId):true=是 / false=否 / 不传=不限 */
+  deptOwner?: boolean;
   take?: number;
   skip?: number;
   sortBy?: "createdAt" | "name" | "username";
   sortDir?: "asc" | "desc";
+}
+
+/** 用户统计(工具条角标):全库口径,不受列表过滤影响 */
+export interface UserStats {
+  total: number;
+  active: number;
+  /** 未分配任何行政机构的人数 */
+  noAdminOrg: number;
+  /** 政治面貌=中共党员/预备党员、但未加入任何党组织的人数 */
+  noPartyOrg: number;
 }
 
 export interface CreateUserInput {
@@ -157,10 +183,18 @@ export const usersApi = {
         params: {
           ...(q.search ? { search: q.search } : {}),
           ...(q.adminOrgId ? { adminOrgId: q.adminOrgId } : {}),
+          ...(q.adminOrgSubtree ? { adminOrgSubtree: "true" } : {}),
           ...(q.adminOrgIds && q.adminOrgIds.length ? { adminOrgIds: q.adminOrgIds.join(",") } : {}),
           ...(q.partyOrgId ? { partyOrgId: q.partyOrgId } : {}),
           ...(q.active !== undefined ? { active: String(q.active) } : {}),
           ...(q.hasParty !== undefined ? { hasParty: String(q.hasParty) } : {}),
+          ...(q.noAdminOrg ? { noAdminOrg: "true" } : {}),
+          ...(q.noPartyOrg ? { noPartyOrg: "true" } : {}),
+          ...(q.positionKeywords?.length ? { positionKeywords: q.positionKeywords.join(",") } : {}),
+          ...(q.inDept !== undefined ? { inDept: String(q.inDept) } : {}),
+          ...(q.politicalStatuses?.length ? { politicalStatuses: q.politicalStatuses.join(",") } : {}),
+          ...(q.roleIds?.length ? { roleIds: q.roleIds.join(",") } : {}),
+          ...(q.deptOwner !== undefined ? { deptOwner: String(q.deptOwner) } : {}),
           ...(q.take !== undefined ? { take: q.take } : {}),
           ...(q.skip !== undefined ? { skip: q.skip } : {}),
           ...(q.sortBy ? { sortBy: q.sortBy } : {}),
@@ -168,6 +202,9 @@ export const usersApi = {
         },
       })
       .then((r) => r.data),
+
+  /** 统计角标(总数/在职/行政未分配/党组织未加入) */
+  stats: () => api.get<UserStats>("/users/stats").then((r) => r.data),
 
   get: (id: string) => api.get<UserDetail>(`/users/${id}`).then((r) => r.data),
 

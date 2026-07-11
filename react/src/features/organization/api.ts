@@ -94,6 +94,8 @@ export interface OrgMember {
   isPrimary: boolean;
   /** true = 直接挂本组织; false = 通过下级组织进入 (传递) */
   isDirect: boolean;
+  /** 成员在本机构内的排序号(拖拽排序;仅直接成员有意义) */
+  sortOrder: number;
 }
 
 export interface CreateOrgInput {
@@ -160,6 +162,10 @@ export const organizationsApi = {
   /** 拖拽移动节点 */
   move: (id: string, targetId: string, position: MovePosition) =>
     api.post<Organization>(`/organizations/${id}/move`, { targetId, position }).then((r) => r.data),
+
+  /** 拖拽排序本机构直接成员(userIds = 期望顺序) */
+  reorderMembers: (id: string, userIds: string[]) =>
+    api.post(`/organizations/${id}/members/reorder`, { userIds }).then((r) => r.data),
 
   remove: (id: string, hard = false) =>
     api.delete(`/organizations/${id}`, { params: hard ? { hard: "true" } : {} }),
