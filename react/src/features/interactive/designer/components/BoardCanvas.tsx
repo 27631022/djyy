@@ -35,7 +35,11 @@ interface Props {
  */
 export function BoardCanvas({ design, tool, setTool, selection, setSelection, record, update, commit }: Props) {
   const boxRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{ type: "point"; idx: number } | { type: "checkpoint"; id: string } | null>(null);
+  // recorded:历史存档延迟到**首次真实移动**时才做 —— 纯点选(down+up 未动)不产生空历史条目,
+  // 否则连续点选几个对象就把 50 条历史挤掉、Ctrl+Z 表现为「按了没反应」(对抗审查抓到)
+  const dragRef = useRef<
+    { type: "point"; idx: number; recorded: boolean } | { type: "checkpoint"; id: string; recorded: boolean } | null
+  >(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
 
   const { board } = design;
@@ -75,6 +79,10 @@ export function BoardCanvas({ design, tool, setTool, selection, setSelection, re
         toast.warning("先用「画路线」画出行进路线,再放关卡");
         return;
       }
+      if (design.board.checkpoints.length >= 20) {
+        toast.warning("关卡最多 20 个");
+        return;
+      }
       const kind = tool === "place:quiz" ? "quiz" : "spot";
       const ui = getCheckpointUi(kind);
       if (!ui) return;
@@ -96,8 +104,7 @@ export function BoardCanvas({ design, tool, setTool, selection, setSelection, re
     if (tool !== "select") return;
     e.preventDefault();
     e.stopPropagation();
-    record();
-    dragRef.current = { type: "point", idx };
+    dragRef.current = { type: "point", idx, recorded: false };
     setSelection({ type: "point", idx });
     boxRef.current?.setPointerCapture?.(e.pointerId);
   };
@@ -105,8 +112,7 @@ export function BoardCanvas({ design, tool, setTool, selection, setSelection, re
     if (tool !== "select") return;
     e.preventDefault();
     e.stopPropagation();
-    record();
-    dragRef.current = { type: "checkpoint", id };
+    dragRef.current = { type: "checkpoint", id, recorded: false };
     setSelection({ type: "checkpoint", id });
     boxRef.current?.setPointerCapture?.(e.pointerId);
   };
@@ -117,6 +123,10 @@ export function BoardCanvas({ design, tool, setTool, selection, setSelection, re
     if (drawing || placing) setCursor(p);
     const d = dragRef.current;
     if (!d) return;
+    if (!d.recorded) {
+      record(); // 首次真实移动才存档(见 dragRef 注释)
+      d.recorded = true;
+    }
     if (d.type === "point") {
       update((dz) => ({
         ...dz,
@@ -136,6 +146,10 @@ export function BoardCanvas({ design, tool, setTool, selection, setSelection, re
   };
 
   const insertMidpoint = (i: number) => {
+    if (route.length >= MAX_ROUTE_POINTS) {
+      toast.warning(`路线最多 ${MAX_ROUTE_POINTS} 个点`); // 后端会截尾,不拦会把真正的终点截掉
+      return;
+    }
     const a = route[i];
     const b = route[i + 1];
     commit((d) => ({

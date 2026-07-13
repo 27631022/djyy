@@ -95,7 +95,9 @@ function RegionEditor({ puzzle, onRegions }: { puzzle: SpotPuzzle; onRegions: (r
       if (rs) {
         // 过小的新建热区丢弃(误触);其余一次性提交给父级(进一步历史)
         const done = d.mode === "create" ? rs.filter((r, i) => i !== rs.length - 1 || (r.w >= MIN_SIZE && r.h >= MIN_SIZE)) : rs;
-        onRegions(done.map((r) => ({ x: r.x, y: r.y, w: Math.max(MIN_SIZE, r.w), h: Math.max(MIN_SIZE, r.h) })).slice(0, 8));
+        const next = done.map((r) => ({ x: r.x, y: r.y, w: Math.max(MIN_SIZE, r.w), h: Math.max(MIN_SIZE, r.h) })).slice(0, 8);
+        // 无实际变化(误触/原地松手)不提交 —— 否则空条目挤占撤销历史
+        if (JSON.stringify(next) !== JSON.stringify(puzzle.regions)) onRegions(next);
       }
       return null;
     });
@@ -198,13 +200,15 @@ function SpotEditor({ value, onChange, designId }: CheckpointEditorProps) {
           />
         </div>
       ))}
-      <button
-        type="button"
-        onClick={() => setPuzzles([...puzzles, { id: newId(), regions: [] }])}
-        className="w-full rounded-md border border-dashed border-gray-300 py-1.5 text-sm text-gray-500 hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
-      >
-        + 添加找错图(答错自动换下一图)
-      </button>
+      {puzzles.length < 20 && (
+        <button
+          type="button"
+          onClick={() => setPuzzles([...puzzles, { id: newId(), regions: [] }])}
+          className="w-full rounded-md border border-dashed border-gray-300 py-1.5 text-sm text-gray-500 hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+        >
+          + 添加找错图(答错自动换下一图,最多 20 图)
+        </button>
+      )}
     </div>
   );
 }
@@ -249,8 +253,12 @@ export const spotCheckpoint: CheckpointUiDef = {
   EditorPanel: SpotEditor,
   Play: SpotPlay,
   validate(cp) {
-    const valid = (cp.spot?.puzzles ?? []).filter((p) => p.imageFileId && p.regions.length >= 1);
+    // 与后端 normalize 同口径:有图 + ≥1 热区,不完整的图会被逐张剔除(不只在全空时才告警)
+    const all = cp.spot?.puzzles ?? [];
+    const valid = all.filter((p) => p.imageFileId && p.regions.length >= 1);
     if (!valid.length) return "没有有效找错图(需上传图片 + 至少 1 个热区),保存后该关将被忽略";
+    const bad = all.length - valid.length;
+    if (bad > 0) return `有 ${bad} 张找错图不完整(缺图或没画热区),保存后这些图将被忽略`;
     return null;
   },
 };

@@ -357,7 +357,10 @@ function RouteRaceRemote({ view, connected, sendAction, grouping }: GameRemotePr
   const v = view as RRRemoteView | null;
   const pendingRef = useRef(0);
   const [bump, setBump] = useState(0);
-  const [submittedNonce, setSubmittedNonce] = useState<number | null>(null);
+  // 已提交的题目身份(cpId:nonce)。3s 未有服务端推进自动解禁允许重交 —— 服务端答案处理幂等
+  // (重复正确答案被闸1丢弃/旧 nonce 被闸3丢弃),重交无害;不设超时的话,答案消息在弱网丢失
+  // 或「再来一局」后同 cpId+nonce 重现时,按钮会永久锁死在「等待判定」(对抗审查抓到)。
+  const [submittedKey, setSubmittedKey] = useState<string | null>(null);
   const myTeamColor = v?.myTeamId ? grouping?.teams.find((t) => t.id === v.myTeamId)?.color ?? null : null;
   const remoteBgUrl = v?.remoteBgFileId ? interactiveFileUrl(v.remoteBgFileId) : null;
   const running = v?.status === "running";
@@ -381,11 +384,19 @@ function RouteRaceRemote({ view, connected, sendAction, grouping }: GameRemotePr
     setBump((b) => (b + 1) % 1000);
   };
 
+  // 提交超时解禁(effect 只做延时清除,可见性由渲染期 challengeKey 对比派生)
+  useEffect(() => {
+    if (!submittedKey) return;
+    const t = setTimeout(() => setSubmittedKey(null), 3000);
+    return () => clearTimeout(t);
+  }, [submittedKey]);
+
   if (!v) return <div className="text-center text-white/70 text-xl">准备中…</div>;
   const finished = v.myFinishedAt !== null;
   const progressPct = Math.min(100, Math.round((v.mySteps / Math.max(1, v.totalSteps)) * 100));
-  // 答案发出后禁点到下一题(nonce 变)或解锁(challenge 消失);答案**立即上报不合批**
-  const answerDisabled = challenge !== null && submittedNonce === challenge.nonce;
+  // 答案发出后禁点,直到服务端推进(换题/解锁)或 3s 超时;答案**立即上报不合批**
+  const challengeKey = challenge ? `${challenge.cpId}:${challenge.nonce}` : null;
+  const answerDisabled = challengeKey !== null && submittedKey === challengeKey;
 
   return (
     <div className="w-full flex flex-col items-center gap-5">
@@ -437,7 +448,7 @@ function RouteRaceRemote({ view, connected, sendAction, grouping }: GameRemotePr
                 challenge={challenge}
                 disabled={answerDisabled || !connected}
                 submit={(payload) => {
-                  setSubmittedNonce(challenge.nonce);
+                  setSubmittedKey(`${challenge.cpId}:${challenge.nonce}`);
                   sendAction({ kind: "answer", cpId: challenge.cpId, nonce: challenge.nonce, ...payload });
                 }}
               />
@@ -481,7 +492,8 @@ function RouteRaceRemote({ view, connected, sendAction, grouping }: GameRemotePr
   );
 }
 
-/** 答题结果反馈条:可见性渲染期派生(新 nonce 即显),effect 只负责 3.5s 后收起 */
+/** 答题结果反馈条:可见性渲染期派生(新结果即显),effect 只负责 3.5s 后收起。
+ *  去重键用 nonce:at 复合 —— 「再来一局」后 nonce 从头计,单用 nonce 会把新局首次反馈误吞。 */
 function ResultBanner({
   lastResult,
   teamMode,
@@ -489,14 +501,14 @@ function ResultBanner({
   lastResult: RRRemoteView["lastResult"];
   teamMode: boolean;
 }) {
-  const [dismissedNonce, setDismissedNonce] = useState<number | null>(null);
-  const nonce = lastResult?.nonce ?? null;
+  const [dismissedKey, setDismissedKey] = useState<string | null>(null);
+  const key = lastResult ? `${lastResult.nonce}:${lastResult.at}` : null;
   useEffect(() => {
-    if (nonce === null) return;
-    const t = setTimeout(() => setDismissedNonce(nonce), 3500);
+    if (key === null) return;
+    const t = setTimeout(() => setDismissedKey(key), 3500);
     return () => clearTimeout(t);
-  }, [nonce]);
-  if (!lastResult || dismissedNonce === lastResult.nonce) return null;
+  }, [key]);
+  if (!lastResult || dismissedKey === key) return null;
   return lastResult.correct ? (
     <div className="rounded-full bg-green-600/90 px-4 py-1.5 text-white text-sm font-bold">
       ✅ {teamMode ? `「${lastResult.by}」答对,全队通过!` : "答对了,继续冲!"}
@@ -513,10 +525,25 @@ function ResultBanner({
 function RouteRaceConfig({ value, onChange }: GameConfigProps) {
   const designId = typeof value.designId === "string" ? value.designId : "";
   const designName = typeof value.designName === "string" ? value.designName : "";
-  const board = (value.board ?? {}) as { route?: unknown[]; checkpoints?: unknown[]; totalSteps?: number };
+  const board = (value.board ?? {}) as { route?: unknown[]; checkpoints?: { t?: number }[]; totalSteps?: number };
   const durationSec = Number(value.durationSec ?? 120);
   const totalSteps = Number(board.totalSteps ?? 100);
   const [syncing, setSyncing] = useState(false);
+  // 与后端 computeGates 同口径:总步数调小会把挤出终点的关卡**永久剔除出快照**,提前算出来亮警告
+  const droppedCps = (() => {
+    const ts = (Array.isArray(board.checkpoints) ? board.checkpoints : [])
+      .map((c) => Number(c?.t) || 0)
+      .sort((a, b) => a - b);
+    let last = 0;
+    let dropped = 0;
+    for (const t of ts) {
+      let gate = Math.min(totalSteps, Math.max(1, Math.round(t * totalSteps)));
+      if (gate <= last) gate = last + 1;
+      if (gate > totalSteps) dropped++;
+      last = gate;
+    }
+    return dropped;
+  })();
 
   const resync = async () => {
     if (!designId) return;
@@ -524,9 +551,10 @@ function RouteRaceConfig({ value, onChange }: GameConfigProps) {
     try {
       const row = await designApi.get(designId);
       const design = parseDesign(row.configJson) as unknown as Record<string, unknown>;
-      delete design.sound; // 节目音效独立(GameEditor 外层持有),重新同步不动它
+      // 保留 design.sound:草稿流(建活动/添加节目)里 config 是音效的唯一载体;
+      // 已存节目的 GameEditor 保存时 {...cfg, sound} 会用外层音效覆盖,带着无害
       onChange({ ...design, designId, designName: row.name });
-      toast.success("已同步最新设计(音效保持本节目设置);记得点「保存节目设置」");
+      toast.success("已同步最新设计;记得保存(已存节目的音效以节目设置为准)");
     } catch {
       toast.error("同步失败(设计可能已被删除)");
     } finally {
@@ -578,6 +606,11 @@ function RouteRaceConfig({ value, onChange }: GameConfigProps) {
           />
         </label>
       </div>
+      {droppedCps > 0 && (
+        <div className="text-xs text-red-500 font-semibold">
+          ⚠ 当前总步数下有 {droppedCps} 个关卡挤不进路线,保存后将被永久剔除 —— 请增大总步数或去编辑器调整关卡位置
+        </div>
+      )}
       <div className="text-[11px] text-gray-400">
         本节目是设计的快照:编辑器里改设计不影响已添加节目,需要时点「重新同步设计」;路线/关卡/背景请在编辑器改
       </div>

@@ -96,12 +96,20 @@ export const CHECKPOINT_KINDS: Record<CheckpointKind, CheckpointSpec> = {
       for (const q of list) {
         const o = asRec(q);
         const text = str(o.text, 200);
-        const options = (Array.isArray(o.options) ? o.options : [])
-          .map((x) => str(x, 80))
-          .filter(Boolean)
-          .slice(0, 6);
+        // 过滤空选项/截断时记录「原下标 → 新下标」映射,correctIdx 按映射平移;
+        // 正确项本身为空/越界/被截断 → **整题剔除**(绝不悄悄指向别的选项 —— 对抗审查抓到的静默错位)
+        const rawOpts = (Array.isArray(o.options) ? o.options : []).map((x) => str(x, 80));
+        const options: string[] = [];
+        const idxMap = new Map<number, number>();
+        rawOpts.forEach((opt, i) => {
+          if (opt && options.length < 6) {
+            idxMap.set(i, options.length);
+            options.push(opt);
+          }
+        });
         if (!text || options.length < 2) continue; // 空题干/不足两项 → 该题剔除
-        const correctIdx = Math.min(options.length - 1, Math.max(0, Math.round(clampNum(o.correctIdx, 0, options.length - 1, 0))));
+        const correctIdx = idxMap.get(Math.round(Number(o.correctIdx)));
+        if (correctIdx === undefined) continue;
         const out: QuizQuestion = { id: idOf(o.id), text, options, correctIdx };
         const img = fid(o.imageFileId);
         if (img) out.imageFileId = img;

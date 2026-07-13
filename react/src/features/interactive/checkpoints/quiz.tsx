@@ -119,13 +119,15 @@ function QuizEditor({ value, onChange, designId }: CheckpointEditorProps) {
           <div className="text-[11px] text-gray-400">选中的圆点 = 正确答案</div>
         </div>
       ))}
-      <button
-        type="button"
-        onClick={() => setQuestions([...questions, newQuestion()])}
-        className="w-full rounded-md border border-dashed border-gray-300 py-1.5 text-sm text-gray-500 hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
-      >
-        + 添加题目(答错自动换下一题)
-      </button>
+      {questions.length < 20 && (
+        <button
+          type="button"
+          onClick={() => setQuestions([...questions, newQuestion()])}
+          className="w-full rounded-md border border-dashed border-gray-300 py-1.5 text-sm text-gray-500 hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+        >
+          + 添加题目(答错自动换下一题,最多 20 题)
+        </button>
+      )}
     </div>
   );
 }
@@ -166,8 +168,14 @@ export const quizCheckpoint: CheckpointUiDef = {
   EditorPanel: QuizEditor,
   Play: QuizPlay,
   validate(cp) {
-    const valid = (cp.quiz?.questions ?? []).filter((q) => q.text.trim() && q.options.filter((o) => o.trim()).length >= 2);
-    if (!valid.length) return "没有有效题目(需题干 + 至少 2 个选项),保存后该关将被忽略";
+    // 与后端 normalize 同口径:题干非空 + ≥2 非空选项 + 正确项指向非空选项(否则该题被剔除)
+    const all = cp.quiz?.questions ?? [];
+    const valid = all.filter(
+      (q) => q.text.trim() && q.options.filter((o) => o.trim()).length >= 2 && !!q.options[q.correctIdx]?.trim(),
+    );
+    if (!valid.length) return "没有有效题目(需题干 + 至少 2 个选项 + 正确答案不指向空选项),保存后该关将被忽略";
+    const bad = all.length - valid.length;
+    if (bad > 0) return `有 ${bad} 道题不完整(缺题干/选项不足/正确答案指向空选项),保存后这些题将被忽略`;
     return null;
   },
 };

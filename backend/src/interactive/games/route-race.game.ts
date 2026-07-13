@@ -73,8 +73,14 @@ function fid(v: unknown): string | undefined {
   return s ? s.slice(0, 64) : undefined;
 }
 
+/**
+ * racer 键:团队 racer 加 `t:` 前缀命名空间 —— 队伍 id 会随 grouping/投影广播给所有客户端,
+ * 而 deviceId 完全由客户端自报;不隔离的话,攻击者可用 deviceId=某队伍 id 入场(不选队),
+ * 与该队成员落进**同一个 racer**,进而偷看团队题目/故意答错拖累别队(对抗审查抓到)。
+ * 个人 racer 键保持裸 deviceId(projectScreen 的 avatarDeviceId 取 s.key 依赖这一点)。
+ */
 function racerKeyOf(meta: Pick<ActionMeta, 'deviceId' | 'teamId'>): string {
-  return meta.teamId ?? meta.deviceId;
+  return meta.teamId ? `t:${meta.teamId}` : meta.deviceId;
 }
 
 function newRacer(meta: Pick<ActionMeta, 'nickname' | 'teamId' | 'teamName'>): RacerState {
@@ -167,11 +173,13 @@ function reduceTap(
   // players[deviceId].teamId 找团队 racer —— 激活时播种的玩家 teamId 还是选队前的旧值,
   // 队友在队伍被拦截期间点击若被整个丢弃,他的手机将永远看不到团队题目(E2E 实测抓到)。
   if (racer.finishedAt !== null || racer.blockedCpIdx !== null) {
+    // meta.teamId 恒为权威值(room 运行态,null=确实无队)—— 不回落 state 旧值,
+    // 否则「退出队伍」信号被 ?? 吞掉,幽灵队籍永不自愈(对抗审查抓到)
     const p0 = state.players[meta.deviceId];
-    const teamId = meta.teamId ?? p0?.teamId ?? null;
+    const teamId = meta.teamId ?? null;
     if (p0 && p0.teamId === teamId) return { state };
     const next: PlayerRate = p0
-      ? { ...p0, nickname: meta.nickname || p0.nickname, teamId, teamName: meta.teamName ?? p0.teamName ?? null }
+      ? { ...p0, nickname: meta.nickname || p0.nickname, teamId, teamName: teamId ? (meta.teamName ?? null) : null }
       : newPlayer(meta);
     return { state: { ...state, players: { ...state.players, [meta.deviceId]: next } } };
   }
@@ -192,8 +200,9 @@ function reduceTap(
     [meta.deviceId]: {
       ...p,
       nickname: meta.nickname || p.nickname,
-      teamId: meta.teamId ?? p.teamId ?? null,
-      teamName: meta.teamName ?? p.teamName ?? null,
+      // meta 恒权威(null=确实无队),不回落旧值 —— 见上方拦截路径同款注释
+      teamId: meta.teamId ?? null,
+      teamName: meta.teamId ? (meta.teamName ?? null) : null,
       taps: p.taps + grant,
       rateWinStart: winStart,
       rateWinCount: winCount,
@@ -489,7 +498,7 @@ export const routeRaceGame: GameDef<RouteRaceConfig, RouteRaceState, RouteRaceAc
 
   projectRemote(state, cfg, deviceId) {
     const me = state.players[deviceId];
-    const key = me?.teamId ?? deviceId;
+    const key = me?.teamId ? `t:${me.teamId}` : deviceId; // 与 racerKeyOf 同一命名空间
     const racer = state.racers[key];
     const standings = rankRacers(state.racers);
     const mine = standings.find((s) => s.key === key);
