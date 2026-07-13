@@ -19,6 +19,8 @@ import {
 } from './event-config';
 import { type CreateEventDto, type CreateGameDto } from './dto/create-event.dto';
 import { type UpdateGameDto } from './dto/update-game.dto';
+import { type CreateDesignDto, type UpdateDesignDto } from './dto/design.dto';
+import { collectDesignFileIds, normalizeRouteRaceDesign } from './route-race-design';
 
 /** 操作者上下文(controller 从 @CurrentUser + @Req 组装) */
 export interface InteractiveActor {
@@ -335,6 +337,74 @@ export class InteractiveService {
     return { game: updated, roomCode: game.event.roomCode };
   }
 
+  // ── 自制游戏设计库(互动游戏编辑器产物;凡有 interactive:manage 者共享全库,照 KnowledgeTemplate 简单化) ──
+
+  listDesigns() {
+    return this.prisma.interactiveGameDesign.findMany({ orderBy: { updatedAt: 'desc' } });
+  }
+
+  async getDesign(id: string) {
+    const design = await this.prisma.interactiveGameDesign.findUnique({ where: { id } });
+    if (!design) throw new NotFoundException('设计不存在');
+    return design;
+  }
+
+  async createDesign(dto: CreateDesignDto, actor: InteractiveActor) {
+    const config = normalizeRouteRaceDesign(dto.config ?? {});
+    const design = await this.prisma.interactiveGameDesign.create({
+      data: {
+        name: dto.name.trim() || '未命名游戏',
+        configJson: JSON.stringify(config),
+        createdById: actor.sub,
+        createdByName: actor.name,
+      },
+    });
+    await this.audit.log({
+      action: 'interactive.design.create',
+      target: design.id,
+      actorId: actor.sub,
+      actorName: actor.name,
+      ip: actor.ip,
+      detail: { name: design.name },
+    });
+    return design;
+  }
+
+  /** 更新设计(名称/整份配置)。只影响设计库本身,不影响已快照的节目(须显式「重新同步设计」)。 */
+  async updateDesign(id: string, dto: UpdateDesignDto, actor: InteractiveActor) {
+    const design = await this.prisma.interactiveGameDesign.findUnique({ where: { id } });
+    if (!design) throw new NotFoundException('设计不存在');
+    const data: { name?: string; configJson?: string } = {};
+    if (dto.name !== undefined) data.name = dto.name.trim() || design.name;
+    if (dto.config !== undefined) data.configJson = JSON.stringify(normalizeRouteRaceDesign(dto.config));
+    const updated = await this.prisma.interactiveGameDesign.update({ where: { id }, data });
+    await this.audit.log({
+      action: 'interactive.design.update',
+      target: id,
+      actorId: actor.sub,
+      actorName: actor.name,
+      ip: actor.ip,
+      detail: { name: updated.name },
+    });
+    return updated;
+  }
+
+  /** 删除设计。素材不联动删(可能被已快照的节目引用),交孤儿 GC 按 30 天宽限回收。 */
+  async removeDesign(id: string, actor: InteractiveActor) {
+    const design = await this.prisma.interactiveGameDesign.findUnique({ where: { id } });
+    if (!design) throw new NotFoundException('设计不存在');
+    await this.prisma.interactiveGameDesign.delete({ where: { id } });
+    await this.audit.log({
+      action: 'interactive.design.delete',
+      target: id,
+      actorId: actor.sub,
+      actorName: actor.name,
+      ip: actor.ip,
+      detail: { name: design.name },
+    });
+    return { ok: true };
+  }
+
   /** 孤儿 GC 在用集合:各活动 configJson 里引用的背景图 + 背景音乐 fileId(接 MaintenanceService)。 */
   async collectInUseFileIds(): Promise<Set<string>> {
     const events = await this.prisma.interactiveEvent.findMany({ select: { configJson: true } });
@@ -346,8 +416,8 @@ export class InteractiveService {
         if (t.fileId) ids.add(t.fileId);
       }
     }
-    // 游戏配置里的主题覆盖素材(赛跑主题 override)+ 节目级音效上传件
-    const games = await this.prisma.interactiveGame.findMany({ select: { configJson: true } });
+    // 游戏配置里的主题覆盖素材(赛跑主题 override)+ 节目级音效上传件 + 自制闯关赛设计快照素材
+    const games = await this.prisma.interactiveGame.findMany({ select: { gameType: true, configJson: true } });
     for (const g of games) {
       try {
         const cfg = JSON.parse(g.configJson) as {
@@ -368,6 +438,19 @@ export class InteractiveService {
         for (const eff of Object.values(cfg.sound?.effects ?? {})) {
           if (eff?.fileId) ids.add(eff.fileId);
         }
+        // 自制闯关赛节目 = 设计快照:背景/人物/题图/找错图/领奖台/手机背景全在 collectDesignFileIds
+        if (g.gameType === 'route_race') {
+          for (const f of collectDesignFileIds(normalizeRouteRaceDesign(cfg))) ids.add(f);
+        }
+      } catch {
+        /* ignore 非 JSON */
+      }
+    }
+    // 自制游戏设计库(InteractiveGameDesign.configJson)的素材 —— 与节目快照共用同一收集器
+    const designs = await this.prisma.interactiveGameDesign.findMany({ select: { configJson: true } });
+    for (const d of designs) {
+      try {
+        for (const f of collectDesignFileIds(normalizeRouteRaceDesign(JSON.parse(d.configJson)))) ids.add(f);
       } catch {
         /* ignore 非 JSON */
       }

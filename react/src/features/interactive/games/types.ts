@@ -40,6 +40,8 @@ export interface GameUi {
   icon: string; // lucide 图标名
   hint: string; // 一句话玩法说明(配置台/选择器)
   rules?: string; // 玩家侧规则说明(手机上「游戏名称」下展示,介绍个人/团体赛怎么玩;\n 分行)
+  /** true = 不进「添加节目」的游戏类型裸列(如 route_race 必须从「自制游戏库」带设计添加,防空配置) */
+  hidden?: boolean;
   defaultConfig: Record<string, unknown>;
   /** 每游戏默认音效覆盖(未上传自定义音时用;缺省槽位回退全局内置 DEFAULT_SOUND_URL) */
   defaultSounds?: Partial<Record<SoundKey, string>>;

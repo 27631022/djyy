@@ -84,6 +84,21 @@ model User {
   memberships  UserOrganization[]
   roles        UserRole[]
   certificates Certificate[] // V2:作为持证人的已发证书
+  directoryFavorites   DirectoryFavorite[] @relation("DirFavOwner")  // 我收藏的通讯录联系人
+  directoryFavoritedBy DirectoryFavorite[] @relation("DirFavTarget") // 我被谁收藏(级联删用)
+}
+
+// 通讯录个人收藏:每个用户收藏一批联系人(门户通讯录右栏「收藏」)
+// @module: user
+model DirectoryFavorite {
+  ownerId      String
+  targetUserId String
+  owner        User     @relation("DirFavOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  target       User     @relation("DirFavTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@id([ownerId, targetUserId])
+  @@index([ownerId])
 }
 
 // 用户 ↔ 组织 多对多 (一人可挂多个组织,但只能有一个 primary)
@@ -1697,4 +1712,21 @@ model InteractiveRound {
   endedAt    DateTime?
 
   @@index([gameId])
+}
+
+// 自制游戏设计:互动游戏编辑器产物库(背景/路线/关卡/人物/音效/颁奖版式,RouteRaceDesign JSON)。
+// 设计一次可在任意活动添加为节目(添加时把 configJson 快照进 InteractiveGame.configJson,
+// 之后各节目独立;编辑器改设计不影响已添加节目,须在节目配置里显式「重新同步设计」)。
+// 素材全走 storage fileId 松引用(folder=design-<id>),GC 在用集合见 collectDesignFileIds。
+// @module: interactive
+model InteractiveGameDesign {
+  id            String   @id @default(cuid())
+  name          String
+  configJson    String   @default("{}") // RouteRaceDesign 快照(经 normalizeRouteRaceDesign 归一化)
+  createdById   String // 松引用 User.id
+  createdByName String // 快照
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([createdAt])
 }

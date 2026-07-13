@@ -98,6 +98,8 @@ const SearchPage = lazy(() => import("@/features/search").then((m) => ({ default
 const InteractiveConsolePage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractiveConsolePage })));
 const InteractiveScreenPage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractiveScreenPage })));
 const InteractivePlayPage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractivePlayPage })));
+const InteractiveDesignListPage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractiveDesignListPage })));
+const InteractiveGameDesignerPage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractiveGameDesignerPage })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -220,8 +222,10 @@ const ADMIN_ROUTES: RouteObject[] = [
   { path: "showcase/entries", element: <ShowcaseEntryReviewPage /> },
   { path: "showcase/categories", element: <ShowcaseCategoriesPage /> },
   { path: "showcase/feedback", element: <ShowcaseFeedbackPage /> },
-  // 现场互动(interactive)后台配置台
+  // 现场互动(interactive)后台配置台 + 互动游戏编辑器(自制游戏库/三栏设计器)
   { path: "interactive", element: <InteractiveConsolePage /> },
+  { path: "interactive/designs", element: <InteractiveDesignListPage /> },
+  { path: "interactive/designer/:designId", element: <InteractiveGameDesignerPage /> },
   // 通用报送平台(report)
   { path: "reports", element: <ReportTasksPage /> },
   { path: "reports/publish", element: <PublishChooserPage /> },

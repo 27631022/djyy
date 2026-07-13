@@ -1,7 +1,10 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { storageApi } from "@/features/storage";
+import { designApi, type GameDesignRow } from "../designer/designApi";
+import { parseDesign } from "../designer/designTypes";
 import {
   interactiveApi,
   parseGameGrouping,
@@ -32,6 +35,16 @@ interface Draft {
 
 function newDraft(ui: GameUi): Draft {
   return { gameType: ui.type, title: ui.label, config: { ...ui.defaultConfig } };
+}
+
+/** 自制游戏(编辑器产物)→ 节目草稿:设计整份快照进 config(+designId 溯源;设计里配的音效经后端 normalizeGameSound 成为本节目初始音效) */
+function draftFromDesign(row: GameDesignRow): Draft {
+  const design = parseDesign(row.configJson) as unknown as Record<string, unknown>;
+  return {
+    gameType: "route_race",
+    title: row.name,
+    config: { ...design, designId: row.id, designName: row.name },
+  };
 }
 
 /**
@@ -184,6 +197,9 @@ export function GamesManager({ event }: { event: InteractiveEvent }) {
   const qc = useQueryClient();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // 自制游戏库(互动游戏编辑器产物):每个设计一个「+ 设计名」添加按钮
+  const designsQuery = useQuery({ queryKey: ["interactive", "designs"], queryFn: designApi.list });
+  const designs = designsQuery.data ?? [];
 
   const addMut = useMutation({
     mutationFn: (input: CreateGameInput) => interactiveApi.addGame(event.id, input),
@@ -260,18 +276,37 @@ export function GamesManager({ event }: { event: InteractiveEvent }) {
       </div>
 
       {!draft ? (
-        <div className="flex gap-2 flex-wrap">
-          <span className="text-sm text-gray-500 self-center">添加节目:</span>
-          {GAME_UI_LIST.map((ui) => (
-            <button
-              key={ui.type}
-              type="button"
-              onClick={() => setDraft(newDraft(ui))}
-              className="text-sm rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50"
-            >
-              + {ui.label}
-            </button>
-          ))}
+        <div className="space-y-2">
+          <div className="flex gap-2 flex-wrap">
+            <span className="text-sm text-gray-500 self-center">添加节目:</span>
+            {GAME_UI_LIST.map((ui) => (
+              <button
+                key={ui.type}
+                type="button"
+                onClick={() => setDraft(newDraft(ui))}
+                className="text-sm rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50"
+              >
+                + {ui.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 flex-wrap items-center">
+            <span className="text-sm text-gray-500">自制游戏:</span>
+            {designs.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setDraft(draftFromDesign(d))}
+                title="互动游戏编辑器设计的闯关赛(添加时快照当前设计)"
+                className="text-sm rounded-md border border-dashed border-[var(--party-primary)] text-[var(--party-primary)] px-3 py-1 hover:bg-party-soft"
+              >
+                🎮 + {d.name}
+              </button>
+            ))}
+            <Link to="/admin/interactive/designs" className="text-xs text-gray-400 hover:text-[var(--party-primary)] hover:underline">
+              {designs.length === 0 ? "还没有自制游戏,去游戏编辑器创建 →" : "管理自制游戏 →"}
+            </Link>
+          </div>
         </div>
       ) : (
         <div className="rounded-lg border border-[var(--party-primary)] bg-party-soft p-3 space-y-2">

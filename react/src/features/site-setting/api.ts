@@ -73,6 +73,7 @@ export const FALLBACK_SITE_SETTINGS: SiteSettingsData = {
   topNav: {
     items: [
       { label: "首页", url: "/" },
+      { label: "通讯录", url: "/directory" },
       { label: "党务公开", url: "#" },
       { label: "学习园地", url: "#" },
       { label: "通知公告", url: "#" },

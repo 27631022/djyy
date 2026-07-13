@@ -768,25 +768,43 @@ export default function NavPage() {
             </div>
           </div>
 
-          {/* Nav links — 后台「站点设置 → 首页顶端」可改文字/URL/排序/增删 */}
+          {/* Nav links — 后台「站点设置 → 首页顶端」可改文字/URL/排序/增删。
+              站内路由(/directory、/showcase、/knowledge…)走 SPA 跳转;外链新窗口;# 为占位。
+              通讯录不再写死,在「站点设置 → 首页顶端」加一条 通讯录 → /directory 即可。 */}
           <nav className="hidden md:flex items-center gap-6 mr-4">
-            {/* 通讯录:固定入口(登录后可查同事联系方式;未登录点击跳登录并回跳) */}
-            <Link
-              to="/directory"
-              className="flex items-center gap-1 text-base text-[#1A1A1A] hover:text-[var(--party-primary)] transition-colors font-medium"
-            >
-              <UsersIcon className="w-4 h-4" />
-              通讯录
-            </Link>
             {topNav.items.map((item, idx) => {
-              const isPlaceholder = !item.url || item.url === "#";
+              const url = (item.url ?? "").trim();
+              const isPlaceholder = !url || url === "#";
+              const isInternal = url.startsWith("/");
+              const cls =
+                "text-base text-[#1A1A1A] hover:text-[var(--party-primary)] transition-colors font-medium";
+              if (isPlaceholder) {
+                return (
+                  <a
+                    key={`${item.label}-${idx}`}
+                    href="#"
+                    onClick={(e) => e.preventDefault()}
+                    className={cls}
+                    title="暂未启用,请到「站点设置 → 首页顶端」配置 URL"
+                  >
+                    {item.label}
+                  </a>
+                );
+              }
+              if (isInternal) {
+                return (
+                  <Link key={`${item.label}-${idx}`} to={url} className={cls}>
+                    {item.label}
+                  </Link>
+                );
+              }
               return (
                 <a
                   key={`${item.label}-${idx}`}
-                  href={isPlaceholder ? "#" : item.url}
-                  onClick={isPlaceholder ? (e) => e.preventDefault() : undefined}
-                  className="text-base text-[#1A1A1A] hover:text-[var(--party-primary)] transition-colors font-medium"
-                  title={isPlaceholder ? "暂未启用,请到「站点设置 → 首页顶端」配置 URL" : undefined}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cls}
                 >
                   {item.label}
                 </a>

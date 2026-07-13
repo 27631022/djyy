@@ -10,7 +10,7 @@ import {
   PanelLeftCloseIcon, PanelLeftOpenIcon,
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon, MoreHorizontalIcon,
   ArmchairIcon, PlusIcon, LandmarkIcon, PackageIcon, LibraryIcon,
-  BookOpenIcon, FolderTreeIcon, TrophyIcon, FileCheckIcon, Gamepad2Icon,
+  BookOpenIcon, FolderTreeIcon, TrophyIcon, FileCheckIcon, Gamepad2Icon, PencilRulerIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
 import type { AuthMe } from "@/features/auth";
@@ -69,6 +69,7 @@ const CATEGORIES: Category[] = [
       { path: "/admin/showcase/categories",      label: "分类管理",        icon: FolderTreeIcon,     group: "先锋晒场", perm: "showcase:manage" },
       { path: "/admin/showcase/feedback",        label: "吐槽处理",        icon: MessageSquareTextIcon, group: "先锋晒场", perm: "showcase:manage" },
       { path: "/admin/interactive",              label: "互动活动",        icon: Gamepad2Icon,       group: "现场互动", perm: "interactive:manage" },
+      { path: "/admin/interactive/designs",      label: "自制游戏",        icon: PencilRulerIcon,    group: "现场互动", perm: "interactive:manage" },
     ],
   },
   {

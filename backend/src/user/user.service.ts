@@ -288,6 +288,45 @@ export class UserService {
     };
   }
 
+  /**
+   * 全部行政机构按「组织树 DFS(父→子,同级 sortOrder→名称→id)」的全局序号。
+   * 通讯录「组织顺序」展示用:机关部门在前(公司机关 sortOrder 靠前),一个部门接一个部门。
+   * 机构量级几百,一次全查内存计算。
+   */
+  private async adminOrgDfsOrder(): Promise<{ id: string; seq: number }[]> {
+    const rows = await this.prisma.organization.findMany({
+      where: { kind: 'admin', active: true },
+      select: { id: true, parentId: true, sortOrder: true, name: true },
+    });
+    const sortSib = (a: (typeof rows)[number], b: (typeof rows)[number]) =>
+      a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'zh') || a.id.localeCompare(b.id);
+    // 断链兜底:parentId 为空 或 上级已停用(不在 active 集里)→ 视为根,保证每个活跃机构都拿到 seq
+    // (否则:软删/停用某中层机构后,其仍活跃的子部门从根 DFS 不可达 → 成员从默认视图与总数里凭空消失)。
+    const present = new Set(rows.map((r) => r.id));
+    const children = new Map<string, typeof rows>();
+    const roots: typeof rows = [];
+    for (const r of rows) {
+      if (r.parentId === null || !present.has(r.parentId)) {
+        roots.push(r);
+      } else {
+        const arr = children.get(r.parentId);
+        if (arr) arr.push(r);
+        else children.set(r.parentId, [r]);
+      }
+    }
+    const out: { id: string; seq: number }[] = [];
+    const seen = new Set<string>();
+    let seq = 0;
+    const visit = (node: (typeof rows)[number]) => {
+      if (seen.has(node.id)) return; // 防御环(组织树本应无环)
+      seen.add(node.id);
+      out.push({ id: node.id, seq: seq++ });
+      for (const child of (children.get(node.id) ?? []).slice().sort(sortSib)) visit(child);
+    };
+    for (const root of roots.slice().sort(sortSib)) visit(root);
+    return out;
+  }
+
   /** adminOrgId 及其全部后代机构 id(含自身)。机构量级几百,一次全查内存 BFS。 */
   private async adminSubtreeIds(rootId: string): Promise<string[]> {
     const rows = await this.prisma.organization.findMany({
@@ -454,9 +493,17 @@ export class UserService {
   async contacts(query: ContactsQuery) {
     const take = Math.min(Math.max(query.take ?? 30, 1), 100);
     const skip = Math.max(query.skip ?? 0, 0);
+    // 负责人集合(行政机构 meta.ownerUserId)→ 卡片「负责人」标识
+    const ownerIds = new Set(await this.adminDeptOwnerIds());
 
-    // 非「行政机构浏览」维度的过滤(搜索/党组织/仅党员/是否部门/政治面貌)—— 两种查询模式共用
+    // 非「行政机构浏览」维度的过滤(搜索/党组织/仅党员/是否部门/政治面貌/对口机构集)—— 各查询模式共用
     const userAnds: Prisma.UserWhereInput[] = [];
+    // 对口上级机构 / 下级承接部门 视图:限定到一组行政机构(非空即视为过滤,不进「组织顺序」默认模式)
+    if (query.adminOrgIds?.length) {
+      userAnds.push({
+        memberships: { some: { orgId: { in: query.adminOrgIds }, org: { kind: 'admin' } } },
+      });
+    }
     const q = (query.search ?? '').trim();
     if (q) {
       userAnds.push({
@@ -525,10 +572,50 @@ export class UserService {
           include: { user: { include: memberInclude } },
         }),
       ]);
-      return { total, items: rows.map((m) => this.contactItemOf(m.user)) };
+      return { total, items: rows.map((m) => this.contactItemOf(m.user, ownerIds)) };
     }
 
-    // 广义模式:按姓名分页(全部 / 含下级子树 / 搜索),id 副键稳定分页
+    // 组织顺序模式:纯默认浏览(无单位、无搜索、无筛选)→ 全部人员按组织树 DFS 排
+    // (机关部门在前,一个部门接一个部门;部门内按统一 sortOrder)。用 VALUES 传 DFS 序号让 PG 排序+分页,
+    // 只回本页 id 再水合,避免全量拉取。仅含有主行政归属的人(未分配行政机构者不进此默认视图,可搜索到)。
+    if (!query.adminOrgId && userAnds.length === 0) {
+      const order = await this.adminOrgDfsOrder();
+      if (order.length > 0) {
+        const values = Prisma.join(order.map((o) => Prisma.sql`(${o.id}::text, ${o.seq}::int)`));
+        const popWhere = Prisma.sql`
+          FROM "User" u
+          JOIN "UserOrganization" uo ON uo."userId" = u.id AND uo."isPrimary" = true
+          JOIN "Organization" o ON o.id = uo."orgId" AND o.kind = 'admin' AND o.active = true
+          JOIN (VALUES ${values}) AS ord(orgid, seq) ON ord.orgid = o.id
+          WHERE u.active = true AND u."directoryHidden" = false`;
+        // DISTINCT ON (u.id):同一人若有多条 isPrimary 行政归属(无 DB 唯一约束,合并账号脚本可能造成),
+        // 取其最靠前的组织位置,避免默认视图重复卡片 + 总数虚高。
+        const [idRows, cntRows] = await Promise.all([
+          this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+            SELECT id FROM (
+              SELECT DISTINCT ON (u.id) u.id AS id, ord.seq AS seq, uo."sortOrder" AS so, u.name AS nm
+              ${popWhere}
+              ORDER BY u.id, ord.seq, uo."sortOrder"
+            ) t
+            ORDER BY t.seq, t.so, t.nm, t.id
+            LIMIT ${take} OFFSET ${skip}`),
+          this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`SELECT count(DISTINCT u.id)::bigint AS count ${popWhere}`),
+        ]);
+        const idList = idRows.map((r) => r.id);
+        const users = await this.prisma.user.findMany({
+          where: { id: { in: idList } },
+          include: memberInclude,
+        });
+        const byId = new Map(users.map((u) => [u.id, u] as const));
+        const items = idList
+          .map((id) => byId.get(id))
+          .filter((u): u is NonNullable<typeof u> => !!u)
+          .map((u) => this.contactItemOf(u, ownerIds));
+        return { total: Number(cntRows[0]?.count ?? 0), items };
+      }
+    }
+
+    // 广义模式:按姓名分页(含下级子树 / 搜索 / 带筛选),id 副键稳定分页
     const where: Prisma.UserWhereInput = { active: true, directoryHidden: false };
     const broadAnds = [...userAnds];
     if (query.adminOrgId) {
@@ -554,10 +641,10 @@ export class UserService {
         include: memberInclude,
       }),
     ]);
-    return { total, items: rows.map((u) => this.contactItemOf(u)) };
+    return { total, items: rows.map((u) => this.contactItemOf(u, ownerIds)) };
   }
 
-  /** User(含 memberships)→ 通讯录条目(主行政岗 + 党组织 + 政治面貌) */
+  /** User(含 memberships)→ 通讯录条目(主行政岗 + 党组织 + 政治面貌 + 负责人标识) */
   private contactItemOf(u: {
     id: string;
     username: string;
@@ -567,7 +654,7 @@ export class UserService {
     email: string | null;
     customFields: string | null;
     memberships: { orgId: string; position: string | null; org: { name: string; kind: string } }[];
-  }) {
+  }, ownerIds?: Set<string>) {
     const adminMember = u.memberships.find((m) => m.org.kind === 'admin');
     const partyMember = u.memberships.find((m) => m.org.kind === 'party');
     const cf = this.parseCustomFields(u.customFields);
@@ -580,12 +667,130 @@ export class UserService {
       phone: u.phone,
       email: u.email,
       politicalStatus: political,
+      // 负责人:被设为某行政机构 meta.ownerUserId(编辑行政机构时指定的部门负责人)
+      isLeader: ownerIds ? ownerIds.has(u.id) : false,
       admin: adminMember
         ? { orgId: adminMember.orgId, orgName: adminMember.org.name, position: adminMember.position }
         : null,
       party: partyMember
         ? { orgId: partyMember.orgId, orgName: partyMember.org.name, position: partyMember.position }
         : null,
+    };
+  }
+
+  /* ─── 通讯录个人收藏(门户右栏「收藏」;登录即可、每人自己的)─── */
+  /** 我收藏的联系人(按收藏时间倒序,含负责人标识;离职者不显示) */
+  async myFavorites(userId: string) {
+    const favs = await this.prisma.directoryFavorite.findMany({
+      where: { ownerId: userId },
+      orderBy: { createdAt: 'desc' },
+      select: { targetUserId: true },
+    });
+    const ids = favs.map((f) => f.targetUserId);
+    if (ids.length === 0) return { items: [] };
+    const ownerIds = new Set(await this.adminDeptOwnerIds());
+    // 与 contacts() 同口径:隐藏(directoryHidden)/离职者不显示 —— 否则收藏路径会绕过隐私隐藏
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: ids }, active: true, directoryHidden: false },
+      include: {
+        memberships: {
+          include: { org: { select: { id: true, name: true, kind: true } } },
+          orderBy: [{ isPrimary: 'desc' }],
+        },
+      },
+    });
+    const byId = new Map(users.map((u) => [u.id, u] as const));
+    const items = ids
+      .map((id) => byId.get(id))
+      .filter((u): u is NonNullable<typeof u> => !!u)
+      .map((u) => this.contactItemOf(u, ownerIds));
+    return { items };
+  }
+
+  async addFavorite(userId: string, targetId: string) {
+    // 拒绝收藏隐藏/离职者(防在写入侧就绕过 directoryHidden 隐私隐藏;不暴露「被隐藏」细节)
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetId },
+      select: { id: true, active: true, directoryHidden: true },
+    });
+    if (!target || !target.active || target.directoryHidden) throw new NotFoundException('用户不存在');
+    await this.prisma.directoryFavorite.upsert({
+      where: { ownerId_targetUserId: { ownerId: userId, targetUserId: targetId } },
+      create: { ownerId: userId, targetUserId: targetId },
+      update: {},
+    });
+    return { ok: true };
+  }
+
+  async removeFavorite(userId: string, targetId: string) {
+    await this.prisma.directoryFavorite.deleteMany({ where: { ownerId: userId, targetUserId: targetId } });
+    return { ok: true };
+  }
+
+  /**
+   * 本人部门的对口关系(门户「对口上级机构 / 下级承接部门」默认视图):
+   *   superiorOrgs   = 本人所在行政部门 meta.counterpartParentOrgIds 指向的机关上级
+   *   subordinateOrgs= meta.counterpartParentOrgIds 指向了本人所在部门的下级(反查)
+   * 仅返回活跃行政机构。
+   */
+  async counterpartScope(userId: string) {
+    const homes = await this.prisma.userOrganization.findMany({
+      where: { userId, org: { kind: 'admin' } },
+      select: { orgId: true },
+    });
+    const homeIds = new Set(homes.map((h) => h.orgId));
+    if (homeIds.size === 0) return { superiorOrgs: [], subordinateOrgs: [] };
+
+    const orgs = await this.prisma.organization.findMany({
+      where: { kind: 'admin', active: true },
+      select: { id: true, name: true, meta: true, parentId: true, isVirtual: true },
+    });
+    const byId = new Map(orgs.map((o) => [o.id, o] as const));
+    // 所在二级单位:向上找到「父为虚拟壳(公司机关/基层单位)或根」的最近祖先(含自身)。
+    // 综合办公室(L3)→ 新疆分公司(L2,父=基层单位虚拟);机关部门(L2 dept,父=公司机关虚拟)→ 自身。
+    const owningUnitOf = (orgId: string): { id: string; name: string } | null => {
+      let cur = byId.get(orgId);
+      const seen = new Set<string>();
+      while (cur && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        const parent = cur.parentId ? byId.get(cur.parentId) : null;
+        if (!parent || parent.isVirtual) return { id: cur.id, name: cur.name };
+        cur = parent;
+      }
+      return null;
+    };
+    const cpOf = (meta: string | null): string[] => {
+      if (!meta) return [];
+      try {
+        const p = JSON.parse(meta) as {
+          counterpartParentOrgIds?: unknown;
+          counterpartParentOrgId?: unknown;
+        };
+        const out: string[] = [];
+        if (Array.isArray(p.counterpartParentOrgIds)) {
+          for (const x of p.counterpartParentOrgIds) if (typeof x === 'string') out.push(x);
+        }
+        if (typeof p.counterpartParentOrgId === 'string') out.push(p.counterpartParentOrgId);
+        return out;
+      } catch {
+        return [];
+      }
+    };
+    const superiorIds = new Set<string>();
+    const subordinateIds = new Set<string>();
+    for (const o of orgs) {
+      const cps = cpOf(o.meta);
+      if (homeIds.has(o.id)) for (const cp of cps) superiorIds.add(cp); // 本人部门 → 其对口上级
+      if (cps.some((cp) => homeIds.has(cp))) subordinateIds.add(o.id); // 对口到本人部门的下级
+    }
+    // 每个对口机构附「所在二级单位」(unitId/unitName)—— 门户按二级单位筛选对口通讯录
+    const toOrg = (id: string) => {
+      const unit = owningUnitOf(id);
+      return { id, name: byId.get(id)?.name ?? '', unitId: unit?.id ?? null, unitName: unit?.name ?? null };
+    };
+    return {
+      superiorOrgs: [...superiorIds].filter((id) => byId.has(id)).map(toOrg),
+      subordinateOrgs: [...subordinateIds].map(toOrg),
     };
   }
 

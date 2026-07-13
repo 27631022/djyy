@@ -8,6 +8,7 @@ import { CreateEventDto, CreateGameDto } from './dto/create-event.dto';
 import { UpdateConfigDto } from './dto/update-config.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { RenameEventDto } from './dto/rename-event.dto';
+import { CreateDesignDto, UpdateDesignDto } from './dto/design.dto';
 
 /**
  * 现场互动后台配置台接口(需登录 + interactive:manage)。
@@ -115,5 +116,42 @@ export class InteractiveController {
     const { game, roomCode } = await this.interactive.updateGame(gameId, dto, this.actor(me, req));
     await this.roomSession.refreshGames(roomCode); // 运行态即时刷新(音效恒即时;玩法/版式在非比赛中即时生效)
     return game;
+  }
+
+  // ── 自制游戏设计库(互动游戏编辑器;与运行房无关,不需 refreshGames 联动) ──
+
+  @Permission('interactive:manage')
+  @Get('designs')
+  listDesigns() {
+    return this.interactive.listDesigns();
+  }
+
+  @Permission('interactive:manage')
+  @Post('designs')
+  createDesign(@Body() dto: CreateDesignDto, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.interactive.createDesign(dto, this.actor(me, req));
+  }
+
+  @Permission('interactive:manage')
+  @Get('designs/:id')
+  getDesign(@Param('id') id: string) {
+    return this.interactive.getDesign(id);
+  }
+
+  @Permission('interactive:manage')
+  @Patch('designs/:id')
+  updateDesign(
+    @Param('id') id: string,
+    @Body() dto: UpdateDesignDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.interactive.updateDesign(id, dto, this.actor(me, req));
+  }
+
+  @Permission('interactive:manage')
+  @Delete('designs/:id')
+  removeDesign(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.interactive.removeDesign(id, this.actor(me, req));
   }
 }

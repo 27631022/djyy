@@ -88,8 +88,8 @@ function colorOf(s: string): string {
 }
 
 // 领奖台一个名次的展示数据 —— 个人赛=选手,分组对抗=队伍(队头像取该队「第一个加入的人」)。
-// 两种模式共用同一套领奖台组件,规则一致。
-interface PodiumEntry {
+// 两种模式共用同一套领奖台组件,规则一致。(export 供 routeRace 等同类游戏复用,零逻辑改动)
+export interface PodiumEntry {
   key: string;
   name: string;
   score: number;
@@ -112,7 +112,7 @@ function reconcileLanes(prev: (string | null)[], desired: string[]): (string | n
 }
 
 // 图片领奖台:头像层(默认**藏在台图后面**,从相框透明洞露出、被相框裁边)→ 台图 → 名字层(恒在台前名牌上)
-function ImagePodium({
+export function ImagePodium({
   podiumUrl,
   frames,
   entries,
@@ -153,7 +153,7 @@ function ImagePodium({
 }
 
 // CSS 领奖台(无图片主题兜底):金银铜台阶。个人赛/分组对抗共用。
-function CssPodium({ entries }: { entries: PodiumEntry[] }) {
+export function CssPodium({ entries }: { entries: PodiumEntry[] }) {
   const medal = ["#F5B417", "#C0C0C0", "#CD7F32"];
   const order = [entries[1], entries[0], entries[2]]; // 2 · 1 · 3
   const heights = ["46%", "66%", "38%"];
@@ -181,7 +181,7 @@ function CssPodium({ entries }: { entries: PodiumEntry[] }) {
 
 // 分组对抗报名看板:按队伍分栏,每队按报名设置预留 maxPerTeam 个位子(已加入=头像,空位=虚线占位),
 // 「谁进了哪队、还差几人」一目了然;pick 模式尚未选队的人单列「未选队」。
-function TeamRosterBoard({ grouping, players }: { grouping: GroupingConfig; players: RosterPlayer[] }) {
+export function TeamRosterBoard({ grouping, players }: { grouping: GroupingConfig; players: RosterPlayer[] }) {
   const max = grouping.maxPerTeam; // 0 = 不限
   const byTeam = new Map<string, RosterPlayer[]>();
   for (const t of grouping.teams) byTeam.set(t.id, []);

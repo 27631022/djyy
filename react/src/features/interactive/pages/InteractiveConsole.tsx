@@ -9,6 +9,8 @@ import {
 } from "../api";
 import { GAME_UI_LIST, getGameUi } from "../games/registry";
 import { type GameUi } from "../games/types";
+import { designApi, type GameDesignRow } from "../designer/designApi";
+import { parseDesign } from "../designer/designTypes";
 import { useRoom } from "../useRoom";
 import { HostControls } from "../components/HostControls";
 import { EventSettings } from "../components/EventSettings";
@@ -50,10 +52,24 @@ function CreateEventCard({ onCreated }: { onCreated: (ev: InteractiveEvent) => v
     onError: () => toast.error("创建失败,请重试"),
   });
 
+  // 自制游戏库(互动游戏编辑器产物):建活动时也可直接把设计加进节目单
+  const designsQuery = useQuery({ queryKey: ["interactive", "designs"], queryFn: designApi.list });
+  const designs = designsQuery.data ?? [];
+
   const addGame = (ui: GameUi) =>
     setGames((prev) => [
       ...prev,
       { key: newKey(), gameType: ui.type, title: ui.label, config: { ...ui.defaultConfig } },
+    ]);
+  const addDesign = (row: GameDesignRow) =>
+    setGames((prev) => [
+      ...prev,
+      {
+        key: newKey(),
+        gameType: "route_race",
+        title: row.name,
+        config: { ...(parseDesign(row.configJson) as unknown as Record<string, unknown>), designId: row.id, designName: row.name },
+      },
     ]);
   const updateGame = (key: string, patch: Partial<DraftGame>) =>
     setGames((prev) => prev.map((g) => (g.key === key ? { ...g, ...patch } : g)));
@@ -84,9 +100,9 @@ function CreateEventCard({ onCreated }: { onCreated: (ev: InteractiveEvent) => v
       </div>
 
       <div>
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
           <label className="text-sm text-gray-600">节目单(游戏)</label>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end">
             {GAME_UI_LIST.map((ui) => (
               <button
                 key={ui.type}
@@ -95,6 +111,17 @@ function CreateEventCard({ onCreated }: { onCreated: (ev: InteractiveEvent) => v
                 className="text-sm rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50"
               >
                 + {ui.label}
+              </button>
+            ))}
+            {designs.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => addDesign(d)}
+                title="互动游戏编辑器设计的闯关赛(添加时快照当前设计)"
+                className="text-sm rounded-md border border-dashed border-[var(--party-primary)] text-[var(--party-primary)] px-3 py-1 hover:bg-party-soft"
+              >
+                🎮 + {d.name}
               </button>
             ))}
           </div>

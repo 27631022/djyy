@@ -58,9 +58,37 @@ export interface ContactItem {
   email: string | null;
   /** 政治面貌字典 code(customFields.political_status),可空;标签由字典映射 */
   politicalStatus: string | null;
+  /** 负责人:被设为某行政机构 meta.ownerUserId(编辑行政机构时指定的部门负责人) */
+  isLeader: boolean;
   admin: { orgId: string; orgName: string; position: string | null } | null;
   party: { orgId: string; orgName: string; position: string | null } | null;
 }
+
+/** 对口机构条目:附「所在二级单位」(unitId/unitName)供门户按二级单位筛选 */
+export interface CounterpartOrg {
+  id: string;
+  name: string;
+  unitId: string | null;
+  unitName: string | null;
+}
+
+/** 对口关系(门户「对口上级机构 / 下级承接部门」默认视图):基于登录人所在部门 */
+export interface CounterpartScope {
+  superiorOrgs: CounterpartOrg[];
+  subordinateOrgs: CounterpartOrg[];
+}
+
+/** 通讯录个人向接口(收藏 + 对口关系;登录即可、作用于自己) */
+export const directoryMeApi = {
+  counterpartScope: () =>
+    api.get<CounterpartScope>("/directory/my/counterpart-scope").then((r) => r.data),
+  favorites: () =>
+    api.get<{ items: ContactItem[] }>("/directory/my/favorites").then((r) => r.data),
+  addFavorite: (userId: string) =>
+    api.post(`/directory/my/favorites/${userId}`).then((r) => r.data),
+  removeFavorite: (userId: string) =>
+    api.delete(`/directory/my/favorites/${userId}`).then((r) => r.data),
+};
 
 export interface ContactsResponse {
   total: number;
@@ -73,6 +101,8 @@ export interface ContactsQuery {
   adminOrgId?: string;
   /** 配合 adminOrgId:该机构及其全部下级(子树后端展开) */
   adminOrgSubtree?: boolean;
+  /** 行政机构 id 列表(任一命中)—— 对口上级机构 / 下级承接部门 视图用 */
+  adminOrgIds?: string[];
   partyOrgId?: string;
   /** 只列党员 */
   hasParty?: boolean;
@@ -328,6 +358,7 @@ export const usersApi = {
           ...(q.search ? { search: q.search } : {}),
           ...(q.adminOrgId ? { adminOrgId: q.adminOrgId } : {}),
           ...(q.adminOrgSubtree ? { adminOrgSubtree: "true" } : {}),
+          ...(q.adminOrgIds?.length ? { adminOrgIds: q.adminOrgIds.join(",") } : {}),
           ...(q.partyOrgId ? { partyOrgId: q.partyOrgId } : {}),
           ...(q.hasParty ? { hasParty: "true" } : {}),
           ...(q.inDept !== undefined ? { inDept: String(q.inDept) } : {}),

@@ -2,6 +2,7 @@ import { type GameDef } from '../game-def';
 import { tapRaceGame } from './tap-race.game';
 import { raceGame } from './race.game';
 import { soccerShakeGame } from './soccer-shake.game';
+import { routeRaceGame } from './route-race.game';
 
 /**
  * 游戏注册表 —— 加游戏在此加一行(+ 前端 features/interactive/games/registry 对称加一行)。
@@ -13,6 +14,7 @@ export const GAMES: Record<string, GameDef> = {
   [tapRaceGame.type]: tapRaceGame as unknown as GameDef,
   [raceGame.type]: raceGame,
   [soccerShakeGame.type]: soccerShakeGame,
+  [routeRaceGame.type]: routeRaceGame as unknown as GameDef, // 自制闯关赛(互动游戏编辑器产物)
 };
 
 export function getGame(type: string): GameDef | null {

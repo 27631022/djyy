@@ -37,6 +37,14 @@ export class ContactsQuery {
   @IsBooleanString()
   adminOrgSubtree?: string;
 
+  /** 行政机构 id 列表(逗号分隔;任一命中即匹配)—— 对口上级机构 / 下级承接部门 视图用 */
+  @IsOptional()
+  @Transform(commaList)
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsString({ each: true })
+  adminOrgIds?: string[];
+
   /** 党组织 id 精确匹配 */
   @IsOptional()
   @IsString()
