@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ShieldIcon, PlusIcon, SearchIcon, XIcon, TrashIcon, AlertCircleIcon,
   CheckIcon, UsersIcon, KeyIcon, LockIcon, PackageIcon, RefreshCwIcon,
-  ChevronRightIcon, BadgeCheckIcon,
+  BadgeCheckIcon, UserPlusIcon, Loader2,
 } from "lucide-react";
 import {
   rolesApi,
@@ -17,8 +17,18 @@ import {
   PERMISSION_CATEGORY_ORDER,
   type Permission,
 } from "@/features/permission";
-import { SCOPE_LABELS } from "@/features/user";
+import {
+  usersApi,
+  SCOPE_LABELS,
+  ScopeOrgSelector,
+  buildOrgIndex,
+  type ScopeValue,
+} from "@/features/user";
+import { organizationsApi } from "@/features/organization";
+import { useAuth } from "@/stores/auth";
+import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import { matchesPinyin, highlightMatch } from "@/shared/lib/pinyinSearch";
+import { toast } from "sonner";
 
 /* ─── Color tokens ─── */
 const PARTY = "var(--party-primary)";
@@ -306,7 +316,7 @@ function RoleDetailView({
         {tab === "perms" ? (
           <PermissionsTab key={role.id} role={role} permissions={permissions} onSaved={afterMutate} />
         ) : (
-          <UsersTab roleId={role.id} />
+          <UsersTab roleId={role.id} roleName={role.name} onChanged={afterMutate} />
         )}
       </div>
     </div>
@@ -646,65 +656,323 @@ function Checkbox({
   );
 }
 
-/* ─── Tab: 关联用户 ─── */
-function UsersTab({ roleId }: { roleId: string }) {
+/* ─── Tab: 关联用户(可直接加/减成员)─── */
+function errMsg(err: unknown, fallback: string): string {
+  const e = err as { response?: { data?: { message?: string | string[] } }; message?: string };
+  const msg = e.response?.data?.message;
+  return Array.isArray(msg) ? msg.join("; ") : msg ?? e.message ?? fallback;
+}
+
+function UsersTab({
+  roleId, roleName, onChanged,
+}: {
+  roleId: string;
+  roleName: string;
+  onChanged: () => void;
+}) {
+  const qc = useQueryClient();
+  const { me } = useAuth();
+  // 角色分配 = 授权动作,仅系统管理员(admin:role:write,内置只有 platform_admin)可加/减成员
+  const canWrite = !!me?.isPlatformAdmin || (me?.permissions ?? []).includes("admin:role:write");
+  const [adding, setAdding] = useState(false);
+
   const usersQuery = useQuery({
     queryKey: ["role-users", roleId],
     queryFn: () => rolesApi.listUsers(roleId),
   });
 
-  if (usersQuery.isLoading) {
-    return <div className="p-8 text-center text-sm text-[#9CA3AF]">加载中…</div>;
-  }
-  if (!usersQuery.data || usersQuery.data.length === 0) {
-    return (
-      <div className="p-8 text-center text-sm text-[#9CA3AF]">
-        没有用户持有此角色。在
-        <span className="px-1 font-medium text-[#1A1A1A]">用户管理</span>
-        页面为用户分配此角色。
-      </div>
-    );
+  function afterChange() {
+    qc.invalidateQueries({ queryKey: ["role-users", roleId] });
+    onChanged();
   }
 
+  const removeMut = useMutation({
+    mutationFn: (userId: string) => rolesApi.removeUser(roleId, userId),
+    onSuccess: () => {
+      afterChange();
+      toast.success("已解除该成员的角色");
+    },
+    onError: (err) => toast.error(errMsg(err, "解除失败")),
+  });
+
+  const users = useMemo(() => usersQuery.data ?? [], [usersQuery.data]);
+  const existingIds = useMemo(() => new Set(users.map((u) => u.userId)), [users]);
+
   return (
-    <div className="p-5">
-      <div className="text-[10px] text-[#9CA3AF] mb-3">
-        如需分配/解除角色,请到 <span className="text-[var(--party-primary)]">用户管理</span> 页面的"角色权限"标签
-      </div>
-      <div className="space-y-1">
-        {usersQuery.data.map((u) => (
-          <div
-            key={u.userId}
-            className="flex items-center gap-3 px-3 py-2.5 border border-[#F0F0F0] rounded-md"
+    <div className="p-5 space-y-3">
+      {/* 顶部:成员数 + 添加 */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-[#6B7280]">
+          共 <strong className="text-[#1A1A1A]">{users.length}</strong> 名成员
+        </span>
+        <div className="flex-1" />
+        {canWrite ? (
+          <button
+            onClick={() => setAdding((v) => !v)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium text-white"
+            style={{ backgroundColor: PARTY }}
           >
-            <div className="w-8 h-8 rounded-full bg-[var(--party-primary)] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              {u.name.charAt(0)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-medium text-[#1A1A1A] truncate flex items-center gap-1.5">
-                {u.name}
-                {!u.active && (
-                  <span className="text-[9px] px-1 py-px rounded bg-gray-100 text-gray-500">离职</span>
+            <UserPlusIcon className="w-3.5 h-3.5" />
+            添加成员
+          </button>
+        ) : (
+          <span className="text-[10px] text-[#9CA3AF]">仅系统管理员可加/减成员</span>
+        )}
+      </div>
+
+      {adding && canWrite && (
+        <AddMemberPanel
+          roleId={roleId}
+          roleName={roleName}
+          existingIds={existingIds}
+          onClose={() => setAdding(false)}
+          onAdded={() => {
+            afterChange();
+            toast.success("已添加成员");
+          }}
+        />
+      )}
+
+      {usersQuery.isLoading ? (
+        <div className="p-8 text-center text-sm text-[#9CA3AF]">加载中…</div>
+      ) : users.length === 0 ? (
+        <div className="p-8 text-center text-sm text-[#9CA3AF]">
+          还没有成员。{canWrite ? "点「添加成员」直接分配。" : "在用户管理页为用户分配此角色。"}
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {users.map((u) => (
+            <div
+              key={u.userId}
+              className="flex items-center gap-3 px-3 py-2.5 border border-[#F0F0F0] rounded-md"
+            >
+              <div className="w-8 h-8 rounded-full bg-[var(--party-primary)] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                {u.name.charAt(0)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-medium text-[#1A1A1A] truncate flex items-center gap-1.5">
+                  {u.name}
+                  {!u.active && (
+                    <span className="text-[9px] px-1 py-px rounded bg-gray-100 text-gray-500">离职</span>
+                  )}
+                </div>
+                <div className="text-[10px] text-[#9CA3AF] truncate">员工编号 {u.username}</div>
+              </div>
+              <div className="text-right flex flex-col items-end gap-0.5 min-w-0 max-w-[200px]">
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                  style={{ backgroundColor: "#EEF4FF", color: ADMIN }}
+                >
+                  {SCOPE_LABELS[u.scope]}
+                </span>
+                {u.scopeOrgs.length > 0 && (
+                  <span className="text-[9px] text-[#9CA3AF] truncate" title={u.scopeOrgs.map((o) => o.name).join(", ")}>
+                    {u.scopeOrgs.map((o) => o.name).join(" · ")}
+                  </span>
                 )}
               </div>
-              <div className="text-[10px] text-[#9CA3AF] truncate">员工编号 {u.username}</div>
-            </div>
-            <div className="text-right flex flex-col items-end gap-0.5 min-w-0 max-w-[200px]">
-              <span
-                className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                style={{ backgroundColor: "#EEF4FF", color: ADMIN }}
-              >
-                {SCOPE_LABELS[u.scope]}
-              </span>
-              {u.scopeOrgs.length > 0 && (
-                <span className="text-[9px] text-[#9CA3AF] truncate" title={u.scopeOrgs.map((o) => o.name).join(", ")}>
-                  {u.scopeOrgs.map((o) => o.name).join(" · ")}
-                </span>
+              {canWrite && (
+                <button
+                  onClick={() => {
+                    if (confirm(`解除 ${u.name} 的「${roleName}」角色?`)) removeMut.mutate(u.userId);
+                  }}
+                  disabled={removeMut.isPending}
+                  className="p-1.5 rounded text-[#9CA3AF] hover:bg-red-50 hover:text-red-600 disabled:opacity-50 flex-shrink-0"
+                  title="解除该角色"
+                >
+                  <TrashIcon className="w-3.5 h-3.5" />
+                </button>
               )}
             </div>
-            <ChevronRightIcon className="w-4 h-4 text-[#D1D5DB]" />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── 添加成员面板(搜人 + 数据范围 + custom 锚点)─── */
+function AddMemberPanel({
+  roleId, roleName, existingIds, onClose, onAdded,
+}: {
+  roleId: string;
+  roleName: string;
+  existingIds: Set<string>;
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const debounced = useDebouncedValue(search, 250);
+  const [picked, setPicked] = useState<{ id: string; name: string; username: string } | null>(null);
+  const [scope, setScope] = useState<ScopeValue>("self");
+  const [scopeOrgIds, setScopeOrgIds] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  // directory:通讯录级检索,不受数据范围收敛(可给任意单位的人授角色)
+  const searchQuery = useQuery({
+    queryKey: ["role-add-search", debounced],
+    queryFn: () => usersApi.directory(debounced.trim() || undefined, 20),
+    enabled: debounced.trim().length >= 1,
+    staleTime: 30_000,
+  });
+  const candidates = useMemo(
+    () => (searchQuery.data?.items ?? []).filter((u) => !existingIds.has(u.id)),
+    [searchQuery.data, existingIds],
+  );
+
+  // custom 锚点:按需拉两棵组织树(admin + party)
+  const adminTreeQuery = useQuery({
+    queryKey: ["org-tree", "admin"],
+    queryFn: () => organizationsApi.tree("admin"),
+    staleTime: 60_000,
+    enabled: scope === "custom",
+  });
+  const partyTreeQuery = useQuery({
+    queryKey: ["org-tree", "party"],
+    queryFn: () => organizationsApi.tree("party"),
+    staleTime: 60_000,
+    enabled: scope === "custom",
+  });
+  const allOrgsById = useMemo(
+    () => buildOrgIndex(adminTreeQuery.data ?? [], partyTreeQuery.data ?? []),
+    [adminTreeQuery.data, partyTreeQuery.data],
+  );
+
+  const addMut = useMutation({
+    mutationFn: () =>
+      rolesApi.addUser(roleId, {
+        userId: picked!.id,
+        scope,
+        scopeOrgIds: scope === "custom" ? scopeOrgIds : undefined,
+      }),
+    onSuccess: () => {
+      setError(null);
+      onAdded();
+      onClose();
+    },
+    onError: (err) => setError(errMsg(err, "添加失败")),
+  });
+
+  const canSubmit = !!picked && (scope !== "custom" || scopeOrgIds.length > 0);
+
+  return (
+    <div className="border border-[#E9E9E9] rounded-lg bg-[#FAFBFC] p-3 space-y-3">
+      <div className="flex items-center gap-2">
+        <UserPlusIcon className="w-4 h-4" style={{ color: PARTY }} />
+        <span className="text-xs font-semibold text-[#1A1A1A]">添加成员到「{roleName}」</span>
+        <div className="flex-1" />
+        <button onClick={onClose} className="p-1 rounded hover:bg-white" title="收起">
+          <XIcon className="w-3.5 h-3.5 text-[#9CA3AF]" />
+        </button>
+      </div>
+
+      {/* 选人 */}
+      {picked ? (
+        <div className="flex items-center gap-2 px-2.5 py-1.5 bg-white border border-[#E9E9E9] rounded-md">
+          <div className="w-6 h-6 rounded-full bg-[var(--party-primary)] flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+            {picked.name.charAt(0)}
           </div>
-        ))}
+          <span className="text-xs text-[#1A1A1A]">{picked.name}</span>
+          <span className="text-[10px] text-[#9CA3AF] font-mono">{picked.username}</span>
+          <div className="flex-1" />
+          <button
+            onClick={() => setPicked(null)}
+            className="text-[10px] text-[var(--party-primary)] hover:underline"
+          >
+            重选
+          </button>
+        </div>
+      ) : (
+        <div>
+          <div className="relative">
+            <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
+            {searchQuery.isFetching && (
+              <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-[#9CA3AF]" />
+            )}
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="搜索姓名 / 员工编号"
+              className="w-full pl-7 pr-7 py-1.5 text-xs rounded-md border border-[#E9E9E9] bg-white focus:outline-none focus:border-[var(--party-primary)]"
+            />
+          </div>
+          {debounced.trim().length >= 1 && (
+            <div className="mt-1.5 max-h-48 overflow-auto rounded-md border border-[#E9E9E9] bg-white divide-y divide-[#F0F0F0]">
+              {searchQuery.isLoading ? (
+                <div className="px-3 py-3 text-xs text-[#9CA3AF] text-center">搜索中…</div>
+              ) : candidates.length === 0 ? (
+                <div className="px-3 py-3 text-xs text-[#9CA3AF] text-center">无匹配(或都已在此角色)</div>
+              ) : (
+                candidates.map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => {
+                      setPicked({ id: u.id, name: u.name, username: u.username });
+                      setSearch("");
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-party-soft"
+                  >
+                    <span className="text-xs text-[#1A1A1A] truncate">{u.name}</span>
+                    <span className="text-[10px] text-[#9CA3AF] font-mono">{u.username}</span>
+                    {u.primaryAdmin && (
+                      <span className="text-[10px] text-[#9CA3AF] truncate ml-auto">
+                        {u.primaryAdmin.orgName}
+                      </span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 数据范围 */}
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-[#6B7280] w-14 flex-shrink-0">数据范围</span>
+        <select
+          value={scope}
+          onChange={(e) => {
+            const v = e.target.value as ScopeValue;
+            setScope(v);
+            if (v !== "custom") setScopeOrgIds([]);
+          }}
+          className="text-xs px-2 py-1 border border-[#E9E9E9] rounded flex-1 bg-white"
+        >
+          {(["self", "own", "subtree", "all", "custom"] as ScopeValue[]).map((s) => (
+            <option key={s} value={s}>
+              {SCOPE_LABELS[s]}
+            </option>
+          ))}
+        </select>
+      </div>
+      {scope === "custom" && (
+        <ScopeOrgSelector allOrgsById={allOrgsById} selectedIds={scopeOrgIds} onChange={setScopeOrgIds} />
+      )}
+
+      {error && (
+        <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-md text-xs text-red-700 flex gap-1.5">
+          <AlertCircleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          {error}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={onClose}
+          className="px-3 py-1.5 text-xs rounded-md border border-[#E9E9E9] hover:bg-white"
+        >
+          取消
+        </button>
+        <button
+          disabled={!canSubmit || addMut.isPending}
+          onClick={() => addMut.mutate()}
+          className="px-4 py-1.5 text-xs font-medium text-white rounded-md disabled:opacity-50"
+          style={{ backgroundColor: PARTY }}
+        >
+          {addMut.isPending ? "添加中…" : "确认添加"}
+        </button>
       </div>
     </div>
   );

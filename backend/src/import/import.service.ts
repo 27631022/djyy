@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { OrganizationService } from '../organization';
 import { UserService } from '../user';
@@ -192,7 +192,12 @@ export class ImportService {
           else {
             try {
               await this.users.addMembership(userId, { orgId: org.id, position: cell(r, '行政职务') || undefined, isPrimary: true }, actor);
-            } catch { /* 已在该组织,忽略 */ }
+            } catch (e) {
+              // 只吞「已在该组织」(重复归属);权限/其它异常须回显成错误行,不静默(finding #7)
+              if (!(e instanceof ConflictException)) {
+                result.errors.push({ row: rowNo, reason: `行政归属失败:${(e as Error).message}` });
+              }
+            }
           }
         }
 
@@ -205,7 +210,11 @@ export class ImportService {
           else {
             try {
               await this.users.addMembership(userId, { orgId: org.id, position: cell(r, '党内职务') || undefined, isPrimary: true }, actor);
-            } catch { /* 已在该党组织,忽略 */ }
+            } catch (e) {
+              if (!(e instanceof ConflictException)) {
+                result.errors.push({ row: rowNo, reason: `党组织归属失败:${(e as Error).message}` });
+              }
+            }
           }
         }
 

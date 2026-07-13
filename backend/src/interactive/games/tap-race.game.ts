@@ -24,6 +24,9 @@ interface TapRacePlayerState {
   teamId: string | null;
   teamName: string | null;
   count: number;
+  // 服务端限速滑动窗(见 MAX_TAPS_PER_SEC):窗口起点 + 窗口内已计数
+  rateWinStart: number;
+  rateWinCount: number;
 }
 
 export interface TapRaceState {
@@ -38,6 +41,9 @@ export type TapRaceAction = { kind: 'tap'; n?: number };
 
 // 单次上报次数封顶:客户端本地聚合后上报增量,服务端 clamp 防伪造刷分(照 view-beacon min-damage)
 const MAX_TAPS_PER_ACTION = 25;
+// 服务端权威限速:每玩家每秒最多计 15 次(人类单指极限 ~12 次/秒,留少量余量)。
+// 超出部分直接丢弃 —— 多指同拍、脚本高频灌消息、伪造大 n 都被这里裁平(40 人实测「点击次数不实」后引入)。
+const MAX_TAPS_PER_SEC = 15;
 // 开赛前 3-2-1 倒计时(给「倒计时开始音乐」一个落点 + 现场蓄势)
 const COUNTDOWN_MS = 3000;
 
@@ -114,6 +120,8 @@ export const tapRaceGame: GameDef<TapRaceConfig, TapRaceState, TapRaceAction> = 
         teamId: p.teamId ?? null,
         teamName: p.teamName ?? null,
         count: 0,
+        rateWinStart: 0,
+        rateWinCount: 0,
       };
     }
     return { status: 'ready', countdownEndsAt: null, startedAt: null, endsAt: null, players };
@@ -128,7 +136,18 @@ export const tapRaceGame: GameDef<TapRaceConfig, TapRaceState, TapRaceAction> = 
       teamId: meta.teamId ?? null,
       teamName: meta.teamName ?? null,
       count: 0,
+      rateWinStart: 0,
+      rateWinCount: 0,
     };
+    // 滑动 1s 窗口限速:窗口内累计超过 MAX_TAPS_PER_SEC 的增量直接丢弃(服务端权威,防多指/脚本刷分)
+    let winStart = cur.rateWinStart ?? 0;
+    let winCount = cur.rateWinCount ?? 0;
+    if (meta.at - winStart >= 1000) {
+      winStart = meta.at;
+      winCount = 0;
+    }
+    const grant = Math.max(0, Math.min(n, MAX_TAPS_PER_SEC - winCount));
+    winCount += grant;
     const players = {
       ...state.players,
       [meta.deviceId]: {
@@ -136,7 +155,9 @@ export const tapRaceGame: GameDef<TapRaceConfig, TapRaceState, TapRaceAction> = 
         // meta 优先:队伍归属以服务端运行态为准(报名阶段选/换队后,首次动作即生效)
         teamId: meta.teamId ?? cur.teamId ?? null,
         teamName: meta.teamName ?? cur.teamName ?? null,
-        count: cur.count + n,
+        count: cur.count + grant,
+        rateWinStart: winStart,
+        rateWinCount: winCount,
       },
     };
     return { state: { ...state, players } };
@@ -156,10 +177,10 @@ export const tapRaceGame: GameDef<TapRaceConfig, TapRaceState, TapRaceAction> = 
       return { state: { ...state, status: 'ended' }, ended: true };
     }
     if (cmd.kind === 'reset') {
-      // 保留玩家名单+队伍,清零重来(「再来一局」)
+      // 保留玩家名单+队伍,清零重来(「再来一局」);限速窗口一并清零
       const players: Record<string, TapRacePlayerState> = {};
       for (const [k, v] of Object.entries(state.players)) {
-        players[k] = { nickname: v.nickname, teamId: v.teamId, teamName: v.teamName, count: 0 };
+        players[k] = { nickname: v.nickname, teamId: v.teamId, teamName: v.teamName, count: 0, rateWinStart: 0, rateWinCount: 0 };
       }
       return { state: { status: 'ready', countdownEndsAt: null, startedAt: null, endsAt: null, players } };
     }

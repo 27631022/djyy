@@ -1,83 +1,103 @@
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, type RouteObject } from "react-router-dom";
-import { useEffect, type ReactNode } from "react";
-import NavPage from "@/pages/NavPage";
-import WorkbenchHomePage from "@/pages/WorkbenchHome";
-import AdminLayout, { AdminIndexRedirect } from "@/layouts/AdminLayout";
-import { OrganizationsPage } from "@/features/organization";
-import { UsersPage, ProfilePage } from "@/features/user";
-import { RolesPage } from "@/features/role";
-import { DictionariesPage } from "@/features/dictionary";
-import { UserCustomFieldsPage } from "@/features/user-custom-field";
-import { SiteSettingsPage, siteSettingApi } from "@/features/site-setting";
-import { NavigationPage } from "@/features/nav-category";
-import { ExternalApisPage } from "@/features/external-api";
-import { IconLibraryPage } from "@/features/icon-library";
-import { Model3dStudioPage } from "@/features/model3d";
-import { HallsPage, HallDesignerPage, ModelLibraryPage, ExhibitionAssetsPage } from "@/features/exhibition";
-import { PromptsPage } from "@/features/prompt";
-import {
-  VenueRoomsPage,
-  VenueLayoutDesignerPage,
-  VenueSeatingListPage,
-  VenueSeatingPlanPage,
-  VenueSeatingArrangePage,
-  VenueSeatingWizardPage,
-} from "@/features/venue";
-import {
-  TaskCreatePage,
-  TaskListPage,
-  TaskDetailPage,
-  TaskInboxPage,
-  TaskFillPage,
-  TaskSummaryPage,
-  TaskWidgetPage,
-} from "@/features/task";
-import {
-  CertificateTemplatesPage,
-  CertificateDesignerPage,
-  CertificateIssuePage,
-  CertificateListPage,
-  CertificateExternalPage,
-  CertificateVerifyPage,
-} from "@/features/certificate";
-import { SchemeListPage, SchemeEditorPage, RoundListPage, RoundDetailPage, AssessmentResultsPage, MyAssessmentsPage, MyManagedSchemesPage, NodeMaintainPage, UnitCheckupPage } from "@/features/assessment";
-import { ReportTasksPage, ReportCatalogPage, ReportCreatePage, PublishChooserPage, ReportFillPage, ReportDetailPage } from "@/features/report";
-import { DataImportPage } from "@/features/import";
-import {
-  KnowledgePortalPage,
-  KnowledgeArticlePage,
-  KnowledgeMinePage,
-  KnowledgeEditorPage,
-  KnowledgeArchivePage,
-  KnowledgeCategoriesPage,
-  KnowledgeManagePage,
-  KnowledgeImportPage,
-  KnowledgeStatsViewsPage,
-  KnowledgeStatsLikesPage,
-  KnowledgeFeedbackPage,
-} from "@/features/knowledge";
-import {
-  ShowcasePortalPage,
-  ShowcaseStagePage,
-  ShowcaseEntryPage,
-  ShowcaseMinePage,
-  StageEditorPage,
-  EntryEditorPage,
-  ShowcaseStageReviewPage,
-  ShowcaseEntryReviewPage,
-  ShowcaseCategoriesPage,
-  ShowcaseFeedbackPage,
-} from "@/features/showcase";
-import { SearchPage } from "@/features/search";
-import {
-  InteractiveConsolePage,
-  InteractiveScreenPage,
-  InteractivePlayPage,
-} from "@/features/interactive";
-import LoginPage from "@/pages/Login";
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
+import { api } from "@/shared/api/client";
 import { AuthProvider, useAuth } from "@/stores/auth";
 import { Toaster } from "@/shared/components/ui/sonner";
+
+/*
+ * ─── 路由级代码分割 ───
+ * 全部页面经 React.lazy + 动态 import(指向 feature barrel,与 boundaries 约束一致)加载:
+ * 入口包只含框架壳(react/router/query/auth),每个 feature 是独立异步 chunk。
+ * 动机:现场互动 40 台手机同时扫码开 /play,原先要下载整个平台 bundle(后台管理/图表/设计器
+ * 全在一个包里)导致长时间白屏 —— 拆分后 /play 只拉互动功能块,入口从 ~4MB 降到 ~200KB 级。
+ */
+const NavPage = lazy(() => import("@/pages/NavPage"));
+const WorkbenchHomePage = lazy(() => import("@/pages/WorkbenchHome"));
+const LoginPage = lazy(() => import("@/pages/Login"));
+const AdminLayout = lazy(() => import("@/layouts/AdminLayout"));
+const AdminIndexRedirect = lazy(() =>
+  import("@/layouts/AdminLayout").then((m) => ({ default: m.AdminIndexRedirect })),
+);
+
+const OrganizationsPage = lazy(() => import("@/features/organization").then((m) => ({ default: m.OrganizationsPage })));
+const UsersPage = lazy(() => import("@/features/user").then((m) => ({ default: m.UsersPage })));
+const ProfilePage = lazy(() => import("@/features/user").then((m) => ({ default: m.ProfilePage })));
+const DirectoryPage = lazy(() => import("@/features/user").then((m) => ({ default: m.DirectoryPage })));
+const DirectoryAdminPage = lazy(() => import("@/features/user").then((m) => ({ default: m.DirectoryAdminPage })));
+const RolesPage = lazy(() => import("@/features/role").then((m) => ({ default: m.RolesPage })));
+const DictionariesPage = lazy(() => import("@/features/dictionary").then((m) => ({ default: m.DictionariesPage })));
+const UserCustomFieldsPage = lazy(() => import("@/features/user-custom-field").then((m) => ({ default: m.UserCustomFieldsPage })));
+const SiteSettingsPage = lazy(() => import("@/features/site-setting").then((m) => ({ default: m.SiteSettingsPage })));
+const NavigationPage = lazy(() => import("@/features/nav-category").then((m) => ({ default: m.NavigationPage })));
+const ExternalApisPage = lazy(() => import("@/features/external-api").then((m) => ({ default: m.ExternalApisPage })));
+const IconLibraryPage = lazy(() => import("@/features/icon-library").then((m) => ({ default: m.IconLibraryPage })));
+const Model3dStudioPage = lazy(() => import("@/features/model3d").then((m) => ({ default: m.Model3dStudioPage })));
+const HallsPage = lazy(() => import("@/features/exhibition").then((m) => ({ default: m.HallsPage })));
+const HallDesignerPage = lazy(() => import("@/features/exhibition").then((m) => ({ default: m.HallDesignerPage })));
+const ModelLibraryPage = lazy(() => import("@/features/exhibition").then((m) => ({ default: m.ModelLibraryPage })));
+const ExhibitionAssetsPage = lazy(() => import("@/features/exhibition").then((m) => ({ default: m.ExhibitionAssetsPage })));
+const PromptsPage = lazy(() => import("@/features/prompt").then((m) => ({ default: m.PromptsPage })));
+const VenueRoomsPage = lazy(() => import("@/features/venue").then((m) => ({ default: m.VenueRoomsPage })));
+const VenueLayoutDesignerPage = lazy(() => import("@/features/venue").then((m) => ({ default: m.VenueLayoutDesignerPage })));
+const VenueSeatingListPage = lazy(() => import("@/features/venue").then((m) => ({ default: m.VenueSeatingListPage })));
+const VenueSeatingPlanPage = lazy(() => import("@/features/venue").then((m) => ({ default: m.VenueSeatingPlanPage })));
+const VenueSeatingArrangePage = lazy(() => import("@/features/venue").then((m) => ({ default: m.VenueSeatingArrangePage })));
+const VenueSeatingWizardPage = lazy(() => import("@/features/venue").then((m) => ({ default: m.VenueSeatingWizardPage })));
+const TaskCreatePage = lazy(() => import("@/features/task").then((m) => ({ default: m.TaskCreatePage })));
+const TaskListPage = lazy(() => import("@/features/task").then((m) => ({ default: m.TaskListPage })));
+const TaskDetailPage = lazy(() => import("@/features/task").then((m) => ({ default: m.TaskDetailPage })));
+const TaskInboxPage = lazy(() => import("@/features/task").then((m) => ({ default: m.TaskInboxPage })));
+const TaskFillPage = lazy(() => import("@/features/task").then((m) => ({ default: m.TaskFillPage })));
+const TaskSummaryPage = lazy(() => import("@/features/task").then((m) => ({ default: m.TaskSummaryPage })));
+const TaskWidgetPage = lazy(() => import("@/features/task").then((m) => ({ default: m.TaskWidgetPage })));
+const CertificateTemplatesPage = lazy(() => import("@/features/certificate").then((m) => ({ default: m.CertificateTemplatesPage })));
+const CertificateDesignerPage = lazy(() => import("@/features/certificate").then((m) => ({ default: m.CertificateDesignerPage })));
+const CertificateIssuePage = lazy(() => import("@/features/certificate").then((m) => ({ default: m.CertificateIssuePage })));
+const CertificateListPage = lazy(() => import("@/features/certificate").then((m) => ({ default: m.CertificateListPage })));
+const CertificateExternalPage = lazy(() => import("@/features/certificate").then((m) => ({ default: m.CertificateExternalPage })));
+const CertificateVerifyPage = lazy(() => import("@/features/certificate").then((m) => ({ default: m.CertificateVerifyPage })));
+const SchemeListPage = lazy(() => import("@/features/assessment").then((m) => ({ default: m.SchemeListPage })));
+const SchemeEditorPage = lazy(() => import("@/features/assessment").then((m) => ({ default: m.SchemeEditorPage })));
+const RoundListPage = lazy(() => import("@/features/assessment").then((m) => ({ default: m.RoundListPage })));
+const RoundDetailPage = lazy(() => import("@/features/assessment").then((m) => ({ default: m.RoundDetailPage })));
+const AssessmentResultsPage = lazy(() => import("@/features/assessment").then((m) => ({ default: m.AssessmentResultsPage })));
+const MyAssessmentsPage = lazy(() => import("@/features/assessment").then((m) => ({ default: m.MyAssessmentsPage })));
+const MyManagedSchemesPage = lazy(() => import("@/features/assessment").then((m) => ({ default: m.MyManagedSchemesPage })));
+const NodeMaintainPage = lazy(() => import("@/features/assessment").then((m) => ({ default: m.NodeMaintainPage })));
+const UnitCheckupPage = lazy(() => import("@/features/assessment").then((m) => ({ default: m.UnitCheckupPage })));
+const ReportTasksPage = lazy(() => import("@/features/report").then((m) => ({ default: m.ReportTasksPage })));
+const ReportCatalogPage = lazy(() => import("@/features/report").then((m) => ({ default: m.ReportCatalogPage })));
+const ReportCreatePage = lazy(() => import("@/features/report").then((m) => ({ default: m.ReportCreatePage })));
+const PublishChooserPage = lazy(() => import("@/features/report").then((m) => ({ default: m.PublishChooserPage })));
+const ReportFillPage = lazy(() => import("@/features/report").then((m) => ({ default: m.ReportFillPage })));
+const ReportDetailPage = lazy(() => import("@/features/report").then((m) => ({ default: m.ReportDetailPage })));
+const DataImportPage = lazy(() => import("@/features/import").then((m) => ({ default: m.DataImportPage })));
+const KnowledgePortalPage = lazy(() => import("@/features/knowledge").then((m) => ({ default: m.KnowledgePortalPage })));
+const KnowledgeArticlePage = lazy(() => import("@/features/knowledge").then((m) => ({ default: m.KnowledgeArticlePage })));
+const KnowledgeMinePage = lazy(() => import("@/features/knowledge").then((m) => ({ default: m.KnowledgeMinePage })));
+const KnowledgeEditorPage = lazy(() => import("@/features/knowledge").then((m) => ({ default: m.KnowledgeEditorPage })));
+const KnowledgeArchivePage = lazy(() => import("@/features/knowledge").then((m) => ({ default: m.KnowledgeArchivePage })));
+const KnowledgeCategoriesPage = lazy(() => import("@/features/knowledge").then((m) => ({ default: m.KnowledgeCategoriesPage })));
+const KnowledgeManagePage = lazy(() => import("@/features/knowledge").then((m) => ({ default: m.KnowledgeManagePage })));
+const KnowledgeImportPage = lazy(() => import("@/features/knowledge").then((m) => ({ default: m.KnowledgeImportPage })));
+const KnowledgeStatsViewsPage = lazy(() => import("@/features/knowledge").then((m) => ({ default: m.KnowledgeStatsViewsPage })));
+const KnowledgeStatsLikesPage = lazy(() => import("@/features/knowledge").then((m) => ({ default: m.KnowledgeStatsLikesPage })));
+const KnowledgeFeedbackPage = lazy(() => import("@/features/knowledge").then((m) => ({ default: m.KnowledgeFeedbackPage })));
+const ShowcasePortalPage = lazy(() => import("@/features/showcase").then((m) => ({ default: m.ShowcasePortalPage })));
+const ShowcaseStagePage = lazy(() => import("@/features/showcase").then((m) => ({ default: m.ShowcaseStagePage })));
+const ShowcaseEntryPage = lazy(() => import("@/features/showcase").then((m) => ({ default: m.ShowcaseEntryPage })));
+const ShowcaseMinePage = lazy(() => import("@/features/showcase").then((m) => ({ default: m.ShowcaseMinePage })));
+const StageEditorPage = lazy(() => import("@/features/showcase").then((m) => ({ default: m.StageEditorPage })));
+const EntryEditorPage = lazy(() => import("@/features/showcase").then((m) => ({ default: m.EntryEditorPage })));
+const ShowcaseStageReviewPage = lazy(() => import("@/features/showcase").then((m) => ({ default: m.ShowcaseStageReviewPage })));
+const ShowcaseEntryReviewPage = lazy(() => import("@/features/showcase").then((m) => ({ default: m.ShowcaseEntryReviewPage })));
+const ShowcaseCategoriesPage = lazy(() => import("@/features/showcase").then((m) => ({ default: m.ShowcaseCategoriesPage })));
+const ShowcaseFeedbackPage = lazy(() => import("@/features/showcase").then((m) => ({ default: m.ShowcaseFeedbackPage })));
+const SearchPage = lazy(() => import("@/features/search").then((m) => ({ default: m.SearchPage })));
+const InteractiveConsolePage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractiveConsolePage })));
+const InteractiveScreenPage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractiveScreenPage })));
+const InteractivePlayPage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractivePlayPage })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -85,11 +105,13 @@ const queryClient = new QueryClient({
   },
 });
 
-/** 把后端站点配置中的主题色注入到 documentElement,前后台全局共享 var */
+/** 把后端站点配置中的主题色注入到 documentElement,前后台全局共享 var。
+ *  直接走 shared api client(不 import site-setting barrel,避免把该 feature 拖进入口包)。 */
 function ThemeBootstrap(): null {
   const { data } = useQuery({
     queryKey: ["site-settings"],
-    queryFn: () => siteSettingApi.get(),
+    queryFn: async () =>
+      (await api.get<{ theme: { primary: string; accent: string } }>("/site-settings")).data,
     staleTime: 5 * 60 * 1000,
   });
   useEffect(() => {
@@ -99,6 +121,19 @@ function ThemeBootstrap(): null {
     root.style.setProperty("--party-accent", data.theme.accent);
   }, [data]);
   return null;
+}
+
+/** 路由块加载兜底(Suspense fallback):居中品牌 spinner,与 index.html 首屏内联加载动画同款 */
+function PageLoader() {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-sm text-[#9CA3AF]">
+      <div
+        className="w-9 h-9 rounded-full border-[3px] border-[#E5E7EB] animate-spin"
+        style={{ borderTopColor: "var(--party-primary)" }}
+      />
+      页面加载中…
+    </div>
+  );
 }
 
 /** 仅登录后可访问;未登录跳 /login?redirect=... */
@@ -128,6 +163,7 @@ const ADMIN_ROUTES: RouteObject[] = [
   { path: "home", element: <WorkbenchHomePage /> },
   { path: "organizations", element: <OrganizationsPage /> },
   { path: "users", element: <UsersPage /> },
+  { path: "directory", element: <DirectoryAdminPage /> },
   { path: "roles", element: <RolesPage /> },
   { path: "data-import", element: <DataImportPage /> },
   { path: "dictionaries", element: <DictionariesPage /> },
@@ -200,7 +236,8 @@ const App = () => (
     <BrowserRouter>
       <AuthProvider>
         <ThemeBootstrap />
-        <Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
           <Route path="/login" element={<LoginPage />} />
           {/* 门户首页:公开访问。需登录的功能在 NavPage 内部按 common 标记灰显 */}
           <Route path="/" element={<NavPage />} />
@@ -209,6 +246,8 @@ const App = () => (
           <Route path="/verify/:token" element={<CertificateVerifyPage />} />
           {/* 个人设置(门户风独立页;门户/后台右上角用户菜单进入) */}
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          {/* 通讯录(门户风独立页;所有登录员工可查同事联系方式) */}
+          <Route path="/directory" element={<ProtectedRoute><DirectoryPage /></ProtectedRoute>} />
           {/* 全站搜索结果页(首页/知识门户搜索框回车落地;内容都要登录,访客自动跳登录并回跳) */}
           <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
           {/* 知识分享前台门户(独立于 AdminLayout;内部条例制度 → 登录可见) */}
@@ -268,7 +307,8 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-        </Routes>
+          </Routes>
+        </Suspense>
         <Toaster position="top-center" richColors closeButton />
       </AuthProvider>
     </BrowserRouter>

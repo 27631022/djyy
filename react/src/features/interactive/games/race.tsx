@@ -574,12 +574,14 @@ export function RaceRemote({
   const running = v?.status === "running";
 
   useEffect(() => {
+    // 200ms 合批上报(点击在本地累计,一次发增量):40 人也只有 ~200 msg/s 入站;
+    // 服务端另有 400ms 广播节流,双侧解耦
     const t = setInterval(() => {
       if (pendingRef.current > 0) {
         sendAction({ kind: "tap", n: pendingRef.current });
         pendingRef.current = 0;
       }
-    }, 120);
+    }, 200);
     return () => clearInterval(t);
   }, [sendAction]);
 
@@ -619,8 +621,11 @@ export function RaceRemote({
     return () => window.removeEventListener("devicemotion", onMotion);
   }, [mode, running]);
 
-  const onInput = () => {
+  const onInput = (e: React.PointerEvent) => {
     if (!running) return;
+    // 只认主触点:多指同拍每根手指都会触发一次 pointerdown(4 指齐点=4 次,刷分不实),
+    // isPrimary 只放行第一个触点 —— 单指快点不受影响,同时多指只算 1 次
+    if (!e.isPrimary) return;
     pendingRef.current += 1; // 点击(点击模式=主输入 / 摇一摇模式=兜底)
     setBump((b) => (b + 1) % 1000);
   };

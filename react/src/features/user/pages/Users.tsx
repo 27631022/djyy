@@ -31,6 +31,8 @@ import { matchesPinyin, highlightMatch } from "@/shared/lib/pinyinSearch";
 import { useAuth } from "@/stores/auth";
 import { OrgPicker } from "../components/OrgPicker";
 import { UserFilterPanel } from "../components/UserFilterPanel";
+import { ScopeOrgSelector } from "../components/ScopeOrgSelector";
+import { flattenTree, type FlatOrg } from "../components/orgFlatten";
 import {
   buildQueryFromFilters,
   countActiveFilters,
@@ -50,35 +52,8 @@ const ADMIN_BG = "rgb(238, 244, 255)";
    Helpers
    ═══════════════════════════════════════════════════════════════ */
 
-interface FlatOrg {
-  id: string;
-  name: string;
-  code: string;
-  kind: "party" | "admin";
-  type: string;
-  isVirtual: boolean;
-  depth: number;
-  path: string; // "集团/部门/小组"
-}
-
-function flattenTree(tree: OrgTreeNode[], depth = 0, parentPath = ""): FlatOrg[] {
-  const out: FlatOrg[] = [];
-  for (const node of tree) {
-    const path = parentPath ? `${parentPath} / ${node.name}` : node.name;
-    out.push({
-      id: node.id,
-      name: node.name,
-      code: node.code,
-      kind: node.kind,
-      type: node.type,
-      isVirtual: node.isVirtual,
-      depth,
-      path,
-    });
-    if (node.children?.length) out.push(...flattenTree(node.children, depth + 1, path));
-  }
-  return out;
-}
+/* FlatOrg / flattenTree / ScopeOrgSelector / MultiOrgSelector 抽到 components/ScopeOrgSelector.tsx
+   与「角色与权限」页共用(角色成员的 scope 锚点配置)。 */
 
 /* ═══════════════════════════════════════════════════════════════
    Main Page
@@ -1298,8 +1273,6 @@ function RolesTab({
 
   const dirty = JSON.stringify(rows) !== JSON.stringify(initial);
 
-  const adminOrgs = useMemo(() => Array.from(allOrgsById.values()).filter((o) => o.kind === "admin"), [allOrgsById]);
-
   function addRow() {
     const usedIds = new Set(rows.map((r) => r.roleId));
     const candidate = roles.find((r) => !usedIds.has(r.id));
@@ -1410,8 +1383,8 @@ function RolesTab({
                   </select>
                 </div>
                 {row.scope === "custom" && (
-                  <MultiOrgSelector
-                    allOrgs={adminOrgs}
+                  <ScopeOrgSelector
+                    allOrgsById={allOrgsById}
                     selectedIds={row.scopeOrgIds}
                     onChange={(ids) =>
                       setRows((rs) => rs.map((r, i) => (i === idx ? { ...r, scopeOrgIds: ids } : r)))
@@ -2003,92 +1976,6 @@ function PositionPickerDialog({
         </div>
       </div>
     </>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   MultiOrgSelector — 多组织选择器 (chip 列表 + 下拉添加)
-   用于 scope=custom 时,允许指定多个组织子树作为并集。
-   ═══════════════════════════════════════════════════════════════ */
-
-function MultiOrgSelector({
-  allOrgs, selectedIds, onChange,
-}: {
-  allOrgs: FlatOrg[];
-  selectedIds: string[];
-  onChange: (ids: string[]) => void;
-}) {
-  const selectedSet = new Set(selectedIds);
-  const available = allOrgs.filter((o) => !selectedSet.has(o.id));
-  const byId = new Map(allOrgs.map((o) => [o.id, o]));
-
-  function add(id: string) {
-    if (!id || selectedSet.has(id)) return;
-    onChange([...selectedIds, id]);
-  }
-  function remove(id: string) {
-    onChange(selectedIds.filter((x) => x !== id));
-  }
-
-  return (
-    <div className="border border-[#E9E9E9] rounded p-2 space-y-2 bg-[#FAFBFC]">
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] text-[#6B7280] w-14 flex-shrink-0">自定义组织</span>
-        <span className="text-[10px] text-[#9CA3AF] flex-1">
-          已选 {selectedIds.length} 个 · 多个组织取并集
-        </span>
-      </div>
-
-      {/* 已选 chips */}
-      {selectedIds.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {selectedIds.map((id) => {
-            const org = byId.get(id);
-            return (
-              <span
-                key={id}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium"
-                style={{ backgroundColor: ADMIN_BG, color: ADMIN }}
-              >
-                {org ? org.name : `(已删除 ${id.slice(0, 6)}…)`}
-                <button
-                  onClick={() => remove(id)}
-                  className="hover:bg-white/40 rounded-full p-px"
-                  title="移除"
-                >
-                  <XIcon className="w-2.5 h-2.5" />
-                </button>
-              </span>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="text-[10px] text-[#D1D5DB] italic">
-          尚未选择,从下方下拉添加(至少 1 个)
-        </div>
-      )}
-
-      {/* 添加下拉 */}
-      {available.length > 0 && (
-        <select
-          value=""
-          onChange={(e) => {
-            add(e.target.value);
-            e.target.value = "";
-          }}
-          className="w-full text-xs px-2 py-1 border border-[#E9E9E9] rounded bg-white"
-        >
-          <option value="">＋ 添加组织…</option>
-          {available.map((o) => (
-            <option key={o.id} value={o.id}>
-              {"  ".repeat(o.depth)}
-              {o.isVirtual ? "★ " : ""}
-              {o.name}
-            </option>
-          ))}
-        </select>
-      )}
-    </div>
   );
 }
 

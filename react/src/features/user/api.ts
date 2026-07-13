@@ -31,6 +31,120 @@ export interface UserListResponse {
   items: UserListItem[];
 }
 
+/**
+ * 轻量用户检索条目(内部通讯录级):不含邮箱/电话等联系明细。
+ * GET /users 列表已按登录人数据范围收敛;跨范围的选人组件(知识维护人/证书受表彰人/
+ * 报送个人对象/组织页加成员等)改走 directory,避免范围收敛后搜不到其他单位的人。
+ */
+export interface UserDirectoryItem {
+  id: string;
+  username: string;
+  name: string;
+  avatarUrl: string | null;
+  primaryAdmin: { orgId: string; orgName: string; position: string | null } | null;
+  partyAffiliation: { orgId: string; orgName: string; position: string | null } | null;
+}
+
+/**
+ * 通讯录条目(内部公司通讯录):含联系方式(电话/邮箱)。
+ * 登录即可、不受数据范围收敛(全员可查同事联系方式,用户决策)。
+ */
+export interface ContactItem {
+  id: string;
+  username: string;
+  name: string;
+  avatarUrl: string | null;
+  phone: string | null;
+  email: string | null;
+  /** 政治面貌字典 code(customFields.political_status),可空;标签由字典映射 */
+  politicalStatus: string | null;
+  admin: { orgId: string; orgName: string; position: string | null } | null;
+  party: { orgId: string; orgName: string; position: string | null } | null;
+}
+
+export interface ContactsResponse {
+  total: number;
+  items: ContactItem[];
+}
+
+export interface ContactsQuery {
+  search?: string;
+  /** 行政机构 id(按部门浏览) */
+  adminOrgId?: string;
+  /** 配合 adminOrgId:该机构及其全部下级(子树后端展开) */
+  adminOrgSubtree?: boolean;
+  partyOrgId?: string;
+  /** 只列党员 */
+  hasParty?: boolean;
+  /** 所属机构是否是「部门」:true=挂在任一部门下 / false=有行政归属但不在任何部门 */
+  inDept?: boolean;
+  /** 政治面貌字典 code 列表(任一命中) */
+  politicalStatuses?: string[];
+  take?: number;
+  skip?: number;
+}
+
+/* ═══════════ 通讯录后台管理(directory:manage) ═══════════ */
+
+/** 我的通讯录管理范围:all=全公司(通讯录管理员);否则 orgIds=可管行政机构子树(二级通讯录管理员) */
+export interface DirectoryScope {
+  all: boolean;
+  orgIds: string[];
+}
+
+/** 通讯录管理视图的单位成员(含被隐藏的;sortOrder = 组织/通讯录/门户统一排序) */
+export interface DirectoryMember {
+  userId: string;
+  username: string;
+  name: string;
+  avatarUrl: string | null;
+  phone: string | null;
+  email: string | null;
+  active: boolean;
+  position: string | null;
+  isPrimary: boolean;
+  hidden: boolean;
+  sortOrder: number;
+}
+
+export interface DirectoryUnitMembers {
+  org: { id: string; name: string };
+  members: DirectoryMember[];
+}
+
+export interface UpdateDirectoryMemberInput {
+  hidden?: boolean;
+  /** 传空串 = 清空 */
+  phone?: string;
+  email?: string;
+}
+
+export const directoryAdminApi = {
+  /** 我的管理范围(前端据此裁剪组织树) */
+  scope: () => api.get<DirectoryScope>("/directory/scope").then((r) => r.data),
+
+  /** 某行政机构的直接成员(管理视图) */
+  unitMembers: (orgId: string, search?: string) =>
+    api
+      .get<DirectoryUnitMembers>(`/directory/units/${orgId}/members`, {
+        params: search ? { search } : {},
+      })
+      .then((r) => r.data),
+
+  /** 按单位拖拽排序(userIds = 期望顺序) */
+  reorder: (orgId: string, userIds: string[]) =>
+    api.post<{ ok: boolean; count: number }>(`/directory/units/${orgId}/reorder`, { userIds }).then((r) => r.data),
+
+  /** 改联系方式 / 隐藏显示 */
+  updateMember: (userId: string, input: UpdateDirectoryMemberInput) =>
+    api
+      .patch<{ userId: string; phone: string | null; email: string | null; hidden: boolean }>(
+        `/directory/members/${userId}`,
+        input,
+      )
+      .then((r) => r.data),
+};
+
 export interface UserMembership {
   userId: string;
   orgId: string;
@@ -203,8 +317,37 @@ export const usersApi = {
       })
       .then((r) => r.data),
 
-  /** 统计角标(总数/在职/行政未分配/党组织未加入) */
+  /** 统计角标(总数/在职/行政未分配/党组织未加入)—— 口径 = 登录人可见范围 */
   stats: () => api.get<UserStats>("/users/stats").then((r) => r.data),
+
+  /** 内部通讯录:分页 + 部门/党组织/政治面貌过滤 + 姓名/工号/电话/邮箱/部门名搜索(登录即可、全员可查) */
+  contacts: (q: ContactsQuery = {}) =>
+    api
+      .get<ContactsResponse>("/users/contacts", {
+        params: {
+          ...(q.search ? { search: q.search } : {}),
+          ...(q.adminOrgId ? { adminOrgId: q.adminOrgId } : {}),
+          ...(q.adminOrgSubtree ? { adminOrgSubtree: "true" } : {}),
+          ...(q.partyOrgId ? { partyOrgId: q.partyOrgId } : {}),
+          ...(q.hasParty ? { hasParty: "true" } : {}),
+          ...(q.inDept !== undefined ? { inDept: String(q.inDept) } : {}),
+          ...(q.politicalStatuses?.length ? { politicalStatuses: q.politicalStatuses.join(",") } : {}),
+          ...(q.take !== undefined ? { take: q.take } : {}),
+          ...(q.skip !== undefined ? { skip: q.skip } : {}),
+        },
+      })
+      .then((r) => r.data),
+
+  /** 轻量用户检索(通讯录级,登录即可、不受数据范围收敛;最小字段,take ≤ 50) */
+  directory: (search?: string, take?: number) =>
+    api
+      .get<{ items: UserDirectoryItem[] }>("/users/directory", {
+        params: {
+          ...(search ? { search } : {}),
+          ...(take !== undefined ? { take } : {}),
+        },
+      })
+      .then((r) => r.data),
 
   get: (id: string) => api.get<UserDetail>(`/users/${id}`).then((r) => r.data),
 

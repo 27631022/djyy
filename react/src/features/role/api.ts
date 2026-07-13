@@ -43,6 +43,13 @@ export interface RoleUserItem {
   grantedAt: string;
 }
 
+/** 角色成员增删入参(= 给用户授此角色 + 配数据范围)。scope=custom 时须带 scopeOrgIds。 */
+export interface AssignRoleUserInput {
+  userId: string;
+  scope: ScopeValue;
+  scopeOrgIds?: string[];
+}
+
 export interface CreateRoleInput {
   code: string;
   name: string;
@@ -58,6 +65,12 @@ export const rolesApi = {
   list: () => api.get<RoleListItem[]>("/roles").then((r) => r.data),
   get:  (id: string) => api.get<RoleDetail>(`/roles/${id}`).then((r) => r.data),
   listUsers: (id: string) => api.get<RoleUserItem[]>(`/roles/${id}/users`).then((r) => r.data),
+  /** 给角色直接添加/更新一名成员(返回更新后的成员列表)。仅系统管理员(admin:role:write)。 */
+  addUser: (id: string, input: AssignRoleUserInput) =>
+    api.post<RoleUserItem[]>(`/roles/${id}/users`, input).then((r) => r.data),
+  /** 解除某用户的此角色(返回更新后的成员列表)。 */
+  removeUser: (id: string, userId: string) =>
+    api.delete<RoleUserItem[]>(`/roles/${id}/users/${userId}`).then((r) => r.data),
   create: (input: CreateRoleInput) => api.post<RoleDetail>("/roles", input).then((r) => r.data),
   update: (id: string, input: UpdateRoleInput) =>
     api.patch<RoleDetail>(`/roles/${id}`, input).then((r) => r.data),

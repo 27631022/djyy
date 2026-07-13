@@ -298,6 +298,7 @@ async function seedRolesAndPermissions() {
     { code: 'admin:user:write',    name: '管理用户',        category: 'operation' },
     { code: 'admin:role:read',     name: '查看角色',        category: 'operation' },
     { code: 'admin:role:write',    name: '管理角色与权限',  category: 'operation' },
+    { code: 'directory:manage',    name: '通讯录管理(排序/隐藏/改联系方式)', category: 'operation' },
     { code: 'admin:plugin:manage', name: '管理插件',        category: 'operation' },
     { code: 'portal:view',         name: '访问门户首页',    category: 'menu' },
     // 证书管理(V2)
@@ -352,11 +353,23 @@ async function seedRolesAndPermissions() {
     // 企业管理员:全套企业管理权限(不含 角色授权 admin:role:write / 插件 / 删除证书 / 删除文件 等高危权限,留 platform_admin)。
     // 一级 vs 二级 = 同角色不同 scope:分配时 scope=all(一级,全集团)或 scope=subtree(二级,自动锚到派发人所在单位的子树)。
     // 任务域已按 scope 强制;组织/用户管理的范围限制后续按需加。
-    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage', 'assessment:manage', 'assessment:score', 'assessment:view', 'assessment:export', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:manage', 'knowledge:publish', 'showcase:publish', 'showcase:manage', 'interactive:manage'] },
+    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage', 'assessment:manage', 'assessment:score', 'assessment:view', 'assessment:export', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:manage', 'knowledge:publish', 'showcase:publish', 'showcase:manage', 'interactive:manage', 'directory:manage'] },
     { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:manage', 'knowledge:publish', 'showcase:publish', 'showcase:manage', 'interactive:manage'] },
     { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:publish', 'showcase:publish', 'interactive:manage'] },
     // 任务派发:给各级机关部门的派发人;配合 UserRole.scope(本组织+下级 / 自定义单位)限定派发范围
     { code: 'task_dispatcher', name: '任务派发',     perms: ['portal:view', 'task:manage', 'task:review', 'file:upload', 'report:manage', 'report:review'] },
+    // 机构管理员(2026-07-12 三级数据权限):行政线数据权限管理员 ——
+    // 分配时 scope=custom(显式选单位,推荐)或 subtree(自动锚本人所在单位;机关部门人员锚本部门)。
+    // 范围内可:看/管用户资料 + 行政归属;不可:配角色(admin:role:write 仅 platform_admin)、动组织树(不授 org:write)。
+    { code: 'org_admin',       name: '机构管理员',   perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:user:read', 'admin:user:write'] },
+    // 党委管理员(2026-07-12):党务线数据权限管理员 —— 必须配 scope=custom 锚定「所在党委」
+    // (subtree/own 只推导行政维,党维不做归属推导)。范围内可:党委子树的党支部结构(org:write 被党维锚点限定)
+    // + 党员党组织归属/联系方式;不可:改行政归属/姓名/在职状态、建号、配角色。
+    { code: 'party_admin',     name: '党委管理员',   perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write'] },
+    // 通讯录管理员(2026-07-12):门户通讯录数据维护 —— 分配时 scope=all(全公司 = 通讯录管理员)
+    // 或 scope=custom/subtree(锚定二级单位 = 二级通讯录管理员,管所在二级单位及以下)。
+    // 范围内可:按单位拖拽排序、隐藏/显示、改联系方式(电话/邮箱);不可:建号/改角色/改归属/动组织树。
+    { code: 'directory_admin', name: '通讯录管理员', perms: ['portal:view', 'admin:menu', 'directory:manage'] },
     { code: 'member',          name: '普通用户',     perms: ['portal:view', 'task:fill', 'report:fill', 'knowledge:publish'] },
   ];
   for (const r of roles) {

@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SearchIcon, UserIcon, KeyboardIcon, CheckIcon } from "lucide-react";
-import { usersApi, type UserListItem } from "@/features/user";
+import { usersApi, type UserDirectoryItem } from "@/features/user";
 
 export interface RecipientValue {
   /** 关联系统 User 时不为空 */
@@ -81,19 +81,13 @@ function UserMode({
   const [search, setSearch] = useState("");
   const { data, isLoading } = useQuery({
     queryKey: ["users", "issue-picker", search],
-    queryFn: () =>
-      usersApi.list({
-        search: search || undefined,
-        active: true,
-        take: 50,
-        sortBy: "name",
-        sortDir: "asc",
-      }),
+    // directory:通讯录级检索,不受登录人数据范围收敛(发证对象可以是任意单位的人)
+    queryFn: () => usersApi.directory(search || undefined, 50),
   });
 
   const users = useMemo(() => data?.items ?? [], [data]);
 
-  function pickUser(u: UserListItem) {
+  function pickUser(u: UserDirectoryItem) {
     onChange({
       recipientUserId: u.id,
       recipientName: u.name,

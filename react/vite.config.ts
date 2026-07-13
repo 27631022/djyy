@@ -43,6 +43,15 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    // 路由级代码分割后(App.tsx 全 React.lazy),入口仅框架壳,手机 /play 线上 ~192KB。
+    // 仍超 500KB 默认阈值的只有两个「桌面端才会打开的懒块」:
+    //   - IconPicker(~600KB):内含生成的中文图标索引 icon-zh,仅后台图标选择页拉取
+    //   - model-viewer(~1MB):Google 3D 查看器,仅模型库/3D 生成页拉取
+    // 两者天生就大、按需加载、走 immutable 缓存,不值得再拆 → 阈值提到 1.1MB,
+    // 让真正的回归(新出现的巨型 chunk,尤其入口膨胀)仍能触发告警。
+    chunkSizeWarningLimit: 1100,
+  },
   server: {
     // 监听所有网络接口,允许局域网内其他设备通过 IP 访问
     // 在开发机控制台启动后,Vite 会打印 Network: http://<lan-ip>:5173/

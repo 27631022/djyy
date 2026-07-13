@@ -10,7 +10,21 @@
   </head>
 
   <body>
-    <div id="root"></div>
+    <!-- 首屏内联加载动画:HTML 一到就有画面(JS 还在下载时不再白屏);React 挂载时被 createRoot 替换。
+         40 台手机同时扫码挤一个 WiFi 时下载会慢,这里保证「看得到在加载」。样式全内联,零外部依赖。 -->
+    <div id="root">
+      <style>
+        .boot-wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:#9ca3af;background:#fff}
+        .boot-spin{width:38px;height:38px;border-radius:50%;border:3px solid #e5e7eb;border-top-color:#c8001e;animation:bootspin .8s linear infinite}
+        .boot-title{color:#374151;font-weight:600;font-size:16px}
+        @keyframes bootspin{to{transform:rotate(360deg)}}
+      </style>
+      <div class="boot-wrap">
+        <div class="boot-spin"></div>
+        <div class="boot-title">党建益友</div>
+        <div>正在加载,请稍候…</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

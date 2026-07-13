@@ -26,7 +26,9 @@ const DEMO_ACCOUNTS: DemoAccount[] = [
   { username: "86293664", name: "安丽",       description: "党委组织部 · 党建管理岗",       badge: "员工" },
   { username: "80523911", name: "李峰",       description: "塔运司领导班子 · 书记",         badge: "干部" },
   { username: "80523419", name: "孙彩霞",     description: "塔运司综合办公室 · 党建管理岗", badge: "员工" },
-  { username: "80530489", name: "李桂红",     description: "塔运司特车运输大队 · 书记",     badge: "干部" },
+  { username: "80523464", name: "刘军强",     description: "特车运输大队 · 党支部书记",     badge: "干部" },
+  { username: "80523668", name: "白光春",     description: "特车运输大队 · 起重机驾驶员",   badge: "员工" },
+  { username: "86481288", name: "张艺",       description: "特车运输大队 · 工程机械驾驶员", badge: "员工" },
 ];
 
 /** 从 URL fragment 提取统一登录回传的 token(#djyy_token=...) */

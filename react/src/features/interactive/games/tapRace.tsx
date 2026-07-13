@@ -160,18 +160,21 @@ function TapRaceRemote({ view, connected, sendAction, grouping }: GameRemoteProp
 
   // 本地聚合上报:狂点先在本地累加,每 120ms 把增量作为一次 tap 动作发出(不逐次发 WS)
   useEffect(() => {
+    // 200ms 合批上报(与 race 一致;服务端另有 400ms 广播节流)
     const t = setInterval(() => {
       if (pendingRef.current > 0) {
         sendAction({ kind: "tap", n: pendingRef.current });
         pendingRef.current = 0;
       }
-    }, 120);
+    }, 200);
     return () => clearInterval(t);
   }, [sendAction]);
 
   const running = v?.status === "running";
-  const onTap = () => {
+  const onTap = (e: React.PointerEvent) => {
     if (!running) return;
+    // 只认主触点:多指同拍每指各触发一次 pointerdown(刷分不实),isPrimary 只放行第一个触点
+    if (!e.isPrimary) return;
     pendingRef.current += 1;
     setBump((b) => (b + 1) % 1000);
   };

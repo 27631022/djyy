@@ -92,6 +92,17 @@ export function HostControls({
               ↻ 再来一局
             </button>
           )}
+          {/* 回首页大屏:大厅(入场二维码+花名册)。结束后返场/切节目间歇用;比赛进行中不显示防误触 */}
+          {screenStatus !== "running" && (
+            <button
+              type="button"
+              disabled={!connected}
+              onClick={() => control({ kind: "backToLobby" })}
+              className={`${btnBase} border border-gray-300 text-gray-700 hover:bg-gray-50`}
+            >
+              🏠 回首页大屏
+            </button>
+          )}
         </div>
       )}
     </div>

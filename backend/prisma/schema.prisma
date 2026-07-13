@@ -70,6 +70,8 @@ model User {
   phone        String?
   avatarUrl    String?
   active       Boolean  @default(true)
+  // 通讯录隐藏:true = 不在门户通讯录展示(人仍存在、可登录);由通讯录管理员在范围内切换
+  directoryHidden Boolean @default(false)
   externalId   String?  @unique // Casdoor 等外部 IdP 的 sub
   // 自定义字段值 (基于 UserCustomField 定义)
   // JSON 字符串,结构: { [fieldCode]: stringValue, ... }
@@ -93,7 +95,9 @@ model UserOrganization {
   org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   isPrimary Boolean      @default(false)
   position  String? // 兼任职务,如 "支部书记"
-  sortOrder Int          @default(0) // 成员在本机构内的排序(拖拽排序;仅对直接成员有意义)
+  // 成员在本机构内的统一排序(组织管理「成员拖拽」+ 通讯录管理「按单位拖拽」共用一份;
+  // 门户通讯录浏览某单位直属成员时也按它展示。仅对直接成员有意义)
+  sortOrder Int          @default(0)
   joinedAt  DateTime     @default(now())
 
   @@id([userId, orgId])

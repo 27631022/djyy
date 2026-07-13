@@ -414,6 +414,14 @@ export class InteractiveService {
     ]);
   }
 
+  /** 大屏回首页大厅:清掉该活动的 active 节目状态(节目回 pending,可再开)。 */
+  async clearActiveGame(eventId: string): Promise<void> {
+    await this.prisma.interactiveGame.updateMany({
+      where: { eventId, status: 'active' },
+      data: { status: 'pending' },
+    });
+  }
+
   async createRound(gameId: string) {
     const last = await this.prisma.interactiveRound.findFirst({
       where: { gameId },

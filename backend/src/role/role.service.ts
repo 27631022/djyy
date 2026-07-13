@@ -4,6 +4,7 @@ import { AuditService } from '../audit';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { ReplacePermissionsDto } from './dto/replace-permissions.dto';
+import { AssignRoleUserDto, ROLE_SCOPE_VALUES } from './dto/assign-role-user.dto';
 
 interface ActorContext {
   actorId?: string;
@@ -124,6 +125,79 @@ export class RoleService {
       })),
       grantedAt: ur.grantedAt,
     }));
+  }
+
+  /**
+   * 角色成员:直接给某角色添加/更新一名成员(= 给该用户授此角色 + 配数据范围),不影响该用户的其它角色。
+   * 「角色与权限」页的成员增删入口;与用户页 replaceRoles 同为授权动作,统一挂 admin:role:write(仅系统管理员)。
+   * ⚠ 直读 user / organization 表做存在性校验:role 模块被 organization 模块依赖(OrgScopeService),
+   *   若反向注入 OrganizationService/UserService 会成 module 环 —— 故这里直连 prisma(表非本模块,
+   *   但仅只读存在性校验,与既有 listUsers 读 user 表同源;scopeOrgs 存在性校验同 UserService.replaceRoles)。
+   */
+  async addUser(roleId: string, dto: AssignRoleUserDto, actor: ActorContext) {
+    const role = await this.prisma.role.findUnique({ where: { id: roleId } });
+    if (!role) throw new NotFoundException('角色不存在');
+    const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+    if (!user) throw new NotFoundException('用户不存在');
+
+    if (!ROLE_SCOPE_VALUES.includes(dto.scope)) {
+      throw new BadRequestException(`非法 scope: ${dto.scope}`);
+    }
+    const hasScopeOrgs = !!dto.scopeOrgIds && dto.scopeOrgIds.length > 0;
+    if (dto.scope === 'custom' && !hasScopeOrgs) {
+      throw new BadRequestException('scope=custom 必须至少指定一个组织');
+    }
+    if (dto.scope !== 'custom' && hasScopeOrgs) {
+      throw new BadRequestException('仅 scope=custom 时允许提供 scopeOrgIds');
+    }
+    const orgIds = dto.scope === 'custom' ? Array.from(new Set(dto.scopeOrgIds ?? [])) : [];
+    if (orgIds.length > 0) {
+      const found = await this.prisma.organization.count({ where: { id: { in: orgIds } } });
+      if (found !== orgIds.length) throw new BadRequestException('部分 scopeOrgIds 对应的组织不存在');
+    }
+
+    // 追加/更新该用户的这一条 UserRole:先删(cascade 清 scopeOrgs)再建 —— 幂等,既能「加」也能「改 scope」
+    await this.prisma.$transaction(async (tx) => {
+      await tx.userRole.deleteMany({ where: { userId: dto.userId, roleId } });
+      await tx.userRole.create({
+        data: {
+          userId: dto.userId,
+          roleId,
+          scope: dto.scope,
+          ...(orgIds.length > 0
+            ? { scopeOrgs: { create: orgIds.map((oid) => ({ orgId: oid })) } }
+            : {}),
+        },
+      });
+    });
+
+    await this.audit.log({
+      ...actor,
+      action: 'role.user.assign',
+      target: roleId,
+      detail: { userId: dto.userId, scope: dto.scope, orgIds },
+    });
+
+    return this.listUsers(roleId);
+  }
+
+  /** 角色成员:解除某用户的此角色(不影响其它角色)。 */
+  async removeUser(roleId: string, userId: string, actor: ActorContext) {
+    const existing = await this.prisma.userRole.findUnique({
+      where: { userId_roleId: { userId, roleId } },
+    });
+    if (!existing) throw new NotFoundException('该用户未持有此角色');
+
+    await this.prisma.userRole.delete({ where: { userId_roleId: { userId, roleId } } });
+
+    await this.audit.log({
+      ...actor,
+      action: 'role.user.unassign',
+      target: roleId,
+      detail: { userId },
+    });
+
+    return this.listUsers(roleId);
   }
 
   /** 创建自定义角色 (builtin=false) */

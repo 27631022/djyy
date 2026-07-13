@@ -428,6 +428,13 @@ export class OrganizationService {
     });
   }
 
+  /** 按 linkId 查关联(controller 做范围校验用)。 */
+  async findLink(linkId: string): Promise<{ id: string; partyOrgId: string; adminOrgId: string }> {
+    const link = await this.prisma.partyAdminLink.findUnique({ where: { id: linkId } });
+    if (!link) throw new NotFoundException('关联不存在');
+    return { id: link.id, partyOrgId: link.partyOrgId, adminOrgId: link.adminOrgId };
+  }
+
   /** 解除关联(按 linkId)。 */
   async unlinkOrg(linkId: string): Promise<void> {
     const existing = await this.prisma.partyAdminLink.findUnique({ where: { id: linkId } });

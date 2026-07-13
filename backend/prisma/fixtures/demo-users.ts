@@ -58,5 +58,9 @@ export const DEMO_USERS: DemoUserSeed[] = [
   { username: '86293664', name: '安丽',   adminCode: 'KL-ADMIN-L3-HQ-04',  position: '党建管理岗',   partyCode: 'KL-PARTY-L3-HQ-04' },
   { username: '80523911', name: '李峰',   adminCode: 'KL-ADMIN-L4-TYS-01', position: '书记',         partyCode: 'KL-PARTY-L3-TYS-01', extraRoles: [{ code: 'party_secretary', scopeCode: 'KL-PARTY-L3-TYS-01' }] },
   { username: '80523419', name: '孙彩霞', adminCode: 'KL-ADMIN-L4-TYS-02', position: '党建管理岗',   partyCode: 'KL-PARTY-L3-TYS-01' },
-  { username: '80530489', name: '李桂红', adminCode: 'KL-ADMIN-L4-TYS-03', position: '书记',         partyCode: 'KL-PARTY-L3-TYS-02', extraRoles: [{ code: 'party_secretary', scopeCode: 'KL-PARTY-L3-TYS-02' }] },
+  // 特车运输大队(KL-ADMIN-L4-TYS-03)/ 特车运输大队党支部(KL-PARTY-L3-TYS-02):真实工号
+  { username: '80523464', name: '刘军强', adminCode: 'KL-ADMIN-L4-TYS-03', position: '党支部书记',   partyCode: 'KL-PARTY-L3-TYS-02', extraRoles: [{ code: 'party_secretary', scopeCode: 'KL-PARTY-L3-TYS-02' }] },
+  { username: '80523668', name: '白光春', adminCode: 'KL-ADMIN-L4-TYS-03', position: '起重机驾驶员', partyCode: 'KL-PARTY-L3-TYS-02' },
+  // 张艺 真实无党组织;演示体系要求每人挂一个党支部,故 fixture 里归入特车党支部(无党内职务=普通党员)
+  { username: '86481288', name: '张艺',   adminCode: 'KL-ADMIN-L4-TYS-03', position: '工程机械驾驶员', partyCode: 'KL-PARTY-L3-TYS-02' },
 ];

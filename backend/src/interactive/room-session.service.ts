@@ -71,6 +71,10 @@ interface RoomRuntime {
   screenSockets: Set<string>;
   hostSockets: Set<string>;
   activeGame: ActiveGame | null;
+  // 广播节流脏标记:高频事件(玩家点击/进场/选队)只置位,由 400ms ticker 合批广播。
+  // 否则 40 人狂点 = 每秒数百次「全房间投影+发送」,事件循环被打满 → 心跳超时集体掉线。
+  stateDirty: boolean; // 游戏状态有未广播的变更(玩家动作驱动)
+  rosterDirty: boolean; // 花名册有未广播的变更(进场/掉线/选队驱动)
 }
 
 /** socketId → 该连接的身份绑定(断线/动作/控制时反查) */
@@ -114,7 +118,8 @@ export interface JoinAck {
  * 状态一律由 GameDef.reduce/control/tick 计算后投影下发。
  *
  * ⚠ 单进程内存态:多副本部署会分裂房间,需 socket.io Redis adapter(单机 MVP 无虑)。
- * ⚠ 广播未节流:Phase 0 少量玩家可接受;高频/大房间的 delta+节流留 Phase 2(摇一摇设计已标注)。
+ * 广播节流:高频事件(玩家动作/进场/掉线/选队)只置脏标记,由 400ms 全局 ticker 合批广播 ——
+ * 广播量与人数/点击频率解耦(40 人实测狂点打满事件循环致心跳超时集体掉线后引入)。
  */
 @Injectable()
 export class RoomSessionService implements OnModuleDestroy {
@@ -198,7 +203,7 @@ export class RoomSessionService implements OnModuleDestroy {
     if (g && g.mode === 'teams' && g.assign === 'auto' && !p.teamId) this.autoAssign(room, p, g);
     await this.interactive.upsertPlayer(room.eventId, deviceId, p.nickname, p.teamId, p.teamName, p.avatar);
 
-    this.broadcastRoster(room);
+    room.rosterDirty = true; // 扫码潮 40 人涌入,花名册合批广播(ACK 里的 snapshot 不受影响)
     return { ok: true, deviceId, snapshot: this.snapshot(room, deviceId) };
   }
 
@@ -218,7 +223,7 @@ export class RoomSessionService implements OnModuleDestroy {
         p.connected = false;
         p.socketId = null;
       }
-      this.broadcastRoster(room);
+      room.rosterDirty = true; // 掉线/重连高频,合批广播
     }
   }
 
@@ -247,7 +252,8 @@ export class RoomSessionService implements OnModuleDestroy {
     g.state = res.state;
     if (res.events?.length) this.emitEvents(room, res.events);
     if (res.ended) await this.finishRound(room);
-    else this.broadcastGame(room);
+    // 玩家动作不直接广播,只置脏标记,由 400ms ticker 合批 —— 广播量与点击频率解耦
+    else room.stateDirty = true;
   }
 
   async control(socketId: string, data: unknown): Promise<void> {
@@ -272,6 +278,19 @@ export class RoomSessionService implements OnModuleDestroy {
     if (cmd.kind === 'endEvent') {
       room.status = 'ended';
       this.server?.to(room.roomCode).emit('room:closed', { roomCode: room.roomCode });
+      return;
+    }
+    if (cmd.kind === 'backToLobby') {
+      // 大屏切回首页大厅(入场二维码+花名册):清活跃节目,节目单 active→pending(可再开)
+      room.activeGame = null;
+      for (const rg of room.games) if (rg.status === 'active') rg.status = 'pending';
+      try {
+        await this.interactive.clearActiveGame(room.eventId);
+      } catch (e) {
+        this.logger.warn(`回首页清 DB 节目状态失败(不影响现场) room=${room.roomCode}: ${String(e)}`);
+      }
+      this.broadcastGame(room); // activeGame=null → screen:state {game:null} → 大屏回大厅/手机回等待
+      this.server?.to(room.roomCode).emit('room:games', { games: room.games }); // 主持台高亮同步
       return;
     }
     if (!room.activeGame) return;
@@ -307,6 +326,8 @@ export class RoomSessionService implements OnModuleDestroy {
       screenSockets: new Set(),
       hostSockets: new Set(),
       activeGame: null,
+      stateDirty: false,
+      rosterDirty: false,
     };
     this.rooms.set(roomCode, room);
     await this.interactive.markLive(event.id);
@@ -360,11 +381,22 @@ export class RoomSessionService implements OnModuleDestroy {
     if (!room.activeGame) return;
     const g = room.activeGame;
     const settlement = g.def.settle(g.state, g.config);
-    await this.interactive.endRound(g.roundId, settlement);
-    // 结算按开局时的配置算;展示层换成最新落库配置(领奖台版式/主题素材)——
-    // 比赛进行中在后台改的版式,结算领奖页即生效(refreshGames 在 locked 时不刷 config 的补口)
-    const row = await this.interactive.getGameRow(g.gameId);
-    if (row) g.config = g.def.validateConfig(safeParseConfig(row.configJson));
+    // ⚠ 落库/读库失败(局或活动被从数据库直删、DB 瞬断等)绝不能打死进程 ——
+    // onTick 里是 fire-and-forget 调用,未捕获的 rejection 会让 Node 整个退出(现场全场中断)。
+    // 结算快照持久化失败只记日志,现场大屏照常出结算画面。
+    try {
+      await this.interactive.endRound(g.roundId, settlement);
+    } catch (e) {
+      this.logger.error(`结算落库失败(继续广播) room=${room.roomCode} round=${g.roundId}: ${String(e)}`);
+    }
+    try {
+      // 结算按开局时的配置算;展示层换成最新落库配置(领奖台版式/主题素材)——
+      // 比赛进行中在后台改的版式,结算领奖页即生效(refreshGames 在 locked 时不刷 config 的补口)
+      const row = await this.interactive.getGameRow(g.gameId);
+      if (row) g.config = g.def.validateConfig(safeParseConfig(row.configJson));
+    } catch (e) {
+      this.logger.warn(`结算读取最新配置失败(用开局配置展示) room=${room.roomCode}: ${String(e)}`);
+    }
     // 保留 activeGame(state 已 ended),大屏渲染结算;附带 settlement 一次性下发
     this.broadcastGame(room, { settlement });
   }
@@ -372,14 +404,23 @@ export class RoomSessionService implements OnModuleDestroy {
   private onTick(): void {
     const now = Date.now();
     for (const room of this.rooms.values()) {
+      // 花名册合批:进场/掉线/选队只置脏标记,这里统一每 400ms 广播一次(lobby 无节目也要 flush)
+      if (room.rosterDirty) this.broadcastRoster(room);
       const g = room.activeGame;
       if (!g) continue;
       const res = g.def.tick(g.state, now, g.config);
-      if (!res) continue;
-      g.state = res.state;
-      if (res.events?.length) this.emitEvents(room, res.events);
-      if (res.ended) void this.finishRound(room);
-      else this.broadcastGame(room);
+      if (res) {
+        g.state = res.state;
+        if (res.events?.length) this.emitEvents(room, res.events);
+        if (res.ended) {
+          void this.finishRound(room);
+          continue;
+        }
+        this.broadcastGame(room); // tick 推进(倒计时/计时)必广播,同时消化 stateDirty
+        continue;
+      }
+      // tick 无推进但有玩家动作累积(如 ready/自定义游戏阶段)→ 合批广播
+      if (room.stateDirty) this.broadcastGame(room);
     }
   }
 
@@ -427,6 +468,7 @@ export class RoomSessionService implements OnModuleDestroy {
   }
 
   private broadcastRoster(room: RoomRuntime): void {
+    room.rosterDirty = false;
     this.server?.to(room.roomCode).emit('room:players', {
       roomCode: room.roomCode,
       players: this.rosterPayload(room),
@@ -435,6 +477,7 @@ export class RoomSessionService implements OnModuleDestroy {
   }
 
   private broadcastGame(room: RoomRuntime, extra?: Record<string, unknown>): void {
+    room.stateDirty = false;
     if (!this.server) return;
     const g = room.activeGame;
     if (!g) {
@@ -528,7 +571,7 @@ export class RoomSessionService implements OnModuleDestroy {
       p.teamName = team.name;
     }
     await this.interactive.upsertPlayer(room.eventId, p.deviceId, p.nickname, p.teamId, p.teamName, p.avatar);
-    this.broadcastRoster(room);
+    room.rosterDirty = true; // 选队潮合批广播(ACK 已带本人结果,他人看到的人数 ≤400ms 后刷新)
     return { ok: true, teamId: p.teamId, teamName: p.teamName };
   }
 

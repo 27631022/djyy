@@ -770,6 +770,14 @@ export default function NavPage() {
 
           {/* Nav links — 后台「站点设置 → 首页顶端」可改文字/URL/排序/增删 */}
           <nav className="hidden md:flex items-center gap-6 mr-4">
+            {/* 通讯录:固定入口(登录后可查同事联系方式;未登录点击跳登录并回跳) */}
+            <Link
+              to="/directory"
+              className="flex items-center gap-1 text-base text-[#1A1A1A] hover:text-[var(--party-primary)] transition-colors font-medium"
+            >
+              <UsersIcon className="w-4 h-4" />
+              通讯录
+            </Link>
             {topNav.items.map((item, idx) => {
               const isPlaceholder = !item.url || item.url === "#";
               return (

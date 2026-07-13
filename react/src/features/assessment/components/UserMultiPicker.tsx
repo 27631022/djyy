@@ -27,7 +27,8 @@ export function UserMultiPicker({
 
   const { data, isFetching } = useQuery({
     queryKey: ["user-search", term],
-    queryFn: () => usersApi.list({ search: term, take: 20, active: true }),
+    // directory:通讯录级检索,不受登录人数据范围收敛(指标管理员/协同人可指派任意单位的人)
+    queryFn: () => usersApi.directory(term, 20),
     enabled: term.length >= 1,
     staleTime: 30_000,
   });

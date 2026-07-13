@@ -14,6 +14,7 @@ import {
 import type { Request } from 'express';
 import { UserService } from './user.service';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
+import { Permission } from '../permission';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
@@ -21,16 +22,44 @@ import { ReplaceMembershipsDto } from './dto/replace-memberships.dto';
 import { AddMembershipDto } from './dto/add-membership.dto';
 import { ReplaceRolesDto } from './dto/replace-roles.dto';
 import { ListUsersQuery } from './dto/list-users.query';
+import { ContactsQuery } from './dto/contacts.query';
 import { LookupByEmpNoDto, LookupByNameDto } from './dto/lookup-by-empno.dto';
 
+/**
+ * 鉴权约定(2026-07-12 三级数据权限):
+ *   - 读(list/stats/:id):登录即可,但服务端按登录人「可见范围」收敛
+ *     (管理范围 ∪ 对口上级 ∪ 本单位兜底 —— 兜底保 AssignPicker/派发个人 tab 等业务选人组件);
+ *   - directory / lookup-*:内部通讯录级轻量检索,登录即可、字段最小化(跨范围选人组件用);
+ *   - 写:@Permission('admin:user:write') + service 按目标归属维度校验范围;
+ *   - 角色分配:@Permission('admin:role:write')(仅系统管理员 —— 堵「任何登录用户可给自己提权」的洞)。
+ */
 @Controller('users')
 @UseGuards(AuthGuard)
 export class UserController {
   constructor(private readonly users: UserService) {}
 
   @Get()
-  list(@Query() query: ListUsersQuery) {
-    return this.users.list(query);
+  list(@Query() query: ListUsersQuery, @CurrentUser() me: AuthPayload) {
+    return this.users.list(query, me.sub);
+  }
+
+  /**
+   * 轻量用户检索(内部通讯录级):姓名/工号搜索,最小字段,登录即可。
+   * 必须放在 `:id` 之前。
+   */
+  @Get('directory')
+  directory(@Query('search') search?: string, @Query('take') take?: string) {
+    const n = take ? parseInt(take, 10) : undefined;
+    return this.users.directory(search, Number.isFinite(n) ? n : undefined);
+  }
+
+  /**
+   * 通讯录(内部公司通讯录):登录即可、不做数据范围收敛,分页返回联系信息 + 部门/党组织/政治面貌过滤。
+   * 必须放在 `:id` 之前,否则 'contacts' 会被识别成 id。
+   */
+  @Get('contacts')
+  contacts(@Query() query: ContactsQuery) {
+    return this.users.contacts(query);
   }
 
   /**
@@ -67,21 +96,23 @@ export class UserController {
    * 必须放在 `:id` 之前,否则 'stats' 会被识别成 id。
    */
   @Get('stats')
-  stats() {
-    return this.users.stats();
+  stats(@CurrentUser() me: AuthPayload) {
+    return this.users.stats(me.sub);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.users.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() me: AuthPayload) {
+    return this.users.findOneScoped(me.sub, id);
   }
 
   @Post()
+  @Permission('admin:user:write')
   create(@Body() dto: CreateUserDto, @CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.users.create(dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
   @Patch(':id')
+  @Permission('admin:user:write')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
@@ -92,6 +123,7 @@ export class UserController {
   }
 
   @Put(':id/memberships')
+  @Permission('admin:user:write')
   replaceMemberships(
     @Param('id') id: string,
     @Body() dto: ReplaceMembershipsDto,
@@ -103,6 +135,7 @@ export class UserController {
 
   /** 新增单条组织归属(组织管理页「点机构加成员」)。 */
   @Post(':id/memberships')
+  @Permission('admin:user:write')
   addMembership(
     @Param('id') id: string,
     @Body() dto: AddMembershipDto,
@@ -114,6 +147,7 @@ export class UserController {
 
   /** 移除单条组织归属(把成员移出某机构)。 */
   @Delete(':id/memberships/:orgId')
+  @Permission('admin:user:write')
   removeMembership(
     @Param('id') id: string,
     @Param('orgId') orgId: string,
@@ -123,7 +157,9 @@ export class UserController {
     return this.users.removeMembership(id, orgId, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 
+  /** 角色分配 = 授权动作,仅 admin:role:write(内置只有 platform_admin)可操作 —— 防范围内管理员自我提权。 */
   @Put(':id/roles')
+  @Permission('admin:role:write')
   replaceRoles(
     @Param('id') id: string,
     @Body() dto: ReplaceRolesDto,
@@ -138,6 +174,7 @@ export class UserController {
    * 未知字段会被静默丢弃,必填字段不能空,select 类型值必须是字典内合法 code。
    */
   @Put(':id/custom-fields')
+  @Permission('admin:user:write')
   replaceCustomFields(
     @Param('id') id: string,
     @Body() body: { values: Record<string, string> },
@@ -152,6 +189,7 @@ export class UserController {
   }
 
   @Delete(':id')
+  @Permission('admin:user:write')
   remove(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
     return this.users.softDelete(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }

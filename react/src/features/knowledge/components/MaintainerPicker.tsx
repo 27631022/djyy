@@ -28,7 +28,8 @@ export function MaintainerPicker({
   const [q, setQ] = useState("");
   const results = useQuery({
     queryKey: ["users", "maintainer-search", q],
-    queryFn: () => usersApi.list({ search: q.trim() || undefined, active: true, take: 20 }),
+    // directory:通讯录级检索,不受登录人数据范围收敛(维护人可指派任意单位的人)
+    queryFn: () => usersApi.directory(q.trim() || undefined, 20),
     enabled: open,
   });
   const selectedIds = new Set(value.map((m) => m.userId));

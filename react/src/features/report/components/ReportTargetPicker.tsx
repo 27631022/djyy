@@ -315,7 +315,8 @@ function UserTab({ selectedKeys, onToggle }: { selectedKeys: Set<string>; onTogg
   const [search, setSearch] = useState("");
   const usersQuery = useQuery({
     queryKey: ["report-target-users", search],
-    queryFn: () => usersApi.list({ search: search || undefined, active: true, take: 25 }),
+    // directory:通讯录级检索,不受登录人数据范围收敛(报送个人对象可跨单位)
+    queryFn: () => usersApi.directory(search || undefined, 25),
     staleTime: 30_000,
   });
   const items = usersQuery.data?.items ?? [];

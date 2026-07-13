@@ -514,6 +514,10 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
                           </div>
                           {membersQuery.isLoading ? (
                             <div className="text-[12px] text-[#9CA3AF]">加载人员…</div>
+                          ) : membersQuery.isError ? (
+                            // 该部门不在当前账号的可见范围(数据权限收敛)时 members 返回 403,
+                            // 区别于「真的没人」——否则误导为「该部门暂无人员」
+                            <div className="text-[12px] text-[#9CA3AF]">你没有查看该部门人员的权限</div>
                           ) : (membersQuery.data ?? []).length === 0 ? (
                             <div className="text-[12px] text-[#9CA3AF]">该部门暂无人员</div>
                           ) : (

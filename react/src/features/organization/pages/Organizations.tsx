@@ -1665,7 +1665,9 @@ function OrgMembersPanel({
 
   const searchQ = useQuery({
     queryKey: ["user-search-for-org", search],
-    queryFn: () => usersApi.list({ search: search.trim(), take: 20 }),
+    // directory:通讯录级检索,不受登录人数据范围收敛(加成员=跨单位调人是合法工作流,
+    // 真正的权限闸在 addMembership:目标机构必须在操作人的管理范围内)
+    queryFn: () => usersApi.directory(search.trim(), 20),
     enabled: search.trim().length >= 1,
   });
   const candidates = (searchQ.data?.items ?? []).filter((u) => !memberIds.has(u.id));

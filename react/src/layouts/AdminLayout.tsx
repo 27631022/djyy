@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useRoutes, type RouteObject } from "react-router-dom";
 import {
   HomeIcon, ChevronLeftIcon, XIcon,
   NetworkIcon, BarChart2Icon, SettingsIcon, LayoutDashboardIcon,
-  BuildingIcon, ShieldIcon, UserIcon, BookTextIcon,
+  BuildingIcon, ShieldIcon, UserIcon, BookTextIcon, ContactIcon,
   EyeIcon, ThumbsUpIcon, MessageSquareIcon,
   LogOutIcon, KeyIcon, SlidersHorizontalIcon, PaletteIcon, LayoutGridIcon,
   AwardIcon, BriefcaseIcon, SendIcon, ListChecksIcon, UploadIcon, InboxIcon, ClipboardCheckIcon, ClipboardListIcon, BadgeCheckIcon,
@@ -88,6 +88,7 @@ const CATEGORIES: Category[] = [
     items: [
       { path: "/admin/organizations", label: "党组织 / 行政机构", icon: BuildingIcon, perm: "admin:org:read" },
       { path: "/admin/users",         label: "用户管理",           icon: UserIcon,    perm: "admin:user:read" },
+      { path: "/admin/directory",     label: "通讯录管理",         icon: ContactIcon, perm: "directory:manage" },
       { path: "/admin/roles",         label: "角色与权限",         icon: ShieldIcon,  perm: "admin:role:read" },
       { path: "/admin/data-import",   label: "数据导入",           icon: UploadIcon,  perm: "admin:user:write" },
     ],
@@ -252,7 +253,17 @@ function KeepAliveRoutes({
             aria-hidden={!active}
             inert={active ? undefined : true}
           >
-            <RouteSlot routes={routes} path={active ? p + search : p} />
+            {/* 页面组件是路由级懒块(App.tsx React.lazy):就地 Suspense,首开标签只在内容区
+                显示加载态,不冒泡到根边界闪整个后台壳 */}
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center text-sm text-[#9CA3AF]">
+                  页面加载中…
+                </div>
+              }
+            >
+              <RouteSlot routes={routes} path={active ? p + search : p} />
+            </Suspense>
           </div>
         );
       })}
