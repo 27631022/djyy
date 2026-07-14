@@ -352,6 +352,11 @@ function Registration({
   );
 }
 
+// 作答卡防误触冷却:连点节奏下撞关瞬间,作答卡突然替换掉连点圆钮,下一下点击正好落在
+// 选项/找错图上 → 被判答错退步(用户实测反馈)。新题出现后先锁 900ms(手指停下+看清题),
+// 冷却结束才接受作答;答错原地换题(nonce 变)同样重新冷却,顺带防提交按钮双击残留。
+const ANSWER_ARM_DELAY_MS = 900;
+
 // ─────────────────────── 手机 ───────────────────────
 function RouteRaceRemote({ view, connected, sendAction, grouping }: GameRemoteProps) {
   const v = view as RRRemoteView | null;
@@ -361,6 +366,8 @@ function RouteRaceRemote({ view, connected, sendAction, grouping }: GameRemotePr
   // (重复正确答案被闸1丢弃/旧 nonce 被闸3丢弃),重交无害;不设超时的话,答案消息在弱网丢失
   // 或「再来一局」后同 cpId+nonce 重现时,按钮会永久锁死在「等待判定」(对抗审查抓到)。
   const [submittedKey, setSubmittedKey] = useState<string | null>(null);
+  // 已解锁作答的题目身份(effect 延时置位;可见性由渲染期对比派生,见 ANSWER_ARM_DELAY_MS 注释)
+  const [armedKey, setArmedKey] = useState<string | null>(null);
   const myTeamColor = v?.myTeamId ? grouping?.teams.find((t) => t.id === v.myTeamId)?.color ?? null : null;
   const remoteBgUrl = v?.remoteBgFileId ? interactiveFileUrl(v.remoteBgFileId) : null;
   const running = v?.status === "running";
@@ -391,12 +398,21 @@ function RouteRaceRemote({ view, connected, sendAction, grouping }: GameRemotePr
     return () => clearTimeout(t);
   }, [submittedKey]);
 
+  // 防误触冷却:新题(撞关/换题)出现 900ms 后才解锁作答
+  const challengeKey = challenge ? `${challenge.cpId}:${challenge.nonce}` : null;
+  useEffect(() => {
+    if (!challengeKey) return;
+    const t = setTimeout(() => setArmedKey(challengeKey), ANSWER_ARM_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [challengeKey]);
+
   if (!v) return <div className="text-center text-white/70 text-xl">准备中…</div>;
   const finished = v.myFinishedAt !== null;
   const progressPct = Math.min(100, Math.round((v.mySteps / Math.max(1, v.totalSteps)) * 100));
+  // 冷却中(刚撞关/刚换题,手指可能还在连点)→ 不接受作答
+  const coolingDown = challengeKey !== null && armedKey !== challengeKey;
   // 答案发出后禁点,直到服务端推进(换题/解锁)或 3s 超时;答案**立即上报不合批**
-  const challengeKey = challenge ? `${challenge.cpId}:${challenge.nonce}` : null;
-  const answerDisabled = challengeKey !== null && submittedKey === challengeKey;
+  const answerDisabled = coolingDown || (challengeKey !== null && submittedKey === challengeKey);
 
   return (
     <div className="w-full flex flex-col items-center gap-5">
@@ -443,18 +459,26 @@ function RouteRaceRemote({ view, connected, sendAction, grouping }: GameRemotePr
             if (!ui) return null;
             const Play = ui.Play;
             return (
-              <Play
-                key={`${challenge.cpId}-${challenge.nonce}`}
-                challenge={challenge}
-                disabled={answerDisabled || !connected}
-                submit={(payload) => {
-                  setSubmittedKey(`${challenge.cpId}:${challenge.nonce}`);
-                  sendAction({ kind: "answer", cpId: challenge.cpId, nonce: challenge.nonce, ...payload });
-                }}
-              />
+              // 冷却期整块 pointer-events-none 双保险(即使某个关卡类型的 Play 忘了处理 disabled,
+              // 连点残余的点击也落不进来)+ 降透明给「还没解锁」的直观感受
+              <div className={coolingDown ? "pointer-events-none opacity-50 transition-opacity" : "transition-opacity"}>
+                <Play
+                  key={`${challenge.cpId}-${challenge.nonce}`}
+                  challenge={challenge}
+                  disabled={answerDisabled || !connected}
+                  submit={(payload) => {
+                    setSubmittedKey(`${challenge.cpId}:${challenge.nonce}`);
+                    sendAction({ kind: "answer", cpId: challenge.cpId, nonce: challenge.nonce, ...payload });
+                  }}
+                />
+              </div>
             );
           })()}
-          {answerDisabled && <div className="text-center text-white/60 text-xs">已提交,等待判定…</div>}
+          {coolingDown ? (
+            <div className="text-center text-yellow-300/90 text-sm font-bold">✋ 到关卡了!先停手看题,马上可以作答…</div>
+          ) : answerDisabled ? (
+            <div className="text-center text-white/60 text-xs">已提交,等待判定…</div>
+          ) : null}
         </div>
       ) : finished ? (
         <div className="text-center text-white space-y-2 py-6">
