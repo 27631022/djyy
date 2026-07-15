@@ -277,7 +277,7 @@ export default function AvatarLibrary() {
     });
 
   return (
-    <div className="space-y-4">
+    <div className="p-6 max-w-7xl mx-auto space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <div>
           <h1 className="text-xl font-semibold">头像库</h1>
