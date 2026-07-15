@@ -91,8 +91,15 @@ export class AvatarLibraryService {
     return rows.map((r) => this.toView(r));
   }
 
+  /** 详情(含 configJson,编辑器「回灌再编辑」用)。 */
+  async detail(id: string): Promise<AvatarLibraryItemView & { configJson: string | null }> {
+    const row = await this.prisma.avatarLibraryItem.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException('头像不存在');
+    return { ...this.toView(row), configJson: row.configJson };
+  }
+
   async add(
-    dto: { fileId: string; name?: string; gender?: string },
+    dto: { fileId: string; name?: string; gender?: string; configJson?: string },
     actor: ActorCtx,
   ): Promise<AvatarLibraryItemView> {
     const meta = await this.storage.getMeta(dto.fileId); // 不存在/软删 → NotFound
@@ -113,6 +120,19 @@ export class AvatarLibraryService {
 
     const name = (dto.name?.trim() || meta.originalName.replace(/\.[a-z0-9]+$/i, '')).slice(0, 80);
     const gender = dto.gender && GENDERS.has(dto.gender) ? dto.gender : 'neutral';
+
+    // 编辑器产物:configJson 必须是合法 JSON 对象(回灌再编辑的前提),带它即 source=studio
+    let configJson: string | null = null;
+    if (dto.configJson) {
+      try {
+        const parsed: unknown = JSON.parse(dto.configJson);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('非对象');
+        configJson = dto.configJson;
+      } catch {
+        throw new BadRequestException('configJson 不是合法的 JSON 对象');
+      }
+    }
+    const source = configJson ? 'studio' : 'upload';
 
     // 缩略图:256 webp(失败不阻断入库,前端回退原图)
     let thumbFileId: string | null = null;
@@ -142,7 +162,15 @@ export class AvatarLibraryService {
     let row;
     try {
       row = await this.prisma.avatarLibraryItem.create({
-        data: { name, gender, fileId: dto.fileId, thumbFileId, createdById: actor.actorId },
+        data: {
+          name,
+          gender,
+          fileId: dto.fileId,
+          thumbFileId,
+          configJson,
+          source,
+          createdById: actor.actorId,
+        },
       });
     } catch (e) {
       // create 失败(唯一撞车/DB 异常)都要清掉刚生成的缩略图 —— avatars/* 图片被 GC 豁免,残留即永久泄漏

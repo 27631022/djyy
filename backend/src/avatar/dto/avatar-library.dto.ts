@@ -19,6 +19,12 @@ export class AddLibraryItemDto {
   @IsOptional()
   @IsIn(GENDERS as unknown as string[])
   gender?: string;
+
+  /** 头像编辑器产物的部件配置(JSON 串;带它则 source=studio,可回编辑器再编辑)。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20_000)
+  configJson?: string;
 }
 
 export class UpdateLibraryItemDto {

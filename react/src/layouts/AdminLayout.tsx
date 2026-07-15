@@ -71,8 +71,9 @@ const CATEGORIES: Category[] = [
       { path: "/admin/showcase/feedback",        label: "吐槽处理",        icon: MessageSquareTextIcon, group: "先锋晒场", perm: "showcase:manage" },
       { path: "/admin/interactive",              label: "互动活动",        icon: Gamepad2Icon,       group: "现场互动", perm: "interactive:manage" },
       { path: "/admin/interactive/designs",      label: "自制游戏",        icon: PencilRulerIcon,    group: "现场互动", perm: "interactive:manage" },
-      // 头像工坊(avatar):公共头像库(上传件与后续头像编辑器产物同库);头像编辑器后续加在此组
+      // 头像工坊(avatar):公共头像库(上传件与编辑器产物同库)+ 头像编辑器(部件组合/随机/导出/存库)
       { path: "/admin/avatar-library",           label: "头像库",          icon: CircleUserRoundIcon, group: "头像工坊", perm: "avatar:manage" },
+      { path: "/admin/avatar-studio",            label: "头像编辑器",      icon: SparklesIcon,        group: "头像工坊", perm: "avatar:manage" },
     ],
   },
   {

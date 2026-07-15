@@ -71,6 +71,13 @@ export class AvatarLibraryController {
     return this.svc.list({ q, gender });
   }
 
+  /** 详情(含 configJson)—— 头像编辑器「回灌再编辑」取配置。 */
+  @Get(':id')
+  @Permission('avatar:manage')
+  detail(@Param('id') id: string) {
+    return this.svc.detail(id);
+  }
+
   @Post()
   @Permission('avatar:manage')
   add(@Body() dto: AddLibraryItemDto, @CurrentUser() me: AuthPayload, @Req() req: Request) {

@@ -48,9 +48,16 @@ export const avatarLibraryApi = {
   list: (params?: { q?: string; gender?: string }) =>
     api.get<AvatarLibraryItem[]>("/avatars/library", { params }).then((r) => r.data),
 
-  /** 入库:文件先 storageApi.upload({ ownerModule:'user', folder:'avatars/library' }) 拿 fileId */
-  add: (body: { fileId: string; name?: string; gender?: AvatarGender }) =>
+  /** 入库:文件先 storageApi.upload({ ownerModule:'user', folder:'avatars/library' }) 拿 fileId;
+   *  configJson = 头像编辑器产物配置(带它则 source=studio,可回编辑) */
+  add: (body: { fileId: string; name?: string; gender?: AvatarGender; configJson?: string }) =>
     api.post<AvatarLibraryItem>("/avatars/library", body).then((r) => r.data),
+
+  /** 详情(含 configJson,编辑器回灌再编辑用) */
+  detail: (id: string) =>
+    api
+      .get<AvatarLibraryItem & { configJson: string | null }>(`/avatars/library/${id}`)
+      .then((r) => r.data),
 
   update: (id: string, body: { name?: string; gender?: AvatarGender }) =>
     api.patch<AvatarLibraryItem>(`/avatars/library/${id}`, body).then((r) => r.data),

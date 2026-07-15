@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckIcon,
@@ -7,6 +8,7 @@ import {
   Loader2Icon,
   PencilIcon,
   SearchIcon,
+  SparklesIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
@@ -167,6 +169,15 @@ function ItemCard({
             ))}
           </select>
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+            {item.hasConfig && (
+              <Link
+                to={`/admin/avatar-studio?from=${item.id}`}
+                className="text-neutral-400 hover:text-[var(--party-primary)]"
+                title="在头像编辑器中继续编辑"
+              >
+                <SparklesIcon className="h-3.5 w-3.5" />
+              </Link>
+            )}
             <button type="button" className="text-neutral-400 hover:text-neutral-700" onClick={download} title="下载原图">
               <DownloadIcon className="h-3.5 w-3.5" />
             </button>
