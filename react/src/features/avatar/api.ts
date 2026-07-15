@@ -25,6 +25,39 @@ export interface AvatarGenerateOpts {
   employeeNumber?: string;
 }
 
+/** 公共头像库一项 */
+export interface AvatarLibraryItem {
+  id: string;
+  name: string;
+  gender: "male" | "female" | "neutral";
+  source: "upload" | "studio";
+  /** studio 来源带部件配置,后续可回头像编辑器再编辑 */
+  hasConfig: boolean;
+  fileId: string;
+  /** 原图公开 URL(相对 API,经 resolveAvatarUrl 显示) */
+  url: string;
+  /** 缩略图公开 URL(网格用小图省流量;无缩略图时后端已回退原图) */
+  thumbUrl: string;
+  createdAt: string;
+}
+
+export type AvatarGender = AvatarLibraryItem["gender"];
+
+/** 公共头像库(管理 avatar:manage;查看仅登录) */
+export const avatarLibraryApi = {
+  list: (params?: { q?: string; gender?: string }) =>
+    api.get<AvatarLibraryItem[]>("/avatars/library", { params }).then((r) => r.data),
+
+  /** 入库:文件先 storageApi.upload({ ownerModule:'user', folder:'avatars/library' }) 拿 fileId */
+  add: (body: { fileId: string; name?: string; gender?: AvatarGender }) =>
+    api.post<AvatarLibraryItem>("/avatars/library", body).then((r) => r.data),
+
+  update: (id: string, body: { name?: string; gender?: AvatarGender }) =>
+    api.patch<AvatarLibraryItem>(`/avatars/library/${id}`, body).then((r) => r.data),
+
+  remove: (id: string) => api.delete(`/avatars/library/${id}`).then((r) => r.data),
+};
+
 export const avatarApi = {
   /**
    * 上传照片(先经 storageApi.upload 得 fileId)→ AI 生成职场头像。

@@ -1,8 +1,10 @@
 import {
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Body,
   Query,
@@ -12,9 +14,12 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
+import { Permission } from '../permission';
 import { StorageService } from '../storage';
 import { AvatarService } from './avatar.service';
+import { AvatarLibraryService } from './avatar-library.service';
 import { GenerateAvatarDto } from './dto/generate-avatar.dto';
+import { AddLibraryItemDto, UpdateLibraryItemDto } from './dto/avatar-library.dto';
 
 /**
  * 头像 AI 生成(鉴权)。
@@ -46,6 +51,47 @@ export class AvatarController {
     @Query('employeeNumber') employeeNumber?: string,
   ) {
     return this.svc.listHistory({ name, employeeNumber });
+  }
+}
+
+/**
+ * 公共头像库(全平台共享)。
+ *   GET    /avatars/library        仅登录(个人设置挑头像等消费场景也要看)
+ *   POST   /avatars/library        avatar:manage  { fileId, name?, gender? } —— 文件先经 storage 上传拿 fileId
+ *   PATCH  /avatars/library/:id    avatar:manage  { name?, gender? }
+ *   DELETE /avatars/library/:id    avatar:manage  联动软删原图+缩略图
+ */
+@Controller('avatars/library')
+@UseGuards(AuthGuard)
+export class AvatarLibraryController {
+  constructor(private readonly svc: AvatarLibraryService) {}
+
+  @Get()
+  list(@Query('q') q?: string, @Query('gender') gender?: string) {
+    return this.svc.list({ q, gender });
+  }
+
+  @Post()
+  @Permission('avatar:manage')
+  add(@Body() dto: AddLibraryItemDto, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.add(dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  @Patch(':id')
+  @Permission('avatar:manage')
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateLibraryItemDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.svc.update(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  @Delete(':id')
+  @Permission('avatar:manage')
+  remove(@Param('id') id: string, @CurrentUser() me: AuthPayload, @Req() req: Request) {
+    return this.svc.remove(id, { actorId: me.sub, actorName: me.name, ip: req.ip });
   }
 }
 

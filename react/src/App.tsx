@@ -33,6 +33,7 @@ const NavigationPage = lazy(() => import("@/features/nav-category").then((m) => 
 const ExternalApisPage = lazy(() => import("@/features/external-api").then((m) => ({ default: m.ExternalApisPage })));
 const IconLibraryPage = lazy(() => import("@/features/icon-library").then((m) => ({ default: m.IconLibraryPage })));
 const Model3dStudioPage = lazy(() => import("@/features/model3d").then((m) => ({ default: m.Model3dStudioPage })));
+const AvatarLibraryPage = lazy(() => import("@/features/avatar").then((m) => ({ default: m.AvatarLibraryPage })));
 const HallsPage = lazy(() => import("@/features/exhibition").then((m) => ({ default: m.HallsPage })));
 const HallDesignerPage = lazy(() => import("@/features/exhibition").then((m) => ({ default: m.HallDesignerPage })));
 const ModelLibraryPage = lazy(() => import("@/features/exhibition").then((m) => ({ default: m.ModelLibraryPage })));
@@ -188,6 +189,8 @@ const ADMIN_ROUTES: RouteObject[] = [
   { path: "tasks/:id/summary", element: <TaskSummaryPage /> },
   { path: "tasks/:id", element: <TaskDetailPage /> },
   { path: "model3d", element: <Model3dStudioPage /> },
+  // 头像工坊(avatar)
+  { path: "avatar-library", element: <AvatarLibraryPage /> },
   // 3D 展厅(exhibition)
   { path: "halls", element: <HallsPage /> },
   { path: "halls/:hallId/design", element: <HallDesignerPage /> },

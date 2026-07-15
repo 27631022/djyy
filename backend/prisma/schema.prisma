@@ -1730,3 +1730,24 @@ model InteractiveGameDesign {
 
   @@index([createdAt])
 }
+
+// 公共头像库(全平台共享):管理端维护的头像资产,供 个人头像挑选/互动游戏 "u:" 头像 等消费。
+// 上传件(如 Peeps 网站生成的头像)与后续「头像编辑器」产物同库:configJson 仅编辑器产物有(可回编辑)。
+// 文件走 storage 松引用(约定 ownerModule=user + folder 以 avatars 开头 —— 借现有公开口
+// /api/public/avatars/:id 与孤儿 GC 的 user+avatars+image 豁免);入库时生成 256px webp 缩略图
+// (列表/网格用小图省流量);删除条目联动软删 原图+缩略图。
+// @module: avatar
+model AvatarLibraryItem {
+  id          String   @id @default(cuid())
+  name        String
+  fileId      String   @unique // 原图 StoredFile.id(松引用;唯一防重复入库)
+  thumbFileId String? // 缩略图 StoredFile.id(生成失败可空,前端回退原图)
+  gender      String   @default("neutral") // male | female | neutral(管理筛选 + 后续编辑器分组)
+  source      String   @default("upload") // upload | studio(头像编辑器产物)
+  configJson  String? // 编辑器部件配置(studio 来源可回编辑;上传件为 null)
+  createdById String? // 松引用 User.id
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([createdAt])
+}

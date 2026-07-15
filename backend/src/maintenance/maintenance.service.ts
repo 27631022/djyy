@@ -10,6 +10,7 @@ import { ReportService } from '../report';
 import { KnowledgeService } from '../knowledge';
 import { ShowcaseService } from '../showcase';
 import { InteractiveService } from '../interactive';
+import { AvatarLibraryService } from '../avatar';
 
 /** 上传超过这么多天仍无人引用,才算孤儿(宽限,避免误删「正在走向导、还没提交」的上传)。 */
 const ORPHAN_GRACE_DAYS = 30;
@@ -44,11 +45,12 @@ export class MaintenanceService {
     private readonly knowledge: KnowledgeService,
     private readonly showcase: ShowcaseService,
     private readonly interactive: InteractiveService,
+    private readonly avatarLibrary: AvatarLibraryService,
   ) {}
 
   /** 聚合所有业务模块「在用」的 storage fileId。漏一个消费方都可能误删 —— 新增引用文件的模块要在这里加。 */
   private async inUseFileIds(): Promise<Set<string>> {
-    const [cert, task, hall, report, know, show, inter] = await Promise.all([
+    const [cert, task, hall, report, know, show, inter, avatarLib] = await Promise.all([
       this.certificates.collectInUseFileIds(),
       this.tasks.collectInUseFileIds(),
       this.exhibitions.collectInUseFileIds(),
@@ -56,8 +58,18 @@ export class MaintenanceService {
       this.knowledge.collectInUseFileIds(),
       this.showcase.collectInUseFileIds(),
       this.interactive.collectInUseFileIds(),
+      this.avatarLibrary.collectInUseFileIds(),
     ]);
-    return new Set<string>([...cert, ...task, ...hall, ...report, ...know, ...show, ...inter]);
+    return new Set<string>([
+      ...cert,
+      ...task,
+      ...hall,
+      ...report,
+      ...know,
+      ...show,
+      ...inter,
+      ...avatarLib,
+    ]);
   }
 
   /**
