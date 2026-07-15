@@ -60,7 +60,8 @@ export interface ContactItem {
   politicalStatus: string | null;
   /** 负责人:被设为某行政机构 meta.ownerUserId(编辑行政机构时指定的部门负责人) */
   isLeader: boolean;
-  admin: { orgId: string; orgName: string; position: string | null } | null;
+  /** admin.path = 从「所在二级单位」向下到本机构的名称路径(如 [新疆分公司, 综合办公室]) */
+  admin: { orgId: string; orgName: string; position: string | null; path: string[] } | null;
   party: { orgId: string; orgName: string; position: string | null } | null;
 }
 

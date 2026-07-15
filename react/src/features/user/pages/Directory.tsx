@@ -11,6 +11,7 @@ import { organizationsApi, type OrgTreeNode } from "@/features/organization";
 import { dictionariesApi, DICT_CODES } from "@/features/dictionary";
 import { resolveAvatarUrl } from "@/features/avatar";
 import { SiteLogo } from "@/features/site-setting";
+import { useAuth } from "@/stores/auth";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import { matchesPinyin, highlightMatch } from "@/shared/lib/pinyinSearch";
 
@@ -30,6 +31,8 @@ const PAGE_SIZE = 30;
    ═══════════════════════════════════════════════════════════════ */
 export default function DirectoryPage() {
   const qc = useQueryClient();
+  const { me } = useAuth();
+  const uid = me?.id ?? "anon"; // 每人独立缓存:切换账户 → queryKey 变 → 收藏/对口自动重拉,不必手动刷新
   const [orgId, setOrgId] = useState<string | null>(null);
   const [view, setView] = useState<"counterpart" | "all">("all");
   const [subtree, setSubtree] = useState(false);
@@ -58,12 +61,12 @@ export default function DirectoryPage() {
     staleTime: 60_000,
   });
   const counterpartQuery = useQuery({
-    queryKey: ["directory", "counterpart"],
+    queryKey: ["directory", "counterpart", uid],
     queryFn: directoryMeApi.counterpartScope,
     staleTime: 5 * 60_000,
   });
   const favoritesQuery = useQuery({
-    queryKey: ["directory", "favorites"],
+    queryKey: ["directory", "favorites", uid],
     queryFn: directoryMeApi.favorites,
     staleTime: 30_000,
   });
@@ -575,6 +578,28 @@ function LeaderBadge() {
   );
 }
 
+/* ─── 行政归属路径(二级单位 → … → 本部门,末级加重)+ 职务 ─── */
+function OrgPath({ path, position }: { path: string[]; position: string | null }) {
+  return (
+    <div className="flex items-start gap-1.5 text-xs">
+      <BuildingIcon className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" style={{ color: ADMIN }} />
+      <span className="min-w-0 text-gray-600">
+        {path.map((seg, i) => (
+          <span key={i}>
+            {i > 0 && <span className="text-gray-300"> / </span>}
+            <span className={i === path.length - 1 ? "font-medium text-gray-800" : "text-gray-500"}>{seg}</span>
+          </span>
+        ))}
+        {position && (
+          <span className="ml-1 rounded px-1 py-px text-[10px]" style={{ backgroundColor: ADMIN_BG, color: ADMIN }}>
+            {position}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
 /* ─── 联系人卡片 ─── */
 function ContactCard({
   c, query, politicalLabel, isFav, onToggleFav,
@@ -631,17 +656,10 @@ function ContactCard({
 
       <div className="mt-3 space-y-1.5">
         {c.admin ? (
-          <div className="flex items-start gap-1.5 text-xs">
-            <BuildingIcon className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" style={{ color: ADMIN }} />
-            <span className="min-w-0 text-gray-600">
-              <span className="text-gray-800">{c.admin.orgName}</span>
-              {c.admin.position && (
-                <span className="ml-1 rounded px-1 py-px text-[10px]" style={{ backgroundColor: ADMIN_BG, color: ADMIN }}>
-                  {c.admin.position}
-                </span>
-              )}
-            </span>
-          </div>
+          <OrgPath
+            path={c.admin.path.length ? c.admin.path : [c.admin.orgName]}
+            position={c.admin.position}
+          />
         ) : (
           <div className="text-xs text-gray-300">未分配行政机构</div>
         )}
@@ -692,7 +710,7 @@ function FavRow({ c, onRemove }: { c: ContactItem; onRemove: () => void }) {
           {c.isLeader && <span className="flex-shrink-0 text-[9px]" style={{ color: LEADER }}>负责人</span>}
         </div>
         <div className="truncate text-[11px] text-gray-400">
-          {c.admin?.orgName ?? "—"}
+          {(c.admin?.path.length ? c.admin.path.join(" / ") : c.admin?.orgName) ?? "—"}
           {c.phone ? ` · ${c.phone}` : ""}
         </div>
       </div>

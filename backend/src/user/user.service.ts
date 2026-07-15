@@ -373,6 +373,46 @@ export class UserService {
   }
 
   /**
+   * 通讯录卡片用的行政机构上下文(一次全查):
+   *   ownerIds   = 负责人集合(meta.ownerUserId)→ isLeader
+   *   pathToUnit = 某机构 → 从「所在二级单位」向下到该机构的名称路径(如 [新疆分公司, 综合办公室])
+   *                二级单位 = 父为虚拟壳(公司机关/基层单位)或根 的最近祖先。
+   */
+  private async adminOrgContext(): Promise<{
+    ownerIds: Set<string>;
+    pathToUnit: (orgId: string) => string[];
+  }> {
+    const rows = await this.prisma.organization.findMany({
+      where: { kind: 'admin' },
+      select: { id: true, name: true, parentId: true, isVirtual: true, meta: true },
+    });
+    const index = new Map(rows.map((r) => [r.id, r] as const));
+    const ownerIds = new Set<string>();
+    for (const r of rows) {
+      try {
+        const owner = (JSON.parse(r.meta ?? '{}') as { ownerUserId?: unknown }).ownerUserId;
+        if (typeof owner === 'string' && owner) ownerIds.add(owner);
+      } catch {
+        /* 忽略坏 JSON */
+      }
+    }
+    const pathToUnit = (orgId: string): string[] => {
+      const names: string[] = [];
+      let cur = index.get(orgId);
+      const seen = new Set<string>();
+      while (cur && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        names.push(cur.name);
+        const parent = cur.parentId ? index.get(cur.parentId) : null;
+        if (!parent || parent.isVirtual) break; // 到达二级单位(父为虚拟壳/根)
+        cur = parent;
+      }
+      return names.reverse(); // [二级单位, …, 本机构]
+    };
+    return { ownerIds, pathToUnit };
+  }
+
+  /**
    * 统计:总数 / 在职数 / 行政机构未分配 / 党组织未分配 —— 用户管理工具条角标用(不受列表过滤影响)。
    * 口径 = 登录人可见范围(系统管理员即全库;与列表可见性同口径,角标数=点击后的 total)。
    * noPartyOrg 只统计政治面貌=中共党员/预备党员的人(与列表 noPartyOrg 过滤同口径)。
@@ -494,7 +534,7 @@ export class UserService {
     const take = Math.min(Math.max(query.take ?? 30, 1), 100);
     const skip = Math.max(query.skip ?? 0, 0);
     // 负责人集合(行政机构 meta.ownerUserId)→ 卡片「负责人」标识
-    const ownerIds = new Set(await this.adminDeptOwnerIds());
+    const orgCtx = await this.adminOrgContext();
 
     // 非「行政机构浏览」维度的过滤(搜索/党组织/仅党员/是否部门/政治面貌/对口机构集)—— 各查询模式共用
     const userAnds: Prisma.UserWhereInput[] = [];
@@ -572,7 +612,7 @@ export class UserService {
           include: { user: { include: memberInclude } },
         }),
       ]);
-      return { total, items: rows.map((m) => this.contactItemOf(m.user, ownerIds)) };
+      return { total, items: rows.map((m) => this.contactItemOf(m.user, orgCtx)) };
     }
 
     // 组织顺序模式:纯默认浏览(无单位、无搜索、无筛选)→ 全部人员按组织树 DFS 排
@@ -610,7 +650,7 @@ export class UserService {
         const items = idList
           .map((id) => byId.get(id))
           .filter((u): u is NonNullable<typeof u> => !!u)
-          .map((u) => this.contactItemOf(u, ownerIds));
+          .map((u) => this.contactItemOf(u, orgCtx));
         return { total: Number(cntRows[0]?.count ?? 0), items };
       }
     }
@@ -641,7 +681,7 @@ export class UserService {
         include: memberInclude,
       }),
     ]);
-    return { total, items: rows.map((u) => this.contactItemOf(u, ownerIds)) };
+    return { total, items: rows.map((u) => this.contactItemOf(u, orgCtx)) };
   }
 
   /** User(含 memberships)→ 通讯录条目(主行政岗 + 党组织 + 政治面貌 + 负责人标识) */
@@ -654,7 +694,7 @@ export class UserService {
     email: string | null;
     customFields: string | null;
     memberships: { orgId: string; position: string | null; org: { name: string; kind: string } }[];
-  }, ownerIds?: Set<string>) {
+  }, ctx?: { ownerIds: Set<string>; pathToUnit: (orgId: string) => string[] }) {
     const adminMember = u.memberships.find((m) => m.org.kind === 'admin');
     const partyMember = u.memberships.find((m) => m.org.kind === 'party');
     const cf = this.parseCustomFields(u.customFields);
@@ -668,9 +708,15 @@ export class UserService {
       email: u.email,
       politicalStatus: political,
       // 负责人:被设为某行政机构 meta.ownerUserId(编辑行政机构时指定的部门负责人)
-      isLeader: ownerIds ? ownerIds.has(u.id) : false,
+      isLeader: ctx ? ctx.ownerIds.has(u.id) : false,
       admin: adminMember
-        ? { orgId: adminMember.orgId, orgName: adminMember.org.name, position: adminMember.position }
+        ? {
+            orgId: adminMember.orgId,
+            orgName: adminMember.org.name,
+            position: adminMember.position,
+            // 从「所在二级单位」向下到本机构的路径(如 [新疆分公司, 综合办公室])
+            path: ctx ? ctx.pathToUnit(adminMember.orgId) : [adminMember.org.name],
+          }
         : null,
       party: partyMember
         ? { orgId: partyMember.orgId, orgName: partyMember.org.name, position: partyMember.position }
@@ -688,7 +734,7 @@ export class UserService {
     });
     const ids = favs.map((f) => f.targetUserId);
     if (ids.length === 0) return { items: [] };
-    const ownerIds = new Set(await this.adminDeptOwnerIds());
+    const orgCtx = await this.adminOrgContext();
     // 与 contacts() 同口径:隐藏(directoryHidden)/离职者不显示 —— 否则收藏路径会绕过隐私隐藏
     const users = await this.prisma.user.findMany({
       where: { id: { in: ids }, active: true, directoryHidden: false },
@@ -703,7 +749,7 @@ export class UserService {
     const items = ids
       .map((id) => byId.get(id))
       .filter((u): u is NonNullable<typeof u> => !!u)
-      .map((u) => this.contactItemOf(u, ownerIds));
+      .map((u) => this.contactItemOf(u, orgCtx));
     return { items };
   }
 
