@@ -602,6 +602,9 @@ export const buzzerGame: GameDef<BuzzerConfig, BuzzerState, BuzzerAction> = {
       foulScope: cfg.foulScope,
       foulLockNextRound: cfg.foulLockNextRound,
       countdownRemainMs: state.countdownEndsAt !== null ? Math.max(0, state.countdownEndsAt - Date.now()) : 0,
+      // 抢答后闪避(投影约定字段,大屏 bgmDuckOf 消费):有人抢到(locked)~本题收尾(idle)期间
+      // 背景音压到 1%,别盖住答题人/主持人说话;重新开抢/下一题自动恢复
+      bgmDuck: state.status === 'running' && (state.sub === 'locked' || state.sub === 'idle') ? 0.01 : 1,
       playerCount: Object.keys(state.players).length,
       hasTeams: teams.length > 0,
       teams,

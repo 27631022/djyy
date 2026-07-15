@@ -28,6 +28,17 @@ export function phaseOf(hasGame: boolean, view: unknown): Phase {
   return "waiting";
 }
 
+/**
+ * 投影约定字段 `bgmDuck`(与 `status` 同级的可选约定):游戏 projectScreen 下发 0-1 闪避乘数,
+ * 大屏把当前音效音量乘上它 —— 如抢答器「抢到后~本题收尾」压到 0.01,别盖住答题人/主持人说话。
+ * 缺省/非法 = 1(不闪避)。
+ */
+export function bgmDuckOf(view: unknown): number {
+  const d = (view as { bgmDuck?: unknown } | null)?.bgmDuck;
+  if (typeof d !== "number" || !Number.isFinite(d)) return 1;
+  return Math.min(1, Math.max(0, d));
+}
+
 function urlFor(key: SoundKey, sound: EventSound, defaults?: Partial<Record<SoundKey, string>>): string {
   const fid = sound.effects[key].fileId;
   // 上传自定义 > 该游戏默认音(GameUi.defaultSounds)> 全局内置默认
@@ -44,6 +55,7 @@ class EffectEngine {
   private url = "";
   private delayTimer: ReturnType<typeof setTimeout> | null = null;
   private playsLeft = 0;
+  private duck = 1; // 闪避乘数(0-1):乘在配置音量上,不打断播放 live 生效
 
   constructor() {
     this.audio.preload = "auto";
@@ -59,11 +71,22 @@ class EffectEngine {
     this.cfg = cfg;
   }
 
+  /** 闪避(如 抢答后压低背景音别盖住人声):对正在播的 <audio> 即时生效 */
+  setDuck(f: number): void {
+    this.duck = Math.min(1, Math.max(0, f));
+    this.applyVolume();
+  }
+
+  private applyVolume(): void {
+    const c = this.cfg;
+    if (c) this.audio.volume = Math.min(1, Math.max(0, c.volume * this.duck));
+  }
+
   play(): void {
     this.stop();
     const c = this.cfg;
     if (!c) return;
-    this.audio.volume = Math.min(1, Math.max(0, c.volume));
+    this.applyVolume();
     this.playsLeft = c.loop ? Number.POSITIVE_INFINITY : Math.max(1, c.playCount);
     const start = () => {
       try {
@@ -133,6 +156,7 @@ export function useSoundEngine(
   muted: boolean,
   sourceId = "event",
   defaults?: Partial<Record<SoundKey, string>>, // 该游戏的默认音效覆盖(GameUi.defaultSounds)
+  duck = 1, // 闪避乘数(投影约定字段 bgmDuck,见 bgmDuckOf)
 ): void {
   const enginesRef = useRef<Record<SoundKey, EffectEngine> | null>(null);
   const prevKeyRef = useRef<string | null>(null);
@@ -161,6 +185,13 @@ export function useSoundEngine(
     if (!e) return;
     for (const { key } of SOUND_SLOTS) e[key].setMuted(muted);
   }, [muted]);
+
+  // 闪避:对正在播的音即时生效(不重触发播放,循环点/次数不受影响)
+  useEffect(() => {
+    const e = enginesRef.current;
+    if (!e) return;
+    for (const { key } of SOUND_SLOTS) e[key].setDuck(duck);
+  }, [duck]);
 
   // 阶段/音源切换 → 停旧、播新;音源禁用或切到禁用音源时全停
   useEffect(() => {

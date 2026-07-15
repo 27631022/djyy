@@ -4,7 +4,7 @@ import { useRoom, type UseRoomResult } from "../useRoom";
 import { getGameUi } from "../games/registry";
 import { useQrDataUrl } from "../useQrDataUrl";
 import { interactiveFileUrl } from "../api";
-import { useSoundEngine, phaseOf } from "../useSoundEngine";
+import { useSoundEngine, phaseOf, bgmDuckOf } from "../useSoundEngine";
 import { AutoScrollGrid } from "../components/AutoScrollGrid";
 
 function Avatar({ name }: { name: string }) {
@@ -74,9 +74,10 @@ export default function ScreenPage() {
   // 节目音效默认启用 → 只要有节目单就可能出声,统一用一次进入手势解锁
   const needGesture = !entered && (r.config.music.enabled || r.games.length > 0 || !!ui);
 
-  // 按阶段自动播放 5 段音效(内部管理 <audio>,不渲染到 DOM);默认音按当前游戏解析
+  // 按阶段自动播放 5 段音效(内部管理 <audio>,不渲染到 DOM);默认音按当前游戏解析;
+  // bgmDuck=游戏投影的闪避乘数(如 抢答器抢到后压背景音到 1% 别盖住答题人说话)
   const phase = phaseOf(!!ui, r.screenView);
-  useSoundEngine(sound, phase, entered, muted, soundSourceId, ui?.defaultSounds);
+  useSoundEngine(sound, phase, entered, muted, soundSourceId, ui?.defaultSounds, bgmDuckOf(r.screenView));
 
   // 底部基础控制条:鼠标/触摸活动时显示,空闲 3s 自动隐藏(kiosk 不干扰观感)
   const [controlsOn, setControlsOn] = useState(true);
