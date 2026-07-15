@@ -31,6 +31,20 @@ export interface GameConfigProps {
 }
 
 /**
+ * 游戏专属主持面板:消费大屏投影(host 端收 screen:state 收不到 remote:state,
+ * 主持判定所需信息必须全在 projectScreen 里)+ 发 host:control 指令。
+ * GameUi 声明了 HostPanel 时,主持台用它**替换**通用 start/end/reset 按钮行
+ * (节目单列表与「回首页大屏」仍通用),面板自己负责渲染 开始/结束/再来一局 等按钮。
+ */
+export interface GameHostPanelProps {
+  view: unknown | null;
+  control: (cmd: Record<string, unknown>) => void;
+  grouping: GroupingConfig | null;
+  connected: boolean;
+  compact?: boolean; // 手机遥控器紧凑排版
+}
+
+/**
  * 前端游戏定义(与后端 GameDef 对称的展示侧)。
  * 加一个新游戏 = 新建 games/<type>.tsx 导出一个 GameUi + registry 注册一行。
  */
@@ -48,4 +62,6 @@ export interface GameUi {
   Screen: ComponentType<GameScreenProps>;
   Remote: ComponentType<GameRemoteProps>;
   Config: ComponentType<GameConfigProps>;
+  /** 可选:游戏专属主持面板(如抢答器的 开抢/判对错/下一题);有则替换主持台通用 start/end/reset 行 */
+  HostPanel?: ComponentType<GameHostPanelProps>;
 }

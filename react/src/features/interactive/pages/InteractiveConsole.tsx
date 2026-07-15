@@ -181,7 +181,6 @@ function CreateEventCard({ onCreated }: { onCreated: (ev: InteractiveEvent) => v
 function ConsoleHostPanel({ roomCode }: { roomCode: string }) {
   const [token] = useState(getAuthToken);
   const r = useRoom({ roomCode, role: "host", token });
-  const screenStatus = (r.screenView as { status?: string } | null)?.status;
   const controllerUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/play/${roomCode}?role=host&t=${encodeURIComponent(token ?? "")}`
@@ -195,7 +194,8 @@ function ConsoleHostPanel({ roomCode }: { roomCode: string }) {
           connected={r.connected}
           games={r.games}
           activeGameId={r.activeGameId}
-          screenStatus={screenStatus}
+          screenView={r.screenView}
+          grouping={r.gameGrouping}
           control={r.control}
         />
       </div>

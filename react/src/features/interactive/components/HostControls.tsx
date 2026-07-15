@@ -1,11 +1,13 @@
 import { type RoomGameLite } from "../useRoom";
+import { type GroupingConfig } from "../api";
 import { getGameUi } from "../games/registry";
 
 interface HostControlsProps {
   connected: boolean;
   games: RoomGameLite[];
   activeGameId: string | null;
-  screenStatus: string | undefined; // ready | running | ended(游戏私有)
+  screenView: unknown | null; // 大屏投影(status 在此萃取;游戏声明 HostPanel 时整份传给它)
+  grouping: GroupingConfig | null; // 当前节目分组(HostPanel 显示队名/队色用)
   control: (cmd: Record<string, unknown>) => void;
   compact?: boolean; // 手机遥控器紧凑排版
 }
@@ -15,10 +17,14 @@ export function HostControls({
   connected,
   games,
   activeGameId,
-  screenStatus,
+  screenView,
+  grouping,
   control,
   compact,
 }: HostControlsProps) {
+  const screenStatus = (screenView as { status?: string } | null)?.status;
+  const activeUi = getGameUi(games.find((g) => g.id === activeGameId)?.gameType);
+  const HostPanel = activeUi?.HostPanel;
   const btnBase =
     "rounded-lg px-5 py-3 font-semibold transition-colors disabled:opacity-40 " +
     (compact ? "text-lg " : "");
@@ -59,49 +65,65 @@ export function HostControls({
       </div>
 
       {activeGameId && (
-        <div className="flex flex-wrap gap-3">
-          {screenStatus === "ready" && (
-            <button
-              type="button"
-              disabled={!connected}
-              onClick={() => control({ kind: "start" })}
-              className={`${btnBase} text-white`}
-              style={{ background: "var(--party-primary)" }}
-            >
-              ▶ 开始本局
-            </button>
+        <div className="flex flex-col gap-3">
+          {HostPanel ? (
+            // 游戏专属主持面板(如抢答器的 开抢/判对错/下一题):替换通用 start/end/reset 行
+            <HostPanel
+              view={screenView}
+              control={control}
+              grouping={grouping}
+              connected={connected}
+              compact={compact}
+            />
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              {screenStatus === "ready" && (
+                <button
+                  type="button"
+                  disabled={!connected}
+                  onClick={() => control({ kind: "start" })}
+                  className={`${btnBase} text-white`}
+                  style={{ background: "var(--party-primary)" }}
+                >
+                  ▶ 开始本局
+                </button>
+              )}
+              {screenStatus === "running" && (
+                <button
+                  type="button"
+                  disabled={!connected}
+                  onClick={() => control({ kind: "end" })}
+                  className={`${btnBase} border border-gray-300 text-gray-700 hover:bg-gray-50`}
+                >
+                  ■ 结束本局
+                </button>
+              )}
+              {screenStatus === "ended" && (
+                <button
+                  type="button"
+                  disabled={!connected}
+                  onClick={() => control({ kind: "reset" })}
+                  className={`${btnBase} text-white`}
+                  style={{ background: "var(--party-primary)" }}
+                >
+                  ↻ 再来一局
+                </button>
+              )}
+            </div>
           )}
-          {screenStatus === "running" && (
-            <button
-              type="button"
-              disabled={!connected}
-              onClick={() => control({ kind: "end" })}
-              className={`${btnBase} border border-gray-300 text-gray-700 hover:bg-gray-50`}
-            >
-              ■ 结束本局
-            </button>
-          )}
-          {screenStatus === "ended" && (
-            <button
-              type="button"
-              disabled={!connected}
-              onClick={() => control({ kind: "reset" })}
-              className={`${btnBase} text-white`}
-              style={{ background: "var(--party-primary)" }}
-            >
-              ↻ 再来一局
-            </button>
-          )}
-          {/* 回首页大屏:大厅(入场二维码+花名册)。结束后返场/切节目间歇用;比赛进行中不显示防误触 */}
-          {screenStatus !== "running" && (
-            <button
-              type="button"
-              disabled={!connected}
-              onClick={() => control({ kind: "backToLobby" })}
-              className={`${btnBase} border border-gray-300 text-gray-700 hover:bg-gray-50`}
-            >
-              🏠 回首页大屏
-            </button>
+          {/* 回首页大屏:大厅(入场二维码+花名册)。结束后返场/切节目间歇用;比赛进行中/倒计时中不显示防误触
+              (抢答器每题都进 countdown,倒计时里误触会当场杀掉整场比赛) */}
+          {screenStatus !== "running" && screenStatus !== "countdown" && (
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                disabled={!connected}
+                onClick={() => control({ kind: "backToLobby" })}
+                className={`${btnBase} border border-gray-300 text-gray-700 hover:bg-gray-50`}
+              >
+                🏠 回首页大屏
+              </button>
+            </div>
           )}
         </div>
       )}

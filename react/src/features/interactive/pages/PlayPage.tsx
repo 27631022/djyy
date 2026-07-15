@@ -509,7 +509,6 @@ function PlayerRoom({
 /** 主持遥控端(扫后台控制器码进入:/play/:room?role=host&t=token) */
 function HostRoom({ roomCode, token }: { roomCode: string; token: string | null }) {
   const r = useRoom({ roomCode, role: "host", token });
-  const screenStatus = (r.screenView as { status?: string } | null)?.status;
   return (
     <PlayShell
       title={r.title}
@@ -525,7 +524,8 @@ function HostRoom({ roomCode, token }: { roomCode: string; token: string | null 
             connected={r.connected}
             games={r.games}
             activeGameId={r.activeGameId}
-            screenStatus={screenStatus}
+            screenView={r.screenView}
+            grouping={r.gameGrouping}
             control={r.control}
             compact
           />

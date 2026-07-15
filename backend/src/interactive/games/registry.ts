@@ -3,6 +3,7 @@ import { tapRaceGame } from './tap-race.game';
 import { raceGame } from './race.game';
 import { soccerShakeGame } from './soccer-shake.game';
 import { routeRaceGame } from './route-race.game';
+import { buzzerGame } from './buzzer.game';
 
 /**
  * 游戏注册表 —— 加游戏在此加一行(+ 前端 features/interactive/games/registry 对称加一行)。
@@ -15,6 +16,7 @@ export const GAMES: Record<string, GameDef> = {
   [raceGame.type]: raceGame,
   [soccerShakeGame.type]: soccerShakeGame,
   [routeRaceGame.type]: routeRaceGame as unknown as GameDef, // 自制闯关赛(互动游戏编辑器产物)
+  [buzzerGame.type]: buzzerGame as unknown as GameDef, // 抢答器(权威首按 + 抢跳判罚)
 };
 
 export function getGame(type: string): GameDef | null {

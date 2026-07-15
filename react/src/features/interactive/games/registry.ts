@@ -3,6 +3,7 @@ import { tapRaceUi } from "./tapRace";
 import { raceUi } from "./race";
 import { soccerShakeUi } from "./soccerShake";
 import { routeRaceUi } from "./routeRace";
+import { buzzerUi } from "./buzzer";
 
 /**
  * 前端游戏注册表 —— 与后端 games/registry.ts 对称。
@@ -13,6 +14,7 @@ export const GAME_UIS: Record<string, GameUi> = {
   [raceUi.type]: raceUi,
   [soccerShakeUi.type]: soccerShakeUi,
   [routeRaceUi.type]: routeRaceUi, // 自制闯关赛(hidden:从「自制游戏库」带设计添加,不进裸列)
+  [buzzerUi.type]: buzzerUi, // 抢答器(权威首按 + 抢跳判罚;首个用 HostPanel 契约位的游戏)
 };
 
 export function getGameUi(type: string | null | undefined): GameUi | null {
