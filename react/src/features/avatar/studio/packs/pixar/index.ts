@@ -89,8 +89,16 @@ const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
     ],
   },
   nose: {
-    male: [["button", "小圆鼻"]],
-    female: [["button", "小圆鼻"]],
+    male: [
+      ["button", "小圆鼻"],
+      ["tall", "高挺鼻梁"],
+      ["broad", "宽厚鼻"],
+    ],
+    female: [
+      ["button", "小圆鼻"],
+      ["tall", "高挺鼻梁"],
+      ["upturned", "小翘鼻"],
+    ],
   },
   beard: {
     male: [
@@ -165,8 +173,13 @@ function mustAsset(name: string): string {
 
 /**
  * z 序约定:基准 0 < 衣服 10 < 嘴 15 < 鼻 16 < 眼 17 < 眉 18 < 胡子 20 < 饰品 28 < 发型 30 < 眼镜 40。
- * 五官替换件带"皮肤补丁"须贴基准脸(最低层);嘴在胡子下(大笑嘴被胡型开口自然遮边);
- * 耳环在发型下(长发盖耳时被遮是真实行为);刘海盖眉、墨镜盖眼靠层序天然成立。
+ * 五官替换件带"皮肤补丁"须贴基准脸(最低层);耳环在发型下(长发盖耳时被遮是真实行为);
+ * 刘海盖眉靠层序天然成立。
+ *
+ * ★类目合并(P2.3 用户定案):眼睛⊕眼镜、嘴巴⊕胡子为互斥组 —— 眼镜/胡子件由 i2i 在
+ * 基准默认眉眼/嘴上生成,自带"重画的默认五官"烤定层;互斥后它们永远只叠在基准上,
+ * 与生成语境一致 → 镜片浮旧瞳孔/睫毛残纹、胡×嘴穿透这两类跨层病灶整类消失。
+ * 发型+饰品仅同 tab 分节,可共存。
  */
 export const pixarPack: StylePack = {
   id: "pixar",
@@ -175,15 +188,26 @@ export const pixarPack: StylePack = {
   bases: { male: mustAsset("base-male"), female: mustAsset("base-female") },
   // ⚠ noneWeight 是绝对权重,与变体池同锅抽签:P(无)=noneWeight/(池内权重和+noneWeight)。
   //   加变体会稀释「无」→ 每次扩池后按意图分布重调(意图注释在行尾,别删)。
+  //   互斥组(眼睛/嘴巴)的随机用 groups[].noneWeight 联合抽签,组内槽位的 noneWeight 不参与。
   slots: [
     { key: "hair", label: "发型", z: 30, optional: true, noneWeight: 0.3, variants: buildVariants("hair") }, // 光头罕见
-    { key: "eyes", label: "眼睛", z: 17, optional: true, noneWeight: 6, variants: buildVariants("eyes") }, // ≈2/3 默认睁眼
+    { key: "eyes", label: "眼睛", z: 17, optional: true, noneWeight: 6, variants: buildVariants("eyes") },
     { key: "brows", label: "眉毛", z: 18, optional: true, noneWeight: 5, variants: buildVariants("brows") }, // ≈2/3 默认眉
-    { key: "mouth", label: "嘴巴", z: 15, optional: true, noneWeight: 4, variants: buildVariants("mouth") }, // ≈2/3 默认微笑
-    { key: "nose", label: "鼻子", z: 16, optional: true, noneWeight: 5, variants: buildVariants("nose") }, // ≈5/6 默认鼻
-    { key: "beard", label: "胡子", z: 20, optional: true, noneWeight: 12, variants: buildVariants("beard") }, // ≈3/4 无胡
-    { key: "glasses", label: "眼镜", z: 40, optional: true, noneWeight: 8, variants: buildVariants("glasses") }, // ≈2/3 不戴镜
+    { key: "mouth", label: "嘴巴", z: 15, optional: true, noneWeight: 4, variants: buildVariants("mouth") },
+    { key: "nose", label: "鼻子", z: 16, optional: true, noneWeight: 5, variants: buildVariants("nose") }, // ≈5/8 默认鼻
+    { key: "beard", label: "胡子", z: 20, optional: true, noneWeight: 12, variants: buildVariants("beard") },
+    { key: "glasses", label: "眼镜", z: 40, optional: true, noneWeight: 8, variants: buildVariants("glasses") },
     { key: "clothes", label: "衣服", z: 10, optional: true, noneWeight: 1, variants: buildVariants("clothes") }, // 基准T恤也是衣服
     { key: "accessory", label: "饰品", z: 28, optional: true, noneWeight: 5, variants: buildVariants("accessory") }, // ≈5/8 无饰品
+  ],
+  groups: [
+    { key: "hair", label: "发型", slots: ["hair", "accessory"] }, // 发型+头饰同 tab,可共存
+    // 男 3眼+5镜 / 女 4眼+3镜,none 10 → ≈55% 默认睁眼、其余眼睛/眼镜按池分摊
+    { key: "eyes", label: "眼睛", slots: ["eyes", "glasses"], exclusive: true, noneWeight: 10 },
+    { key: "brows", label: "眉毛", slots: ["brows"] },
+    // 男 2嘴+4胡 / 女 2嘴,none 8 → 男≈57% 默认微笑、胡 29%、嘴 14%;女 80% 默认
+    { key: "mouth", label: "嘴巴", slots: ["mouth", "beard"], exclusive: true, noneWeight: 8 },
+    { key: "nose", label: "鼻子", slots: ["nose"] },
+    { key: "clothes", label: "衣服", slots: ["clothes"] },
   ],
 };

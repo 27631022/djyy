@@ -17,9 +17,9 @@ import { Dialog, DialogContent, DialogTitle } from "@/shared/components/ui/dialo
 import { downloadBlob } from "@/shared/lib/download";
 import { storageApi } from "@/features/storage";
 import { avatarLibraryApi, avatarErrorMessage } from "../api";
-import type { AvatarStudioConfig, StudioGender, StylePack } from "../studio/types";
+import type { AvatarStudioConfig, StudioGender, StudioSlot, StylePack } from "../studio/types";
 import { layersOf, renderToCanvas, canvasToPngBlob, buildSvg } from "../studio/compose";
-import { randomConfig, sanitizeConfig } from "../studio/random";
+import { randomConfig, resolveGroups, sanitizeConfig, type ResolvedGroup } from "../studio/random";
 import { getPack } from "../studio/packs/registry";
 import { useHistory } from "../studio/useHistory";
 
@@ -64,26 +64,38 @@ function StudioInner({ pack, initial, fromName }: { pack: StylePack; initial: Av
   const qc = useQueryClient();
   const history = useHistory<AvatarStudioConfig>(initial);
   const cfg = history.state;
-  const [activeSlot, setActiveSlot] = useState(pack.slots[0]?.key ?? "");
+  const groups = useMemo(() => resolveGroups(pack), [pack]);
+  const [activeGroupKey, setActiveGroupKey] = useState(groups[0]?.key ?? "");
   const [busy, setBusy] = useState<string | null>(null); // 'png' | 'svg' | 'save'
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState(fromName ?? "");
   const [pngSize, setPngSize] = useState(512);
 
-  const slot = pack.slots.find((s) => s.key === activeSlot) ?? pack.slots[0];
-  const slotVariants = useMemo(
-    () => (slot ? slot.variants.filter((v) => v.gender === cfg.gender) : []),
-    [slot, cfg.gender],
-  );
+  const group = groups.find((g) => g.key === activeGroupKey) ?? groups[0];
 
   const apply = (next: AvatarStudioConfig) => {
     history.record();
     history.setState(next);
   };
 
-  const pickVariant = (id: string | null) => {
-    if (!slot) return;
-    apply({ ...cfg, picks: { ...cfg.picks, [slot.key]: id } });
+  /** 选中某槽位的变体;互斥组内其它槽位联动清空(null + 无 slot = 清空整组) */
+  const pickVariant = (slotKey: string | null, id: string | null) => {
+    if (!group) return;
+    const picks = { ...cfg.picks };
+    if (group.exclusive) for (const s of group.slots) picks[s.key] = null;
+    if (slotKey) picks[slotKey] = id;
+    apply({ ...cfg, picks });
+  };
+
+  /** 组在左侧导航的当前选择摘要 */
+  const groupPickedLabel = (g: ResolvedGroup) => {
+    const names = g.slots
+      .map((s) => {
+        const picked = cfg.picks[s.key];
+        return picked ? s.variants.find((v) => v.id === picked && v.gender === cfg.gender)?.label : null;
+      })
+      .filter(Boolean);
+    return names.length ? names.join(" · ") : "无";
   };
 
   const switchGender = (g: StudioGender) => {
@@ -171,25 +183,19 @@ function StudioInner({ pack, initial, fromName }: { pack: StylePack; initial: Av
 
         <div className="rounded-lg border bg-white p-3 space-y-1">
           <div className="mb-2 text-xs font-medium text-neutral-500">部件</div>
-          {pack.slots.map((s) => {
-            const picked = cfg.picks[s.key];
-            const pickedLabel = picked
-              ? (s.variants.find((v) => v.id === picked && v.gender === cfg.gender)?.label ?? "")
-              : "无";
-            return (
-              <button
-                key={s.key}
-                type="button"
-                onClick={() => setActiveSlot(s.key)}
-                className={`flex w-full items-center justify-between rounded-md px-2.5 py-2 text-sm transition-colors ${
-                  activeSlot === s.key ? "bg-party-soft text-[var(--party-primary)] font-medium" : "hover:bg-neutral-50"
-                }`}
-              >
-                <span>{s.label}</span>
-                <span className="text-xs text-neutral-400">{pickedLabel}</span>
-              </button>
-            );
-          })}
+          {groups.map((g) => (
+            <button
+              key={g.key}
+              type="button"
+              onClick={() => setActiveGroupKey(g.key)}
+              className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm transition-colors ${
+                group?.key === g.key ? "bg-party-soft text-[var(--party-primary)] font-medium" : "hover:bg-neutral-50"
+              }`}
+            >
+              <span className="shrink-0">{g.label}</span>
+              <span className="truncate text-xs text-neutral-400">{groupPickedLabel(g)}</span>
+            </button>
+          ))}
         </div>
 
         <div className="rounded-lg border bg-white p-3">
@@ -269,39 +275,65 @@ function StudioInner({ pack, initial, fromName }: { pack: StylePack; initial: Av
         </p>
       </div>
 
-      {/* 右:当前槽位变体网格 */}
-      <div className="rounded-lg border bg-white p-3">
-        <div className="mb-2 text-xs font-medium text-neutral-500">{slot?.label ?? "部件"}</div>
-        <div className="grid grid-cols-2 gap-2">
-          {slot?.optional && (
+      {/* 右:当前类目变体网格。互斥组 = 顶部一个「无(基准默认)」+ 各槽位分节,选任一变体清组内其它;
+          非互斥组(发型+饰品)= 每槽位一节、各带自己的「无」,可共存 */}
+      <div className="rounded-lg border bg-white p-3 space-y-3">
+        <div className="text-xs font-medium text-neutral-500">{group?.label ?? "部件"}</div>
+        {group?.exclusive && (
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => pickVariant(null)}
+              onClick={() => pickVariant(null, null)}
               className={`rounded-lg border p-1.5 text-xs transition-shadow hover:shadow ${
-                cfg.picks[slot.key] === null ? "ring-2 ring-[var(--party-primary)]" : ""
+                group.slots.every((s) => cfg.picks[s.key] == null) ? "ring-2 ring-[var(--party-primary)]" : ""
               }`}
             >
               <VariantThumb pack={pack} gender={cfg.gender} />
-              <div className="mt-1 text-neutral-500">无</div>
+              <div className="mt-1 text-neutral-500">默认</div>
             </button>
-          )}
-          {slotVariants.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              onClick={() => pickVariant(v.id)}
-              className={`rounded-lg border p-1.5 text-xs transition-shadow hover:shadow ${
-                slot && cfg.picks[slot.key] === v.id ? "ring-2 ring-[var(--party-primary)]" : ""
-              }`}
-            >
-              <VariantThumb pack={pack} gender={cfg.gender} src={v.src} />
-              <div className="mt-1 text-neutral-600">{v.label}</div>
-            </button>
-          ))}
-          {slotVariants.length === 0 && !slot?.optional && (
-            <div className="col-span-2 py-8 text-center text-xs text-neutral-400">该性别暂无此部件</div>
-          )}
-        </div>
+          </div>
+        )}
+        {group?.slots.map((s: StudioSlot) => {
+          const variants = s.variants.filter((v) => v.gender === cfg.gender);
+          if (variants.length === 0) return null; // 该性别无此节(如男-饰品)
+          return (
+            <div key={s.key}>
+              {(group.slots.length > 1 || !group.exclusive) && (
+                <div className="mb-1.5 text-[11px] text-neutral-400">{s.label}</div>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                {!group.exclusive && s.optional && (
+                  <button
+                    type="button"
+                    onClick={() => pickVariant(s.key, null)}
+                    className={`rounded-lg border p-1.5 text-xs transition-shadow hover:shadow ${
+                      cfg.picks[s.key] == null ? "ring-2 ring-[var(--party-primary)]" : ""
+                    }`}
+                  >
+                    <VariantThumb pack={pack} gender={cfg.gender} />
+                    <div className="mt-1 text-neutral-500">无</div>
+                  </button>
+                )}
+                {variants.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => pickVariant(s.key, v.id)}
+                    className={`rounded-lg border p-1.5 text-xs transition-shadow hover:shadow ${
+                      cfg.picks[s.key] === v.id ? "ring-2 ring-[var(--party-primary)]" : ""
+                    }`}
+                  >
+                    <VariantThumb pack={pack} gender={cfg.gender} src={v.src} />
+                    <div className="mt-1 text-neutral-600">{v.label}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        {group && group.slots.every((s) => s.variants.every((v) => v.gender !== cfg.gender)) && (
+          <div className="py-8 text-center text-xs text-neutral-400">该性别暂无此部件</div>
+        )}
       </div>
 
       {/* 存库命名 */}

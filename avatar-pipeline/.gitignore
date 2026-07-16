@@ -1,4 +1,5 @@
-# 生成中间产物不进 git:raw/=豆包 i2i 原图(每张 ~4MB);out/=提取产物(已复制进 react 资产);check-*.jpg=视检临时图
+# 生成中间产物不进 git:raw/=豆包 i2i 原图(每张 ~4MB);out/=提取产物(已复制进 react 资产);
+# 根目录 *.jpg = 各轮质检/探针临时图(qa-*/probe-*/recheck-* 等,脚本可再生);bases/ 里的基准 jpg 不受影响
 raw/
 out/
-check-*.jpg
+/*.jpg

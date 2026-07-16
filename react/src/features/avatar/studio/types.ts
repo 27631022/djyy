@@ -31,6 +31,23 @@ export interface StudioSlot {
   variants: StudioVariant[];
 }
 
+/**
+ * UI 类目分组:一个 tab 聚合 1~2 个槽位(P2.3 用户定案的类目合并)。
+ * exclusive = 组内互斥,至多一个槽位有值(选中即清组内其它槽位)——
+ * 眼睛⊕眼镜、嘴巴⊕胡子占同一块脸部领地,互斥后眼镜/胡子永远只叠在基准默认眉眼/嘴上,
+ * 与生成语境一致,跨层残迹(镜片浮旧瞳孔、胡嘴穿透)整类消失。
+ * 非互斥组(发型+饰品)只是同 tab 分节,两者可共存(马尾+耳环合法)。
+ */
+export interface SlotGroup {
+  key: string;
+  label: string;
+  /** 组内槽位 key(顺序 = 变体网格分节顺序;互斥冲突时保留靠后者 —— 眼镜/胡子这类"外层件") */
+  slots: string[];
+  exclusive?: boolean;
+  /** 互斥组随机抽中「组内全无(用基准默认)」的权重,与组内全部变体同锅(仅 exclusive 生效) */
+  noneWeight?: number;
+}
+
 /** 风格包定义 */
 export interface StylePack {
   id: string;
@@ -40,6 +57,8 @@ export interface StylePack {
   /** 基准图(隐式 z=0 图层,按性别取) */
   bases: Record<StudioGender, string>;
   slots: StudioSlot[];
+  /** UI 类目分组(缺省 = 每槽位自成一组);未列入任何组的槽位自动追加为单槽组 */
+  groups?: SlotGroup[];
 }
 
 /** 头像配置 —— 持久化"最终选择结果"(素材池增删不影响已存头像的复现) */
