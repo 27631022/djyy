@@ -38,6 +38,8 @@ const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
       ["undercut", "两侧铲短"],
       ["messy-brown", "凌乱短发"],
       ["uyghur-cap", "维吾尔花帽"],
+      ["shaanbei-towel", "陕北羊肚巾"],
+      ["kazakh-hat", "哈萨克毡帽"],
     ],
     female: [
       ["bob-brown", "齐肩直发"],
@@ -55,6 +57,7 @@ const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
       // 民族头饰+发型一体(帽/头饰/头发不好拆,按用户定案整合成发型槽变体)
       ["miao-silver", "苗族银冠"],
       ["uyghur-cap", "维吾尔花帽辫"],
+      ["kazakh-hat", "哈萨克羽帽辫"],
     ],
   },
   eyes: {
@@ -141,6 +144,8 @@ const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
       ["hoodie-gray", "灰色卫衣"],
       ["tshirt-white", "白色T恤"],
       ["mongol-robe", "蒙古袍"],
+      ["kazakh-vest", "哈萨克坎肩"],
+      ["shaanbei-shirt", "陕北布衫坎肩"],
     ],
     female: [
       ["white-shirt", "白衬衫"],
@@ -153,6 +158,7 @@ const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
       ["miao-dress", "苗绣短褂"],
       ["mongol-robe", "蒙古袍"],
       ["tibetan-robe", "藏袍"],
+      ["kazakh-dress", "哈萨克裙装"],
     ],
   },
   accessory: {

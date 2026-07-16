@@ -49,6 +49,8 @@ const PARTS = [
   { id: 'male/hair/undercut', base: 'base-male', prompt: `${KEEP}只给他加上两侧铲短、顶部较长的黑色短发(undercut)${STYLE}` },
   { id: 'male/hair/messy-brown', base: 'base-male', prompt: `${KEEP}只给他加上一头棕色凌乱感短发${STYLE}` },
   // ============ 男 · 民族头饰(帽+发一体) ============
+  { id: 'male/hair/shaanbei-towel', base: 'base-male', prompt: `${KEEP}只给他的头上包一条陕北白羊肚毛巾(白毛巾包头、结在额前,不遮挡眉毛眼睛,脸部完全不变)${STYLE}` },
+  { id: 'male/hair/kazakh-hat', base: 'base-male', prompt: `${KEEP}只给他戴上一顶哈萨克族白色毡帽(帽檐上卷带黑色绒边,戴在头顶,不遮挡眉毛眼睛,脸部完全不变)${STYLE}` },
   // ⚠ 首版"加短发并戴帽"改动过大,i2i 连整张脸都重画了(脸补丁浮在基准上);改成只戴帽
   { id: 'male/hair/uyghur-cap', base: 'base-male', prompt: `${KEEP}只给他戴上一顶维吾尔族绣花小花帽(朵帕,黑底彩绣四棱小帽,戴在头顶,不遮挡眉毛眼睛,脸部完全不变)${STYLE}` },
   // ============ 男 · 眼镜(加物) ============
@@ -72,6 +74,8 @@ const PARTS = [
   // ============ 男 · 民族服饰(换装) ============
   // ⚠ 前两版领口开得比基准T恤低,i2i 补画脖子皮肤(强差分,剪哪儿都露楔形)→ 高立领贴颈,不给它补脖子的机会
   { id: 'male/clothes/mongol-robe', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成蒙古族高立领长袍上衣(藏青色缎面、金色镶边盘扣、橙色腰带),高立领紧贴脖颈、领口高度与原上衣一致,脖子和头部完全不变${STYLE}` },
+  { id: 'male/clothes/kazakh-vest', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成哈萨克族男式服装(白色立领衬衫外套深色绣金纹坎肩),领口高度与原上衣一致,脖子和头部完全不变${STYLE}` },
+  { id: 'male/clothes/shaanbei-shirt', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成陕北农民装束(白色对襟布衫外套深色羊毛坎肩),领口高度与原上衣一致,脖子和头部完全不变${STYLE}` },
   // ============ 男 · 五官(替换,试产先行) ============
   { id: 'male/eyes/smile', base: 'base-male', prompt: `${KEEP_FACE}只把他的眼睛改成开心的眯眯笑眼(两条向下弯的弧线,闭着笑),眉毛保持原样${STYLE}` },
   // 眼睑要求:上一版 raw 在左眼内眼角画了白色泪光杂块(P2.3 重生成)
@@ -104,6 +108,7 @@ const PARTS = [
   { id: 'female/hair/braid', base: 'base-female', prompt: `${KEEP}只给她加上垂在单侧肩前的棕色麻花辫发型${STYLE}` },
   { id: 'female/hair/gray-bun', base: 'base-female', prompt: `${KEEP}只给她加上灰白色的低发髻发型(年长者发色)${STYLE}` },
   // ============ 女 · 民族头饰+发型一体(加物;帽子/头饰/头发不好分,按用户定案整合成一件) ============
+  { id: 'female/hair/kazakh-hat', base: 'base-female', prompt: `${KEEP}只给她加上哈萨克族姑娘的发型和头饰:两条黑色长辫垂在肩前,头戴红色绣金纹的塔克亚小圆帽、帽顶一撮白色羽毛(不遮挡眉毛眼睛,脸部完全不变)${STYLE}` },
   { id: 'female/hair/miao-silver', base: 'base-female', prompt: `${KEEP}只给她加上苗族姑娘的黑色盘发和华丽的苗族银冠头饰(银角冠、银泡、银蝴蝶、短银铃铛流苏,头饰不遮挡眉毛眼睛)${STYLE}` },
   { id: 'female/hair/uyghur-cap', base: 'base-female', prompt: `${KEEP}只给她加上维吾尔族姑娘的发型和头饰:两条黑色长麻花辫垂在肩前,头戴一顶彩色绣花小花帽(朵帕,不遮挡眉毛眼睛)${STYLE}` },
   // ============ 女 · 眼镜(加物) ============
@@ -122,6 +127,7 @@ const PARTS = [
   { id: 'female/clothes/sweater', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成米色高领毛衣${STYLE}` },
   { id: 'female/clothes/tshirt-blue', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成浅蓝色圆领T恤${STYLE}` },
   // ============ 女 · 民族服饰(换装;元素取自用户的苗绣提示词:银项圈/银铃铛流苏/花卉绣纹) ============
+  { id: 'female/clothes/kazakh-dress', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成哈萨克族姑娘的服装(红色连衣裙上装外套绣金花纹的坎肩,领口精致绣边)${STYLE}` },
   { id: 'female/clothes/miao-dress', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成粉紫配色的苗绣少女短褂,领口佩细银项圈和短银铃铛流苏,衣身绣满花卉纹样${STYLE}` },
   { id: 'female/clothes/mongol-robe', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成蒙古族立领长袍上衣(宝蓝色缎面、金色镶边盘扣、彩色腰带)${STYLE}` },
   { id: 'female/clothes/tibetan-robe', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成藏族氆氇藏袍上衣(绛红色、彩色条纹镶边、内搭白色衬衣)${STYLE}` },
@@ -696,6 +702,10 @@ async function extract(part) {
     // 只靠羽化杀不掉 —— 丝巾本体大红/暗红阴影/粉白高光全是红主导,一门全过
     'female/accessory/red-scarf': { feather: [60, 120], keepRed: 22 },
     // (曾有 curtain-brown keepEyeBox 豁免 —— 眼区清除改"孤岛连通性判据"后垂丝天然保留,已撤)
+    // 苗银冠:银流苏合法垂入眼区,烤死的重画大眼经流苏连到主体、孤岛判据抓不住
+    // (用户实报配眼睛变体时新旧眼叠影)→ 眼区只留"亮+冷调"的银饰(银=中性偏冷高亮;
+    // 眼白/皮肤/虹膜=暖调、睫毛=暗,全出局)
+    'female/hair/miao-silver': { eyeBoxSilverOnly: true },
     // 男花帽:i2i 两版都顺手重画脸;帽子只住头顶 → 钳制区硬裁一切脸部私货
     'male/hair/uyghur-cap': { clampY: [40, 380] },
     // 男蒙古袍:i2i 会顺手重画头部(脸颊补丁/耳周白晕,分层实锤在袍件不在帽件)→ 钳制兜底
@@ -895,7 +905,23 @@ async function extract(part) {
       // 剩下的眼妆私货成了孤立岛 → **完整落在眼盒内的连通域 = 私货**,整域清除。
       // 刘海尖/苗银冠垂饰/中分垂丝都从盒界外伸进来 → 天然保留(不再需要 keepEyeBox 豁免,
       // 也根治了旧"眼芯盲清"把刘海/头饰切出方形缺口的问题 —— 用户实报"被眼睛的边框挡住")
-      {
+      // 银饰门(见 PART_TUNE.eyeBoxSilverOnly):先于孤岛判据,把眼盒内非银内容全清 ——
+      // 清完后残余暖色碎屑若成孤岛,下方判据顺手收尾
+      if (ptune?.eyeBoxSilverOnly) {
+        // 只动 y≥400(眼睛高度,烤眼私货所在):流苏帘住 330~400 完全不动。
+        // lum≥75:阴影里的银流苏尖(~90~120)保住;黑睫毛(~40)/虹膜暗部/暖调肤与眼白出局
+        const W5s = v.info.width;
+        for (let i = 0; i < out.length; i += 4) {
+          if (out[i + 3] === 0) continue;
+          const x5 = (i / 4) % W5s, y5 = Math.floor(i / 4 / W5s);
+          if (y5 < 400 || !EYE_BOXES.some((bx) => inBox(x5, y5, bx))) continue;
+          const lum = (out[i] + out[i + 1] + out[i + 2]) / 3;
+          const cool = out[i + 2] >= out[i] - 4; // b≥r-4:银的中性偏冷;肤/眼白/虹膜 r 明显大
+          if (!(lum >= 75 && cool)) out[i + 3] = 0;
+        }
+      }
+      // (银饰门件跳过孤岛清:被门切断的银流苏尖是孤岛但要保;烤眼私货已由门清掉)
+      if (!ptune?.eyeBoxSilverOnly) {
         const W5b = v.info.width, H5b = v.info.height;
         const comps = components(out, W5b, H5b);
         let cleared = 0;
