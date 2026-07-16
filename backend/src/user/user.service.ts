@@ -135,12 +135,14 @@ export class UserService {
     }
   }
 
-  /* ─── 列表 (分页 + 过滤) ─── */
-  async list(query: ListUsersQuery, actorId: string) {
-    const take = query.take ?? 50;
-    const skip = query.skip ?? 0;
+  /** 批量取 id 上限(角色页批量授权圈人用;超出让管理员先收窄筛选条件,不静默截断) */
+  private static readonly LIST_IDS_MAX = 5000;
 
-    // 拼装 where
+  /** 列表 / 取全部命中 id 共用的 where 拼装(客户端过滤条件 ∩ 登录人可见范围) */
+  private async buildListWhere(
+    query: ListUsersQuery,
+    actorId: string,
+  ): Promise<Prisma.UserWhereInput> {
     const where: Prisma.UserWhereInput = {};
     if (query.search) {
       // mode: 'insensitive' 保持 SQLite 时代的大小写不敏感搜索(PG 默认大小写敏感)
@@ -239,6 +241,14 @@ export class UserService {
     if (visWhere) membershipConds.push(visWhere);
 
     if (membershipConds.length > 0) where.AND = membershipConds;
+    return where;
+  }
+
+  /* ─── 列表 (分页 + 过滤) ─── */
+  async list(query: ListUsersQuery, actorId: string) {
+    const take = query.take ?? 50;
+    const skip = query.skip ?? 0;
+    const where = await this.buildListWhere(query, actorId);
 
     // id 副键保证稳定分页:批量导入的 createdAt 大量并列,PG 对并列行顺序不确定,
     // 无副键时翻页会重复/漏人
@@ -286,6 +296,23 @@ export class UserService {
         };
       }),
     };
+  }
+
+  /**
+   * 按筛选条件取全部命中用户 id(角色页「批量添加成员」圈人用)。
+   * 与 list 同一套过滤 + 登录人可见范围收敛;超过上限直接 400 提示收窄条件 —— 不静默截断,
+   * 否则「以为全选了、实际只授了前 N 个」比报错更危险。
+   */
+  async listIds(query: ListUsersQuery, actorId: string) {
+    const where = await this.buildListWhere(query, actorId);
+    const total = await this.prisma.user.count({ where });
+    if (total > UserService.LIST_IDS_MAX) {
+      throw new BadRequestException(
+        `命中 ${total} 人,超过批量上限 ${UserService.LIST_IDS_MAX},请增加筛选条件收窄范围`,
+      );
+    }
+    const rows = await this.prisma.user.findMany({ where, select: { id: true } });
+    return { total, ids: rows.map((r) => r.id) };
   }
 
   /**

@@ -18,6 +18,7 @@ import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { ReplacePermissionsDto } from './dto/replace-permissions.dto';
 import { AssignRoleUserDto } from './dto/assign-role-user.dto';
+import { BatchAssignRoleUsersDto, BatchRemoveRoleUsersDto } from './dto/batch-role-users.dto';
 
 @Controller('roles')
 @UseGuards(AuthGuard)
@@ -49,6 +50,38 @@ export class RoleController {
     @Req() req: Request,
   ) {
     return this.roles.addUser(id, dto, { actorId: me.sub, actorName: me.name, ip: req.ip });
+  }
+
+  /** 角色成员:批量添加/更新(整批同一数据范围;幂等,已持有者覆盖更新范围)。 */
+  @Post(':id/users/batch')
+  @Permission('admin:role:write')
+  batchAssignUsers(
+    @Param('id') id: string,
+    @Body() dto: BatchAssignRoleUsersDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.roles.batchAssignUsers(id, dto, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
+  }
+
+  /** 角色成员:批量移除(幂等,未持有的忽略)。 */
+  @Post(':id/users/batch-remove')
+  @Permission('admin:role:write')
+  batchRemoveUsers(
+    @Param('id') id: string,
+    @Body() dto: BatchRemoveRoleUsersDto,
+    @CurrentUser() me: AuthPayload,
+    @Req() req: Request,
+  ) {
+    return this.roles.batchRemoveUsers(id, dto, {
+      actorId: me.sub,
+      actorName: me.name,
+      ip: req.ip,
+    });
   }
 
   /** 角色成员:解除某用户的此角色。 */

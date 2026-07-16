@@ -321,31 +321,42 @@ export type LookupByEmpNoResponse = Record<string, UserByEmpNoLite | null>;
 /** 按姓名批量查 —— 每个姓名命中数组(0 / 1 / 多;重名时 >1) */
 export type LookupByNameResponse = Record<string, UserByEmpNoLite[]>;
 
+/** 列表过滤条件 → 查询参数(list / listIds 共用;take/skip/sort 由 list 单独追加) */
+const listFilterParams = (q: ListUsersQuery) => ({
+  ...(q.search ? { search: q.search } : {}),
+  ...(q.adminOrgId ? { adminOrgId: q.adminOrgId } : {}),
+  ...(q.adminOrgSubtree ? { adminOrgSubtree: "true" } : {}),
+  ...(q.adminOrgIds && q.adminOrgIds.length ? { adminOrgIds: q.adminOrgIds.join(",") } : {}),
+  ...(q.partyOrgId ? { partyOrgId: q.partyOrgId } : {}),
+  ...(q.active !== undefined ? { active: String(q.active) } : {}),
+  ...(q.hasParty !== undefined ? { hasParty: String(q.hasParty) } : {}),
+  ...(q.noAdminOrg ? { noAdminOrg: "true" } : {}),
+  ...(q.noPartyOrg ? { noPartyOrg: "true" } : {}),
+  ...(q.positionKeywords?.length ? { positionKeywords: q.positionKeywords.join(",") } : {}),
+  ...(q.inDept !== undefined ? { inDept: String(q.inDept) } : {}),
+  ...(q.politicalStatuses?.length ? { politicalStatuses: q.politicalStatuses.join(",") } : {}),
+  ...(q.roleIds?.length ? { roleIds: q.roleIds.join(",") } : {}),
+  ...(q.deptOwner !== undefined ? { deptOwner: String(q.deptOwner) } : {}),
+});
+
 export const usersApi = {
   list: (q: ListUsersQuery = {}) =>
     api
       .get<UserListResponse>("/users", {
         params: {
-          ...(q.search ? { search: q.search } : {}),
-          ...(q.adminOrgId ? { adminOrgId: q.adminOrgId } : {}),
-          ...(q.adminOrgSubtree ? { adminOrgSubtree: "true" } : {}),
-          ...(q.adminOrgIds && q.adminOrgIds.length ? { adminOrgIds: q.adminOrgIds.join(",") } : {}),
-          ...(q.partyOrgId ? { partyOrgId: q.partyOrgId } : {}),
-          ...(q.active !== undefined ? { active: String(q.active) } : {}),
-          ...(q.hasParty !== undefined ? { hasParty: String(q.hasParty) } : {}),
-          ...(q.noAdminOrg ? { noAdminOrg: "true" } : {}),
-          ...(q.noPartyOrg ? { noPartyOrg: "true" } : {}),
-          ...(q.positionKeywords?.length ? { positionKeywords: q.positionKeywords.join(",") } : {}),
-          ...(q.inDept !== undefined ? { inDept: String(q.inDept) } : {}),
-          ...(q.politicalStatuses?.length ? { politicalStatuses: q.politicalStatuses.join(",") } : {}),
-          ...(q.roleIds?.length ? { roleIds: q.roleIds.join(",") } : {}),
-          ...(q.deptOwner !== undefined ? { deptOwner: String(q.deptOwner) } : {}),
+          ...listFilterParams(q),
           ...(q.take !== undefined ? { take: q.take } : {}),
           ...(q.skip !== undefined ? { skip: q.skip } : {}),
           ...(q.sortBy ? { sortBy: q.sortBy } : {}),
           ...(q.sortDir ? { sortDir: q.sortDir } : {}),
         },
       })
+      .then((r) => r.data),
+
+  /** 按筛选条件取全部命中用户 id(角色页「批量添加成员」圈人用;命中超 5000 后端 400 提示收窄) */
+  listIds: (q: ListUsersQuery = {}) =>
+    api
+      .get<{ total: number; ids: string[] }>("/users/ids", { params: listFilterParams(q) })
       .then((r) => r.data),
 
   /** 统计角标(总数/在职/行政未分配/党组织未加入)—— 口径 = 登录人可见范围 */

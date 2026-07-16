@@ -44,6 +44,16 @@ export class UserController {
   }
 
   /**
+   * 按筛选条件取全部命中用户 id(角色页「批量添加成员」圈人用;take/skip 忽略)。
+   * 鉴权口径与 list 相同:登录即可、按可见范围收敛(返回的只是 id,是 list 的子集信息)。
+   * 必须放在 `:id` 之前,否则 'ids' 会被识别成 id。
+   */
+  @Get('ids')
+  listIds(@Query() query: ListUsersQuery, @CurrentUser() me: AuthPayload) {
+    return this.users.listIds(query, me.sub);
+  }
+
+  /**
    * 轻量用户检索(内部通讯录级):姓名/工号搜索,最小字段,登录即可。
    * 必须放在 `:id` 之前。
    */

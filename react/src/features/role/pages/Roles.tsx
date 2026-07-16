@@ -3,13 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ShieldIcon, PlusIcon, SearchIcon, XIcon, TrashIcon, AlertCircleIcon,
   CheckIcon, UsersIcon, KeyIcon, LockIcon, PackageIcon, RefreshCwIcon,
-  BadgeCheckIcon, UserPlusIcon, Loader2,
+  BadgeCheckIcon, UserPlusIcon, Loader2, FilterIcon,
 } from "lucide-react";
 import {
   rolesApi,
   type RoleListItem,
   type RoleDetail,
   type CreateRoleInput,
+  type BatchAssignRoleUsersResult,
 } from "@/features/role";
 import {
   permissionsApi,
@@ -22,7 +23,11 @@ import {
   SCOPE_LABELS,
   ScopeOrgSelector,
   buildOrgIndex,
+  UserFilterPanel,
+  buildQueryFromFilters,
+  countActiveFilters,
   type ScopeValue,
+  type UserFilters,
 } from "@/features/user";
 import { organizationsApi } from "@/features/organization";
 import { useAuth } from "@/stores/auth";
@@ -316,7 +321,9 @@ function RoleDetailView({
         {tab === "perms" ? (
           <PermissionsTab key={role.id} role={role} permissions={permissions} onSaved={afterMutate} />
         ) : (
-          <UsersTab roleId={role.id} roleName={role.name} onChanged={afterMutate} />
+          // key=role.id:换角色重挂载 —— 勾选集/批量面板筛选态不跨角色残留(否则 A 角色勾的人
+          // 在 B 角色里预勾选,「移除选中」会误伤;同 PermissionsTab 的 key 重挂载范式)
+          <UsersTab key={role.id} roleId={role.id} roleName={role.name} onChanged={afterMutate} />
         )}
       </div>
     </div>
@@ -674,7 +681,8 @@ function UsersTab({
   const { me } = useAuth();
   // 角色分配 = 授权动作,仅系统管理员(admin:role:write,内置只有 platform_admin)可加/减成员
   const canWrite = !!me?.isPlatformAdmin || (me?.permissions ?? []).includes("admin:role:write");
-  const [adding, setAdding] = useState(false);
+  const [panel, setPanel] = useState<"single" | "batch" | null>(null);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
 
   const usersQuery = useQuery({
     queryKey: ["role-users", roleId],
@@ -683,20 +691,45 @@ function UsersTab({
 
   function afterChange() {
     qc.invalidateQueries({ queryKey: ["role-users", roleId] });
+    // 用户管理页(keep-alive 常驻 + 全局不随焦点重取)的角色数/角色筛选也要跟上
+    qc.invalidateQueries({ queryKey: ["users"] });
     onChanged();
   }
 
   const removeMut = useMutation({
     mutationFn: (userId: string) => rolesApi.removeUser(roleId, userId),
-    onSuccess: () => {
+    onSuccess: (_data, userId) => {
+      // 修剪勾选集:被移除的 id 若留着,此人日后重新入组会带着旧勾选态"复活"
+      setChecked((prev) => {
+        if (!prev.has(userId)) return prev;
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
       afterChange();
       toast.success("已解除该成员的角色");
     },
     onError: (err) => toast.error(errMsg(err, "解除失败")),
   });
 
+  const batchRemoveMut = useMutation({
+    mutationFn: (userIds: string[]) => rolesApi.batchRemoveUsers(roleId, userIds),
+    onSuccess: (res) => {
+      setChecked(new Set());
+      afterChange();
+      toast.success(`已批量移除 ${res.removed} 名成员`);
+    },
+    onError: (err) => toast.error(errMsg(err, "批量移除失败")),
+  });
+
   const users = useMemo(() => usersQuery.data ?? [], [usersQuery.data]);
   const existingIds = useMemo(() => new Set(users.map((u) => u.userId)), [users]);
+  // 勾选集与当前成员求交派生(成员列表变化后不残留已移除的 id)
+  const selectedIds = useMemo(
+    () => users.filter((u) => checked.has(u.userId)).map((u) => u.userId),
+    [users, checked],
+  );
+  const allChecked = users.length > 0 && selectedIds.length === users.length;
 
   return (
     <div className="p-5 space-y-3">
@@ -707,30 +740,89 @@ function UsersTab({
         </span>
         <div className="flex-1" />
         {canWrite ? (
-          <button
-            onClick={() => setAdding((v) => !v)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium text-white"
-            style={{ backgroundColor: PARTY }}
-          >
-            <UserPlusIcon className="w-3.5 h-3.5" />
-            添加成员
-          </button>
+          <>
+            <button
+              onClick={() => setPanel((p) => (p === "batch" ? null : "batch"))}
+              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-colors"
+              style={
+                panel === "batch"
+                  ? { borderColor: PARTY, color: PARTY, backgroundColor: PARTY_BG }
+                  : { borderColor: "#E9E9E9", color: "#4B5563" }
+              }
+            >
+              <FilterIcon className="w-3.5 h-3.5" />
+              批量添加
+            </button>
+            <button
+              onClick={() => setPanel((p) => (p === "single" ? null : "single"))}
+              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium text-white"
+              style={{ backgroundColor: PARTY }}
+            >
+              <UserPlusIcon className="w-3.5 h-3.5" />
+              添加成员
+            </button>
+          </>
         ) : (
           <span className="text-[10px] text-[#9CA3AF]">仅系统管理员可加/减成员</span>
         )}
       </div>
 
-      {adding && canWrite && (
+      {panel === "single" && canWrite && (
         <AddMemberPanel
           roleId={roleId}
           roleName={roleName}
           existingIds={existingIds}
-          onClose={() => setAdding(false)}
+          onClose={() => setPanel(null)}
           onAdded={() => {
             afterChange();
             toast.success("已添加成员");
           }}
         />
+      )}
+
+      {panel === "batch" && canWrite && (
+        <BatchAddPanel
+          roleId={roleId}
+          roleName={roleName}
+          existingIds={existingIds}
+          onClose={() => setPanel(null)}
+          onDone={(res) => {
+            afterChange();
+            toast.success(
+              `批量授予完成:新增 ${res.added} 人,更新范围 ${res.updated} 人` +
+                (res.missing > 0 ? `(${res.missing} 个用户不存在,已跳过)` : ""),
+            );
+          }}
+        />
+      )}
+
+      {/* 批量移除工具条 */}
+      {canWrite && users.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#FAFBFC] border border-[#F0F0F0]">
+          <Checkbox
+            checked={allChecked}
+            indeterminate={selectedIds.length > 0 && !allChecked}
+            onChange={(v) => setChecked(v ? new Set(users.map((u) => u.userId)) : new Set())}
+          />
+          <span className="text-[10px] text-[#6B7280]">
+            {selectedIds.length > 0 ? `已选 ${selectedIds.length} 人` : "全选"}
+          </span>
+          <div className="flex-1" />
+          <button
+            disabled={selectedIds.length === 0 || batchRemoveMut.isPending}
+            onClick={() => {
+              if (confirm(`批量解除 ${selectedIds.length} 名成员的「${roleName}」角色?`)) {
+                batchRemoveMut.mutate(selectedIds);
+              }
+            }}
+            className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-red-600 border border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <TrashIcon className="w-3 h-3" />
+            {batchRemoveMut.isPending
+              ? "移除中…"
+              : `移除选中${selectedIds.length > 0 ? ` (${selectedIds.length})` : ""}`}
+          </button>
+        </div>
       )}
 
       {usersQuery.isLoading ? (
@@ -746,6 +838,19 @@ function UsersTab({
               key={u.userId}
               className="flex items-center gap-3 px-3 py-2.5 border border-[#F0F0F0] rounded-md"
             >
+              {canWrite && (
+                <Checkbox
+                  checked={checked.has(u.userId)}
+                  onChange={(v) =>
+                    setChecked((prev) => {
+                      const next = new Set(prev);
+                      if (v) next.add(u.userId);
+                      else next.delete(u.userId);
+                      return next;
+                    })
+                  }
+                />
+              )}
               <div className="w-8 h-8 rounded-full bg-[var(--party-primary)] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                 {u.name.charAt(0)}
               </div>
@@ -973,6 +1078,229 @@ function AddMemberPanel({
         >
           {addMut.isPending ? "添加中…" : "确认添加"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── 批量添加面板(筛选器圈人 + 整批统一数据范围)───
+   复用用户管理页的 UserFilterPanel(含检索模板,如内置「部门管理人员」):
+   筛选条件 → GET /users/ids 取全部命中 id(>5000 后端 400 提示收窄)→
+   预览命中数/样例/已持有重叠 → 确认 → POST /roles/:id/users/batch 一次写入。 */
+function BatchAddPanel({
+  roleId, roleName, existingIds, onClose, onDone,
+}: {
+  roleId: string;
+  roleName: string;
+  existingIds: Set<string>;
+  onClose: () => void;
+  onDone: (res: BatchAssignRoleUsersResult) => void;
+}) {
+  const { me } = useAuth();
+  const [filters, setFilters] = useState<UserFilters>({});
+  const [scope, setScope] = useState<ScopeValue>("self");
+  const [scopeOrgIds, setScopeOrgIds] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const activeCount = countActiveFilters(filters);
+  const query = useMemo(() => buildQueryFromFilters(filters), [filters]);
+
+  // 筛选面板依赖:行政树 + 角色列表(与页面级查询同 key,命中缓存)
+  const adminTreeQuery = useQuery({
+    queryKey: ["org-tree", "admin"],
+    queryFn: () => organizationsApi.tree("admin"),
+    staleTime: 60_000,
+  });
+  const rolesListQuery = useQuery({
+    queryKey: ["roles"],
+    queryFn: () => rolesApi.list(),
+    staleTime: 60_000,
+  });
+
+  // 命中人群:全部 id(提交名单)+ 前 8 个样例(核对圈的是谁)。无筛选条件不发请求(会圈全库)。
+  const idsQuery = useQuery({
+    queryKey: ["role-batch-ids", query],
+    queryFn: () => usersApi.listIds(query),
+    enabled: activeCount > 0,
+    staleTime: 15_000,
+    placeholderData: (prev) => prev,
+    retry: false, // 超上限 400 是明确指令(收窄条件),重试无意义
+  });
+  const sampleQuery = useQuery({
+    queryKey: ["role-batch-sample", query],
+    queryFn: () => usersApi.list({ ...query, take: 8 }),
+    enabled: activeCount > 0,
+    staleTime: 15_000,
+    placeholderData: (prev) => prev,
+  });
+
+  // custom 锚点:按需拉党组织树(行政树上面已拉)
+  const partyTreeQuery = useQuery({
+    queryKey: ["org-tree", "party"],
+    queryFn: () => organizationsApi.tree("party"),
+    staleTime: 60_000,
+    enabled: scope === "custom",
+  });
+  const allOrgsById = useMemo(
+    () => buildOrgIndex(adminTreeQuery.data ?? [], partyTreeQuery.data ?? []),
+    [adminTreeQuery.data, partyTreeQuery.data],
+  );
+
+  const ids = activeCount > 0 && !idsQuery.isError ? idsQuery.data?.ids : undefined;
+  const overlap = useMemo(
+    () => (ids ?? []).reduce((n, id) => n + (existingIds.has(id) ? 1 : 0), 0),
+    [ids, existingIds],
+  );
+  const sampleItems = sampleQuery.data?.items ?? [];
+
+  const addMut = useMutation({
+    mutationFn: () =>
+      rolesApi.batchAddUsers(roleId, {
+        userIds: ids!,
+        scope,
+        scopeOrgIds: scope === "custom" ? scopeOrgIds : undefined,
+      }),
+    onSuccess: (res) => {
+      setError(null);
+      onDone(res);
+      onClose();
+    },
+    onError: (err) => setError(errMsg(err, "批量添加失败")),
+  });
+
+  // isFetching 时禁提交:placeholderData 保留的是上一次筛选的名单,条件刚改就点会提交旧名单
+  const canSubmit =
+    !!ids && ids.length > 0 && !idsQuery.isFetching &&
+    (scope !== "custom" || scopeOrgIds.length > 0);
+
+  return (
+    <div className="border border-[#E9E9E9] rounded-lg bg-[#FAFBFC] overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-3">
+        <FilterIcon className="w-4 h-4" style={{ color: PARTY }} />
+        <span className="text-xs font-semibold text-[#1A1A1A]">
+          按筛选条件批量添加成员到「{roleName}」
+        </span>
+        <div className="flex-1" />
+        <button onClick={onClose} className="p-1 rounded hover:bg-white" title="收起">
+          <XIcon className="w-3.5 h-3.5 text-[#9CA3AF]" />
+        </button>
+      </div>
+
+      {/* 筛选器:与用户管理页同一面板(含检索模板,如「★ 部门管理人员」) */}
+      <UserFilterPanel
+        filters={filters}
+        onChange={setFilters}
+        adminTree={adminTreeQuery.data ?? []}
+        roles={rolesListQuery.data ?? []}
+        uid={me?.id ?? "anon"}
+      />
+
+      <div className="px-3 py-3 space-y-3">
+        {/* 命中统计 */}
+        {activeCount === 0 ? (
+          <div className="text-xs text-[#9CA3AF]">
+            先设置至少一项筛选条件(可点检索模板一键套用,如「★ 部门管理人员」)。
+          </div>
+        ) : idsQuery.isError ? (
+          <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-700">
+            {errMsg(idsQuery.error, "统计命中人数失败")}
+          </div>
+        ) : !ids ? (
+          <div className="text-xs text-[#9CA3AF]">统计命中人数中…</div>
+        ) : (
+          <div className="text-xs text-[#1A1A1A] space-y-1.5">
+            <div>
+              命中 <strong style={{ color: PARTY }}>{ids.length}</strong> 人
+              {overlap > 0 && (
+                <span className="text-[#6B7280]">
+                  (其中 {overlap} 人已持有该角色,将覆盖更新其数据范围)
+                </span>
+              )}
+              {idsQuery.isFetching && (
+                <Loader2 className="inline w-3 h-3 ml-1 animate-spin text-[#9CA3AF]" />
+              )}
+            </div>
+            {sampleItems.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1">
+                {sampleItems.map((u) => (
+                  <span
+                    key={u.id}
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-white border border-[#E9E9E9] text-[#4B5563]"
+                  >
+                    {u.name}
+                  </span>
+                ))}
+                {ids.length > sampleItems.length && (
+                  <span className="text-[10px] text-[#9CA3AF]">等 {ids.length} 人</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 数据范围(整批统一) */}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-[#6B7280] w-14 flex-shrink-0">数据范围</span>
+          <select
+            value={scope}
+            onChange={(e) => {
+              const v = e.target.value as ScopeValue;
+              setScope(v);
+              if (v !== "custom") setScopeOrgIds([]);
+            }}
+            className="text-xs px-2 py-1 border border-[#E9E9E9] rounded flex-1 bg-white"
+          >
+            {(["self", "own", "subtree", "all", "custom"] as ScopeValue[]).map((s) => (
+              <option key={s} value={s}>
+                {SCOPE_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="text-[10px] text-[#9CA3AF]">
+          own / subtree 按各成员本人所在单位自动推导(每人落到自己的组织);custom = 全批共用下方所选锚点。
+        </div>
+        {scope === "custom" && (
+          <ScopeOrgSelector
+            allOrgsById={allOrgsById}
+            selectedIds={scopeOrgIds}
+            onChange={setScopeOrgIds}
+          />
+        )}
+
+        {error && (
+          <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-md text-xs text-red-700 flex gap-1.5">
+            <AlertCircleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+            {error}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-xs rounded-md border border-[#E9E9E9] hover:bg-white"
+          >
+            取消
+          </button>
+          <button
+            disabled={!canSubmit || addMut.isPending}
+            onClick={() => {
+              if (!ids) return;
+              const lines = [
+                `将给 ${ids.length} 人授予「${roleName}」(数据范围:${SCOPE_LABELS[scope]})。`,
+                overlap > 0 ? `其中 ${overlap} 人已持有该角色,数据范围将被覆盖更新。` : "",
+                "确认执行?",
+              ]
+                .filter(Boolean)
+                .join("\n");
+              if (confirm(lines)) addMut.mutate();
+            }}
+            className="px-4 py-1.5 text-xs font-medium text-white rounded-md disabled:opacity-50"
+            style={{ backgroundColor: PARTY }}
+          >
+            {addMut.isPending ? "批量授予中…" : `批量授予${ids ? ` (${ids.length} 人)` : ""}`}
+          </button>
+        </div>
       </div>
     </div>
   );

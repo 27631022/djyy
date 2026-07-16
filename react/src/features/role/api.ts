@@ -50,6 +50,21 @@ export interface AssignRoleUserInput {
   scopeOrgIds?: string[];
 }
 
+/** 批量添加入参:整批同一数据范围(custom 时全批共用同一组锚点)。 */
+export interface BatchAssignRoleUsersInput {
+  userIds: string[];
+  scope: ScopeValue;
+  scopeOrgIds?: string[];
+}
+
+/** 批量添加结果:added=新授予 / updated=已持有、覆盖更新范围 / missing=id 不存在被跳过 */
+export interface BatchAssignRoleUsersResult {
+  requested: number;
+  added: number;
+  updated: number;
+  missing: number;
+}
+
 export interface CreateRoleInput {
   code: string;
   name: string;
@@ -71,6 +86,14 @@ export const rolesApi = {
   /** 解除某用户的此角色(返回更新后的成员列表)。 */
   removeUser: (id: string, userId: string) =>
     api.delete<RoleUserItem[]>(`/roles/${id}/users/${userId}`).then((r) => r.data),
+  /** 批量添加成员(幂等:已持有者覆盖更新数据范围)。仅系统管理员(admin:role:write)。 */
+  batchAddUsers: (id: string, input: BatchAssignRoleUsersInput) =>
+    api.post<BatchAssignRoleUsersResult>(`/roles/${id}/users/batch`, input).then((r) => r.data),
+  /** 批量移除成员(幂等:未持有的忽略,返回实际移除数)。 */
+  batchRemoveUsers: (id: string, userIds: string[]) =>
+    api
+      .post<{ requested: number; removed: number }>(`/roles/${id}/users/batch-remove`, { userIds })
+      .then((r) => r.data),
   create: (input: CreateRoleInput) => api.post<RoleDetail>("/roles", input).then((r) => r.data),
   update: (id: string, input: UpdateRoleInput) =>
     api.patch<RoleDetail>(`/roles/${id}`, input).then((r) => r.data),

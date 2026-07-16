@@ -8,3 +8,11 @@ export { OrgPicker, type OrgPickerProps } from './components/OrgPicker';
 // scope=custom 锚点选择器 + 组织树扁平化 — 供用户角色 tab 与「角色与权限」页共用
 export { ScopeOrgSelector, MultiOrgSelector } from './components/ScopeOrgSelector';
 export { flattenTree, buildOrgIndex, type FlatOrg } from './components/orgFlatten';
+// 筛选器面板 + 条件模型/检索模板 — 用户管理页与「角色与权限」页批量添加成员共用
+export { UserFilterPanel } from './components/UserFilterPanel';
+export {
+  buildQueryFromFilters,
+  countActiveFilters,
+  type UserFilters,
+  type FilterTemplate,
+} from './components/userFilters';
