@@ -37,6 +37,7 @@ const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
       ["perm", "小卷烫发"],
       ["undercut", "两侧铲短"],
       ["messy-brown", "凌乱短发"],
+      ["uyghur-cap", "维吾尔花帽"],
     ],
     female: [
       ["bob-brown", "齐肩直发"],
@@ -51,6 +52,9 @@ const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
       ["shoulder-curl", "齐肩内扣"],
       ["braid", "麻花辫"],
       ["gray-bun", "灰白发髻"],
+      // 民族头饰+发型一体(帽/头饰/头发不好拆,按用户定案整合成发型槽变体)
+      ["miao-silver", "苗族银冠"],
+      ["uyghur-cap", "维吾尔花帽辫"],
     ],
   },
   eyes: {
@@ -130,6 +134,7 @@ const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
       ["polo-red", "红色POLO"],
       ["hoodie-gray", "灰色卫衣"],
       ["tshirt-white", "白色T恤"],
+      ["mongol-robe", "蒙古袍"],
     ],
     female: [
       ["white-shirt", "白衬衫"],
@@ -138,6 +143,10 @@ const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
       ["workwear", "藏蓝工装"],
       ["sweater", "米色毛衣"],
       ["tshirt-blue", "浅蓝T恤"],
+      // 民族服饰(苗绣元素取自用户提示词:银项圈/银铃铛流苏/花卉绣纹)
+      ["miao-dress", "苗绣短褂"],
+      ["mongol-robe", "蒙古袍"],
+      ["tibetan-robe", "藏袍"],
     ],
   },
   accessory: {

@@ -48,6 +48,9 @@ const PARTS = [
   { id: 'male/hair/perm', base: 'base-male', prompt: `${KEEP}只给他加上一头黑色小卷烫发短发${STYLE}` },
   { id: 'male/hair/undercut', base: 'base-male', prompt: `${KEEP}只给他加上两侧铲短、顶部较长的黑色短发(undercut)${STYLE}` },
   { id: 'male/hair/messy-brown', base: 'base-male', prompt: `${KEEP}只给他加上一头棕色凌乱感短发${STYLE}` },
+  // ============ 男 · 民族头饰(帽+发一体) ============
+  // ⚠ 首版"加短发并戴帽"改动过大,i2i 连整张脸都重画了(脸补丁浮在基准上);改成只戴帽
+  { id: 'male/hair/uyghur-cap', base: 'base-male', prompt: `${KEEP}只给他戴上一顶维吾尔族绣花小花帽(朵帕,黑底彩绣四棱小帽,戴在头顶,不遮挡眉毛眼睛,脸部完全不变)${STYLE}` },
   // ============ 男 · 眼镜(加物) ============
   { id: 'male/glasses/round-black', base: 'base-male', eyeMode: 'clear', prompt: `${KEEP}只给他戴上一副黑色圆框眼镜${STYLE}` },
   { id: 'male/glasses/square-black', base: 'base-male', eyeMode: 'clear', prompt: `${KEEP}只给他戴上一副黑色方框眼镜${STYLE}` },
@@ -66,6 +69,9 @@ const PARTS = [
   { id: 'male/clothes/polo-red', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成红色POLO衫${STYLE}` },
   { id: 'male/clothes/hoodie-gray', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成灰色连帽卫衣${STYLE}` },
   { id: 'male/clothes/tshirt-white', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成白色圆领T恤${STYLE}` },
+  // ============ 男 · 民族服饰(换装) ============
+  // ⚠ 前两版领口开得比基准T恤低,i2i 补画脖子皮肤(强差分,剪哪儿都露楔形)→ 高立领贴颈,不给它补脖子的机会
+  { id: 'male/clothes/mongol-robe', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成蒙古族高立领长袍上衣(藏青色缎面、金色镶边盘扣、橙色腰带),高立领紧贴脖颈、领口高度与原上衣一致,脖子和头部完全不变${STYLE}` },
   // ============ 男 · 五官(替换,试产先行) ============
   { id: 'male/eyes/smile', base: 'base-male', prompt: `${KEEP_FACE}只把他的眼睛改成开心的眯眯笑眼(两条向下弯的弧线,闭着笑),眉毛保持原样${STYLE}` },
   // 眼睑要求:上一版 raw 在左眼内眼角画了白色泪光杂块(P2.3 重生成)
@@ -93,6 +99,9 @@ const PARTS = [
   { id: 'female/hair/shoulder-curl', base: 'base-female', prompt: `${KEEP}只给她加上一头黑色齐肩内扣卷发${STYLE}` },
   { id: 'female/hair/braid', base: 'base-female', prompt: `${KEEP}只给她加上垂在单侧肩前的棕色麻花辫发型${STYLE}` },
   { id: 'female/hair/gray-bun', base: 'base-female', prompt: `${KEEP}只给她加上灰白色的低发髻发型(年长者发色)${STYLE}` },
+  // ============ 女 · 民族头饰+发型一体(加物;帽子/头饰/头发不好分,按用户定案整合成一件) ============
+  { id: 'female/hair/miao-silver', base: 'base-female', prompt: `${KEEP}只给她加上苗族姑娘的黑色盘发和华丽的苗族银冠头饰(银角冠、银泡、银蝴蝶、短银铃铛流苏,头饰不遮挡眉毛眼睛)${STYLE}` },
+  { id: 'female/hair/uyghur-cap', base: 'base-female', prompt: `${KEEP}只给她加上维吾尔族姑娘的发型和头饰:两条黑色长麻花辫垂在肩前,头戴一顶彩色绣花小花帽(朵帕,不遮挡眉毛眼睛)${STYLE}` },
   // ============ 女 · 眼镜(加物) ============
   { id: 'female/glasses/round-black', base: 'base-female', eyeMode: 'clear', prompt: `${KEEP}只给她戴上一副黑色圆框眼镜${STYLE}` },
   { id: 'female/glasses/square-red', base: 'base-female', eyeMode: 'clear', prompt: `${KEEP}只给她戴上一副酒红色细方框眼镜${STYLE}` },
@@ -108,6 +117,10 @@ const PARTS = [
   { id: 'female/clothes/workwear', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成藏蓝色工装外套${STYLE}` },
   { id: 'female/clothes/sweater', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成米色高领毛衣${STYLE}` },
   { id: 'female/clothes/tshirt-blue', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成浅蓝色圆领T恤${STYLE}` },
+  // ============ 女 · 民族服饰(换装;元素取自用户的苗绣提示词:银项圈/银铃铛流苏/花卉绣纹) ============
+  { id: 'female/clothes/miao-dress', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成粉紫配色的苗绣少女短褂,领口佩细银项圈和短银铃铛流苏,衣身绣满花卉纹样${STYLE}` },
+  { id: 'female/clothes/mongol-robe', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成蒙古族立领长袍上衣(宝蓝色缎面、金色镶边盘扣、彩色腰带)${STYLE}` },
+  { id: 'female/clothes/tibetan-robe', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成藏族氆氇藏袍上衣(绛红色、彩色条纹镶边、内搭白色衬衣)${STYLE}` },
   // ============ 女 · 五官(替换) ============
   { id: 'female/eyes/smile', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成开心的眯眯笑眼(两条向下弯的弧线,闭着笑),眉毛保持原样${STYLE}` },
   { id: 'female/eyes/closed', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成安静闭上的眼睛(两条平滑的闭眼弧线,带睫毛),眉毛保持原样${STYLE}` },
@@ -675,6 +688,10 @@ async function extract(part) {
     'female/accessory/red-scarf': { feather: [60, 120], keepRed: 22 },
     // 中分刘海:真发丝垂进眼盒直到盒底,下带无差别清会把发丝拦腰切断 → 豁免(亮团洪泛仍生效)
     'male/hair/curtain-brown': { keepEyeBox: true },
+    // 男花帽:i2i 两版都顺手重画脸;帽子只住头顶 → 钳制区硬裁一切脸部私货
+    'male/hair/uyghur-cap': { clampY: [40, 380] },
+    // 男蒙古袍:i2i 会顺手重画头部(脸颊补丁/耳周白晕,分层实锤在袍件不在帽件)→ 钳制兜底
+    'male/clothes/mongol-robe': { clampY: [555, 1023] },
     // 大笑:下颌重画鬼影(旧笑纹/颌线的弱差分半透糊在下巴和脖子上,a≈197 双重曝光);
     // 张口/牙齿/下唇本体是强差分(d>110)不受影响。clampY 收窄把脖子上的鬼影直接裁掉
     'male/mouth/laugh': { feather: [55, 105], clampY: [480, 710] },
