@@ -48,11 +48,11 @@ const PARTS = [
   { id: 'male/hair/undercut', base: 'base-male', prompt: `${KEEP}只给他加上两侧铲短、顶部较长的黑色短发(undercut)${STYLE}` },
   { id: 'male/hair/messy-brown', base: 'base-male', prompt: `${KEEP}只给他加上一头棕色凌乱感短发${STYLE}` },
   // ============ 男 · 眼镜(加物) ============
-  { id: 'male/glasses/round-black', base: 'base-male', eyeClear: true, prompt: `${KEEP}只给他戴上一副黑色圆框眼镜${STYLE}` },
-  { id: 'male/glasses/square-black', base: 'base-male', eyeClear: true, prompt: `${KEEP}只给他戴上一副黑色方框眼镜${STYLE}` },
-  { id: 'male/glasses/half-rim', base: 'base-male', eyeClear: true, prompt: `${KEEP}只给他戴上一副金属细半框眼镜${STYLE}` },
-  { id: 'male/glasses/rimless', base: 'base-male', eyeClear: true, prompt: `${KEEP}只给他戴上一副无框透明眼镜${STYLE}` },
-  { id: 'male/glasses/sunglasses', base: 'base-male', prompt: `${KEEP}只给他戴上一副黑色墨镜(深色镜片太阳镜)${STYLE}` },
+  { id: 'male/glasses/round-black', base: 'base-male', eyeMode: 'clear', prompt: `${KEEP}只给他戴上一副黑色圆框眼镜${STYLE}` },
+  { id: 'male/glasses/square-black', base: 'base-male', eyeMode: 'clear', prompt: `${KEEP}只给他戴上一副黑色方框眼镜${STYLE}` },
+  { id: 'male/glasses/half-rim', base: 'base-male', eyeMode: 'clear', prompt: `${KEEP}只给他戴上一副金属细半框眼镜${STYLE}` },
+  { id: 'male/glasses/rimless', base: 'base-male', eyeMode: 'clear', prompt: `${KEEP}只给他戴上一副无框透明眼镜${STYLE}` },
+  { id: 'male/glasses/sunglasses', base: 'base-male', eyeMode: 'cover', prompt: `${KEEP}只给他戴上一副黑色墨镜(深色镜片太阳镜)${STYLE}` },
   // ============ 男 · 胡子(加物) ============
   { id: 'male/beard/stubble', base: 'base-male', prompt: `${KEEP}只给他加上短短的络腮胡${STYLE}` },
   { id: 'male/beard/goatee', base: 'base-male', prompt: `${KEEP}只给他加上下巴上的山羊胡${STYLE}` },
@@ -90,9 +90,9 @@ const PARTS = [
   { id: 'female/hair/braid', base: 'base-female', prompt: `${KEEP}只给她加上垂在单侧肩前的棕色麻花辫发型${STYLE}` },
   { id: 'female/hair/gray-bun', base: 'base-female', prompt: `${KEEP}只给她加上灰白色的低发髻发型(年长者发色)${STYLE}` },
   // ============ 女 · 眼镜(加物) ============
-  { id: 'female/glasses/round-black', base: 'base-female', eyeClear: true, prompt: `${KEEP}只给她戴上一副黑色圆框眼镜${STYLE}` },
-  { id: 'female/glasses/square-red', base: 'base-female', eyeClear: true, prompt: `${KEEP}只给她戴上一副酒红色细方框眼镜${STYLE}` },
-  { id: 'female/glasses/sunglasses', base: 'base-female', prompt: `${KEEP}只给她戴上一副黑色墨镜(深色镜片太阳镜)${STYLE}` },
+  { id: 'female/glasses/round-black', base: 'base-female', eyeMode: 'clear', prompt: `${KEEP}只给她戴上一副黑色圆框眼镜${STYLE}` },
+  { id: 'female/glasses/square-red', base: 'base-female', eyeMode: 'clear', prompt: `${KEEP}只给她戴上一副酒红色细方框眼镜${STYLE}` },
+  { id: 'female/glasses/sunglasses', base: 'base-female', eyeMode: 'cover', prompt: `${KEEP}只给她戴上一副黑色墨镜(深色镜片太阳镜)${STYLE}` },
   // ============ 女 · 饰品(加物) ============
   { id: 'female/accessory/earrings-gold', base: 'base-female', prompt: `${KEEP}只给她戴上一对金色小圆环耳环${STYLE}` },
   { id: 'female/accessory/earrings-pearl', base: 'base-female', prompt: `${KEEP}只给她戴上一对白色珍珠耳钉${STYLE}` },
@@ -418,7 +418,8 @@ const Y_CLAMP = [
   ['/brows/', [260, 500]],
   ['/nose/', [400, 640]],
   ['/mouth/', [480, 780]], // 下限放宽:钳制要比补丁大,让羽化自然收尾,否则下巴切出平线
-  ['/beard/', [420, 870]], // 大胡子够得到 ~850,不能切平;领口散斑改靠大连通域阈值清
+  ['/beard/', [420, 820]], // 大胡子下缘 ~810;再往下是变体自己的蓝T恤领(用户换西装时会残成蓝斑)
+  ['/glasses/', [320, 560]], // 镜框+镜腿的合法范围;i2i 戴镜时可能顺手改头顶发型,污染会烤进 z=40 顶层(女墨镜"发箍弧"真凶)
 ];
 
 /** 按槽位的清理参数:胡子/衣服主体巨大 → 游丝阈值放大(清领口散斑);衣服孔洞上限放大(领口缝隙回填) */
@@ -430,51 +431,61 @@ const SLOT_TUNE = {
 const tuneOf = (id) => SLOT_TUNE[id.split('/')[1]] ?? SLOT_TUNE.default;
 
 /**
- * 眼窗厚块清除(透明镜片眼镜专用,part.eyeClear):i2i 戴镜时会顺手把眉眼重画一遍,差分把
- * "烤死的睁眼/眉毛"收进眼镜部件(z=40 顶层)→ 用户换闭眼时旧睁眼浮在上面穿透。
- * 判定 = 眼窗盒内「厚块」(腐蚀 r4 存活,膨胀 r6 覆盖回整块):烤死的眼珠/眼白/眉段是厚块 → 整块清;
- * 镜框线/半框金属线是细结构(腐蚀不存活)→ 保留。墨镜不清(深色镜片就该盖住眼)。
+ * 眼镜的眼区处理(part.eyeMode):i2i 戴镜时会顺手把眉眼重画一遍,差分把"烤死的眉眼"收进
+ * 眼镜部件(z=40 顶层)→ 用户换闭眼时旧睁眼浮在上面穿透。
+ *
+ * 'clear'(透明镜片):瞳孔核心盒(镜框绝不经过的区域)全清 + 外圈眼窗盒提高差分门槛
+ *   (黑框/金属框对基准的差异巨大 d>数百 必保留;重画的眼睛与原眼差异小 d<110 滤掉)。
+ *   ⚠ 不能用「厚块清除」—— 黑粗框本身就是厚块,会被杀碎(P2.1 的回归教训)。
+ * 'cover'(墨镜):反向 —— 眼窗盒内降低差分门槛(强捕获"缩小的旧眼→镜片/皮肤"的弱变化),
+ *   否则基准大眼的眼顶从镜框上沿探出来;配合全件 morphClose 封缝。
  */
 const EYE_BOXES = [
   { x0: 335, y0: 330, x1: 478, y1: 485 },
   { x0: 552, y0: 330, x1: 718, y1: 485 },
 ];
-function clearThickBlobsInEyeBoxes(data, w, h) {
-  let removed = 0;
-  for (const box of EYE_BOXES) {
-    const bw = box.x1 - box.x0 + 1, bh = box.y1 - box.y0 + 1;
-    const R = 4, M = 6;
-    const survive = new Uint8Array(bw * bh);
-    for (let y = box.y0; y <= box.y1; y++) {
-      outer: for (let x = box.x0; x <= box.x1; x++) {
-        if (data[(y * w + x) * 4 + 3] === 0) continue;
-        for (let dy = -R; dy <= R; dy++) {
-          for (let dx = -R; dx <= R; dx++) {
+/** 瞳孔核心盒:任何镜框造型都不会经过的中央区(眼球/眼白/睫毛在这里;外缘贴到镜框内沿) */
+const EYE_CORES = [
+  { x0: 358, y0: 402, x1: 455, y1: 480 },
+  { x0: 582, y0: 402, x1: 686, y1: 480 },
+];
+const inBox = (x, y, b) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1;
+
+/**
+ * 白边裁剪:贴透明边、接近无彩色的亮白像素裁掉(发梢的绿色抗锯齿边被 despill 压绿后
+ * 剩下白灰边,挂在深色头发外缘像结霜)。饱和度门槛防误伤肤色/金发(有彩度)。
+ */
+function trimWhiteEdge(data, w, h, { lumTh = 195, satTh = 40, radius = 2, iters = 2 } = {}) {
+  for (let it = 0; it < iters; it++) {
+    const alpha = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) alpha[i] = data[i * 4 + 3];
+    let changed = 0;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (alpha[i] === 0) continue;
+        const p = i * 4;
+        const r = data[p], g = data[p + 1], bl = data[p + 2];
+        if ((r + g + bl) / 3 <= lumTh) continue;
+        if (Math.max(r, g, bl) - Math.min(r, g, bl) >= satTh) continue;
+        let nearEdge = false;
+        for (let dy = -radius; dy <= radius && !nearEdge; dy++) {
+          for (let dx = -radius; dx <= radius; dx++) {
             const yy = y + dy, xx = x + dx;
-            if (yy < 0 || yy >= h || xx < 0 || xx >= w || data[(yy * w + xx) * 4 + 3] === 0) continue outer;
-          }
-        }
-        survive[(y - box.y0) * bw + (x - box.x0)] = 1;
-      }
-    }
-    for (let by = 0; by < bh; by++) {
-      for (let bx = 0; bx < bw; bx++) {
-        if (!survive[by * bw + bx]) continue;
-        for (let dy = -M; dy <= M; dy++) {
-          for (let dx = -M; dx <= M; dx++) {
-            const y = box.y0 + by + dy, x = box.x0 + bx + dx;
-            if (y < box.y0 - M || x < box.x0 - M || y >= h || x >= w || y < 0 || x < 0) continue;
-            const p = (y * w + x) * 4;
-            if (data[p + 3] > 0) {
-              data[p + 3] = 0;
-              removed++;
+            if (yy < 0 || yy >= h || xx < 0 || xx >= w || alpha[yy * w + xx] === 0) {
+              nearEdge = true;
+              break;
             }
           }
         }
+        if (nearEdge) {
+          data[p + 3] = 0;
+          changed++;
+        }
       }
     }
+    if (!changed) break;
   }
-  return removed;
 }
 
 /**
@@ -524,45 +535,113 @@ async function extract(part) {
   // 羽化差分:d≤FE_LO 透明,d≥FE_HI 不透明,之间线性 —— 发际线/镜框阴影的过渡不再是硬边补丁。
   // 按槽位调:眼/眉要强捕获(旧眼睑→皮肤变化小,FE 高了补丁出洞旧眼透出=闭眼重灾区);
   // 嘴/鼻取中间档(太低会放大补丁与基准的微色差,像贴了膏药);胡子接近加物类。
-  const FEATHER = { eyes: [22, 65], brows: [22, 65], mouth: [30, 70], nose: [30, 70], beard: [35, 85] };
+  // hair/beard 也要低窗:发顶高光/胡须光泽的颜色可能恰好接近基准头皮(d≈60),
+  // 落在 40~90 羽化区会变半透明缝,底下头皮透出来 = "发箍弧"/浅竖条(P2.2 破案)
+  const FEATHER = {
+    eyes: [22, 65],
+    brows: [22, 65],
+    mouth: [30, 70],
+    nose: [30, 70],
+    beard: [25, 70],
+    hair: [20, 55],
+  };
   const [FE_LO, FE_HI] = FEATHER[part.id.split('/')[1]] ?? [40, 90];
+  const W = v.info.width;
   for (let i = 0; i < v.data.length; i += 4) {
     const d =
       Math.abs(v.data[i] - b.data[i]) +
       Math.abs(v.data[i + 1] - b.data[i + 1]) +
       Math.abs(v.data[i + 2] - b.data[i + 2]);
-    const a = d <= FE_LO ? 0 : d >= FE_HI ? 255 : Math.round(((d - FE_LO) / (FE_HI - FE_LO)) * 255);
+    const px = (i / 4) % W;
+    const py = Math.floor(i / 4 / W);
+    let lo = FE_LO, hi = FE_HI;
+    if (part.eyeMode === 'clear' && EYE_CORES.some((bx) => inBox(px, py, bx))) {
+      // 透明镜:只清瞳孔核心盒(烤死的眼珠/眼白在这里,镜框绝不经过)。
+      // ⚠ 不能对整个眼窗提差分门槛 —— 黑框顶弧压在基准深色眼睑线上,黑对黑 d 小于门槛
+      //   会把框顶抠断(P2.2 第一版教训);框线沿途的重画睫毛与基准对齐,视觉无害,保留。
+      out[i + 3] = 0;
+      continue;
+    } else if (part.eyeMode === 'cover' && EYE_BOXES.some((bx) => inBox(px, py, bx))) {
+      // 墨镜眼窗:强捕获"旧眼→镜片/皮肤"的弱变化,防基准大眼眼顶从镜框上沿探出
+      lo = 12; hi = 40;
+    }
+    const a = d <= lo ? 0 : d >= hi ? 255 : Math.round(((d - lo) / (hi - lo)) * 255);
     out[i + 3] = Math.min(out[i + 3], a);
     if (clamp) {
-      const y = Math.floor(i / 4 / v.info.width);
-      if (y < clamp[0] || y > clamp[1]) out[i + 3] = 0;
+      if (py < clamp[0] || py > clamp[1]) out[i + 3] = 0;
+      else if (py > clamp[1] - 25) {
+        // 钳制下缘渐隐:硬切会留一条水平切线(胡子下摆压在衣领上的细金线)
+        out[i + 3] = Math.round(out[i + 3] * ((clamp[1] - py) / 25));
+      }
     }
   }
   // 后处理链:色键清绿残块(lo 下探到浅绿,清 i2i 头顶光晕) → 清游丝 → 孔洞回填(露头皮)
   //          → 绿边裁剪(暗绿) → 亮绿光晕专项裁剪 → 去溢色
-  chromaKey(out, { hi: 90, lo: 35 });
+  // 边缘感知色键:纯绿(≥hi)整图杀;中度偏绿(lo..hi)只杀"贴近透明边 ≤3px"的 ——
+  // 绿幕会在黑发高光/发缝上反绿光,内部反绿一刀切会抠出透明缝,底下基准头皮透出成奶油色弧/竖条
+  // (低马尾"发箍弧"、卷发浅竖条的真身);内部偏绿留给 despill 中和成中性高光。
+  {
+    const W2 = v.info.width, H2 = v.info.height;
+    for (let i = 0; i < out.length; i += 4) {
+      if (out[i + 3] > 0 && out[i + 1] - Math.max(out[i], out[i + 2]) >= 90) out[i + 3] = 0;
+    }
+    const alpha = new Uint8Array(W2 * H2);
+    for (let i = 0; i < W2 * H2; i++) alpha[i] = out[i * 4 + 3];
+    const R = 3;
+    for (let y = 0; y < H2; y++) {
+      for (let x = 0; x < W2; x++) {
+        const i = y * W2 + x;
+        if (alpha[i] === 0) continue;
+        const p = i * 4;
+        const greenness = out[p + 1] - Math.max(out[p], out[p + 2]);
+        if (greenness < 35) continue;
+        let nearEdge = false;
+        for (let dy = -R; dy <= R && !nearEdge; dy++) {
+          for (let dx = -R; dx <= R; dx++) {
+            const yy = y + dy, xx = x + dx;
+            if (yy < 0 || yy >= H2 || xx < 0 || xx >= W2 || alpha[yy * W2 + xx] === 0) {
+              nearEdge = true;
+              break;
+            }
+          }
+        }
+        if (nearEdge) out[p + 3] = 0;
+      }
+    }
+  }
   despeckle(out, v.info.width, v.info.height);
   const tune = tuneOf(part.id);
   const strays = dropStrayComponents(out, v.info.width, v.info.height, { minArea: tune.minArea });
-  // 嘴/鼻替换补丁先闭合缝隙(残线鬼影 = 羽化边界穿过基准笑纹留下的半透缝),再回填大洞
-  if (/\/(mouth|nose)\//.test(part.id)) morphClose(out, v.info.width, v.info.height, 5);
+  // 替换补丁先闭合缝隙(残线鬼影 = 羽化边界穿过基准笑纹/睫毛留下的半透缝,双重曝光),再回填大洞;
+  // 墨镜(cover)同闭合 —— 把"盖旧眼顶"的弱捕获区与镜片桥接成整块
+  if (/\/(mouth|nose|eyes|brows)\//.test(part.id) || part.eyeMode === 'cover') {
+    morphClose(out, v.info.width, v.info.height, 5);
+  }
   const holes = fillHoles(out, v.info.width, v.info.height, { maxHoleArea: tune.holeCap });
   trimGreenEdge(out, v.info.width, v.info.height);
   trimGreenEdge(out, v.info.width, v.info.height, { th: 6, radius: 3, iters: 4, minLum: 135 });
   const halo = removeThinBrightHalo(out, v.info.width, v.info.height);
-  // 眼窗清除放在补扫之前:清掉厚块后残下的细碎线段,交给下面的连通域补扫收走
-  const eyeCleared = part.eyeClear ? clearThickBlobsInEyeBoxes(out, v.info.width, v.info.height) : 0;
-  // 绿边/光晕/眼窗清除都会切断"经桥挂在主体上"的残块 → 产生新孤岛,补扫一遍连通域。
-  // ⚠ eyeClear 件的细金属框会被切成 <900px 的段,补扫阈值要单独调小(段>250,眼睑残线<250)
+  // 发型专项:光晕阈值下探(低马尾头顶"发箍弧"亮度低于 140)+ 白边裁剪(绿边被 despill
+  // 压成白灰边挂在发梢);金耳环等亮细饰品在 accessory 槽不受影响
+  if (part.id.includes('/hair/')) {
+    // r3:低马尾的"发箍弧"有 6~8px 粗,r2 腐蚀存活杀不掉;深色发丝尖(lum<120)有亮度门保护
+    removeThinBrightHalo(out, v.info.width, v.info.height, { lumTh: 120, radius: 3 });
+    trimWhiteEdge(out, v.info.width, v.info.height);
+  }
+  if (part.id.includes('/glasses/')) {
+    // 眼镜件的"亮细残迹":i2i 戴镜时顺手改了发丝/发际,浅色细条烤进 z=40 顶层浮在头发上;
+    // 镜框玻璃反光块/银铰链足够粗(腐蚀 r2 存活)不受影响
+    removeThinBrightHalo(out, v.info.width, v.info.height, { lumTh: 150, radius: 2 });
+  }
+  // 眼区处理(eyeMode)会切断"经桥挂在主体上"的残块 → 补扫连通域。
+  // ⚠ 眼镜的框线在眼窗内会被切成小段,补扫阈值单独调小(框段>250,眉眼残线<250)
   dropStrayComponents(out, v.info.width, v.info.height, {
-    minArea: part.eyeClear ? 250 : tune.minArea,
+    minArea: part.eyeMode ? 250 : tune.minArea,
   });
   despeckle(out, v.info.width, v.info.height); // 收尾清孤点
   despill(out);
-  if (strays || holes || halo || eyeCleared)
-    console.log(
-      `  · ${part.id}: 游丝 ${strays} 域 / 回填洞 ${holes} / 光晕 ${halo}px / 眼窗清除 ${eyeCleared}px`,
-    );
+  if (strays || holes || halo)
+    console.log(`  · ${part.id}: 游丝 ${strays} 域 / 回填洞 ${holes} / 光晕 ${halo}px`);
   const file = path.join(OUT, part.id.replace(/\//g, '__') + '.webp');
   await sharp(out, { raw: { width: v.info.width, height: v.info.height, channels: 4 } })
     .webp({ quality: 90 })
