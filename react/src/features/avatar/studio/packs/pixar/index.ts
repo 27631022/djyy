@@ -77,14 +77,14 @@ const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
     ],
   },
   mouth: {
+    // ⚠ 「惊讶张口 o」已下架:O 嘴与基准深笑纹是病理组合(补丁边界总穿过旧唇纹留残线),
+    // 素材与管线条目保留,待 P3 用 5.0 pro 框选编辑重做后再登记
     male: [
       ["laugh", "开怀大笑"],
-      ["o", "惊讶张口"],
       ["grin", "抿嘴浅笑"],
     ],
     female: [
       ["laugh", "开怀大笑"],
-      ["o", "惊讶张口"],
       ["grin", "抿嘴浅笑"],
     ],
   },
@@ -173,15 +173,17 @@ export const pixarPack: StylePack = {
   label: "3D 卡通写实",
   canvas: 1024,
   bases: { male: mustAsset("base-male"), female: mustAsset("base-female") },
+  // ⚠ noneWeight 是绝对权重,与变体池同锅抽签:P(无)=noneWeight/(池内权重和+noneWeight)。
+  //   加变体会稀释「无」→ 每次扩池后按意图分布重调(意图注释在行尾,别删)。
   slots: [
-    { key: "hair", label: "发型", z: 30, optional: true, noneWeight: 0.3, variants: buildVariants("hair") },
-    { key: "eyes", label: "眼睛", z: 17, optional: true, noneWeight: 2, variants: buildVariants("eyes") },
-    { key: "brows", label: "眉毛", z: 18, optional: true, noneWeight: 3, variants: buildVariants("brows") },
-    { key: "mouth", label: "嘴巴", z: 15, optional: true, noneWeight: 2, variants: buildVariants("mouth") },
-    { key: "nose", label: "鼻子", z: 16, optional: true, noneWeight: 4, variants: buildVariants("nose") },
-    { key: "beard", label: "胡子", z: 20, optional: true, noneWeight: 3, variants: buildVariants("beard") },
-    { key: "glasses", label: "眼镜", z: 40, optional: true, noneWeight: 2, variants: buildVariants("glasses") },
-    { key: "clothes", label: "衣服", z: 10, optional: true, noneWeight: 1, variants: buildVariants("clothes") },
-    { key: "accessory", label: "饰品", z: 28, optional: true, noneWeight: 2, variants: buildVariants("accessory") },
+    { key: "hair", label: "发型", z: 30, optional: true, noneWeight: 0.3, variants: buildVariants("hair") }, // 光头罕见
+    { key: "eyes", label: "眼睛", z: 17, optional: true, noneWeight: 6, variants: buildVariants("eyes") }, // ≈2/3 默认睁眼
+    { key: "brows", label: "眉毛", z: 18, optional: true, noneWeight: 5, variants: buildVariants("brows") }, // ≈2/3 默认眉
+    { key: "mouth", label: "嘴巴", z: 15, optional: true, noneWeight: 4, variants: buildVariants("mouth") }, // ≈2/3 默认微笑
+    { key: "nose", label: "鼻子", z: 16, optional: true, noneWeight: 5, variants: buildVariants("nose") }, // ≈5/6 默认鼻
+    { key: "beard", label: "胡子", z: 20, optional: true, noneWeight: 12, variants: buildVariants("beard") }, // ≈3/4 无胡
+    { key: "glasses", label: "眼镜", z: 40, optional: true, noneWeight: 8, variants: buildVariants("glasses") }, // ≈2/3 不戴镜
+    { key: "clothes", label: "衣服", z: 10, optional: true, noneWeight: 1, variants: buildVariants("clothes") }, // 基准T恤也是衣服
+    { key: "accessory", label: "饰品", z: 28, optional: true, noneWeight: 5, variants: buildVariants("accessory") }, // ≈5/8 无饰品
   ],
 };
