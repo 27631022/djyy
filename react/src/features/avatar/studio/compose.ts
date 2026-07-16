@@ -10,7 +10,7 @@ export function layersOf(pack: StylePack, cfg: AvatarStudioConfig): StudioLayer[
     const id = cfg.picks[slot.key];
     if (!id) continue;
     const v = slot.variants.find((x) => x.id === id && x.gender === cfg.gender);
-    if (v) layers.push({ slotKey: slot.key, src: v.src, z: slot.z });
+    if (v) layers.push({ slotKey: slot.key, src: v.src, z: v.z ?? slot.z });
   }
   return layers.sort((a, b) => a.z - b.z);
 }

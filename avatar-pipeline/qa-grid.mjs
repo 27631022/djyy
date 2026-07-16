@@ -62,6 +62,9 @@ if (mode === 'singles') {
   // 丝巾 × 各衣服
   const scarf = acc.find((a) => a.variant === 'red-scarf');
   if (scarf) for (const c of clothes) combos.push({ label: `scarf+${c.variant}`, list: [scarf, c] });
+  // 发型 × 深色衣服:发件的"T恤重画残迹"只在深色衣服上显形(基准米T上隐形)—— P2.4 教训,必检
+  const darks = clothes.filter((c) => ['workwear', 'suit'].includes(c.variant));
+  for (const h of hairs) for (const c of darks) combos.push({ label: `${h.variant}+${c.variant}`, list: [h, c] });
 } else {
   // 自定义: JSON 文件 [[slot,variant],...] 数组的数组
   const spec = JSON.parse(readFileSync(mode, 'utf8'));

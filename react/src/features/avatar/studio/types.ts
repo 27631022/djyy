@@ -16,6 +16,8 @@ export interface StudioVariant {
   src: string;
   /** 随机抽取权重(默认 1) */
   weight?: number;
+  /** 图层 z 覆盖(缺省用槽位 z)—— 同槽位里个别变体要换层:丝巾系在长发外(高于发型),耳环仍在发下 */
+  z?: number;
 }
 
 /** 一个槽位(部件类目) */

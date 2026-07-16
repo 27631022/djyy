@@ -19,7 +19,7 @@ function assetOf(name: string): string | null {
   return ASSET_URLS[`./assets/${name}.webp`] ?? null;
 }
 
-type VariantDef = [id: string, label: string];
+type VariantDef = [id: string, label: string, z?: number];
 
 /** 变体登记表:槽位 → 性别 → [id, 中文名] */
 const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
@@ -144,7 +144,9 @@ const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
     female: [
       ["earrings-gold", "金色耳环"],
       ["earrings-pearl", "珍珠耳钉"],
-      ["red-scarf", "红色丝巾"],
+      // 丝巾 z=32 抬到发型(30)之上:长发盖丝巾会把领结切成随机红碎片(P2.4 用户图),
+      // 系在发外反而是自然穿法;耳环保持发下(长发盖耳被遮是真实行为)
+      ["red-scarf", "红色丝巾", 32],
     ],
   },
 };
@@ -172,9 +174,9 @@ function mustAsset(name: string): string {
 }
 
 /**
- * z 序约定:基准 0 < 衣服 10 < 嘴 15 < 鼻 16 < 眼 17 < 眉 18 < 胡子 20 < 饰品 28 < 发型 30 < 眼镜 40。
+ * z 序约定:基准 0 < 衣服 10 < 嘴 15 < 鼻 16 < 眼 17 < 眉 18 < 胡子 20 < 饰品 28 < 发型 30 < 丝巾 32 < 眼镜 40。
  * 五官替换件带"皮肤补丁"须贴基准脸(最低层);耳环在发型下(长发盖耳时被遮是真实行为);
- * 刘海盖眉靠层序天然成立。
+ * 刘海盖眉、垂发盖眼角靠层序天然成立(眼试过抬到发上,闭眼补丁反咬刘海,已回滚)。
  *
  * ★类目合并(P2.3 用户定案):眼睛⊕眼镜、嘴巴⊕胡子为互斥组 —— 眼镜/胡子件由 i2i 在
  * 基准默认眉眼/嘴上生成,自带"重画的默认五官"烤定层;互斥后它们永远只叠在基准上,
@@ -191,6 +193,8 @@ export const pixarPack: StylePack = {
   //   互斥组(眼睛/嘴巴)的随机用 groups[].noneWeight 联合抽签,组内槽位的 noneWeight 不参与。
   slots: [
     { key: "hair", label: "发型", z: 30, optional: true, noneWeight: 0.3, variants: buildVariants("hair") }, // 光头罕见
+    // eyes 必须在发型(30)之下:垂到眼角的刘海/发丝盖住眼睛是正确物理 —— z 抬上去过一轮
+    // (P2.4),闭眼补丁反咬刘海成"肤色缺口"即回滚。发件眼区私货由管线洪泛清除(见 gen-parts)
     { key: "eyes", label: "眼睛", z: 17, optional: true, noneWeight: 6, variants: buildVariants("eyes") },
     { key: "brows", label: "眉毛", z: 18, optional: true, noneWeight: 5, variants: buildVariants("brows") }, // ≈2/3 默认眉
     { key: "mouth", label: "嘴巴", z: 15, optional: true, noneWeight: 4, variants: buildVariants("mouth") },
