@@ -695,8 +695,7 @@ async function extract(part) {
     // 羽化抬高杀弱残底;keepRed=红色主导门槛(r-max(g,b)≥22 才保留),纽扣门襟是强差分
     // 只靠羽化杀不掉 —— 丝巾本体大红/暗红阴影/粉白高光全是红主导,一门全过
     'female/accessory/red-scarf': { feather: [60, 120], keepRed: 22 },
-    // 中分刘海:真发丝垂进眼盒直到盒底,下带无差别清会把发丝拦腰切断 → 豁免(亮团洪泛仍生效)
-    'male/hair/curtain-brown': { keepEyeBox: true },
+    // (曾有 curtain-brown keepEyeBox 豁免 —— 眼区清除改"孤岛连通性判据"后垂丝天然保留,已撤)
     // 男花帽:i2i 两版都顺手重画脸;帽子只住头顶 → 钳制区硬裁一切脸部私货
     'male/hair/uyghur-cap': { clampY: [40, 380] },
     // 男蒙古袍:i2i 会顺手重画头部(脸颊补丁/耳周白晕,分层实锤在袍件不在帽件)→ 钳制兜底
@@ -747,7 +746,9 @@ async function extract(part) {
       //   用户实报"发丝抠不出来")—— 改**暗化方向门**:发丝盖在亮底(皮肤/米T)上必然
       //   把像素压暗(哪怕 20% 覆盖),重打光纱/重画残迹是"同亮或更亮"。
       //   亮底(基准 lum>140):保留常规羽化,但只放行"明显变暗"的像素;
-      //   暗底(男款藏青T恤等,发比底亮,方向门失效):维持高抬羽化(残迹深对深本就隐形)
+      //   暗底(男款藏青T恤等,发比底亮,方向门失效):维持高抬羽化(残迹深对深本就隐形)。
+      //   副产品:弱纱死透后,眼妆私货失去"皮肤桥"变成孤岛 → 下方眼区清除得以用
+      //   连通性判据取代盲清(刘海/头饰垂饰不再被切方口)
       const bl = (b.data[i] + b.data[i + 1] + b.data[i + 2]) / 3;
       if (bl > 140) {
         const vl = (v.data[i] + v.data[i + 1] + v.data[i + 2]) / 3;
@@ -889,30 +890,30 @@ async function extract(part) {
       // 该清的 = ① 亮像素(lum≥150,重画的皮肤/眼白;深色真发丝 60~130 保住)
       //          ② 细碎深色结构(睫毛/眼线笔画):盒内深色掩膜经 腐蚀r3→种子→沿掩膜重建,
       //             重建不到的 = 又细又孤立(粗大刘海/贴边垂发经盒界种子必然存活,中分刘海无需豁免)
-      // 眼芯区(贴基准眼球范围略放大)无差别清透明:重画的虹膜/浓睫毛是强差分(d>150),
-      // 面部区高羽化挡不住,又粗又经侧边桥连着鬓发,腐蚀/连通性/亮度判据全放它过
-      // (P2.4 三轮实测),只能无差别。
-      // ⚠ 窗口必须收窄到眼芯而非整盒:发件在眶周有合法的强投影(bang shadow d 120~240),
-      //   整盒清出的"亮窗"嵌在投影场里=淡色矩形;眼芯窗恰好是眼睛变体/基准眼要重画的
-      //   范围,窗沿落在变体不透明内容上,缝被天然盖住(P2.4 终局方案)。
-      // 例外:中分刘海(curtain)真发丝垂到眼芯,PART_TUNE.keepEyeBox 豁免;
-      // 其残留深色睫毛贴着发丝,读作发影可容
-      if (!ptune?.keepEyeBox) {
-        const EYE_CORES = [
-          { x0: 348, y0: 396, x1: 464, y1: 482 },
-          { x0: 572, y0: 396, x1: 696, y1: 482 },
-        ];
-        const W5b = v.info.width;
+      // 眼区私货清除(连通性判据):重画的虹膜/浓睫毛是强差分,面部区暗化门挡不住 ——
+      // 但暗化门已把"整脸重打光弱纱"(它们借以连通主发体的皮肤桥)杀干净,
+      // 剩下的眼妆私货成了孤立岛 → **完整落在眼盒内的连通域 = 私货**,整域清除。
+      // 刘海尖/苗银冠垂饰/中分垂丝都从盒界外伸进来 → 天然保留(不再需要 keepEyeBox 豁免,
+      // 也根治了旧"眼芯盲清"把刘海/头饰切出方形缺口的问题 —— 用户实报"被眼睛的边框挡住")
+      {
+        const W5b = v.info.width, H5b = v.info.height;
+        const comps = components(out, W5b, H5b);
         let cleared = 0;
-        for (let i = 0; i < out.length; i += 4) {
-          if (out[i + 3] === 0) continue;
-          const x5 = (i / 4) % W5b, y5 = Math.floor(i / 4 / W5b);
-          if (EYE_CORES.some((bx) => inBox(x5, y5, bx))) {
-            out[i + 3] = 0;
-            cleared++;
+        for (const c of comps) {
+          let bx0 = W5b, by0 = H5b, bx1 = 0, by1 = 0;
+          for (const i of c.pixels) {
+            const x = i % W5b, y = Math.floor(i / W5b);
+            if (x < bx0) bx0 = x;
+            if (x > bx1) bx1 = x;
+            if (y < by0) by0 = y;
+            if (y > by1) by1 = y;
+          }
+          if (EYE_BOXES.some((b2) => bx0 >= b2.x0 && bx1 <= b2.x1 && by0 >= b2.y0 && by1 <= b2.y1)) {
+            for (const i of c.pixels) out[i * 4 + 3] = 0;
+            cleared += c.area;
           }
         }
-        if (cleared) console.log(`  · ${part.id}: 眼芯私货清除 ${cleared}px`);
+        if (cleared) console.log(`  · ${part.id}: 眼区孤岛私货清除 ${cleared}px`);
       }
     }
     // ② 完整落在禁区盒(两眼盒+中脸鼻唇盒)内的连通域整域清除(眉线断栅/唇部重画等
