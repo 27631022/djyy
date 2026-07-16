@@ -77,6 +77,10 @@ const PARTS = [
   // 眼睑要求:上一版 raw 在左眼内眼角画了白色泪光杂块(P2.3 重生成)
   { id: 'male/eyes/closed', base: 'base-male', prompt: `${KEEP_FACE}只把他的眼睛改成安静闭上的眼睛(两条平滑的闭眼弧线),眼睑皮肤干净光滑、不要泪光高光杂点,眉毛保持原样${STYLE}` },
   { id: 'male/eyes/single-lid', base: 'base-male', prompt: `${KEEP_FACE}只把他的眼睛改成细长的单眼皮眼睛,眉毛保持原样${STYLE}` },
+  // 眼睛新维度(P2.5 用户定案:不用闭眼,按 大小/睫毛/瞳色 调):
+  { id: 'male/eyes/big-round', base: 'base-male', prompt: `${KEEP_FACE}只把他的眼睛改成更大更圆的有神大眼睛(睁开直视前方),眉毛保持原样${STYLE}` },
+  { id: 'male/eyes/black-pupil', base: 'base-male', prompt: `${KEEP_FACE}只把他的瞳孔虹膜颜色改成深黑色,眼睛形状大小完全不变,眉毛保持原样${STYLE}` },
+  { id: 'male/eyes/amber-pupil', base: 'base-male', prompt: `${KEEP_FACE}只把他的瞳孔虹膜颜色改成浅琥珀棕色,眼睛形状大小完全不变,眉毛保持原样${STYLE}` },
   { id: 'male/mouth/laugh', base: 'base-male', prompt: `${KEEP_FACE}只把他的嘴巴改成开心大笑张开的嘴(露出上排牙齿)${STYLE}` },
   // ⚠ O嘴要锁死下巴:张大口会带动整个下半脸变形,差分补丁覆盖半张脸,边界穿过旧唇纹留残线
   { id: 'male/mouth/o', base: 'base-male', prompt: `${KEEP_FACE}只把他的嘴唇轻轻微张成一个小小的O形惊讶嘴(幅度很小,下巴、脸部轮廓和面部其他部分完全保持不变)${STYLE}` },
@@ -126,6 +130,11 @@ const PARTS = [
   { id: 'female/eyes/closed', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成安静闭上的眼睛(两条平滑的闭眼弧线,带睫毛),眉毛保持原样${STYLE}` },
   { id: 'female/eyes/single-lid', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成细长的单眼皮眼睛,眉毛保持原样${STYLE}` },
   { id: 'female/eyes/wink', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成俏皮的单眼眨眼(一只睁开一只闭上),眉毛保持原样${STYLE}` },
+  // 眼睛新维度(P2.5;大圆杏眼描述取自用户的苗绣提示词"浅棕色大圆杏眼,浓密长睫毛"):
+  { id: 'female/eyes/big-round', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成浅棕色的大圆杏眼(更大更圆,睁开直视前方,浓密长睫毛),眉毛保持原样${STYLE}` },
+  { id: 'female/eyes/long-lash', base: 'base-female', prompt: `${KEEP_FACE}只给她的眼睛加上浓密纤长的卷翘睫毛,眼睛形状大小和瞳色完全不变,眉毛保持原样${STYLE}` },
+  { id: 'female/eyes/black-pupil', base: 'base-female', prompt: `${KEEP_FACE}只把她的瞳孔虹膜颜色改成深黑色,眼睛形状大小完全不变,眉毛保持原样${STYLE}` },
+  { id: 'female/eyes/amber-pupil', base: 'base-female', prompt: `${KEEP_FACE}只把她的瞳孔虹膜颜色改成浅琥珀棕色,眼睛形状大小完全不变,眉毛保持原样${STYLE}` },
   { id: 'female/mouth/laugh', base: 'base-female', prompt: `${KEEP_FACE}只把她的嘴巴改成开心大笑张开的嘴(露出上排牙齿)${STYLE}` },
   { id: 'female/mouth/o', base: 'base-female', prompt: `${KEEP_FACE}只把她的嘴唇轻轻微张成一个小小的O形惊讶嘴(幅度很小,下巴、脸部轮廓和面部其他部分完全保持不变)${STYLE}` },
   { id: 'female/mouth/grin', base: 'base-female', prompt: `${KEEP_FACE}只把她的嘴巴改成抿着嘴的浅笑${STYLE}` },
@@ -730,14 +739,26 @@ async function extract(part) {
       (py >= 620 || (py >= 290 && px >= 250 && px <= 790)) &&
       !(ptune?.chestFeather === false)
     ) {
-      // 发件面部区(y 290~620, x 250~790)+颈胸肩区(y≥620 全宽)高抬羽化:
+      // 发件面部区(y 290~620, x 250~790)+颈胸肩区(y≥620 全宽):
       // i2i 画发型时会把整脸"重打光"一层弱纱(d 20~105)+重画发丝周围的T恤/颈影 ——
       // 基准上隐形,配眼睛变体/深色衣服就显形(眼周虚线点、米色肩章、眉区淡带,
-      // P2.4 全系病灶的总根)。事后清除必留缝(挖洞=矩形缝/回填=咬痕/洪泛=条带,
-      // 四轮实测)—— 唯一无缝解是抬羽化让弱纱根本不被捕获。
-      // 深色发丝对皮肤/米T d>150 不受影响;刘海投影(d 30~70)会丢失,可接受的取舍。
-      // 民族头饰的银流苏等浅色垂饰若入区,该件用 PART_TUNE.chestFeather=false 豁免
-      lo = 105; hi = 150;
+      // P2.4 全系病灶的总根)。事后清除必留缝(挖洞=矩形缝/回填=咬痕/洪泛=条带)。
+      // ⚠ 一刀抬羽化到 [105,150] 会连细碎飞发一起杀(半透明覆盖的发丝整根 d 45~105,
+      //   用户实报"发丝抠不出来")—— 改**暗化方向门**:发丝盖在亮底(皮肤/米T)上必然
+      //   把像素压暗(哪怕 20% 覆盖),重打光纱/重画残迹是"同亮或更亮"。
+      //   亮底(基准 lum>140):保留常规羽化,但只放行"明显变暗"的像素;
+      //   暗底(男款藏青T恤等,发比底亮,方向门失效):维持高抬羽化(残迹深对深本就隐形)
+      const bl = (b.data[i] + b.data[i + 1] + b.data[i + 2]) / 3;
+      if (bl > 140) {
+        const vl = (v.data[i] + v.data[i + 1] + v.data[i + 2]) / 3;
+        if (vl > bl - 28) {
+          out[i + 3] = 0;
+          continue;
+        }
+        // 变暗像素 = 发丝/发影,常规羽化放行(飞发半透覆盖 d 45~105 也能进来)
+      } else {
+        lo = 105; hi = 150;
+      }
     }
     const a = d <= lo ? 0 : d >= hi ? 255 : Math.round(((d - lo) / (hi - lo)) * 255);
     out[i + 3] = Math.min(out[i + 3], a);

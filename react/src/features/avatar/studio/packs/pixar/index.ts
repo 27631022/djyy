@@ -58,16 +58,22 @@ const VARIANTS: Record<string, Partial<Record<StudioGender, VariantDef[]>>> = {
     ],
   },
   eyes: {
+    // ⚠ 「闭眼」已下架(P2.5 用户定案:头像不该闭眼,按 大小/睫毛/瞳色 调;素材与 PARTS 保留未登记)
     male: [
       ["smile", "眯眯笑眼"],
-      ["closed", "闭眼"],
       ["single-lid", "单眼皮"],
+      ["big-round", "大圆眼"],
+      ["black-pupil", "黑瞳圆眼"],
+      ["amber-pupil", "琥珀瞳"],
     ],
     female: [
       ["smile", "眯眯笑眼"],
-      ["closed", "闭眼"],
       ["single-lid", "单眼皮"],
       ["wink", "单眼眨眼"],
+      ["big-round", "大圆杏眼"],
+      ["long-lash", "浓密长睫"],
+      ["black-pupil", "黑瞳"],
+      ["amber-pupil", "琥珀瞳"],
     ],
   },
   brows: {
