@@ -21,20 +21,99 @@ const OUT = path.join(HERE, 'out');
 fs.mkdirSync(RAW, { recursive: true });
 fs.mkdirSync(OUT, { recursive: true });
 
+const STYLE = ',与画面整体3D卡通风格一致';
+/** 加物类(发型/眼镜/胡子/饰品):全部保持,只加 X */
 const KEEP =
   '保持画面中人物的脸型、五官、表情、肤色、衣服、姿势、身体比例、光照和纯绿色背景完全不变,';
-const STYLE = ',与画面整体3D卡通风格一致';
+/** 五官替换类:除目标五官外全部保持 */
+const KEEP_FACE =
+  '保持画面中人物的脸型、肤色、衣服、姿势、身体比例、光照和纯绿色背景完全不变,除下述目标外的其它五官也保持完全不变,';
+/** 换装类:头部全保持,只换上衣 */
+const KEEP_CLOTH =
+  '保持画面中人物的头部(脸型、五官、表情、肤色、光头)、脖子、姿势、身体比例、光照和纯绿色背景完全不变,';
 
-/** 部件清单:id = <gender>/<slot>/<variant> */
+/** 部件清单:id = <gender>/<slot>/<variant>(加部件 = 此处加一行 → 跑脚本 → cp webp → manifest 一项) */
 const PARTS = [
+  // ============ 男 · 发型(加物) ============
   { id: 'male/hair/short-black', base: 'base-male', prompt: `${KEEP}只给他加上一头黑色短发${STYLE}` },
   { id: 'male/hair/curly-brown', base: 'base-male', prompt: `${KEEP}只给他加上一头棕色微卷中分短发${STYLE}` },
   { id: 'male/hair/buzz', base: 'base-male', prompt: `${KEEP}只给他加上一头利落的黑色寸头(极短的贴头皮短发)${STYLE}` },
+  { id: 'male/hair/side-part', base: 'base-male', prompt: `${KEEP}只给他加上一头黑色三七分短发(侧分,整齐服帖)${STYLE}` },
+  { id: 'male/hair/spiky', base: 'base-male', prompt: `${KEEP}只给他加上一头黑色碎发短刺头(发尖微微立起)${STYLE}` },
+  { id: 'male/hair/curtain-brown', base: 'base-male', prompt: `${KEEP}只给他加上一头棕色中分刘海短发(两侧刘海自然垂下)${STYLE}` },
+  { id: 'male/hair/slicked', base: 'base-male', prompt: `${KEEP}只给他加上一头黑色向后梳的油头背头${STYLE}` },
+  { id: 'male/hair/fluffy', base: 'base-male', prompt: `${KEEP}只给他加上一头黑色自然蓬松短发${STYLE}` },
+  { id: 'male/hair/gray-short', base: 'base-male', prompt: `${KEEP}只给他加上一头灰白色的整齐短发(年长者发色)${STYLE}` },
+  { id: 'male/hair/perm', base: 'base-male', prompt: `${KEEP}只给他加上一头黑色小卷烫发短发${STYLE}` },
+  { id: 'male/hair/undercut', base: 'base-male', prompt: `${KEEP}只给他加上两侧铲短、顶部较长的黑色短发(undercut)${STYLE}` },
+  { id: 'male/hair/messy-brown', base: 'base-male', prompt: `${KEEP}只给他加上一头棕色凌乱感短发${STYLE}` },
+  // ============ 男 · 眼镜(加物) ============
   { id: 'male/glasses/round-black', base: 'base-male', prompt: `${KEEP}只给他戴上一副黑色圆框眼镜${STYLE}` },
+  { id: 'male/glasses/square-black', base: 'base-male', prompt: `${KEEP}只给他戴上一副黑色方框眼镜${STYLE}` },
+  { id: 'male/glasses/half-rim', base: 'base-male', prompt: `${KEEP}只给他戴上一副金属细半框眼镜${STYLE}` },
+  { id: 'male/glasses/rimless', base: 'base-male', prompt: `${KEEP}只给他戴上一副无框透明眼镜${STYLE}` },
+  { id: 'male/glasses/sunglasses', base: 'base-male', prompt: `${KEEP}只给他戴上一副黑色墨镜(深色镜片太阳镜)${STYLE}` },
+  // ============ 男 · 胡子(加物) ============
   { id: 'male/beard/stubble', base: 'base-male', prompt: `${KEEP}只给他加上短短的络腮胡${STYLE}` },
+  { id: 'male/beard/goatee', base: 'base-male', prompt: `${KEEP}只给他加上下巴上的山羊胡${STYLE}` },
+  { id: 'male/beard/mustache', base: 'base-male', prompt: `${KEEP}只给他加上嘴唇上方的八字胡${STYLE}` },
+  { id: 'male/beard/full', base: 'base-male', prompt: `${KEEP}只给他加上浓密的深棕色络腮大胡子${STYLE}` },
+  // ============ 男 · 衣服(替换) ============
+  { id: 'male/clothes/white-shirt', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成白色衬衫${STYLE}` },
+  { id: 'male/clothes/suit', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成深色西装、白衬衫和领带${STYLE}` },
+  { id: 'male/clothes/workwear', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成藏蓝色工装外套${STYLE}` },
+  { id: 'male/clothes/polo-red', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成红色POLO衫${STYLE}` },
+  { id: 'male/clothes/hoodie-gray', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成灰色连帽卫衣${STYLE}` },
+  { id: 'male/clothes/tshirt-white', base: 'base-male', prompt: `${KEEP_CLOTH}只把他的上衣换成白色圆领T恤${STYLE}` },
+  // ============ 男 · 五官(替换,试产先行) ============
+  { id: 'male/eyes/smile', base: 'base-male', prompt: `${KEEP_FACE}只把他的眼睛改成开心的眯眯笑眼(两条向下弯的弧线,闭着笑),眉毛保持原样${STYLE}` },
+  { id: 'male/eyes/closed', base: 'base-male', prompt: `${KEEP_FACE}只把他的眼睛改成安静闭上的眼睛(两条平滑的闭眼弧线),眉毛保持原样${STYLE}` },
+  { id: 'male/eyes/single-lid', base: 'base-male', prompt: `${KEEP_FACE}只把他的眼睛改成细长的单眼皮眼睛,眉毛保持原样${STYLE}` },
+  { id: 'male/mouth/laugh', base: 'base-male', prompt: `${KEEP_FACE}只把他的嘴巴改成开心大笑张开的嘴(露出上排牙齿)${STYLE}` },
+  { id: 'male/mouth/o', base: 'base-male', prompt: `${KEEP_FACE}只把他的嘴巴改成惊讶的小圆张口(O形嘴)${STYLE}` },
+  { id: 'male/mouth/grin', base: 'base-male', prompt: `${KEEP_FACE}只把他的嘴巴改成抿着嘴的浅笑${STYLE}` },
+  { id: 'male/brows/thick', base: 'base-male', prompt: `${KEEP_FACE}只把他的眉毛改成粗浓的剑眉${STYLE}` },
+  { id: 'male/brows/raised', base: 'base-male', prompt: `${KEEP_FACE}只把他的眉毛改成一边挑起的挑眉${STYLE}` },
+  { id: 'male/nose/button', base: 'base-male', prompt: `${KEEP_FACE}只把他的鼻子改成小巧的圆鼻头${STYLE}` },
+  // ============ 女 · 发型(加物) ============
   { id: 'female/hair/bob-brown', base: 'base-female', prompt: `${KEEP}只给她加上一头深棕色齐肩直发(带整齐刘海)${STYLE}` },
   { id: 'female/hair/bun-black', base: 'base-female', prompt: `${KEEP}只给她加上黑色高丸子头发型${STYLE}` },
   { id: 'female/hair/ponytail-brown', base: 'base-female', prompt: `${KEEP}只给她加上棕色高马尾发型${STYLE}` },
+  { id: 'female/hair/long-straight', base: 'base-female', prompt: `${KEEP}只给她加上一头黑色顺直长发(过肩,无刘海中分)${STYLE}` },
+  { id: 'female/hair/short-bob', base: 'base-female', prompt: `${KEEP}只给她加上一头黑色齐耳波波头短发${STYLE}` },
+  { id: 'female/hair/curly-long', base: 'base-female', prompt: `${KEEP}只给她加上一头棕色大波浪长卷发${STYLE}` },
+  { id: 'female/hair/double-bun', base: 'base-female', prompt: `${KEEP}只给她加上黑色双丸子头发型(头顶两个对称小发髻)${STYLE}` },
+  { id: 'female/hair/low-ponytail', base: 'base-female', prompt: `${KEEP}只给她加上黑色低马尾发型(马尾垂在一侧肩前)${STYLE}` },
+  { id: 'female/hair/pixie', base: 'base-female', prompt: `${KEEP}只给她加上一头黑色干练超短发(精灵短发)${STYLE}` },
+  { id: 'female/hair/shoulder-curl', base: 'base-female', prompt: `${KEEP}只给她加上一头黑色齐肩内扣卷发${STYLE}` },
+  { id: 'female/hair/braid', base: 'base-female', prompt: `${KEEP}只给她加上垂在单侧肩前的棕色麻花辫发型${STYLE}` },
+  { id: 'female/hair/gray-bun', base: 'base-female', prompt: `${KEEP}只给她加上灰白色的低发髻发型(年长者发色)${STYLE}` },
+  // ============ 女 · 眼镜(加物) ============
+  { id: 'female/glasses/round-black', base: 'base-female', prompt: `${KEEP}只给她戴上一副黑色圆框眼镜${STYLE}` },
+  { id: 'female/glasses/square-red', base: 'base-female', prompt: `${KEEP}只给她戴上一副酒红色细方框眼镜${STYLE}` },
+  { id: 'female/glasses/sunglasses', base: 'base-female', prompt: `${KEEP}只给她戴上一副黑色墨镜(深色镜片太阳镜)${STYLE}` },
+  // ============ 女 · 饰品(加物) ============
+  { id: 'female/accessory/earrings-gold', base: 'base-female', prompt: `${KEEP}只给她戴上一对金色小圆环耳环${STYLE}` },
+  { id: 'female/accessory/earrings-pearl', base: 'base-female', prompt: `${KEEP}只给她戴上一对白色珍珠耳钉${STYLE}` },
+  { id: 'female/accessory/red-scarf', base: 'base-female', prompt: `${KEEP}只给她的脖子上系一条红色丝巾${STYLE}` },
+  // ============ 女 · 衣服(替换) ============
+  { id: 'female/clothes/white-shirt', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成白色衬衫${STYLE}` },
+  { id: 'female/clothes/suit', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成深色西装套装(内搭白衬衫)${STYLE}` },
+  { id: 'female/clothes/red-blouse', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成红色衬衫${STYLE}` },
+  { id: 'female/clothes/workwear', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成藏蓝色工装外套${STYLE}` },
+  { id: 'female/clothes/sweater', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成米色高领毛衣${STYLE}` },
+  { id: 'female/clothes/tshirt-blue', base: 'base-female', prompt: `${KEEP_CLOTH}只把她的上衣换成浅蓝色圆领T恤${STYLE}` },
+  // ============ 女 · 五官(替换) ============
+  { id: 'female/eyes/smile', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成开心的眯眯笑眼(两条向下弯的弧线,闭着笑),眉毛保持原样${STYLE}` },
+  { id: 'female/eyes/closed', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成安静闭上的眼睛(两条平滑的闭眼弧线,带睫毛),眉毛保持原样${STYLE}` },
+  { id: 'female/eyes/single-lid', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成细长的单眼皮眼睛,眉毛保持原样${STYLE}` },
+  { id: 'female/eyes/wink', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成俏皮的单眼眨眼(一只睁开一只闭上),眉毛保持原样${STYLE}` },
+  { id: 'female/mouth/laugh', base: 'base-female', prompt: `${KEEP_FACE}只把她的嘴巴改成开心大笑张开的嘴(露出上排牙齿)${STYLE}` },
+  { id: 'female/mouth/o', base: 'base-female', prompt: `${KEEP_FACE}只把她的嘴巴改成惊讶的小圆张口(O形嘴)${STYLE}` },
+  { id: 'female/mouth/grin', base: 'base-female', prompt: `${KEEP_FACE}只把她的嘴巴改成抿着嘴的浅笑${STYLE}` },
+  { id: 'female/brows/thin', base: 'base-female', prompt: `${KEEP_FACE}只把她的眉毛改成纤细的柳叶眉${STYLE}` },
+  { id: 'female/brows/straight', base: 'base-female', prompt: `${KEEP_FACE}只把她的眉毛改成平直的一字眉${STYLE}` },
+  { id: 'female/nose/button', base: 'base-female', prompt: `${KEEP_FACE}只把她的鼻子改成小巧的圆鼻头${STYLE}` },
 ];
 
 const rawFile = (id) => path.join(RAW, id.replace(/\//g, '__') + '.png');
@@ -315,12 +394,34 @@ function removeThinBrightHalo(data, w, h, { radius = 2, lumTh = 140 } = {}) {
   return removed;
 }
 
+/**
+ * 替换类部件的合法变化区(y 范围,1024 画布):五官/胡子的差分只该落在脸部,
+ * i2i 顺带动到的衣领阴影/锁骨高光等散斑一律裁掉(全组合叠加时会露成色斑)。
+ * 加物类(发型/眼镜/衣服/饰品)不钳 —— 发梢/衣摆本来就到处都是。
+ */
+const Y_CLAMP = [
+  ['/eyes/', [250, 580]],
+  ['/brows/', [260, 500]],
+  ['/nose/', [400, 640]],
+  ['/mouth/', [500, 720]],
+  ['/beard/', [420, 870]], // 大胡子够得到 ~850,不能切平;领口散斑改靠大连通域阈值清
+];
+
+/** 按槽位的清理参数:胡子/衣服主体巨大 → 游丝阈值放大(清领口散斑);衣服孔洞上限放大(领口缝隙回填) */
+const SLOT_TUNE = {
+  beard: { minArea: 3000, holeCap: 3000 },
+  clothes: { minArea: 2500, holeCap: 25000 },
+  default: { minArea: 900, holeCap: 3000 },
+};
+const tuneOf = (id) => SLOT_TUNE[id.split('/')[1]] ?? SLOT_TUNE.default;
+
 async function extract(part) {
   const vFile = rawFile(part.id);
   if (!fs.existsSync(vFile)) return console.log(`跳过 ${part.id}(缺 raw)`);
   const v = await loadRaw1024(vFile);
   const b = await loadRaw1024(path.join(BASES, `${part.base}.jpg`));
   const out = Buffer.from(v.data);
+  const clamp = Y_CLAMP.find(([pre]) => part.id.includes(pre))?.[1];
   // 羽化差分:d≤FE_LO 透明,d≥FE_HI 不透明,之间线性 —— 发际线/镜框阴影的过渡不再是硬边补丁
   const FE_LO = 40, FE_HI = 90;
   for (let i = 0; i < v.data.length; i += 4) {
@@ -330,13 +431,18 @@ async function extract(part) {
       Math.abs(v.data[i + 2] - b.data[i + 2]);
     const a = d <= FE_LO ? 0 : d >= FE_HI ? 255 : Math.round(((d - FE_LO) / (FE_HI - FE_LO)) * 255);
     out[i + 3] = Math.min(out[i + 3], a);
+    if (clamp) {
+      const y = Math.floor(i / 4 / v.info.width);
+      if (y < clamp[0] || y > clamp[1]) out[i + 3] = 0;
+    }
   }
   // 后处理链:色键清绿残块(lo 下探到浅绿,清 i2i 头顶光晕) → 清游丝 → 孔洞回填(露头皮)
   //          → 绿边裁剪(暗绿) → 亮绿光晕专项裁剪 → 去溢色
   chromaKey(out, { hi: 90, lo: 35 });
   despeckle(out, v.info.width, v.info.height);
-  const strays = dropStrayComponents(out, v.info.width, v.info.height);
-  const holes = fillHoles(out, v.info.width, v.info.height);
+  const tune = tuneOf(part.id);
+  const strays = dropStrayComponents(out, v.info.width, v.info.height, { minArea: tune.minArea });
+  const holes = fillHoles(out, v.info.width, v.info.height, { maxHoleArea: tune.holeCap });
   trimGreenEdge(out, v.info.width, v.info.height);
   trimGreenEdge(out, v.info.width, v.info.height, { th: 6, radius: 3, iters: 4, minLum: 135 });
   const halo = removeThinBrightHalo(out, v.info.width, v.info.height);
@@ -384,13 +490,20 @@ async function pool(jobs, limit) {
   );
 }
 
+// 用法: node gen-parts.mjs [gen|extract|all] [前缀过滤,逗号分隔]
+//   如: node gen-parts.mjs gen male/eyes,male/mouth   只生成试产批
 const mode = process.argv[2] ?? 'all';
+const prefixes = (process.argv[3] ?? '').split(',').filter(Boolean);
+const inScope = (p) => prefixes.length === 0 || prefixes.some((pre) => p.id.startsWith(pre));
+
 if (mode === 'gen' || mode === 'all') {
   if (!KEY) { console.error('缺 ARK_KEY'); process.exit(1); }
-  await pool(PARTS.filter((p) => !fs.existsSync(rawFile(p.id))).map((p) => () => gen(p)), 2);
+  const jobs = PARTS.filter((p) => inScope(p) && !fs.existsSync(rawFile(p.id)));
+  console.log(`待生成 ${jobs.length} 个`);
+  await pool(jobs.map((p) => () => gen(p)), 2);
 }
 if (mode === 'extract' || mode === 'all') {
   await exportBases();
-  for (const p of PARTS) await extract(p);
+  for (const p of PARTS) if (inScope(p)) await extract(p);
 }
 console.log('done');
