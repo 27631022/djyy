@@ -91,7 +91,7 @@ export function GridPreview({
                     height: geo.lineH,
                     lineHeight: `${geo.lineH}px`,
                     fontSize: fontPx,
-                    fontWeight: style.bold ? 700 : 400,
+                    fontWeight: config.boldAll || style.bold ? 700 : 400,
                     letterSpacing: `${gap * s}px`,
                     textAlign: style.align === "justify" ? "left" : style.align,
                     paddingLeft: style.align === "left" || style.align === "justify" ? indent : 0,
@@ -133,6 +133,8 @@ export function GridPreview({
                 right: geo.padR,
                 fontFamily: familyOf(config, config.pageNumber.font),
                 fontSize: config.pageNumber.sizePt * s,
+                // 页码也吃 boldAll —— 产物里页码是加粗的,预览不跟就与产物不一致
+                fontWeight: config.boldAll ? 700 : 400,
                 textAlign: pg.pageNo % 2 === 1 ? config.pageNumber.oddAlign : config.pageNumber.evenAlign,
               }}
             >

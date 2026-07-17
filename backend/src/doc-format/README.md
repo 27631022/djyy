@@ -3,6 +3,21 @@
 上传 `.doc/.docx/.md` → 按规则重排版 → 下载 `.docx`。后台可配多套排版模板。
 门户页带收藏 / 转换问题反馈(可带失败样本) / 浏览量 / 转换量统计。
 
+## 全篇加粗(boldAll,默认开)
+
+用户 2026-07-17「所有字体符号等都要加黑」。`config.boldAll` 默认 true,可在模板里关。
+⚠ 公文规范里正文一般不加粗 —— 这是用户明确要求,不是国标。三处必须一起吃它,漏一处就预览/产物分叉:
+renderer 的正文 run + **页码三个 run** + GridPreview 的正文行 fontWeight + **页码 div 的 fontWeight**
+(对抗审查抓到过页码预览漏掉这一处)。与元素自带 bold 取或。
+
+## 反馈「不用再传一遍文件」
+
+工作台里发现转得不对,点反馈自动带上正在转的原件(analyze 存的 source 文件),不用重传。
+- analyze 存 source 时补 `createdById: ctx.actorId`(原来没存)。
+- `assertOwnFeedbackFiles(ids, userId)` 放行两类:folder=feedback 的(本次新传)、folder=source 且
+  createdById=本人的(刚转的原件)。**凭 createdById 挡别人的 source fileId**(cuid 虽不可枚举仍要挡)。
+- 反馈引用的 source 文件 id 落在 feedback.fileIds 里 → 天然进 collectInUseFileIds 被保护,不必改 GC。
+
 ## 三条输入管线,判据方向不同
 
 | 输入 | 本质 | 层级判据 | 正文 |

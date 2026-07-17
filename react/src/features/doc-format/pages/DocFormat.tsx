@@ -297,7 +297,13 @@ export default function DocFormatPage() {
       ) : (
         <UploadPanel onDone={setResult} />
       )}
-      {feedback && <FeedbackDialog onClose={() => setFeedback(false)} />}
+      {feedback && (
+        <FeedbackDialog
+          // 已经在转某份文件了 → 反馈时自动带上它,不用再传一遍
+          currentFile={result ? { fileId: result.fileId, fileName: result.fileName } : undefined}
+          onClose={() => setFeedback(false)}
+        />
+      )}
     </DocFormatShell>
   );
 }

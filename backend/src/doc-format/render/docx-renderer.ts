@@ -115,7 +115,8 @@ function toParagraph(el: DocElement, cfg: DocFormatConfig): Paragraph {
           text: r.text,
           font: fontOf(cfg, r.role ?? style.font),
           size: style.sizePt * HALF_POINT,
-          bold: style.bold ?? false,
+          // 全篇加粗开关(用户「所有字体符号都要加黑」)与元素自带 bold 取或
+          bold: cfg.boldAll || (style.bold ?? false),
         }),
     ),
   });
@@ -126,15 +127,16 @@ function pageNumberFooter(cfg: DocFormatConfig, align: Align): Footer {
   const pn = cfg.pageNumber;
   const font = fontOf(cfg, pn.font);
   const size = pn.sizePt * HALF_POINT;
+  const bold = cfg.boldAll; // 页码也是「字体符号」,一起加黑
   return new Footer({
     children: [
       new Paragraph({
         alignment: ALIGN[align],
         // 页脚不套正文的 28 磅固定行距 —— 那是版心的行网格,页码不在版心里
         children: [
-          new TextRun({ text: `${pn.dash} `, font, size }),
-          new TextRun({ children: [PageNumber.CURRENT], font, size }),
-          new TextRun({ text: ` ${pn.dash}`, font, size }),
+          new TextRun({ text: `${pn.dash} `, font, size, bold }),
+          new TextRun({ children: [PageNumber.CURRENT], font, size, bold }),
+          new TextRun({ text: ` ${pn.dash}`, font, size, bold }),
         ],
       }),
     ],

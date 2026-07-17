@@ -23,11 +23,24 @@ const MAX_FILES = 5;
  * 本模块的反馈专收「转换不成功」的问题,所以核心是让用户把**转不了的原始文件**一起带上来 ——
  * 没有样本就没法复现,反馈也就没用。文件先经 storage 传好拿 fileId,再随 JSON 提交
  * (不把 dialog 改成 multipart,与另两家的形状保持一致)。
+ *
+ * currentFile:用户正在工作台里转的那份原件。有它时默认带上,**不用再传一遍**
+ * (用户 2026-07-17:发现有问题直接点告诉我们、说明原因就好)。它是 analyze 存的 source 文件,
+ * 后端按 createdById 校验归属。
  */
-export function FeedbackDialog({ onClose }: { onClose: () => void }) {
+export function FeedbackDialog({
+  currentFile,
+  onClose,
+}: {
+  currentFile?: { fileId: string; fileName: string };
+  onClose: () => void;
+}) {
   const [content, setContent] = useState("");
   const [anonymous, setAnonymous] = useState(false);
-  const [files, setFiles] = useState<{ fileId: string; fileName: string }[]>([]);
+  // 有当前文件就默认带上(标 current:true,不占「最多 5 个新传」的名额语义,但一起提交)
+  const [files, setFiles] = useState<{ fileId: string; fileName: string; current?: boolean }[]>(
+    currentFile ? [{ ...currentFile, current: true }] : [],
+  );
   const inputRef = useRef<HTMLInputElement>(null);
 
   const upload = useMutation({
@@ -86,17 +99,30 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
         {/* 失败样本 —— 这是本模块反馈的核心 */}
         <div className="rounded-lg bg-amber-50 p-3 ring-1 ring-amber-200">
           <p className="text-xs text-amber-900">
-            <b>请把转换不成功的原始文件一起传上来</b> —— 没有样本我们没法复现问题。
-            文件只有管理员能看到,用完就用于修复。
+            {currentFile ? (
+              <>
+                已自动带上你正在转换的 <b>{currentFile.fileName}</b> —— 直接说明问题就行,不用再传一遍。
+              </>
+            ) : (
+              <>
+                <b>请把转换不成功的原始文件一起传上来</b> —— 没有样本我们没法复现问题。
+              </>
+            )}
+            <span className="text-amber-700">文件只有管理员能看到,用于修复。</span>
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {files.map((f) => (
               <span
                 key={f.fileId}
-                className="flex items-center gap-1 rounded bg-white px-2 py-1 text-xs text-slate-600 ring-1 ring-amber-200"
+                className={`flex items-center gap-1 rounded px-2 py-1 text-xs ring-1 ${
+                  f.current
+                    ? "bg-party-soft text-[var(--party-primary)] ring-[var(--party-primary)]/30"
+                    : "bg-white text-slate-600 ring-amber-200"
+                }`}
               >
                 <Paperclip className="h-3 w-3" />
                 {f.fileName}
+                {f.current && <span className="text-[10px] opacity-70">当前文件</span>}
                 <button
                   type="button"
                   onClick={() => setFiles((x) => x.filter((y) => y.fileId !== f.fileId))}

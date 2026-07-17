@@ -150,6 +150,7 @@ export function normalizeConfig(input: unknown, base?: DocFormatConfig): DocForm
       startAt: int(pn.startAt, d.pageNumber.startAt, 1, 9999),
       fromBottomMm: num(pn.fromBottomMm, d.pageNumber.fromBottomMm, 0, 100),
     },
+    boldAll: bool(o.boldAll, d.boldAll),
     widowControl: bool(o.widowControl, d.widowControl),
     orphanWarn: {
       enabled: bool(ow.enabled, d.orphanWarn.enabled),

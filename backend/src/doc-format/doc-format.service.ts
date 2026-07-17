@@ -359,6 +359,8 @@ export class DocFormatService {
         originalName: file.originalname,
         ownerModule: OWNER,
         folder: FOLDER_SOURCE,
+        // 记上传者 —— 反馈「就用刚才转换的这份」时要凭它校验文件归属(见 assertOwnFeedbackFiles)
+        createdById: ctx.actorId,
       },
       ctx,
     );

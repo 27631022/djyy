@@ -173,6 +173,7 @@ function baseConfig(charsPerLine: number): DocFormatConfig {
     },
     textRules: { curlyQuotes: true },
     markdown: { autoNumber: true },
+    boldAll: true, // 用户要求「所有字体符号都要加黑」;可在模板里关
     pageNumber: {
       enabled: true,
       dash: '—', // em dash。注:U+2014,不是 ASCII 的 -

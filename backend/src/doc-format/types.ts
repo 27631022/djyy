@@ -202,6 +202,12 @@ export type DocFormatConfig = {
   };
   pageNumber: PageNumberConfig;
   /**
+   * 全篇加粗(所有文字与符号都用粗体输出)。用户 2026-07-17 定案「所有字体符号等都要加黑」。
+   * ⚠ 公文规范里正文一般不加粗 —— 这是用户的明确要求,不是国标默认,故做成可关开关(默认开)。
+   * 与元素自己的 bold 取或:任一为真即加粗。
+   */
+  boldAll: boolean;
+  /**
    * 打开 Word/WPS 自带的孤行控制。
    * 孤行/寡行/标题孤立由渲染端自己解决(配合标题的 keepNext),我们不模拟。
    * 注:源公文里普遍是 widowControl=0,那是中文 Normal 模板的出厂默认,不是谁故意关的。

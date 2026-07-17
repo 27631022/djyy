@@ -139,6 +139,8 @@ export type DocFormatConfig = {
   textRules: { curlyQuotes: boolean };
   /** md → 公文 的转换规则(只对 .md 输入生效) */
   markdown: { autoNumber: boolean };
+  /** 全篇加粗(所有文字与符号) */
+  boldAll: boolean;
   pageNumber: {
     enabled: boolean;
     dash: string;

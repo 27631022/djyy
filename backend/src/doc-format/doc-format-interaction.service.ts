@@ -160,13 +160,13 @@ export class DocFormatInteractionService {
     };
   }
 
-  /** 提交吐槽。fileIds 是用户先经 storage 传好的失败样本 */
+  /** 提交吐槽。fileIds 可含:本次反馈新传的失败样本,或用户刚转换的原件(不用再传一遍) */
   async addFeedback(
     dto: { content: string; anonymous?: boolean; fileIds?: string[] },
     ctx: AuditCtx & { actorId: string; actorName: string },
   ) {
     const fileIds = (dto.fileIds ?? []).slice(0, FEEDBACK_MAX_FILES);
-    if (fileIds.length) await this.assertOwnFeedbackFiles(fileIds);
+    if (fileIds.length) await this.assertOwnFeedbackFiles(fileIds, ctx.actorId);
     const row = await this.prisma.docFormatFeedback.create({
       data: {
         userId: ctx.actorId,
@@ -181,15 +181,29 @@ export class DocFormatInteractionService {
   }
 
   /**
-   * 附件必须是本模块 feedback 文件夹下的文件 —— 否则任意 fileId 都能被「引用」进反馈,
-   * 既能拿别的模块的文件当样本,又会让它们进 collectInUseFileIds 永不被回收。
+   * 反馈附件的归属校验。两类合法,其余一律拒:
+   * 1. **本次反馈新传的样本**(folder=feedback)—— 走 uploadSample 传的。
+   * 2. **用户刚转换的原件**(folder=source 且 createdById=本人)—— 「不用再传一遍文件」的入口:
+   *    在工作台里发现转得不对,直接反馈,自动带上正在转的那份。凭 createdById 校验是本人的,
+   *    防止拿到别人的 source fileId(cuid 虽不可枚举,仍要挡)。
+   * 不校验的话任意 fileId 都能被引用进反馈:既能拿别的模块的文件当样本,又会让它们进
+   * collectInUseFileIds 永不回收。
    */
-  private async assertOwnFeedbackFiles(ids: string[]): Promise<void> {
+  private async assertOwnFeedbackFiles(ids: string[], userId: string): Promise<void> {
     const rows = await this.prisma.storedFile.findMany({
-      where: { id: { in: ids }, ownerModule: 'doc-format', folder: FOLDER_FEEDBACK, deletedAt: null },
-      select: { id: true },
+      where: { id: { in: ids }, ownerModule: 'doc-format', deletedAt: null },
+      select: { id: true, folder: true, createdById: true },
     });
-    if (rows.length !== ids.length) throw new BadRequestException('附件无效,请重新上传');
+    const ok = new Set(
+      rows
+        .filter(
+          (r) =>
+            r.folder === FOLDER_FEEDBACK ||
+            (r.folder === FOLDER_SOURCE && r.createdById === userId),
+        )
+        .map((r) => r.id),
+    );
+    if (ids.some((id) => !ok.has(id))) throw new BadRequestException('附件无效,请重新上传');
   }
 
   async listFeedback(userId: string, scope: 'all' | 'mine', status?: string) {
@@ -289,6 +303,8 @@ export class DocFormatInteractionService {
 
 /** 反馈附件的 storage 文件夹 */
 export const FOLDER_FEEDBACK = 'feedback';
+/** analyze 存原件的文件夹(与 doc-format.service 的 FOLDER_SOURCE 一致)—— 反馈复用当前文件时认它 */
+const FOLDER_SOURCE = 'source';
 
 function parseFileIds(raw: string | null): string[] {
   if (!raw) return [];

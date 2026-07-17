@@ -374,6 +374,16 @@ function Editor({ tpl, onSaved }: { tpl: DocTemplate; onSaved: () => void }) {
                 <code>## 总体要求</code> → 一、总体要求。关掉则只套字体、不加序号(输出就不像公文)
               </span>
             </Row>
+            <Row label="全篇加粗" hint="所有字体符号加黑">
+              <input
+                type="checkbox"
+                checked={cfg.boldAll}
+                onChange={(e) => patch((c) => ((c.boldAll = e.target.checked), c))}
+              />
+              <span className="text-xs text-slate-400">
+                标题、正文、页码全部用粗体。注:公文规范里正文一般不加粗,按需关闭
+              </span>
+            </Row>
             <hr className="my-3 border-slate-100" />
             <Row label="显示页码">
               <input
