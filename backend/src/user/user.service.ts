@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma';
-import { OrgScopeService, type OrgWriteScope } from '../organization';
+import {
+  OrganizationService,
+  OrgScopeService,
+  normalizeName,
+  type OrgWriteScope,
+} from '../organization';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
@@ -20,6 +25,11 @@ import {
   LookupByNameDto,
   UserByEmpNoLite,
 } from './dto/lookup-by-empno.dto';
+import {
+  MatchByNameOrgDto,
+  type MatchByNameOrgResult,
+  type MatchStatus,
+} from './dto/match-by-name-org.dto';
 import { AuditService } from '../audit';
 import { UserCustomFieldService } from '../user-custom-field';
 
@@ -44,6 +54,37 @@ const IS_PARTY_MEMBER_WHERE: Prisma.UserWhereInput = {
   OR: PARTY_MEMBER_CF_ANCHORS.map((v) => ({ customFields: { contains: v } })),
 };
 
+/**
+ * 「姓名+单位」匹配单个姓名最多回多少候选。
+ * 库里最多 25 人同名;20 条足够人工分辨,再多说明单位前缀没写对 ——
+ * 超出**不静默截断**,置 truncated=true 让 UI 引导补单位/直接填工号
+ * (照 LIST_IDS_MAX 的先例:宁可显式告警,不可让用户以为看到了全部)。
+ */
+const MATCH_CANDIDATE_MAX = 20;
+
+/** User(含 memberships)→ lookup/match 的精简形状。三个接口共用,避免映射漂移。 */
+function toUserLite(u: {
+  id: string;
+  username: string;
+  name: string;
+  memberships: { orgId: string; org: { kind: string; name: string } }[];
+}): UserByEmpNoLite {
+  const pick = (kind: string) =>
+    u.memberships.find((m) => m.org.kind === kind) ?? null;
+  // memberships 已按 isPrimary desc 排序 → find 命中的即主归属
+  const admin = pick('admin');
+  const party = pick('party');
+  return {
+    id: u.id,
+    username: u.username,
+    name: u.name,
+    adminOrgName: admin?.org.name ?? null,
+    adminOrgId: admin?.orgId ?? null,
+    partyOrgName: party?.org.name ?? null,
+    partyOrgId: party?.orgId ?? null,
+  };
+}
+
 @Injectable()
 export class UserService {
   constructor(
@@ -51,6 +92,9 @@ export class UserService {
     private readonly audit: AuditService,
     private readonly customFields: UserCustomFieldService,
     private readonly orgScope: OrgScopeService,
+    // 「姓名+单位」匹配要按单位子树收敛候选(matchByNameOrg)。
+    // user → organization 是既有方向(orgScope 已在用),不成环。
+    private readonly orgs: OrganizationService,
   ) {}
 
   /* ─── 数据范围(2026-07-12 三级数据权限)────────────────────────────
@@ -551,6 +595,129 @@ export class UserService {
   }
 
   /**
+   * 现场互动「工牌进场」精确匹配(匿名公开口消费,最小暴露):
+   * 员工编号精确 或 姓名精确命中在职员工,只回 姓名+头像 —— 不回工号/组织/联系方式,
+   * 且不做模糊搜索(防匿名端拉花名册;猜中前提是已知道确切工号或姓名)。重名最多 5 条。
+   */
+  async matchForInteractive(q: string): Promise<{ name: string; avatarUrl: string | null }[]> {
+    const s = q.trim();
+    if (s.length < 2) return [];
+    const rows = await this.prisma.user.findMany({
+      where: { active: true, OR: [{ username: s }, { name: s }] },
+      select: { name: true, username: true, avatarUrl: true },
+      orderBy: [{ username: 'asc' }],
+      take: 5,
+    });
+    // 工号命中排最前(工号唯一,输工号的意图最明确;姓名可重名)
+    rows.sort((a, b) => Number(b.username === s) - Number(a.username === s));
+    return rows.map((r) => ({ name: r.name, avatarUrl: r.avatarUrl ?? null }));
+  }
+
+  /**
+   * 「姓名 + 单位 → 员工编号」批量匹配(证书发证向导 Step3 用)。
+   *
+   * ★ 为什么需要它:库里 20842 人中有 3638 人重名(最多 25 人同名)。只按姓名查 →
+   *   17.6% 的人只能标「重名·待核对」然后放弃。而表彰文件天然带单位前缀
+   *   (「云贵分公司:聂伟、朱智勇」)—— 真实数据实测:加上单位后 3312 人(91%)
+   *   可唯一确定,剩 326 人(9%)仍多义(如「云贵分公司」下有 2 个聂伟)。
+   *
+   * ★ 两条铁律:
+   *   1. **服务端只回候选,绝不选人**。多义时不做任何 tie-break —— 猜错 =
+   *      证书烤成另一个人,且发证人在 UI 上看不出差异(见 issue.service 的快照覆盖)。
+   *   2. **单位只用于「缩小候选集」,不用于「决定身份」**。单位名是公文原文,
+   *      可能是历史/口语称谓;解析不出时**退化为全部同名候选**而不是返回空。
+   *
+   * ★ 按子树匹配,不按单位名精确匹配 membership:真实库里没有任何人直接挂在
+   *   「云贵分公司」本身上,人都挂在「云贵分公司 / 昆明配送中心」这类下级部门。
+   *
+   * 鉴权:登录即可、不校验权限点、不做数据范围收敛 —— 与 lookup-by-name 同档。
+   *   暴露面严格窄于已开放的 lookup-by-name(同样的字段,orgName 只做过滤 = 只减不增)。
+   *
+   * 成本:与 items 数量无关的 2 次查询(一次 user.findMany + 一次组织索引)。
+   */
+  async matchByNameOrg(dto: MatchByNameOrgDto): Promise<MatchByNameOrgResult[]> {
+    const items = dto.items ?? [];
+    if (!items.length) return [];
+
+    // 归一化:公文给 2 字姓名垫空格对齐(「聂  伟」),库里存的是「聂伟」——
+    // 不去空白一个都匹配不上。normalizeName 与组织名匹配共用同一实现。
+    const normed = items.map((it) => ({
+      rawName: (it.name ?? '').trim(),
+      key: normalizeName(it.name ?? ''),
+      orgName: (it.orgName ?? '').trim(),
+    }));
+
+    // 1) 一次查回全部同名在职用户。用 normalizeName 后的 key 反查:DB 里存的姓名
+    //    本身不含空格,故直接用 key 做 where.in 即可(带空格的原文查不到)。
+    const nameKeys = [...new Set(normed.map((n) => n.key).filter(Boolean))];
+    const users = nameKeys.length
+      ? await this.prisma.user.findMany({
+          // ⚠ active: true —— 既有 lookupByName 漏了这个过滤,离职人员会进候选
+          where: { name: { in: nameKeys }, active: true },
+          include: {
+            memberships: { include: { org: true }, orderBy: [{ isPrimary: 'desc' }] },
+          },
+        })
+      : [];
+    const byName = new Map<string, typeof users>();
+    for (const u of users) {
+      const k = normalizeName(u.name);
+      const arr = byName.get(k);
+      if (arr) arr.push(u);
+      else byName.set(k, [u]);
+    }
+
+    // 2) 一次解析全部单位名 → 子树 orgId 集合
+    const orgNames = [...new Set(normed.map((n) => n.orgName).filter(Boolean))];
+    const scopes = orgNames.length ? await this.orgs.resolveNameScopes(orgNames) : {};
+
+    // 3) 逐 item 组装(按下标 1:1 对齐 items —— 同一姓名可能配不同单位,用 Record 会串)
+    return normed.map((n) => {
+      const pool = n.key ? (byName.get(n.key) ?? []) : [];
+      const scope = n.orgName ? (scopes[n.orgName] ?? null) : null;
+
+      let candidates = pool;
+      let orgUnresolved = false;
+      if (n.orgName) {
+        if (scope && scope.orgIds.length) {
+          const idSet = new Set(scope.orgIds);
+          candidates = pool.filter((u) => u.memberships.some((m) => idSet.has(m.orgId)));
+        } else {
+          // 单位名解析不出 → 不返回空!退化为全部同名候选,给用户点选的机会
+          orgUnresolved = true;
+        }
+      }
+
+      const truncated = candidates.length > MATCH_CANDIDATE_MAX;
+      const lite = candidates.slice(0, MATCH_CANDIDATE_MAX).map((u) => toUserLite(u));
+
+      // ★ 判定顺序有讲究:
+      //   1. 没有候选 → 恒 'none'。'org-unresolved' 的语义是「单位没解析出来,**已退化为
+      //      全量同名候选**」,前提是真的有候选可选;候选为空时它与 'none' 无异,若仍报
+      //      'org-unresolved',前端会把它当「待人工点选」→ 标 ambiguous 却没有候选可点 →
+      //      发证被卡死且提示指向一个不存在的按钮。
+      //   2. 单位没解析出来但有同名候选 → 'org-unresolved'(**不能**因为只剩 1 个就判
+      //      'unique' 自动回填 —— 单位没验证过,那正是「按姓名瞎认人」的老毛病)。
+      let status: MatchStatus;
+      if (lite.length === 0) status = 'none';
+      else if (orgUnresolved) status = 'org-unresolved';
+      else if (lite.length === 1 && !truncated) status = 'unique';
+      else status = 'ambiguous';
+
+      return {
+        name: n.rawName,
+        orgName: n.orgName || undefined,
+        orgScope: scope
+          ? { roots: scope.roots, ambiguous: scope.ambiguous, exact: scope.exact }
+          : null,
+        candidates: lite,
+        truncated,
+        status,
+      };
+    });
+  }
+
+  /**
    * 通讯录(内部公司通讯录):按姓名/工号/电话/邮箱/所属机构名搜索 + 部门/党组织/政治面貌/是否部门过滤,
    * 分页返回联系信息(姓名/工号/头像/电话/邮箱/主行政岗/党组织/政治面貌)。仅在职人员。
    *
@@ -726,11 +893,14 @@ export class UserService {
     const partyMember = u.memberships.find((m) => m.org.kind === 'party');
     const cf = this.parseCustomFields(u.customFields);
     const political = typeof cf.political_status === 'string' ? cf.political_status : null;
+    // 性别(customFields.gender,male/female,其它值→null):前端给透明抠像头像配性别底色(男蓝/女粉)
+    const gender = cf.gender === 'male' || cf.gender === 'female' ? cf.gender : null;
     return {
       id: u.id,
       username: u.username,
       name: u.name,
       avatarUrl: u.avatarUrl,
+      gender,
       phone: u.phone,
       email: u.email,
       politicalStatus: political,
@@ -1085,6 +1255,65 @@ export class UserService {
     });
 
     return this.findOne(userId);
+  }
+
+  /* ─── 头像批量兜底(供 avatar 模块 applyDefaults 编排;性别在 customFields.gender)─── */
+
+  /** 无头像的 active 用户(id + 解析出的性别 male/female/其它→null),供「按性别随机分配默认头像」。 */
+  async listActiveWithoutAvatar(): Promise<{ id: string; gender: string | null }[]> {
+    const rows = await this.prisma.user.findMany({
+      where: { active: true, OR: [{ avatarUrl: null }, { avatarUrl: '' }] },
+      select: { id: true, customFields: true },
+    });
+    return rows.map((r) => {
+      let gender: string | null = null;
+      if (r.customFields) {
+        try {
+          const cf = JSON.parse(r.customFields) as Record<string, unknown>;
+          if (cf && typeof cf.gender === 'string') gender = cf.gender;
+        } catch {
+          /* 脏 JSON 忽略,当无性别处理 */
+        }
+      }
+      return { id: r.id, gender };
+    });
+  }
+
+  /** 无头像 active 用户数(前端「分配默认头像」确认框展示规模)。 */
+  async countActiveWithoutAvatar(): Promise<number> {
+    return this.prisma.user.count({
+      where: { active: true, OR: [{ avatarUrl: null }, { avatarUrl: '' }] },
+    });
+  }
+
+  /**
+   * 按 fileId 分组批量设默认头像(**仅覆盖仍无头像的** —— 幂等,重复分配不动已有/用户自选的头像)。
+   * avatarUrl = /api/public/avatars/{fileId}(与公共头像库 toView 同口径)。
+   */
+  async bulkSetDefaultAvatar(
+    groups: { fileId: string; userIds: string[] }[],
+    actor: ActorContext,
+  ): Promise<{ updated: number }> {
+    let updated = 0;
+    for (const g of groups) {
+      if (!g.userIds.length) continue;
+      const res = await this.prisma.user.updateMany({
+        where: {
+          id: { in: g.userIds },
+          active: true,
+          OR: [{ avatarUrl: null }, { avatarUrl: '' }],
+        },
+        data: { avatarUrl: `/api/public/avatars/${g.fileId}` },
+      });
+      updated += res.count;
+    }
+    await this.audit.log({
+      ...actor,
+      action: 'user.avatar.assign_default',
+      target: 'bulk',
+      detail: { groups: groups.length, updated },
+    });
+    return { updated };
   }
 
   /* ─── 软删 (active=false) ─── */

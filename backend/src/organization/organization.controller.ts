@@ -18,6 +18,7 @@ import { OrganizationService } from './organization.service';
 import { OrgScopeService } from './org-scope.service';
 import { CreateOrganizationDto, OrgKind } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { ResolvePartyOrgsDto } from './dto/resolve-org.dto';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
 import { Permission } from '../permission';
 import { AuditService } from '../audit';
@@ -26,6 +27,7 @@ import { AuditService } from '../audit';
  * 鉴权约定(2026-07-12 三级数据权限):
  *   - 全部接口要求登录(此前整个 controller 连 AuthGuard 都没挂,属安全缺口);
  *   - 树/列表「结构」对所有登录用户可见(任务派发/考核/筛选器等业务组件依赖全量树);
+ *     resolve-party(党组织名→对口单位)同档 —— 只回结构不回成员,暴露面窄于 tree;
  *   - 成员名单按登录人数据范围放行(管理范围/兜底本单位子树=完整;对口上级=仅直接成员);
  *   - 写操作 @Permission('admin:org:write') + OrgScopeService 按目标组织的 kind 分维校验范围
  *     (党委管理员经党维锚点管党组织结构,机构管理员不授 org:write 则不能动行政树)。
@@ -60,6 +62,22 @@ export class OrganizationController {
       kind: kind === 'party' || kind === 'admin' ? (kind as OrgKind) : undefined,
       includeInactive: inactive === 'true',
     });
+  }
+
+  /**
+   * POST /api/organizations/resolve-party   党组织名 → 对口行政机构(批量)
+   *
+   * 证书发证「先进基层党委/党支部」这类集体荣誉自动带出「所在单位」用。
+   *
+   * 鉴权:登录即可、**不加 @Permission、不做数据范围收敛** —— 与「树/列表结构对所有
+   * 登录用户可见」同档(见类顶部约定)。本接口只回组织名称/路径/关联关系,
+   * **不回任何成员信息**,暴露面严格窄于已开放的 GET /organizations/tree。
+   *
+   * 位置:必须排在 @Get(':id') 之前(POST 组当前虽无 :id 路由,仍照既有防御性约定)。
+   */
+  @Post('resolve-party')
+  resolveParty(@Body() dto: ResolvePartyOrgsDto) {
+    return this.service.resolvePartyOrgs(dto.names);
   }
 
   @Get(':id')

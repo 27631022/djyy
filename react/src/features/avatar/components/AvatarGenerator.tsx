@@ -9,6 +9,7 @@ import {
   resolveAvatarUrl,
   type AvatarGenerateResult,
 } from "../api";
+import { AvatarCropDialog } from "./AvatarCropDialog";
 
 const DEFAULT_PROMPT_HINT =
   "3D 仿真人 / 职场 / 纯红底 / 明亮(默认已含:保留本人面部特征、正面免冠、打光明亮)";
@@ -34,6 +35,8 @@ export function AvatarGenerator({
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [result, setResult] = useState<AvatarGenerateResult | null>(null);
+  const [cropSrc, setCropSrc] = useState<File | null>(null); // 待裁剪的原始选图(非空 = 裁剪器打开)
+  const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 组件卸载时清理本地预览 object URL
@@ -49,6 +52,16 @@ export function AvatarGenerator({
     queryKey: ["avatar", "history", employeeNumber],
     queryFn: () => avatarApi.history(targetName, employeeNumber),
     enabled: !!(targetName && employeeNumber),
+  });
+
+  // 删历史头像(本人删自己的;管理员可删他人的;在用 → 服务端 409 提示先更换)
+  const delMut = useMutation({
+    mutationFn: (fileId: string) => avatarApi.removeHistory(fileId),
+    onSuccess: () => {
+      toast.success("已删除");
+      qc.invalidateQueries({ queryKey: ["avatar", "history", employeeNumber] });
+    },
+    onError: (e) => toast.error(avatarErrorMessage(e, "删除失败")),
   });
 
   const genMut = useMutation({
@@ -75,11 +88,17 @@ export function AvatarGenerator({
     onError: (e) => toast.error(avatarErrorMessage(e)),
   });
 
+  // 选图(点选/拖拽)先进裁剪器,确认裁剪后才作为上传原图
   function pick(f: File) {
     if (!f.type.startsWith("image/")) {
       toast.error("请选择图片文件");
       return;
     }
+    setCropSrc(f);
+  }
+
+  function applyCropped(f: File) {
+    setCropSrc(null);
     setFile(f);
     setResult(null);
     if (photoPreview) URL.revokeObjectURL(photoPreview);
@@ -106,11 +125,34 @@ export function AvatarGenerator({
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 py-3 text-sm text-slate-500 hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f) pick(f);
+        }}
+        className={`flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed py-3 text-sm transition-colors hover:border-[var(--party-primary)] hover:text-[var(--party-primary)] ${
+          dragOver
+            ? "border-[var(--party-primary)] bg-party-soft text-[var(--party-primary)]"
+            : "border-slate-300 text-slate-500"
+        }`}
       >
         <Upload className="h-4 w-4" />
-        {file ? `已选:${file.name}` : "选择本人照片(正面、清晰)"}
+        {dragOver ? "松开鼠标放入照片" : file ? `已选:${file.name}` : "选择或拖入本人照片(正面、清晰)"}
       </button>
+      {cropSrc && (
+        <AvatarCropDialog
+          key={`${cropSrc.name}-${cropSrc.size}-${cropSrc.lastModified}`}
+          file={cropSrc}
+          onCancel={() => setCropSrc(null)}
+          onConfirm={applyCropped}
+        />
+      )}
 
       {/* 2. 提示词(可选,留空用默认) */}
       <div>
@@ -190,28 +232,40 @@ export function AvatarGenerator({
         )}
       </div>
 
-      {/* 5. 历史头像库(点缩略图直接设为头像;不必重新生成) */}
+      {/* 5. 历史头像库(点缩略图直接设为头像;右上 ✕ 删除 —— 在用头像服务端会拒删并提示) */}
       {history.length > 0 && (
         <div className="border-t border-slate-100 pt-2">
           <div className="mb-1.5 flex items-center gap-1 text-[11px] text-slate-400">
             <History className="h-3 w-3" />
-            历史头像库(点选直接设为头像)
+            历史头像库(点选直接设为头像;✕ 删除)
           </div>
           <div className="flex flex-wrap gap-2">
             {history.map((h) => (
-              <button
-                key={h.fileId}
-                type="button"
-                onClick={() => onConfirm(h.url)}
-                title={`${h.originalName} · 点选设为头像`}
-                className="h-14 w-14 overflow-hidden rounded-lg ring-1 ring-slate-200 transition-shadow hover:ring-2 hover:ring-[var(--party-primary)]"
-              >
-                <img
-                  src={resolveAvatarUrl(h.url)}
-                  alt={h.originalName}
-                  className="h-full w-full object-cover"
-                />
-              </button>
+              <div key={h.fileId} className="relative">
+                <button
+                  type="button"
+                  onClick={() => onConfirm(h.url)}
+                  title={`${h.originalName} · 点选设为头像`}
+                  className="h-14 w-14 overflow-hidden rounded-lg ring-1 ring-slate-200 transition-shadow hover:ring-2 hover:ring-[var(--party-primary)]"
+                >
+                  <img
+                    src={resolveAvatarUrl(h.url)}
+                    alt={h.originalName}
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+                <button
+                  type="button"
+                  title="删除这张历史头像"
+                  disabled={delMut.isPending}
+                  onClick={() => {
+                    if (window.confirm("删除这张历史头像?删除后不可恢复。")) delMut.mutate(h.fileId);
+                  }}
+                  className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-[10px] leading-none text-white hover:bg-red-500 disabled:opacity-50"
+                >
+                  ×
+                </button>
+              </div>
             ))}
           </div>
         </div>

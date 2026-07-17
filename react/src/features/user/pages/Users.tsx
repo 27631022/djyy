@@ -26,7 +26,7 @@ import {
   type DictItem, type DictionaryDetail,
 } from "@/features/dictionary";
 import { userCustomFieldsApi, type UserCustomField } from "@/features/user-custom-field";
-import { AvatarGenerator, resolveAvatarUrl } from "@/features/avatar";
+import { AvatarChanger, resolveAvatarUrl } from "@/features/avatar";
 import { matchesPinyin, highlightMatch } from "@/shared/lib/pinyinSearch";
 import { useAuth } from "@/stores/auth";
 import { OrgPicker } from "../components/OrgPicker";
@@ -842,6 +842,7 @@ function UserDetailDrawer({
 
 /* ─── Tab: 基本信息 ─── */
 function BasicInfoTab({ user, onSaved }: { user: UserDetail; onSaved: () => void }) {
+  const qc = useQueryClient();
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email ?? "");
   const [phone, setPhone] = useState(user.phone ?? "");
@@ -879,6 +880,9 @@ function BasicInfoTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
     onSuccess: () => {
       setShowAvatarGen(false);
       toast.success("头像已更新");
+      // 通讯录缓存里还留着该用户旧头像(onSaved 只失效 users 系)
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["directory"] });
       onSaved();
     },
     onError: (err: { response?: { data?: { message?: string | string[] } }; message?: string }) => {
@@ -889,8 +893,8 @@ function BasicInfoTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
 
   return (
     <div className="p-5 space-y-4">
-      {/* 头像 + AI 生成(上传照片→火山 SeedEdit→蓝底职场头像) */}
-      <Field label="头像" hint="上传本人照片,AI 一键生成职场头像(3D 仿真人 · 蓝底)">
+      {/* 头像:与个人设置同一 AvatarChanger(头像库挑选 / 上传照片 AI 生成) */}
+      <Field label="头像" hint="从公共头像库挑选,或上传本人照片 AI 生成职场头像">
         <div className="flex items-center gap-3">
           {avatarSrc ? (
             <img
@@ -908,12 +912,12 @@ function BasicInfoTab({ user, onSaved }: { user: UserDetail; onSaved: () => void
             onClick={() => setShowAvatarGen((v) => !v)}
             className="rounded-md border border-[#E9E9E9] px-3 py-1.5 text-xs text-[#6B7280] hover:border-[var(--party-primary)] hover:text-[var(--party-primary)]"
           >
-            {showAvatarGen ? "收起" : "AI 生成头像"}
+            {showAvatarGen ? "收起" : "更换头像"}
           </button>
         </div>
         {showAvatarGen && (
           <div className="mt-3 rounded-lg border border-[#E9E9E9] bg-[#FAFAFA] p-3">
-            <AvatarGenerator
+            <AvatarChanger
               onConfirm={(url) => setAvatarMut.mutate(url)}
               confirmLabel="设为该用户头像"
               targetName={user.name}

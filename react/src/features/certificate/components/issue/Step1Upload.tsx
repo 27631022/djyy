@@ -67,8 +67,8 @@ export function Step1Upload({
     const f = e.dataTransfer.files?.[0];
     if (!f) return;
     // 拖入不受 input accept 限制,这里补一道扩展名校验(点击上传已被 accept 限定)
-    if (!/\.(docx|pdf)$/i.test(f.name)) {
-      toast.error("仅支持 .docx 或 .pdf 文件");
+    if (!/\.(docx?|pdf)$/i.test(f.name)) {
+      toast.error("仅支持 .doc / .docx / .pdf 文件");
       return;
     }
     handleFile(f);
@@ -128,14 +128,14 @@ export function Step1Upload({
                 : "点击或拖拽上传文件"}
           </div>
           <div className="text-[11px] text-[#6B7280] leading-relaxed">
-            支持 .docx / .pdf · AI 自动识别多荣誉 + 受表彰人员(姓名 + 员工编号 + 部门)
+            支持 .doc / .docx / .pdf · AI 自动识别多荣誉 + 受表彰人员(姓名 + 员工编号 + 单位)
           </div>
         </div>
       </button>
       <input
         ref={docInputRef}
         type="file"
-        accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        accept=".doc,.docx,.pdf,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

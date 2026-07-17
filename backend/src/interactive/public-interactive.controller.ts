@@ -5,6 +5,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UploadedFile,
@@ -13,6 +14,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { StorageService, type StoredFileMeta } from '../storage';
+import { UserService } from '../user';
+import { AvatarLibraryService } from '../avatar';
 import { InteractiveService } from './interactive.service';
 import { RoomSessionService } from './room-session.service';
 
@@ -32,11 +35,58 @@ export class PublicInteractiveController {
     private readonly rooms: RoomSessionService,
     private readonly storage: StorageService,
     private readonly interactive: InteractiveService,
+    private readonly users: UserService,
+    private readonly avatarLibrary: AvatarLibraryService,
   ) {}
+
+  /**
+   * 进场头像候选:从公共头像库随机抽一批(替代早期 bundle 的 11 个预设卡通头像)。
+   * 手机网格显示 thumbFileId 缩略图(256px webp 省流量),选中落库存 "u:<fileId>" 原图
+   * (与工牌进场同一标识,头像工坊删除时的在用防护已覆盖)。匿名公开口收敛:
+   * 须带有效房间码(活动进行中),条件不满足回空列表不报错(照 employees 口惯例)。
+   */
+  @Get('avatar-options')
+  async avatarOptions(
+    @Query('roomCode') roomCodeRaw?: string,
+  ): Promise<{ items: { fileId: string; thumbFileId: string | null }[] }> {
+    const roomCode = String(roomCodeRaw ?? '')
+      .toUpperCase()
+      .trim();
+    if (!roomCode) return { items: [] };
+    const event = await this.interactive.loadRoomByCode(roomCode);
+    if (!event || event.status === 'ended') return { items: [] };
+    return { items: await this.avatarLibrary.randomForInteractive(12) };
+  }
 
   @Get('rooms/:code')
   roomInfo(@Param('code') code: string) {
     return this.rooms.publicRoomInfo(code);
+  }
+
+  /**
+   * 工牌进场:输入员工编号或姓名 → 精确匹配在职员工,带出 姓名 + 平台头像(前端存 "u:<fileId>")。
+   * 匿名公开口收敛:须带有效房间码(活动进行中)+ 只做精确等值匹配(不模糊,防拉花名册)+
+   * 只回 姓名/头像 fileId(不回工号/组织);无命中/条件不满足一律回空列表不报错。
+   */
+  @Get('employees')
+  async employeeLookup(
+    @Query('roomCode') roomCodeRaw?: string,
+    @Query('q') qRaw?: string,
+  ): Promise<{ items: { name: string; avatarFileId: string | null }[] }> {
+    const roomCode = String(roomCodeRaw ?? '')
+      .toUpperCase()
+      .trim();
+    const q = String(qRaw ?? '').trim();
+    if (!roomCode || q.length < 2) return { items: [] };
+    const event = await this.interactive.loadRoomByCode(roomCode);
+    if (!event || event.status === 'ended') return { items: [] };
+    const rows = await this.users.matchForInteractive(q);
+    const items = rows.map((r) => {
+      // 只认平台头像 URL(/api/public/avatars/<fileId>);外链/空头像 → 只带姓名
+      const m = /^\/api\/public\/avatars\/([a-z0-9]+)$/i.exec(r.avatarUrl ?? '');
+      return { name: r.name, avatarFileId: m ? m[1] : null };
+    });
+    return { items };
   }
 
   /**

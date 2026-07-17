@@ -1,9 +1,17 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import axios, { type AxiosError } from 'axios';
+import { PrismaService } from '../prisma';
 import { StorageService } from '../storage';
 import { ExternalApiService } from '../external-api';
 import { AuditService } from '../audit';
 import { PromptService } from '../prompt';
+import { AVATAR_LIBRARY_FOLDER, AvatarLibraryService } from './avatar-library.service';
 
 interface ActorCtx {
   actorId?: string;
@@ -50,10 +58,12 @@ export class AvatarService {
   private readonly logger = new Logger(AvatarService.name);
 
   constructor(
+    private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly externalApi: ExternalApiService,
     private readonly audit: AuditService,
     private readonly prompts: PromptService,
+    private readonly library: AvatarLibraryService,
   ) {}
 
   async generate(
@@ -217,5 +227,71 @@ export class AvatarService {
       originalName: m.originalName,
       createdAt: m.createdAt,
     }));
+  }
+
+  /**
+   * 删除历史头像库里的一个文件(本人删自己文件夹的 / avatar:manage 可删任何人的)。
+   * 守卫:公共库文件不走此口(头像工坊管理);**正在被使用的头像拒删**(User.avatarUrl /
+   * 互动 "u:" 引用 —— 删了全站头像就裂,提示先更换);联动清派生的弹出抠像(映射行 + 文件)。
+   */
+  async removeHistory(
+    fileId: string,
+    actor: ActorCtx,
+    scope: { name?: string; username?: string; canManage: boolean },
+  ): Promise<{ ok: true }> {
+    const meta = await this.storage.getMeta(fileId); // 不存在/软删 → NotFound
+    const folder = meta.folder ?? '';
+    if (meta.ownerModule !== 'user' || !folder.startsWith('avatars')) {
+      throw new BadRequestException('不是头像文件');
+    }
+    if (folder === AVATAR_LIBRARY_FOLDER || folder.startsWith(`${AVATAR_LIBRARY_FOLDER}/`)) {
+      throw new BadRequestException('公共头像库文件请到「头像工坊」里管理');
+    }
+    const ownFolder = avatarFolder(scope.name, scope.username);
+    if (!scope.canManage && folder !== ownFolder) {
+      throw new ForbiddenException('只能删除自己头像库中的文件');
+    }
+    // 在用校验(照头像工坊 remove 的交叉校验惯例):当前被任何用户/互动玩家引用 → 拒删
+    const [userRefs, playerRefs] = await Promise.all([
+      this.prisma.user.count({ where: { avatarUrl: { contains: fileId } } }),
+      this.prisma.interactivePlayer.count({ where: { avatar: `u:${fileId}` } }),
+    ]);
+    if (userRefs + playerRefs > 0) {
+      throw new ConflictException('该头像正在被使用(当前头像/现场互动),请先更换后再删除');
+    }
+    await this.library.dropPersonalPop(fileId, actor); // 派生抠像联动清
+    await this.storage.softDelete(fileId, actor);
+    await this.audit.log({
+      action: 'avatar.history.remove',
+      target: fileId,
+      ...actor,
+      detail: JSON.stringify({ folder, originalName: meta.originalName, canManage: scope.canManage }),
+    });
+    return { ok: true };
+  }
+
+  /**
+   * 管理员总览:所有员工的生成头像(私有头像汇总,供浏览 + 提升到公共库)。
+   * 生成头像 originalName 含「头像」(落名 `{姓名}-头像.ext`),公共库文件名是 avatar-XXX-性别
+   * 不含「头像」→ 天然排除;再按 folder 双保险排除 avatars/library。
+   * ⚠ storage.list 硬上限 200,当前生成头像仅十几个;将来量大需给 storage 加前缀分页。
+   */
+  async listGenerated(): Promise<
+    { fileId: string; url: string; originalName: string; folder: string; createdAt: Date }[]
+  > {
+    const metas = await this.storage.list({
+      ownerModule: 'user',
+      originalNameContains: '头像',
+      limit: 200,
+    });
+    return metas
+      .filter((m) => !(m.folder ?? '').startsWith('avatars/library'))
+      .map((m) => ({
+        fileId: m.id,
+        url: `/api/public/avatars/${m.id}`,
+        originalName: m.originalName,
+        folder: m.folder ?? '',
+        createdAt: m.createdAt,
+      }));
   }
 }

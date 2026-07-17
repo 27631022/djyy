@@ -125,6 +125,29 @@ export interface OrgLink {
   org: Organization;
 }
 
+/**
+ * 党组织 → 对口行政机构的解析结果。
+ *
+ * via 可信度(真实库实测:党委 33/35 有显式关联 = 94%,党支部仅 4/361 = 1%,
+ * 所以党支部的主路径必然是 'ancestor' —— 这是正确的,支部的单位确实只能从上级党委推):
+ *  - 'link'     显式 PartyAdminLink —— 唯一可信档,可直接写 deptOrgId
+ *  - 'name'     去后缀名匹配(西北分公司党委 → 西北分公司)—— 标「待核对」
+ *  - 'ancestor' 经上级党委推得 —— 得到的是「所属党委对应的单位」,强制「待核对」
+ *  - 'none'     解析不出
+ */
+export interface ResolvedPartyOrg {
+  partyOrgId: string;
+  partyOrgName: string;
+  partyOrgPath: string;
+  adminOrgId: string | null;
+  adminOrgName: string | null;
+  /** 全称路径快照 —— 直接落 CollectiveRow.dept */
+  adminOrgPath: string | null;
+  via: "link" | "name" | "ancestor" | "none";
+  /** via='ancestor' 时的中转党委名,提示「经上级『甘肃分公司党委』推得」 */
+  ancestorPartyOrgName?: string;
+}
+
 export const organizationsApi = {
   list: (kind?: OrgKind, includeInactive = false) =>
     api
@@ -177,4 +200,19 @@ export const organizationsApi = {
     api.post<{ id: string }>(`/organizations/${id}/links`, { otherOrgId }).then((r) => r.data),
   /** 解除关联 */
   removeLink: (linkId: string) => api.delete(`/organizations/links/${linkId}`),
+
+  /**
+   * 党组织名 → 对口行政机构(批量,最多 200 个)。
+   * 发证「先进基层党委/党支部」这类集体荣誉自动带出「所在单位」用。
+   *
+   * 响应 `{ [党组织名]: ResolvedPartyOrg[] }`:
+   *  - `[]`      党组织树里没这个名字(调用方回退到「按单位前缀/集体名匹配」)
+   *  - 1 条      正常;via 决定可信度(link 可信,name/ancestor 须标「待核对」)
+   *  - 多条      党组织重名(如「特车运输大队党支部」在塔运司与新疆油田运输分公司各一)
+   *              → **必须人工点选**
+   */
+  resolvePartyOrgs: (names: string[]) =>
+    api
+      .post<Record<string, ResolvedPartyOrg[]>>("/organizations/resolve-party", { names })
+      .then((r) => r.data),
 };

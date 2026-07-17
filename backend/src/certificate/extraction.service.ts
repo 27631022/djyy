@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError } from 'axios';
 import mammoth from 'mammoth';
+import WordExtractor from 'word-extractor';
 // pdf-parse v2.x 改成 class API(老 v1 是 fn 形态),且包用 type:module
 // + exports map,无法走 `pdf-parse/lib/...` 子路径。
 // 通过 require('pdf-parse').PDFParse 拿 class。
@@ -422,19 +423,29 @@ export class CertificateExtractionService {
     // 图片暂不支持(MVP 不做 OCR)
     if (mime.startsWith('image/')) {
       throw new BadRequestException(
-        '暂不支持图片格式(MVP 阶段)。请上传 Word(.docx)或 PDF',
+        '暂不支持图片格式(MVP 阶段)。请上传 Word(.doc/.docx)或 PDF',
       );
     }
 
-    // .doc(旧 Office)mammoth 也读不了,提示用户转 docx
-    if (lower.endsWith('.doc')) {
-      throw new BadRequestException(
-        '旧版 .doc 暂不支持,请用 Word 另存为 .docx 后再上传',
-      );
+    // Word .doc(旧 OLE 复合文档 —— 单位下发的红头文件仍大量是这个格式)
+    // 必须排在 .docx 分支之后:否则 `.docx` 会被 `.doc` 的判据抢先吃掉。
+    // word-extractor 只认真正的 OLE;改名的 docx / RTF 伪装 / 加密文档都会抛。
+    if (mime === 'application/msword' || lower.endsWith('.doc')) {
+      try {
+        const doc = await new WordExtractor().extract(file.buffer);
+        // 正文 + 文本框(红头文件的文号/标题常放在文本框里)
+        return [doc.getBody(), doc.getTextboxes()].filter(Boolean).join('\n');
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`.doc 解析失败(${file.originalname}): ${msg}`);
+        throw new BadRequestException(
+          '旧版 .doc 解析失败:可能是加密文档,或扩展名与真实格式不符。请用 Word 另存为 .docx 后再上传',
+        );
+      }
     }
 
     throw new BadRequestException(
-      `不支持的文件类型 ${mime || lower}。请用 .docx 或 .pdf`,
+      `不支持的文件类型 ${mime || lower}。请用 .doc / .docx / .pdf`,
     );
   }
 }

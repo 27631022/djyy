@@ -29,6 +29,24 @@ export type HonorType = "individual" | "collective";
 export type WizardStep = 1 | 2 | 3 | 4 | 5;
 
 /**
+ * 「姓名(+单位)」命中多人时的一个候选 —— 用户必须亲自点选。
+ * 库里 3638 人重名(最多 25 人同名),加单位后仍有 326 人多义
+ * (如「云贵分公司」下有 2 个聂伟)—— 系统绝不替用户猜身份。
+ */
+export interface PersonCandidate {
+  userId: string;
+  name: string;
+  /** = User.username */
+  empNo: string;
+  /** 全称路径,如「昆仑物流 / 基层单位 / 云贵分公司 / 昆明配送中心」——
+   *  这是分辨「哪个聂伟」的唯一有效信息,下拉里必须显眼 */
+  deptPath: string;
+  deptOrgId?: string;
+  /** 行政归属为空时的辅助识别信息 */
+  partyOrgName?: string | null;
+}
+
+/**
  * 个人荣誉的被表彰人(Step 3b 填)。
  * 状态:
  *  - found=true 表示库中有(userId/dept 由 lookup-by-empno 自动回填)
@@ -39,18 +57,31 @@ export interface PersonRow {
   rid: string;
   name: string;
   empNo: string;
-  /** 所在单位/部门:存组织全称路径快照(从组织树点选 / 工号命中自动带出) */
+  /**
+   * 所在单位/部门:**权威路径快照** —— 只由「工号命中 / 候选点选 / OrgPicker 点选」写入。
+   * ⚠ 这个值会被烤进证书 PDF,绝不能放 AI 猜测值(AI 抽到的单位放 orgHint)。
+   */
   dept: string;
   /** 选中的组织 orgId — 让 OrgPicker 能回显选中项;发证不直接用(用 dept 路径快照) */
   deptOrgId?: string;
+  /**
+   * 表彰文件/粘贴里写的单位前缀**原文**(如「云贵分公司」)。
+   * 只用于「缩小匹配候选」与兜底显示,**不是快照、不进证书** —— 它是公文原文/口语
+   * 称谓,可能是历史名,与组织树当前权威归属未必一致。
+   */
+  orgHint?: string;
   /** lookup 命中后的 User.id,发证时作为 recipientUserId(命中才传) */
   userId?: string;
   /** 库中是否找到 — 控制 UI 状态徽章 */
   found: boolean;
   /** 工号/单位是「按姓名」兜底补的(非工号精确匹配)→ 标「待核对」重点检查 */
   byName?: boolean;
-  /** 姓名命中多人(重名)→ 未自动补工号,标「重名·待核对」 */
+  /** 姓名(+单位)命中多人 → 未自动补工号,须用户在 candidates 里点选 */
   ambiguous?: boolean;
+  /** 多义时的候选清单(ambiguous 才有);点选后清空 */
+  candidates?: PersonCandidate[];
+  /** 候选被后端截断(同名过多)→ UI 引导「补充单位 / 直接填工号」,别在残缺列表里瞎选 */
+  candidatesTruncated?: boolean;
 }
 
 /**
@@ -62,12 +93,28 @@ export interface CollectiveRow {
   rid: string;
   /** 集体名,如「青年突击队」/「机关党支部」/「先进基层党组织(机关综合处)」 */
   name: string;
-  /** 所在单位/部门:存组织全称路径快照(从组织树点选) */
+  /** 所在单位/部门:存组织全称路径快照(从组织树点选 / 党组织解析带出) */
   dept: string;
   /** 选中的组织 orgId — 让 OrgPicker 能回显选中项 */
   deptOrgId?: string;
+  /** 表彰文件里的上级单位前缀原文(「甘肃分公司：酒泉配送中心党支部」的左半),
+   *  与 PersonRow.orgHint 同语义:只参与匹配与兜底显示,不是快照 */
+  orgHint?: string;
   /** 单位由「按集体名」模糊匹配填入(名称不完全相同)→ 标「待核对」重点检查 */
   deptReview?: boolean;
+  /**
+   * 匹配结果的**纯 UI 提示**(如「同名党组织有 2 个:塔运司 / 新疆油田运输分公司」)。
+   * ⚠ 绝不写进 dept —— dept 会原样烤进证书 PDF;这类「A 或 B」的话只能出现在界面上。
+   */
+  deptNote?: string;
+  /**
+   * 单位是由党组织解析带出的方式,决定提示文案:
+   *  - 'link'     显式党组织↔行政机构关联 —— 可信
+   *  - 'name'     去后缀名匹配(西北分公司党委 → 西北分公司)—— 待核对
+   *  - 'ancestor' 经上级党委推得(酒泉配送中心党支部 → 甘肃分公司党委 → 甘肃分公司)—— 待核对
+   *  - 'none'     解析不出
+   */
+  deptVia?: "link" | "name" | "ancestor" | "none";
 }
 
 /**
@@ -227,10 +274,13 @@ export function newPersonRow(partial?: Partial<PersonRow>): PersonRow {
     empNo: partial?.empNo ?? "",
     dept: partial?.dept ?? "",
     deptOrgId: partial?.deptOrgId,
+    orgHint: partial?.orgHint ?? "",
     userId: partial?.userId,
     found: partial?.found ?? false,
     byName: partial?.byName,
     ambiguous: partial?.ambiguous,
+    candidates: partial?.candidates,
+    candidatesTruncated: partial?.candidatesTruncated,
   };
 }
 
@@ -240,7 +290,10 @@ export function newCollectiveRow(partial?: Partial<CollectiveRow>): CollectiveRo
     name: partial?.name ?? "",
     dept: partial?.dept ?? "",
     deptOrgId: partial?.deptOrgId,
+    orgHint: partial?.orgHint ?? "",
     deptReview: partial?.deptReview,
+    deptVia: partial?.deptVia,
+    deptNote: partial?.deptNote,
   };
 }
 

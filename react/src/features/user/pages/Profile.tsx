@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   BookOpenIcon,
@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/stores/auth";
 import { authApi, type AuthMe, type AuthMembership } from "@/features/auth";
-import { AvatarGenerator, resolveAvatarUrl } from "@/features/avatar";
+import { AvatarChanger, resolveAvatarUrl } from "@/features/avatar";
 import { FONT_OPTIONS, initialFontPx, storeFontPx } from "@/features/knowledge";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -44,6 +44,7 @@ function ProfileView({ me }: { me: AuthMe }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { refresh } = useAuth();
+  const qc = useQueryClient();
 
   // 登录模式(公开口):决定「账号安全」显示改密表单还是演示模式说明
   const modeQ = useQuery({ queryKey: ["auth", "mode"], queryFn: authApi.mode });
@@ -65,6 +66,10 @@ function ProfileView({ me }: { me: AuthMe }) {
     mutationFn: (url: string) => usersApi.updateMyProfile({ avatarUrl: url }),
     onSuccess: async () => {
       await refresh(); // 全站(门户/后台右上角)头像即时更新
+      // 列表类缓存里还留着旧 avatarUrl:通讯录(卡片+收藏)/后台用户管理(keep-alive 常驻不会自己刷)
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["directory"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
       setAvatarOpen(false);
       toast.success("头像已更新");
     },
@@ -196,8 +201,7 @@ function ProfileView({ me }: { me: AuthMe }) {
                     avatarMut.isPending ? "pointer-events-none opacity-60" : ""
                   }`}
                 >
-                  {/* AI 生成 + 历史头像库(点历史缩略图同样走 onConfirm 落库);保存中锁住防连点乱序 */}
-                  <AvatarGenerator
+                  <AvatarChanger
                     targetName={me.name}
                     employeeNumber={me.username}
                     confirmLabel="设为我的头像"

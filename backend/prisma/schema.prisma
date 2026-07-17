@@ -1742,6 +1742,7 @@ model AvatarLibraryItem {
   name        String
   fileId      String   @unique // 原图 StoredFile.id(松引用;唯一防重复入库)
   thumbFileId String? // 缩略图 StoredFile.id(生成失败可空,前端回退原图)
+  popFileId   String? // 「弹出人物」透明抠像 StoredFile.id;'none'=已判不适用;null=未生成(启动补扫)
   gender      String   @default("neutral") // male | female | neutral(管理筛选 + 后续编辑器分组)
   source      String   @default("upload") // upload | studio(头像编辑器产物)
   configJson  String? // 编辑器部件配置(studio 来源可回编辑;上传件为 null)
@@ -1750,4 +1751,13 @@ model AvatarLibraryItem {
   updatedAt   DateTime @updatedAt
 
   @@index([createdAt])
+}
+
+// 个人头像文件(AI 生成/上传,非公共库)的「弹出人物」抠像映射;公共库头像的映射在 AvatarLibraryItem.popFileId。
+// 公开口 /public/avatars/:id/pop 首访懒生成后落表;原图删除后残行无害(取文件时 404)。
+// @module: avatar
+model AvatarPopCutout {
+  fileId    String   @id // 原图 StoredFile.id(松引用)
+  popFileId String // 抠像 StoredFile.id;'none'=已判不适用(不再重试)
+  createdAt DateTime @default(now())
 }

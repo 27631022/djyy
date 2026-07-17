@@ -96,7 +96,11 @@ export function Step2HonorRecords({
                   newPersonRow({
                     name: r.name,
                     empNo: r.empNo ?? "",
-                    dept: r.dept ?? "",
+                    // ⚠ AI 抽到的单位进 orgHint,**不进 dept** —— dept 是会被烤进证书 PDF
+                    // 的权威快照,只能由「工号命中 / 候选点选 / 组织树点选」写入。
+                    // 在 Step3 点「按姓名+单位匹配」时 orgHint 用来收敛候选。
+                    orgHint: r.dept ?? "",
+                    dept: "",
                     found: false,
                   }),
                 )
@@ -104,7 +108,7 @@ export function Step2HonorRecords({
           collectives:
             honorType === "collective"
               ? h.recipients.map((r) =>
-                  newCollectiveRow({ name: r.name, dept: r.dept }),
+                  newCollectiveRow({ name: r.name, orgHint: r.dept ?? "", dept: "" }),
                 )
               : [],
         });

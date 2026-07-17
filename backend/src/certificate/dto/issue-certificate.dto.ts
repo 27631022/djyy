@@ -18,9 +18,12 @@ import {
  *   - 关联系统用户 → 传 recipientUserId,服务端会从 User 表读 username/name 做快照
  *   - 手填外部人员 → 不传 recipientUserId,但 recipientName 必填
  *
+ * ⚠ 传了 recipientUserId 时,服务端会校验 recipientName/recipientEmpNo 与该 User
+ *   是否为同一个人,不符直接 400(防「绑错人 → 快照静默改写证书上的姓名」)。
+ *
  * 批次概念:
  *   batchKey = `${yearLabel}-${honorCode}-${batchTotal}`,
- *   服务端按 batchKey 决定 batchSeq(SELECT COUNT + 1,事务保证唯一)。
+ *   服务端按 batchKey 决定 batchSeq(事务内取批次现存 max(batchSeq) + 1,保证唯一)。
  *   超过 batchTotal 会报错。追加发证请用不同的 batchTotal。
  */
 export class IssueCertificateDto {
@@ -30,9 +33,14 @@ export class IssueCertificateDto {
   /** 持证人 — 关联系统用户(可选) */
   @IsOptional()
   @IsString()
+  @MaxLength(64)
   recipientUserId?: string;
 
-  /** 持证人姓名(必填,关联 User 也会以此为准) */
+  /**
+   * 持证人姓名(必填)。
+   * ⚠ 关联 User 时,落库以 **User 快照为准**(本字段只用于一致性校验,不符会 400)——
+   *   与集体荣誉不同,集体荣誉恒以本字段为准。
+   */
   @IsString()
   @MinLength(1)
   @MaxLength(64)

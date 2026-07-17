@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -10,6 +10,8 @@ import {
   SearchIcon,
   SparklesIcon,
   Trash2Icon,
+  UsersIcon,
+  WandSparklesIcon,
   XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -20,11 +22,13 @@ import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import { downloadBlob } from "@/shared/lib/download";
 import { storageApi } from "@/features/storage";
 import {
+  avatarApi,
   avatarLibraryApi,
   resolveAvatarUrl,
   avatarErrorMessage,
   type AvatarGender,
   type AvatarLibraryItem,
+  type GeneratedAvatarItem,
 } from "../api";
 
 /** 公共头像库文件约定(与后端 AVATAR_LIBRARY_FOLDER 一致:公开口/GC 豁免都按它判) */
@@ -188,12 +192,234 @@ function ItemCard({
   );
 }
 
-/**
- * 公共头像库管理页(/admin/avatar-library,菜单权限 avatar:manage)。
- * 批量上传(入库自动生成 256px 缩略图,网格显示小图省流量)+ 搜索/性别筛选 + 就地改名 + 批量删除 + 预览/下载。
- * 上传件与后续「头像编辑器」产物同库(studio 来源带配置可回编辑)。
- */
-export default function AvatarLibrary() {
+/** 顶部 tab 按钮 */
+function TabBtn({
+  active,
+  onClick,
+  icon: Icon,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: ComponentType<{ className?: string }>;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+        active
+          ? "border-[var(--party-primary)] bg-party-soft text-[var(--party-primary)] font-medium"
+          : "border-neutral-200 text-neutral-500 hover:border-neutral-300"
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+      {children}
+    </button>
+  );
+}
+
+/** 「为无头像用户分配默认头像」按钮 + 确认对话框(先展示无头像人数)。 */
+function ApplyDefaultsButton() {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const countQ = useQuery({
+    queryKey: ["avatar-library", "no-avatar-count"],
+    queryFn: () => avatarLibraryApi.noAvatarCount(),
+    enabled: open,
+  });
+  const mut = useMutation({
+    mutationFn: () => avatarLibraryApi.applyDefaults(),
+    onSuccess: (r) => {
+      toast.success(
+        `已为 ${r.assigned} 人分配默认头像${r.skipped ? `;${r.skipped} 人因无对应性别素材跳过` : ""}`,
+      );
+      setOpen(false);
+      qc.invalidateQueries({ queryKey: ["avatar-library", "no-avatar-count"] });
+    },
+    onError: (e) => toast.error(avatarErrorMessage(e, "分配失败")),
+  });
+  return (
+    <>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        <WandSparklesIcon className="mr-1 h-4 w-4" /> 分配默认头像
+      </Button>
+      <Dialog open={open} onOpenChange={(o) => !o && !mut.isPending && setOpen(false)}>
+        <DialogContent className="max-w-md">
+          <DialogTitle className="text-base">为无头像用户分配默认头像</DialogTitle>
+          <p className="text-sm leading-relaxed text-neutral-600">
+            将为所有<b>没有头像</b>的在职用户,按性别从公共库<b>随机</b>挑一张同性别头像(男配男、女配女)。
+            已有头像 / 已自选的用户不受影响(幂等,可重复执行)。
+          </p>
+          <div className="rounded-lg bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
+            当前无头像用户:
+            {countQ.isLoading ? (
+              " …"
+            ) : (
+              <b className="mx-1 text-[var(--party-primary)]">{countQ.data?.count ?? 0}</b>
+            )}
+            人
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={mut.isPending}>
+              取消
+            </Button>
+            <Button
+              disabled={mut.isPending || !countQ.data?.count}
+              onClick={() => mut.mutate()}
+              className="bg-[var(--party-primary)] hover:bg-[var(--party-primary)]/90"
+            >
+              {mut.isPending ? (
+                <>
+                  <Loader2Icon className="mr-1 h-4 w-4 animate-spin" /> 分配中…
+                </>
+              ) : (
+                "确认分配"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/** 提升对话框:选性别 + 改名 → 把员工私有头像复制进公共库。 */
+function PromoteDialog({ item, onClose }: { item: GeneratedAvatarItem; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState(() =>
+    item.originalName
+      .replace(/\.[a-z0-9]+$/i, "")
+      .replace(/-?头像$/, "")
+      .slice(0, 80),
+  );
+  const [gender, setGender] = useState<AvatarGender>("neutral");
+  const mut = useMutation({
+    mutationFn: () =>
+      avatarLibraryApi.promoteFromFile({
+        sourceFileId: item.fileId,
+        name: name.trim() || undefined,
+        gender,
+      }),
+    onSuccess: () => {
+      toast.success("已加入公共头像库");
+      qc.invalidateQueries({ queryKey: ["avatar-library"] });
+      onClose();
+    },
+    onError: (e) => toast.error(avatarErrorMessage(e, "提升失败")),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && !mut.isPending && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogTitle className="text-base">加入公共头像库</DialogTitle>
+        <div className="flex gap-3">
+          <img
+            src={resolveAvatarUrl(item.url)}
+            alt={item.originalName}
+            className="h-24 w-24 shrink-0 rounded-lg object-cover bg-neutral-100"
+          />
+          <div className="flex-1 space-y-2">
+            <div>
+              <label className="mb-1 block text-xs text-neutral-500">名称</label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-neutral-500">性别分组</label>
+              <select
+                value={gender}
+                onChange={(e) => setGender(e.target.value as AvatarGender)}
+                className="h-8 w-full rounded border bg-white px-2 text-sm text-neutral-700"
+              >
+                {(Object.keys(GENDER_LABEL) as AvatarGender[]).map((g) => (
+                  <option key={g} value={g}>
+                    {GENDER_LABEL[g]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+        <p className="text-[11px] leading-relaxed text-neutral-400">
+          会复制一份进公共库(与员工现用头像解耦,删库不影响员工),供全员挑选。
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={mut.isPending}>
+            取消
+          </Button>
+          <Button
+            disabled={mut.isPending || !name.trim()}
+            onClick={() => mut.mutate()}
+            className="bg-[var(--party-primary)] hover:bg-[var(--party-primary)]/90"
+          >
+            {mut.isPending ? "提交中…" : "加入公共库"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** 用户头像卡(生成头像 + 提升入口) */
+function GeneratedCard({ item, onPromote }: { item: GeneratedAvatarItem; onPromote: () => void }) {
+  const emp = item.folder.replace(/^avatars\/?/, "") || "未归档";
+  return (
+    <div className="rounded-lg border bg-white overflow-hidden">
+      <img
+        src={resolveAvatarUrl(item.url)}
+        alt={item.originalName}
+        loading="lazy"
+        className="aspect-square w-full object-cover bg-neutral-100"
+      />
+      <div className="space-y-1 p-2">
+        <div className="truncate text-xs font-medium" title={item.originalName}>
+          {item.originalName}
+        </div>
+        <div className="truncate text-[11px] text-neutral-400" title={emp}>
+          {emp}
+        </div>
+        <Button size="sm" variant="outline" className="h-6 w-full text-[11px]" onClick={onPromote}>
+          加入公共库
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** 用户头像 tab:全员生成头像总览 + 提升。 */
+function GeneratedTab() {
+  const listQ = useQuery({ queryKey: ["avatar-generated"], queryFn: () => avatarApi.generated() });
+  const items = listQ.data ?? [];
+  const [promote, setPromote] = useState<GeneratedAvatarItem | null>(null);
+  return (
+    <>
+      <p className="text-sm text-neutral-500">
+        全员 AI 生成的头像(私有资产,仅管理员总览)。「加入公共库」可把好头像提升为大家可选(复制一份,不影响员工现用头像)。
+      </p>
+      {listQ.isLoading ? (
+        <div className="flex items-center gap-2 py-16 justify-center text-neutral-400">
+          <Loader2Icon className="h-5 w-5 animate-spin" /> 加载中…
+        </div>
+      ) : items.length === 0 ? (
+        <div className="rounded-lg border border-dashed py-16 text-center text-sm text-neutral-400">
+          还没有用户生成过头像
+        </div>
+      ) : (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
+          {items.map((it) => (
+            <GeneratedCard key={it.fileId} item={it} onPromote={() => setPromote(it)} />
+          ))}
+        </div>
+      )}
+      {promote && (
+        <PromoteDialog key={promote.fileId} item={promote} onClose={() => setPromote(null)} />
+      )}
+    </>
+  );
+}
+
+/** 公共库 tab:批量上传 + 搜索/性别筛选 + 就地改名 + 批量删除 + 预览/下载 + 分配默认头像。 */
+function LibraryTab() {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
@@ -208,7 +434,7 @@ export default function AvatarLibrary() {
     queryFn: () => avatarLibraryApi.list({ q: debouncedQ || undefined, gender: gender || undefined }),
   });
   const items = useMemo(() => listQuery.data ?? [], [listQuery.data]);
-  // 生效选中 = 选中集 ∩ 当前列表(切筛选/搜索/别处已删的幽灵 id 自动失效,计数与删除目标都用它)
+  // 生效选中 = 选中集 ∩ 当前列表(切筛选/搜索/别处已删的幽灵 id 自动失效)
   const selectedActive = useMemo(() => items.filter((it) => selected.has(it.id)), [items, selected]);
 
   // 逐个上传入库(单个失败不阻断其余,末尾汇总)
@@ -224,7 +450,6 @@ export default function AvatarLibrary() {
         if (!f.type.startsWith("image/")) throw new Error("不是图片文件");
         const meta = await storageApi.upload(f, UPLOAD_OPTS);
         uploadedId = meta.id;
-        // name 截到 80 与后端 DTO 同口径(长文件名不该让整条入库失败)
         await avatarLibraryApi.add({
           fileId: meta.id,
           name: f.name.replace(/\.[a-z0-9]+$/i, "").slice(0, 80),
@@ -232,7 +457,6 @@ export default function AvatarLibrary() {
         ok++;
       } catch (e) {
         errors.push(`${f.name}:${avatarErrorMessage(e, "失败")}`);
-        // 已上传但入库失败 → 尽力补偿删除,避免残留孤儿文件(无 file:delete 权限时静默放弃)
         if (uploadedId) {
           try {
             await storageApi.remove(uploadedId);
@@ -250,7 +474,6 @@ export default function AvatarLibrary() {
     else toast.error(`入库 ${ok} 成功 / ${errors.length} 失败`, { description: errors.slice(0, 3).join("; ") });
   };
 
-  // 逐项容错(照 handleFiles 姿势):404=别处已删,视为幂等成功;失败项留在选中集可重试
   const removeMut = useMutation({
     mutationFn: async (ids: string[]) => {
       const removed: string[] = [];
@@ -288,14 +511,11 @@ export default function AvatarLibrary() {
     });
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4">
+    <>
       <div className="flex flex-wrap items-center gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">头像库</h1>
-          <p className="text-sm text-neutral-500">
-            全平台共享的公共头像:批量上传入库(自动生成缩略图),供个人头像挑选与互动游戏使用
-          </p>
-        </div>
+        <p className="text-sm text-neutral-500">
+          全平台共享的公共头像:批量上传入库(自动缩略图),供个人挑选、无头像用户默认分配、互动游戏使用
+        </p>
         <div className="ml-auto flex items-center gap-2">
           <div className="relative">
             <SearchIcon className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
@@ -306,6 +526,7 @@ export default function AvatarLibrary() {
               className="h-9 w-44 pl-7"
             />
           </div>
+          <ApplyDefaultsButton />
           <input
             ref={fileRef}
             type="file"
@@ -410,6 +631,30 @@ export default function AvatarLibrary() {
           )}
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+/**
+ * 头像库管理页(/admin/avatar-library,菜单权限 avatar:manage)。
+ * 两 tab:公共库(全平台共享素材,批量上传/改名/删除 + 无头像用户默认分配)/ 用户头像(全员生成头像总览 + 提升进公共库)。
+ */
+export default function AvatarLibrary() {
+  const [tab, setTab] = useState<"library" | "generated">("library");
+  return (
+    <div className="p-6 max-w-7xl mx-auto space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-xl font-semibold">头像库</h1>
+        <div className="flex gap-1.5">
+          <TabBtn active={tab === "library"} onClick={() => setTab("library")} icon={ImagePlusIcon}>
+            公共库
+          </TabBtn>
+          <TabBtn active={tab === "generated"} onClick={() => setTab("generated")} icon={UsersIcon}>
+            用户头像
+          </TabBtn>
+        </div>
+      </div>
+      {tab === "library" ? <LibraryTab /> : <GeneratedTab />}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import {
 import { usersApi, directoryMeApi, type ContactItem, type ContactsQuery, type CounterpartOrg } from "@/features/user";
 import { organizationsApi, type OrgTreeNode } from "@/features/organization";
 import { dictionariesApi, DICT_CODES } from "@/features/dictionary";
-import { resolveAvatarUrl } from "@/features/avatar";
+import { PopoutAvatar, resolveAvatarUrl } from "@/features/avatar";
 import { SiteLogo } from "@/features/site-setting";
 import { useAuth } from "@/stores/auth";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
@@ -610,11 +610,10 @@ function ContactCard({
   isFav: boolean;
   onToggleFav: () => void;
 }) {
-  const avatar = resolveAvatarUrl(c.avatarUrl);
   const political = politicalLabel(c.politicalStatus);
   return (
     <div
-      className="relative flex flex-col rounded-2xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+      className="group relative flex flex-col rounded-2xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
       style={{ borderColor: c.isLeader ? LEADER : "rgb(243,244,246)" }}
     >
       {/* 收藏星 */}
@@ -628,13 +627,8 @@ function ContactCard({
       </button>
 
       <div className="flex items-start gap-3 pr-6">
-        {avatar ? (
-          <img src={avatar} alt="" className="h-12 w-12 flex-shrink-0 rounded-full object-cover ring-1 ring-gray-100" />
-        ) : (
-          <div className="grid h-12 w-12 flex-shrink-0 place-items-center rounded-full bg-[var(--party-primary)] text-lg font-bold text-white">
-            {c.name.charAt(0)}
-          </div>
-        )}
+        {/* 悬浮卡片(group)时人物从背景圆圈弹出(圈色 男蓝/女粉);无抠像自动回退圈内放大 */}
+        <PopoutAvatar avatarUrl={c.avatarUrl} name={c.name} gender={c.gender} className="h-12 w-12 text-lg" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="truncate text-[15px] font-semibold text-gray-900">

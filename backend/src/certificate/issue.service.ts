@@ -53,6 +53,42 @@ function buildBatchKey(
   return `${yearLabel}-${honorCode}-${batchTotal}`;
 }
 
+/** 姓名比对前的归一化:去空白(公文给 2 字姓名垫空格对齐:「聂  伟」vs 库里「聂伟」) */
+function foldName(s: string): string {
+  return (s ?? '').replace(/\s+/g, '');
+}
+
+/**
+ * 身份一致性闸 —— 「关联的 User」必须与「证书上要写的人」是同一个人。
+ *
+ * ★ 为什么必须有这一刀:落库时 individual 分支会用 userSnapshot.name/username
+ *   **覆盖** DTO 传来的姓名/工号。也就是说一旦 recipientUserId 绑错人,
+ *   证书正面、编号、PDF、公开验证页会**静默**变成另一个人,发证人在 UI 上
+ *   看不到任何差异;而且错的人能在「我的证书」里搜到它,对的人永远搜不到,
+ *   考核荣誉积分也会归到错误单位。发证后又没有改绑接口(只能作废重发)。
+ *
+ *   加了这一刀,误绑从「静默改写身份」变成「发证失败并说清原因」。
+ *
+ * 只在两边都提供了值时比对(工号可选,老数据/外部录入可能没有)。
+ */
+function assertIdentityMatches(
+  dto: { recipientName?: string; recipientEmpNo?: string | null },
+  u: { name: string; username: string },
+): void {
+  const dtoName = foldName(dto.recipientName ?? '');
+  if (dtoName && foldName(u.name) !== dtoName) {
+    throw new BadRequestException(
+      `持证人信息与关联用户不符:证书上要写「${dto.recipientName}」,但关联的用户是「${u.name}」(员工编号 ${u.username})。请重新确认是哪一位,或清除关联后手工发证。`,
+    );
+  }
+  const dtoEmpNo = (dto.recipientEmpNo ?? '').trim();
+  if (dtoEmpNo && dtoEmpNo !== u.username) {
+    throw new BadRequestException(
+      `持证人员工编号与关联用户不符:证书上要写「${dtoEmpNo}」,但关联用户「${u.name}」的员工编号是「${u.username}」。请重新确认是哪一位。`,
+    );
+  }
+}
+
 
 @Injectable()
 export class CertificateIssueService {
@@ -70,8 +106,8 @@ export class CertificateIssueService {
    *
    * 流程:
    *   1. 拉模板,校验 honorCode 必填
-   *   2. (若有)拉关联 User,作为持证人快照来源
-   *   3. 事务内 count + 1 算 batchSeq,超额拒绝
+   *   2. (若有)拉关联 User,校验与证书上要写的人是同一个,并作为持证人快照来源
+   *   3. 事务内取批次现存 max(batchSeq) + 1 算 batchSeq,超额拒绝
    *   4. 生成 certNo + publicToken,落库
    *   5. 写审计
    *
@@ -96,13 +132,15 @@ export class CertificateIssueService {
     const honorType: 'individual' | 'collective' =
       template.honorType === 'collective' ? 'collective' : 'individual';
 
-    // 关联 User 的话拉一下做快照
+    // 关联 User 的话拉一下做快照。
+    // 集体荣誉恒不绑自然人(下方落库置 null),故连查都不查 —— 传了也当没传,不报错。
     let userSnapshot: { name: string; username: string } | null = null;
-    if (dto.recipientUserId) {
+    if (honorType === 'individual' && dto.recipientUserId) {
       const u = await this.prisma.user.findUnique({
         where: { id: dto.recipientUserId },
       });
       if (!u) throw new NotFoundException('持证人用户不存在');
+      assertIdentityMatches(dto, u);
       userSnapshot = { name: u.name, username: u.username };
     }
 
@@ -148,7 +186,10 @@ export class CertificateIssueService {
           // V3:集体荣誉时 recipientName 就是集体名,不再用 User 快照覆盖
           //     (防止 userSnapshot.name 误覆盖)。
           //     仅 individual 时才允许 User 快照覆盖。
-          recipientUserId: dto.recipientUserId,
+          // ⚠ 集体证书不绑自然人:否则该自然人会在「我的证书」(searchMine 按
+          //   recipientUserId 过滤)里搜到集体证,且被 listHonorRecords 当成个人荣誉
+          //   计入考核积分。
+          recipientUserId: honorType === 'collective' ? null : dto.recipientUserId,
           recipientName:
             honorType === 'collective'
               ? dto.recipientName
@@ -371,8 +412,8 @@ export class CertificateIssueService {
   /**
    * 硬删除一张证书(管理员专用,@Permission('certificate:delete'))。
    * 与「撤销」不同:撤销是软标记保留数据,删除是物理移除。
-   * 注:删除会释放该 batch 内的序号槽位 —— 若随后用相同 batchTotal 追加发证,
-   *     count+1 可能撞到已存在的更高 seq,certNo 唯一约束会拦下(安全失败,不会脏写)。
+   * 注:删除会释放该 batch 内的序号槽位 —— 发号取的是批次现存 max(batchSeq) + 1,
+   *     故删掉中间号不会被回填(不复用),删掉最大号则会被下一次发证重新用上。
    */
   async remove(id: string, ctx: IssueCtx) {
     const cert = await this.prisma.certificate.findUnique({ where: { id } });
@@ -410,12 +451,17 @@ export class CertificateIssueService {
    * 证书编号同样按 batch 规则生成。
    */
   async issueExternal(dto: IssueExternalCertificateDto, ctx: IssueCtx) {
+    // honorType 缺省 = 个人(与下方 recipientName 的取值分支保持同一判据)
+    const isIndividual = !dto.honorType || dto.honorType === 'individual';
     let userSnapshot: { name: string; username: string } | null = null;
-    if (dto.recipientUserId) {
+    if (isIndividual && dto.recipientUserId) {
       const u = await this.prisma.user.findUnique({
         where: { id: dto.recipientUserId },
       });
       if (!u) throw new NotFoundException('持证人用户不存在');
+      // 与 issue() 同一把闸:外部录入同样会用 User 快照覆盖姓名/工号,
+      // 绑错人同样是静默改写身份
+      assertIdentityMatches(dto, u);
       userSnapshot = { name: u.name, username: u.username };
     }
 
@@ -455,7 +501,9 @@ export class CertificateIssueService {
           source: 'external',
           honorType: dto.honorType,
 
-          recipientUserId: dto.recipientUserId,
+          // 集体荣誉不绑自然人(同 issue():否则该人会在「我的证书」里搜到集体证,
+          // 且被荣誉取数当成个人荣誉计入考核)
+          recipientUserId: isIndividual ? dto.recipientUserId : null,
           recipientName:
             dto.honorType && dto.honorType !== 'individual'
               ? dto.recipientName

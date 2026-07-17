@@ -1,4 +1,5 @@
 import type { Organization } from '@prisma/client';
+import { stripPartySuffix } from '../organization';
 
 /**
  * 考核关系注册表(纯逻辑,无 Prisma)。
@@ -66,12 +67,8 @@ function isBranch(o: Organization): boolean {
   return o.kind === 'party' && o.type === 'branch';
 }
 
-/** 去掉党组织名的后缀,用于和行政机构名做兜底匹配(塔运司党委 → 塔运司)*/
-function stripPartySuffix(name: string): string {
-  return name
-    .replace(/(总支部委员会|支部委员会|委员会|党总支|党支部|党委|总支|支部)$/u, '')
-    .trim();
-}
+// stripPartySuffix(去党组织后缀,塔运司党委 → 塔运司)已下沉到 organization/org-name.ts,
+// 与证书发证「按党组织匹配单位」共用同一定义 —— 改规则只需改一处。
 
 export function buildOrgIndex(
   allOrgs: Organization[],

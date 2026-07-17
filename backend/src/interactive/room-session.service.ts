@@ -30,11 +30,14 @@ interface PlayerRuntime {
   connected: boolean;
 }
 
-/** 头像标识白名单校验:预设 p:0..99 / 上传 f:<id>(id 长度有界);非法一律置 null */
+/**
+ * 头像标识白名单校验:上传 f:<id> / 平台头像(工牌进场·头像库随机候选)u:<id>(id 长度有界);
+ * 非法一律置 null。旧 "p:<idx>" 预设卡通头像已下架(2026-07-16,换头像库随机候选),不再接受
+ */
 function cleanAvatar(raw: unknown): string | null {
   const s = typeof raw === 'string' ? raw.trim() : '';
-  if (/^p:\d{1,2}$/.test(s)) return s;
   if (/^f:[A-Za-z0-9_-]{10,64}$/.test(s)) return s;
+  if (/^u:[A-Za-z0-9_-]{10,64}$/.test(s)) return s;
   return null;
 }
 

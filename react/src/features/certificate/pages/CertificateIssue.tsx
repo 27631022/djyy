@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   ArrowLeftIcon,
   SendIcon,
@@ -180,16 +181,32 @@ function IssueWizard({ userId }: { userId: string | null }) {
       } else {
         const named = currentRecord.persons.filter((p) => p.name.trim());
         if (named.length === 0) return "至少添加 1 位受表彰人员";
+        // 同名待点选的行必须先确认是哪一位 —— 绝不能带着未决身份发证
+        const pend = currentRecord.persons.filter((p) => p.ambiguous).length;
+        if (pend > 0) {
+          return `有 ${pend} 位同名人员未点选(状态列的红色「点选」按钮),请先确认是哪一位`;
+        }
       }
       return null;
     })();
+
+    // Step 5:全局兜底 —— 任何一条记录里还有待点选的人,都不许发证
+    const pendingPickTotal = records.reduce(
+      (s, r) => s + r.persons.filter((p) => p.ambiguous).length,
+      0,
+    );
 
     const map: Record<WizardStep, string | null> = {
       1: null,
       2: sharedErr,
       3: templateErr,
       4: recipientsErr,
-      5: totalRecipients === 0 ? "没有待发证条目" : null,
+      5:
+        totalRecipients === 0
+          ? "没有待发证条目"
+          : pendingPickTotal > 0
+            ? `有 ${pendingPickTotal} 位同名人员未点选,请回上一步逐个确认是哪一位`
+            : null,
     };
     return map[step];
   }, [step, currentRecord, records, yearLabel, issueDate, totalRecipients]);
@@ -197,6 +214,15 @@ function IssueWizard({ userId }: { userId: string | null }) {
   /* ─── 发证(双层循环:records → recipients) ─── */
   async function handleIssueAll() {
     if (issuing || results.length > 0) return;
+    // 兜底闸:同名未点选 = 身份未决,绝不能发(按钮已 disabled,这里防未来改动绕过)
+    const pendingPick = records.reduce(
+      (s, r) => s + r.persons.filter((p) => p.ambiguous).length,
+      0,
+    );
+    if (pendingPick > 0) {
+      toast.error(`有 ${pendingPick} 位同名人员未点选,请先确认是哪一位再发证`);
+      return;
+    }
     setIssuing(true);
     setResults([]);
     try {
@@ -546,7 +572,9 @@ function IssueWizard({ userId }: { userId: string | null }) {
                     disabled={
                       issuing ||
                       totalRecipients === 0 ||
-                      results.length > 0
+                      results.length > 0 ||
+                      // 同名未点选等未决状态一律不许发证(stepReady 存的是错误文案)
+                      Boolean(stepReady)
                     }
                     className="flex items-center gap-1.5 px-4 py-1.5 rounded text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ backgroundColor: PARTY }}

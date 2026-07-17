@@ -8,6 +8,28 @@ import {
   PARTY_TYPES,
 } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import type {
+  OrgMatchVia,
+  OrgNameScope,
+  ResolvedPartyOrg,
+} from './dto/resolve-org.dto';
+import { normalizeName, stripPartySuffix } from './org-name';
+
+/** loadOrgNameIndex 的行形态 —— 只取名称匹配/建树/判虚拟壳需要的列 */
+interface OrgNameRow {
+  id: string;
+  name: string;
+  parentId: string | null;
+  kind: string;
+  isVirtual: boolean;
+}
+
+interface OrgNameIndex {
+  byId: Map<string, OrgNameRow>;
+  childrenOf: Map<string, string[]>;
+  /** 归一化名 → 同名组织(名称允许重复,故是数组) */
+  byNormName: Map<string, OrgNameRow[]>;
+}
 
 export interface OrgTreeNode extends Organization {
   children: OrgTreeNode[];
@@ -67,6 +89,267 @@ export class OrganizationService {
     });
     const out: Record<string, string> = {};
     for (const r of rows) out[r.id] = r.name;
+    return out;
+  }
+
+  /* ─── 按名称解析组织(证书发证「按姓名+单位匹配」/「按党组织匹配单位」用)─── */
+
+  /**
+   * 一次全量查组织建索引 —— 名称匹配 + 路径 + 子树都靠它。
+   *
+   * 成本与既有 loadIndex(org-scope)/collectDescendantIds 同款:机构量级 ~1000 行,
+   * 单请求一次全表扫可忽略。**不要在循环里调**(会退化成 N 次全表扫)。
+   *
+   * active=false 的组织**要**计入(软删机构下仍挂着人,与 collectDescendantIds 同口径);
+   * 是否参与「名称命中」由调用方按 isVirtual 等另行过滤。
+   */
+  private async loadOrgNameIndex(): Promise<OrgNameIndex> {
+    const rows = await this.prisma.organization.findMany({
+      select: {
+        id: true,
+        name: true,
+        parentId: true,
+        kind: true,
+        isVirtual: true,
+      },
+    });
+    const byId = new Map<string, OrgNameRow>();
+    const childrenOf = new Map<string, string[]>();
+    const byNormName = new Map<string, OrgNameRow[]>();
+    for (const r of rows) {
+      byId.set(r.id, r);
+      if (r.parentId) {
+        const arr = childrenOf.get(r.parentId);
+        if (arr) arr.push(r.id);
+        else childrenOf.set(r.parentId, [r.id]);
+      }
+      const key = normalizeName(r.name);
+      const bucket = byNormName.get(key);
+      if (bucket) bucket.push(r);
+      else byNormName.set(key, [r]);
+    }
+    return { byId, childrenOf, byNormName };
+  }
+
+  /** 由 index 反查全称路径「昆仑物流 / 基层单位 / 云贵分公司」。带环保护。 */
+  private pathOf(index: OrgNameIndex, orgId: string): string {
+    const trail: string[] = [];
+    let cur = index.byId.get(orgId);
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      trail.unshift(cur.name);
+      cur = cur.parentId ? index.byId.get(cur.parentId) : undefined;
+    }
+    return trail.join(' / ');
+  }
+
+  /** 收集 rootId 的子树全部 orgId(含自身)。 */
+  private subtreeIdsOf(index: OrgNameIndex, rootId: string, out: Set<string>): void {
+    if (out.has(rootId)) return;
+    out.add(rootId);
+    for (const cid of index.childrenOf.get(rootId) ?? []) {
+      this.subtreeIdsOf(index, cid, out);
+    }
+  }
+
+  /**
+   * 批量「单位名 → 该单位子树的全部 orgId」。
+   *
+   * 给「姓名 + 单位 → 员工编号」用:文件里写的是「云贵分公司」,而人实际挂在
+   * 「云贵分公司 / 昆明配送中心」—— **必须按子树匹配,不能拿单位名去精确匹配
+   * membership**(真实库实测:没有任何人直接挂在「云贵分公司」本身上)。
+   *
+   * 匹配阶梯(逐级下降,命中即停,绝不混级):
+   *   1. exact        —— 归一化名全等
+   *   2. strip-suffix —— 双向:去党组织后缀后全等(「云贵分公司党委」→「云贵分公司」),
+   *                      或查询名等于某组织去后缀后的名(让「云贵分公司」也能命中党树的
+   *                      「云贵分公司党委」)
+   *   3. contains     —— 互相包含(**只放大候选范围**,结果必然走人工点选,不会误绑)
+   *
+   * 跨 kind 是**特性不是 bug**:「云贵分公司」同时命中行政的分公司与党树的分公司党委,
+   * 子树并集覆盖两种 membership → 匹配率更高;多义由「只回候选不选人」兜住。
+   */
+  async resolveNameScopes(
+    names: string[],
+    opts: { maxRoots?: number } = {},
+  ): Promise<Record<string, OrgNameScope>> {
+    const maxRoots = opts.maxRoots ?? 5;
+    const uniq = [...new Set(names.map((n) => (n ?? '').trim()).filter(Boolean))];
+    const out: Record<string, OrgNameScope> = {};
+    if (!uniq.length) return out;
+
+    const index = await this.loadOrgNameIndex();
+    // 虚拟壳(公司机关/基层单位)不参与名称命中:没人直接挂上面,且名字极易误命中
+    const candidates = [...index.byId.values()].filter((o) => !o.isVirtual);
+
+    for (const raw of uniq) {
+      const q = normalizeName(raw);
+      let hits: { row: OrgNameRow; via: OrgMatchVia }[] = [];
+
+      // 1. exact
+      const exact = (index.byNormName.get(q) ?? []).filter((o) => !o.isVirtual);
+      if (exact.length) {
+        hits = exact.map((row) => ({ row, via: 'exact' as const }));
+      } else {
+        // 2. strip-suffix(双向)
+        const qStripped = normalizeName(stripPartySuffix(raw));
+        const bySuffix = candidates.filter(
+          (o) =>
+            (qStripped && qStripped !== q && normalizeName(o.name) === qStripped) ||
+            normalizeName(stripPartySuffix(o.name)) === q,
+        );
+        if (bySuffix.length) {
+          hits = bySuffix.map((row) => ({ row, via: 'strip-suffix' as const }));
+        } else if (q.length >= 3) {
+          // 3. contains —— 长度守卫防「机关」这种短词炸开
+          const byContains = candidates.filter((o) => {
+            const n = normalizeName(o.name);
+            return n.includes(q) || q.includes(n);
+          });
+          if (byContains.length) {
+            hits = byContains.map((row) => ({ row, via: 'contains' as const }));
+          }
+        }
+      }
+
+      // 命中太多 → 视为解析失败(与其给一堆噪音,不如让调用方退化成全量同名候选)
+      if (!hits.length || hits.length > maxRoots) {
+        out[raw] = { roots: [], orgIds: [], ambiguous: hits.length > maxRoots, exact: false };
+        continue;
+      }
+
+      const idSet = new Set<string>();
+      for (const h of hits) this.subtreeIdsOf(index, h.row.id, idSet);
+
+      out[raw] = {
+        roots: hits.map((h) => ({
+          orgId: h.row.id,
+          name: h.row.name,
+          path: this.pathOf(index, h.row.id),
+          kind: h.row.kind as 'admin' | 'party',
+          via: h.via,
+        })),
+        orgIds: [...idSet],
+        ambiguous: hits.length > 1,
+        exact: hits.some((h) => h.via === 'exact'),
+      };
+    }
+    return out;
+  }
+
+  /**
+   * 批量「党组织名 → 对口行政机构」。给「先进基层党委/党支部」这类集体荣誉
+   * 自动带出「所在单位」用。
+   *
+   * 四级阶梯(真实库实测决定了主路径):
+   *   1. 党组织树里按名找到党组织(exact 优先;重名 → 回多条候选交由人工点选)
+   *   2. PartyAdminLink 显式关联 → via='link'(**唯一可信档**,党委 33/35 走这里)
+   *   3. 去后缀名匹配行政机构 → via='name'(补上 2/35 没配 link 的党委)
+   *   4. 沿 parentId 上溯最近的祖先党组织,对它重跑 2/3 → via='ancestor'
+   *      (**党支部的主路径** —— 支部自己有 link 的只有 4/361;
+   *       如 酒泉配送中心党支部 → 甘肃分公司党委 → link → 甘肃分公司)
+   *   都不中 → via='none'
+   */
+  async resolvePartyOrgs(names: string[]): Promise<Record<string, ResolvedPartyOrg[]>> {
+    const uniq = [...new Set(names.map((n) => (n ?? '').trim()).filter(Boolean))];
+    const out: Record<string, ResolvedPartyOrg[]> = {};
+    for (const n of uniq) out[n] = [];
+    if (!uniq.length) return out;
+
+    const index = await this.loadOrgNameIndex();
+    const links = await this.getAllLinks();
+    const adminByParty = new Map<string, string>();
+    for (const l of links) if (!adminByParty.has(l.partyOrgId)) adminByParty.set(l.partyOrgId, l.adminOrgId);
+
+    const adminByNormName = new Map<string, OrgNameRow[]>();
+    for (const o of index.byId.values()) {
+      if (o.kind !== 'admin' || o.isVirtual) continue;
+      const k = normalizeName(o.name);
+      const b = adminByNormName.get(k);
+      if (b) b.push(o);
+      else adminByNormName.set(k, [o]);
+    }
+
+    /** 党组织 → 行政机构:link 优先,其次去后缀名匹配。名称多义(如「特车运输大队」
+     *  在塔运司与新疆油田运输分公司下各有一个)→ 返回 null 交由上层继续上溯/人工点选。 */
+    const directResolve = (
+      partyId: string,
+    ): { adminId: string; via: 'link' | 'name' } | null => {
+      const linked = adminByParty.get(partyId);
+      if (linked && index.byId.has(linked)) return { adminId: linked, via: 'link' };
+      const row = index.byId.get(partyId);
+      if (!row) return null;
+      const base = normalizeName(stripPartySuffix(row.name));
+      if (!base) return null;
+      const cands = adminByNormName.get(base) ?? [];
+      if (cands.length === 1) return { adminId: cands[0].id, via: 'name' };
+      return null;
+    };
+
+    for (const raw of uniq) {
+      const q = normalizeName(raw);
+      const partyHits = (index.byNormName.get(q) ?? []).filter((o) => o.kind === 'party');
+      // 党组织树里没有这个名字 → 不回退到「用名字猜行政机构」(那是 resolveNameScopes 的活)
+      if (!partyHits.length) continue;
+
+      const results: ResolvedPartyOrg[] = [];
+      for (const p of partyHits) {
+        const base: Omit<ResolvedPartyOrg, 'adminOrgId' | 'adminOrgName' | 'adminOrgPath' | 'via'> = {
+          partyOrgId: p.id,
+          partyOrgName: p.name,
+          partyOrgPath: this.pathOf(index, p.id),
+        };
+
+        const direct = directResolve(p.id);
+        if (direct) {
+          const a = index.byId.get(direct.adminId);
+          results.push({
+            ...base,
+            adminOrgId: direct.adminId,
+            adminOrgName: a?.name ?? null,
+            adminOrgPath: a ? this.pathOf(index, direct.adminId) : null,
+            via: direct.via,
+          });
+          continue;
+        }
+
+        // 上溯祖先党组织(带环保护)
+        let cur = p.parentId ? index.byId.get(p.parentId) : undefined;
+        const seen = new Set<string>([p.id]);
+        let done = false;
+        while (cur && !seen.has(cur.id)) {
+          seen.add(cur.id);
+          if (cur.kind === 'party') {
+            const up = directResolve(cur.id);
+            if (up) {
+              const a = index.byId.get(up.adminId);
+              results.push({
+                ...base,
+                adminOrgId: up.adminId,
+                adminOrgName: a?.name ?? null,
+                adminOrgPath: a ? this.pathOf(index, up.adminId) : null,
+                via: 'ancestor',
+                ancestorPartyOrgName: cur.name,
+              });
+              done = true;
+              break;
+            }
+          }
+          cur = cur.parentId ? index.byId.get(cur.parentId) : undefined;
+        }
+        if (done) continue;
+
+        results.push({
+          ...base,
+          adminOrgId: null,
+          adminOrgName: null,
+          adminOrgPath: null,
+          via: 'none',
+        });
+      }
+      out[raw] = results;
+    }
     return out;
   }
 

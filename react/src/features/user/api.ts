@@ -54,6 +54,8 @@ export interface ContactItem {
   username: string;
   name: string;
   avatarUrl: string | null;
+  /** 性别(customFields.gender):透明抠像头像的背景圈按它配色(男蓝/女粉),缺失走默认品牌色 */
+  gender: "male" | "female" | null;
   phone: string | null;
   email: string | null;
   /** 政治面貌字典 code(customFields.political_status),可空;标签由字典映射 */
@@ -321,6 +323,43 @@ export type LookupByEmpNoResponse = Record<string, UserByEmpNoLite | null>;
 /** 按姓名批量查 —— 每个姓名命中数组(0 / 1 / 多;重名时 >1) */
 export type LookupByNameResponse = Record<string, UserByEmpNoLite[]>;
 
+/* ─── 「姓名 + 单位」匹配员工编号(发证向导 Step3)─── */
+
+/** 一条待匹配项;orgName = 表彰文件里的单位前缀原文,只用于收敛候选 */
+export interface MatchNameOrgItem {
+  name: string;
+  orgName?: string;
+}
+
+/** 单位名命中的组织 */
+export interface OrgNameMatch {
+  orgId: string;
+  name: string;
+  /** 全称路径 */
+  path: string;
+  kind: "admin" | "party";
+  /** exact 最可信;strip-suffix / contains 只用于放大候选范围 */
+  via: "exact" | "strip-suffix" | "contains";
+}
+
+/**
+ * - 'unique'         唯一命中(仍标「待核对」)
+ * - 'ambiguous'      同名多人 → 必须人工在 candidates 里点选,系统不猜
+ * - 'none'           库里没这个人
+ * - 'org-unresolved' 单位名解析不出 → 候选退化为全部同名在职用户
+ */
+export type MatchStatus = "unique" | "ambiguous" | "none" | "org-unresolved";
+
+export interface MatchByNameOrgResult {
+  name: string;
+  orgName?: string;
+  orgScope: { roots: OrgNameMatch[]; ambiguous: boolean; exact: boolean } | null;
+  candidates: UserByEmpNoLite[];
+  /** 候选被截断(同名过多)→ 提示补单位 / 直接填工号 */
+  truncated: boolean;
+  status: MatchStatus;
+}
+
 /** 列表过滤条件 → 查询参数(list / listIds 共用;take/skip/sort 由 list 单独追加) */
 const listFilterParams = (q: ListUsersQuery) => ({
   ...(q.search ? { search: q.search } : {}),
@@ -438,5 +477,17 @@ export const usersApi = {
   lookupByName: (names: string[]) =>
     api
       .post<LookupByNameResponse>("/users/lookup-by-name", { names })
+      .then((r) => r.data),
+
+  /**
+   * 批量按「姓名 + 单位」匹配 —— 表彰文件天然带单位前缀(「云贵分公司:聂伟、朱智勇」),
+   * 用单位把重名候选收敛到该单位子树。最多 200 项,**结果按下标 1:1 对齐 items**
+   * (同一姓名可能配不同单位,故不是 Record)。
+   *
+   * status='ambiguous' 时只回候选,**调用方必须让用户点选**,不要自动取第一个。
+   */
+  matchByNameOrg: (items: MatchNameOrgItem[]) =>
+    api
+      .post<MatchByNameOrgResult[]>("/users/match-by-name-org", { items })
       .then((r) => r.data),
 };

@@ -38,6 +38,8 @@ export interface AvatarLibraryItem {
   url: string;
   /** 缩略图公开 URL(网格用小图省流量;无缩略图时后端已回退原图) */
   thumbUrl: string;
+  /** 「弹出人物」透明抠像公开 URL(不适用/未生成为 null;悬浮弹出效果用) */
+  popUrl: string | null;
   createdAt: string;
 }
 
@@ -63,7 +65,33 @@ export const avatarLibraryApi = {
     api.patch<AvatarLibraryItem>(`/avatars/library/${id}`, body).then((r) => r.data),
 
   remove: (id: string) => api.delete(`/avatars/library/${id}`).then((r) => r.data),
+
+  /** 无头像 active 用户数(「分配默认头像」确认框展示规模;avatar:manage) */
+  noAvatarCount: () =>
+    api.get<{ count: number }>("/avatars/library/no-avatar-count").then((r) => r.data),
+
+  /** 为所有无头像用户按性别随机分配默认头像(幂等,只动仍无头像的;avatar:manage) */
+  applyDefaults: () =>
+    api
+      .post<{ assigned: number; skipped: number; noAvatarBefore: number }>(
+        "/avatars/library/apply-defaults",
+      )
+      .then((r) => r.data),
+
+  /** 把员工私有头像(avatars/{工号-姓名})提升进公共库:复制字节 → 新 fileId(avatar:manage) */
+  promoteFromFile: (body: { sourceFileId: string; name?: string; gender?: AvatarGender }) =>
+    api.post<AvatarLibraryItem>("/avatars/library/from-file", body).then((r) => r.data),
 };
+
+/** 管理员总览:某员工生成的头像一项 */
+export interface GeneratedAvatarItem {
+  fileId: string;
+  url: string;
+  originalName: string;
+  /** storage 文件夹 avatars/{工号-姓名}(前端可解析出员工) */
+  folder: string;
+  createdAt: string;
+}
 
 export const avatarApi = {
   /**
@@ -85,6 +113,13 @@ export const avatarApi = {
     api
       .get<AvatarHistoryItem[]>("/avatars/history", { params: { name, employeeNumber } })
       .then((r) => r.data),
+
+  /** 删除历史头像(本人删自己的;管理员 avatar:manage 可删他人的;正在使用中 → 409 提示先更换) */
+  removeHistory: (fileId: string) =>
+    api.delete<{ ok: true }>(`/avatars/history/${fileId}`).then((r) => r.data),
+
+  /** 管理员总览:所有员工生成的头像(私有头像汇总,供浏览 + 提升到公共库;avatar:manage) */
+  generated: () => api.get<GeneratedAvatarItem[]>("/avatars/generated").then((r) => r.data),
 };
 
 /**

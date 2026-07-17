@@ -24,12 +24,14 @@ import { ReplaceRolesDto } from './dto/replace-roles.dto';
 import { ListUsersQuery } from './dto/list-users.query';
 import { ContactsQuery } from './dto/contacts.query';
 import { LookupByEmpNoDto, LookupByNameDto } from './dto/lookup-by-empno.dto';
+import { MatchByNameOrgDto } from './dto/match-by-name-org.dto';
 
 /**
  * 鉴权约定(2026-07-12 三级数据权限):
  *   - 读(list/stats/:id):登录即可,但服务端按登录人「可见范围」收敛
  *     (管理范围 ∪ 对口上级 ∪ 本单位兜底 —— 兜底保 AssignPicker/派发个人 tab 等业务选人组件);
- *   - directory / lookup-*:内部通讯录级轻量检索,登录即可、字段最小化(跨范围选人组件用);
+ *   - directory / lookup-* / match-by-name-org:内部通讯录级轻量检索,登录即可、字段最小化
+ *     (跨范围选人组件用;match-by-name-org 只是 lookup-by-name 多带单位做过滤,暴露面只减不增);
  *   - 写:@Permission('admin:user:write') + service 按目标归属维度校验范围;
  *   - 角色分配:@Permission('admin:role:write')(仅系统管理员 —— 堵「任何登录用户可给自己提权」的洞)。
  */
@@ -90,6 +92,21 @@ export class UserController {
   @Post('lookup-by-name')
   lookupByName(@Body() dto: LookupByNameDto) {
     return this.users.lookupByName(dto);
+  }
+
+  /**
+   * 批量按「姓名 + 单位」匹配员工编号(发证页 Step3;表彰文件天然带单位前缀
+   * 「云贵分公司:聂伟、朱智勇」)。同样必须放在 `:id` 之前。
+   *
+   * 与 lookup-by-name 的区别:多带一个 orgName 把候选收敛到该单位子树 ——
+   * 实测能把 3312/3638 的重名人从「放弃」救回唯一命中;剩余多义**只回候选不选人**。
+   *
+   * 鉴权同 lookup-by-name(登录即可、无权限点、不收敛数据范围):
+   * 暴露面严格窄于 lookup-by-name —— 同样的字段,orgName 只做过滤 = 只减不增。
+   */
+  @Post('match-by-name-org')
+  matchByNameOrg(@Body() dto: MatchByNameOrgDto) {
+    return this.users.matchByNameOrg(dto);
   }
 
   /**

@@ -217,6 +217,23 @@ export function interactiveFileUrl(id: string): string {
   return `${apiOrigin}/api/public/interactive/files/${id}`;
 }
 
+/** 员工平台头像公开 URL("u:<fileId>" 标识;与 通讯录/个人设置 同一张头像) */
+export function employeeAvatarUrl(fileId: string): string {
+  return `${apiOrigin}/api/public/avatars/${fileId}`;
+}
+
+/** 工牌进场匹配到的员工(匿名公开口只回 姓名+头像,不回工号/组织) */
+export interface EmployeeMatch {
+  name: string;
+  avatarFileId: string | null;
+}
+
+/** 进场头像候选(公共头像库随机抽的一批;fileId=原图 存 "u:<fileId>",thumbFileId=网格缩略图) */
+export interface AvatarOption {
+  fileId: string;
+  thumbFileId: string | null;
+}
+
 export interface InteractiveManager {
   id: string;
   userId: string;
@@ -299,6 +316,21 @@ export const interactiveApi = {
   async publicRoomInfo(code: string): Promise<PublicRoomInfo> {
     const { data } = await api.get<PublicRoomInfo>(`/public/interactive/rooms/${code}`);
     return data;
+  },
+  /** 公开:工牌进场 —— 员工编号/姓名精确匹配,带出姓名+平台头像(免登录,须有效房间码) */
+  async employeeLookup(roomCode: string, q: string): Promise<EmployeeMatch[]> {
+    const { data } = await api.get<{ items: EmployeeMatch[] }>(`/public/interactive/employees`, {
+      params: { roomCode, q },
+    });
+    return data.items;
+  },
+  /** 公开:进场头像候选 —— 公共头像库随机抽一批(免登录,须有效房间码;每次请求都是新一批) */
+  async avatarOptions(roomCode: string): Promise<AvatarOption[]> {
+    const { data } = await api.get<{ items: AvatarOption[] }>(
+      `/public/interactive/avatar-options`,
+      { params: { roomCode } },
+    );
+    return data.items;
   },
 };
 

@@ -13,7 +13,7 @@ export type RoomRole = "screen" | "player" | "host";
 export interface RosterPlayer {
   deviceId: string;
   nickname: string;
-  avatar: string | null; // "p:<idx>"=预设 / "f:<fileId>"=上传 / null=字母头像
+  avatar: string | null; // "f:<fileId>"=上传 / "u:<fileId>"=平台头像(库候选/工牌) / null=字母头像
   teamId: string | null;
   teamName: string | null;
   connected: boolean;

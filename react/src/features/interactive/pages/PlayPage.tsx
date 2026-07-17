@@ -2,15 +2,22 @@ import { useState, type ReactNode } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiOrigin } from "@/shared/api/client";
+import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import { useRoom, type RosterPlayer, type UseRoomResult } from "../useRoom";
 import { getGameUi } from "../games/registry";
-import { getAuthToken, getDeviceId, interactiveApi, type GroupingConfig } from "../api";
-import { PRESET_AVATARS } from "../presetAvatars";
+import {
+  employeeAvatarUrl,
+  getAuthToken,
+  getDeviceId,
+  interactiveApi,
+  type EmployeeMatch,
+  type GroupingConfig,
+} from "../api";
 import { PlayerAvatar } from "../components/PlayerAvatar";
 import { HostControls } from "../components/HostControls";
 
 const NICK_KEY = "djyy_interactive_nick";
-const AVATAR_KEY = "djyy_interactive_avatar"; // 当前选中头像("p:idx" 预设 / "f:fileId" 上传)
+const AVATAR_KEY = "djyy_interactive_avatar"; // 当前选中头像("f:fileId" 上传 / "u:fileId" 平台头像)
 const AVATAR_LIB_KEY = "djyy_interactive_avatar_lib"; // 我上传过的头像 fileId 列表(最近在前,可多张)
 const AVATAR_LIB_MAX = 8;
 
@@ -41,7 +48,13 @@ function persistAvatar(avatar: string | null) {
 }
 function readAvatar(): string | null {
   try {
-    return localStorage.getItem(AVATAR_KEY);
+    const v = localStorage.getItem(AVATAR_KEY);
+    // 旧 "p:<idx>" 预设卡通头像已下架 → 本机残留值作废,重新挑选
+    if (v && v.startsWith("p:")) {
+      localStorage.removeItem(AVATAR_KEY);
+      return null;
+    }
+    return v;
   } catch {
     return null;
   }
@@ -123,9 +136,10 @@ function useAvatarUpload(roomCode: string) {
   return { uploading, error, upload };
 }
 
-/** 头像选择区:我上传的照片(可多张,✕ 移除)+ 预设头像库 —— 进场页与个人信息编辑共用 */
+/** 头像选择区:我上传的照片(可多张,✕ 移除)+ 头像库随机候选(可换一批)—— 进场页与个人信息编辑共用 */
 function AvatarPicker({
   label,
+  roomCode,
   value,
   onChange,
   name,
@@ -136,6 +150,7 @@ function AvatarPicker({
   onRemoveUpload,
 }: {
   label: string;
+  roomCode: string;
   value: string | null;
   onChange: (v: string | null) => void;
   name: string;
@@ -145,24 +160,41 @@ function AvatarPicker({
   onUploadFile: (f: File) => void;
   onRemoveUpload: (fileId: string) => void;
 }) {
+  // 公共头像库随机候选(服务端每次请求都是新一批;staleTime ∞ 防切后台重取把选中项换没了)
+  const optionsQ = useQuery({
+    queryKey: ["interactive", "avatar-options", roomCode],
+    queryFn: () => interactiveApi.avatarOptions(roomCode),
+    staleTime: Infinity,
+  });
+  const options = optionsQ.data ?? [];
   return (
     <div>
       {/* flex-wrap + nowrap:360px 窄屏安卓机上标签+按钮放不下时整体换行,不逐字折行 */}
       <div className="flex flex-wrap items-center justify-between gap-y-1 mb-2">
         <span className="text-white/80 text-sm shrink-0">{label}</span>
-        <label className="rounded-md border border-white/40 px-3 py-1 text-xs text-white/90 cursor-pointer hover:bg-white/10 whitespace-nowrap">
-          {uploading ? "上传中…" : "📷 上传照片(可多张)"}
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onUploadFile(f);
-              e.target.value = "";
-            }}
-          />
-        </label>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            disabled={optionsQ.isFetching}
+            onClick={() => void optionsQ.refetch()}
+            className="rounded-md border border-white/40 px-3 py-1 text-xs text-white/90 hover:bg-white/10 whitespace-nowrap disabled:opacity-50"
+          >
+            {optionsQ.isFetching ? "换着呢…" : "🎲 换一批"}
+          </button>
+          <label className="rounded-md border border-white/40 px-3 py-1 text-xs text-white/90 cursor-pointer hover:bg-white/10 whitespace-nowrap">
+            {uploading ? "上传中…" : "📷 上传照片"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onUploadFile(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
       </div>
       {uploadError && <div className="text-red-300 text-xs mb-2">{uploadError}</div>}
       <div className="grid grid-cols-6 gap-2">
@@ -190,8 +222,19 @@ function AvatarPicker({
             </div>
           );
         })}
-        {PRESET_AVATARS.map((_, i) => {
-          const key = `p:${i}`;
+        {/* 头像库随机候选:网格显示缩略图(256px webp 省流量),选中存 "u:<原图 fileId>"。
+            当前选中不在本批里(换过批/上次进场选的)→ 追加占位格保持选中态可见 */}
+        {value?.startsWith("u:") && !options.some((o) => `u:${o.fileId}` === value) && (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="rounded-full ring-2 ring-[var(--party-accent)] scale-105"
+          >
+            <PlayerAvatar avatar={value} name={name} color="#888" className="w-full" style={{ aspectRatio: "1" }} />
+          </button>
+        )}
+        {options.map((o) => {
+          const key = `u:${o.fileId}`;
           const sel = value === key;
           return (
             <button
@@ -200,7 +243,12 @@ function AvatarPicker({
               onClick={() => onChange(sel ? null : key)}
               className={`rounded-full ${sel ? "ring-2 ring-[var(--party-accent)] scale-105" : "opacity-85 hover:opacity-100"}`}
             >
-              <PlayerAvatar avatar={key} name={name} color="#888" className="w-full" style={{ aspectRatio: "1" }} />
+              <img
+                src={employeeAvatarUrl(o.thumbFileId ?? o.fileId)}
+                alt=""
+                className="w-full rounded-full object-cover"
+                style={{ aspectRatio: "1", background: "#fff" }}
+              />
             </button>
           );
         })}
@@ -282,10 +330,11 @@ function ProfileEditor({
           className="w-full rounded-lg px-4 py-3 bg-white text-gray-900 text-lg placeholder:text-gray-400"
         />
 
-        {/* 头像:预设头像库(豆包生成)+ 手机上传自己的照片 */}
+        {/* 头像:头像库随机候选 + 手机上传自己的照片 */}
         <div className="mt-4">
           <AvatarPicker
             label="头像"
+            roomCode={roomCode}
             value={avatarSel}
             onChange={setAvatarSel}
             name={nick}
@@ -561,6 +610,24 @@ function EntryGate({ roomCode }: { roomCode: string }) {
     setAvatar(v);
     persistAvatar(v);
   };
+
+  // 工牌进场:昵称框输入员工编号/姓名 → 精确匹配带出 姓名+平台头像(与通讯录同一张)
+  const empQ = useDebouncedValue(nick.trim(), 350);
+  const empMatches = useQuery({
+    queryKey: ["interactive", "employees", roomCode, empQ],
+    queryFn: () => interactiveApi.employeeLookup(roomCode, empQ),
+    enabled: !joined && empQ.length >= 2,
+    staleTime: 60_000,
+  });
+  const applyEmployee = (m: EmployeeMatch) => {
+    setNick(m.name.slice(0, 16));
+    try {
+      localStorage.setItem(NICK_KEY, m.name.slice(0, 16));
+    } catch {
+      /* ignore */
+    }
+    if (m.avatarFileId) chooseAvatar(`u:${m.avatarFileId}`);
+  };
   const onUpload = (f: File): void => {
     void up.upload(f).then((id) => {
       if (!id) return;
@@ -616,6 +683,7 @@ function EntryGate({ roomCode }: { roomCode: string }) {
         {/* 第一步:选头像(上大屏/领奖台都用它;不选则用昵称首字的字母头像) */}
         <AvatarPicker
           label="① 选个头像(上大屏用)"
+          roomCode={roomCode}
           value={avatar}
           onChange={chooseAvatar}
           name={nick.trim() || "观众"}
@@ -633,10 +701,50 @@ function EntryGate({ roomCode }: { roomCode: string }) {
           onChange={(e) => setNick(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && enter()}
           maxLength={16}
-          placeholder="起个名字上大屏"
+          placeholder="昵称 / 员工编号 / 姓名"
           className="w-full rounded-lg px-4 py-3 bg-white text-gray-900 text-lg placeholder:text-gray-400"
         />
-        <div className="text-white/50 text-xs mt-2">分组对抗的节目开场时再选队伍;头像/昵称进场后随时可改</div>
+        {/* 工牌匹配:输入工号或姓名精确命中员工 → 一键用本人姓名+平台头像进场(重名列多个自选) */}
+        {(empMatches.data?.length ?? 0) > 0 && (
+          <div className="mt-3 rounded-lg bg-white/15 p-3">
+            <div className="text-white/70 text-xs mb-2">🪪 找到员工 —— 点击用工牌姓名和头像:</div>
+            <div className="flex flex-wrap gap-2">
+              {empMatches.data!.map((m, i) => {
+                const active = nick === m.name && (!m.avatarFileId || avatar === `u:${m.avatarFileId}`);
+                return (
+                  <button
+                    key={`${m.name}-${m.avatarFileId ?? i}`}
+                    type="button"
+                    onClick={() => applyEmployee(m)}
+                    className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-3 ${
+                      active ? "bg-white ring-2 ring-[var(--party-accent)]" : "bg-white/85 hover:bg-white"
+                    }`}
+                  >
+                    {m.avatarFileId ? (
+                      <img
+                        src={employeeAvatarUrl(m.avatarFileId)}
+                        alt=""
+                        className="h-7 w-7 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span
+                        className="grid h-7 w-7 place-items-center rounded-full text-xs font-bold text-white"
+                        style={{ background: "var(--party-primary)" }}
+                      >
+                        {m.name.charAt(0)}
+                      </span>
+                    )}
+                    <span className="text-sm font-medium text-gray-900">{m.name}</span>
+                    {active && <span className="text-xs text-green-600">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <div className="text-white/50 text-xs mt-2">
+          输入员工编号或姓名可直接用工牌头像;分组对抗的节目开场时再选队伍;头像/昵称进场后随时可改
+        </div>
         <button
           type="button"
           onClick={enter}

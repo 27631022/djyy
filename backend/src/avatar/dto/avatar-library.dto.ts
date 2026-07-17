@@ -38,3 +38,20 @@ export class UpdateLibraryItemDto {
   @IsIn(GENDERS as unknown as string[])
   gender?: string;
 }
+
+/** 提升:把员工私有头像(avatars/{工号-姓名} 下的文件)复制进公共库。 */
+export class PromoteFromFileDto {
+  @IsString()
+  @MaxLength(64)
+  sourceFileId!: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(80)
+  name?: string;
+
+  @IsOptional()
+  @IsIn(GENDERS as unknown as string[])
+  gender?: string;
+}

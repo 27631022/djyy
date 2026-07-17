@@ -36,6 +36,16 @@ interface UploadedFileShape {
 
 const EXTRACT_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
+/** multipart 文件名 multer 按 latin1 解,中文会乱码 → 转回 utf8(与 icon/storage 同款修复) */
+function decodeName(name: string): string {
+  if (!name) return name;
+  try {
+    return Buffer.from(name, 'latin1').toString('utf8') || name;
+  } catch {
+    return name;
+  }
+}
+
 /**
  * 已发证书相关 admin API。
  *
@@ -189,6 +199,9 @@ export class CertificateIssueController {
         `文件过大(${(file.size / 1024 / 1024).toFixed(1)}MB),最大支持 ${EXTRACT_MAX_BYTES / 1024 / 1024}MB`,
       );
     }
+    // multipart 中文文件名 multer 按 latin1 解 → 乱码(仓库既有坑,照 icon/storage 惯例修正)。
+    // 这个名字会进 AI 提示词、审计日志、前端「源:xxx.doc」回显,乱码全都跟着跑。
+    file.originalname = decodeName(file.originalname);
     return this.extraction.extract(file, {
       actorId: me.sub,
       actorName: me.name,
