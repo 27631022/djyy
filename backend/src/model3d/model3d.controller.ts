@@ -11,17 +11,20 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
+import { Permission } from '../permission';
 import { StorageService } from '../storage';
 import { Model3dService } from './model3d.service';
 import { GenerateModel3dDto } from './dto/generate-model3d.dto';
 
 /**
- * 3D 模型 AI 生成(鉴权)。
- *   POST /model3d/generate  仅登录  { imageFileId, prompt? } → 异步生成 → 返回 { fileId, url }
- * 生成的 .glb 供 3D 展厅加载。
+ * 3D 模型 AI 生成 —— 收口 admin:menu(与前端「3D 生成」菜单一致)。
+ * ⚠ 此前仅 AuthGuard:任何登录用户可触发付费的豆包 Seed3D 生成 = 成本滥用,已堵。
+ *   POST /model3d/generate  { imageFileId, prompt? } → 异步生成 → 返回 { fileId, url }
+ * 生成的 .glb 供 3D 展厅加载(公开加载走下方 PublicModel3dController,不受此门影响)。
  */
 @Controller('model3d')
 @UseGuards(AuthGuard)
+@Permission('admin:menu')
 export class Model3dController {
   constructor(private readonly svc: Model3dService) {}
 

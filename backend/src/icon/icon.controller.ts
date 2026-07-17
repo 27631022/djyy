@@ -14,6 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { AuthGuard, CurrentUser, type AuthPayload } from '../auth';
+import { Permission } from '../permission';
 import { IconService } from './icon.service';
 
 interface UploadedFileShape {
@@ -34,11 +35,13 @@ function decodeName(name: string): string {
 }
 
 /**
- * 中央图标库管理(自定义上传)。任意登录用户可看可传(系统设置类,实际只对 admin 开放)。
- * 公开取字节走 IconPublicController(供 <img> 在任意页面 / 公开首页渲染)。
+ * 中央图标库管理(自定义上传)—— 收口 admin:menu(与前端「图标库」菜单一致)。
+ * ⚠ 此前仅 AuthGuard:任何登录用户可上传/删除站点图标,已堵。
+ * 公开取字节走 IconPublicController(/public/icons/:id,供 <img> 在任意页面/公开首页渲染,不受此门影响)。
  */
 @Controller('icons')
 @UseGuards(AuthGuard)
+@Permission('admin:menu')
 export class IconController {
   constructor(private readonly svc: IconService) {}
 
