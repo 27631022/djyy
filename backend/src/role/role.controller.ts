@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -19,25 +20,43 @@ import { UpdateRoleDto } from './dto/update-role.dto';
 import { ReplacePermissionsDto } from './dto/replace-permissions.dto';
 import { AssignRoleUserDto } from './dto/assign-role-user.dto';
 import { BatchAssignRoleUsersDto, BatchRemoveRoleUsersDto } from './dto/batch-role-users.dto';
+import { ListRoleUsersQuery } from './dto/list-role-users.query';
 
 @Controller('roles')
 @UseGuards(AuthGuard)
 export class RoleController {
   constructor(private readonly roles: RoleService) {}
 
+  /**
+   * 角色列表 —— 读接口也要权限门(此前仅 AuthGuard,任何登录用户可拉全部角色+权限配置=越权)。
+   * admin:role:read(角色管理)或 admin:user:read(用户管理页筛选器按角色 chip 过滤,需角色名)任一即可;
+   * 普通成员两者皆无 → 403。
+   */
   @Get()
+  @Permission('admin:role:read', 'admin:user:read')
   list() {
     return this.roles.list();
   }
 
+  /** 角色详情(含权限点配置)—— 仅角色管理场景,admin:role:read。 */
   @Get(':id')
+  @Permission('admin:role:read')
   findOne(@Param('id') id: string) {
     return this.roles.findOne(id);
   }
 
+  /** 角色成员列表(分页 + 姓名/员工编号搜索)—— member 角色 2 万+成员,禁止全量返回;成员名单敏感(如超管名单),admin:role:read。 */
   @Get(':id/users')
-  listUsers(@Param('id') id: string) {
-    return this.roles.listUsers(id);
+  @Permission('admin:role:read')
+  listUsers(@Param('id') id: string, @Query() query: ListRoleUsersQuery) {
+    return this.roles.listUsers(id, query);
+  }
+
+  /** 该角色全部成员 userId(轻量;批量添加面板算已持有重叠 / 单个添加去重用)。admin:role:read。 */
+  @Get(':id/users/ids')
+  @Permission('admin:role:read')
+  listUserIds(@Param('id') id: string) {
+    return this.roles.listUserIds(id);
   }
 
   /** 角色成员:直接添加/更新一名成员(授此角色 + 配数据范围)。授权动作 = admin:role:write。 */

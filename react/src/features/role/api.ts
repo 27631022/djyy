@@ -43,6 +43,19 @@ export interface RoleUserItem {
   grantedAt: string;
 }
 
+/** 角色成员列表分页响应(member 角色 2 万+成员,服务端分页) */
+export interface RoleUsersPage {
+  total: number;
+  items: RoleUserItem[];
+}
+
+/** 角色成员列表查询(take ≤ 200;search = 姓名/员工编号 ILIKE) */
+export interface ListRoleUsersQuery {
+  take?: number;
+  skip?: number;
+  search?: string;
+}
+
 /** 角色成员增删入参(= 给用户授此角色 + 配数据范围)。scope=custom 时须带 scopeOrgIds。 */
 export interface AssignRoleUserInput {
   userId: string;
@@ -79,13 +92,26 @@ export interface UpdateRoleInput {
 export const rolesApi = {
   list: () => api.get<RoleListItem[]>("/roles").then((r) => r.data),
   get:  (id: string) => api.get<RoleDetail>(`/roles/${id}`).then((r) => r.data),
-  listUsers: (id: string) => api.get<RoleUserItem[]>(`/roles/${id}/users`).then((r) => r.data),
-  /** 给角色直接添加/更新一名成员(返回更新后的成员列表)。仅系统管理员(admin:role:write)。 */
+  /** 角色成员列表(分页 + 姓名/员工编号搜索) */
+  listUsers: (id: string, q: ListRoleUsersQuery = {}) =>
+    api
+      .get<RoleUsersPage>(`/roles/${id}/users`, {
+        params: {
+          ...(q.search ? { search: q.search } : {}),
+          ...(q.take !== undefined ? { take: q.take } : {}),
+          ...(q.skip !== undefined ? { skip: q.skip } : {}),
+        },
+      })
+      .then((r) => r.data),
+  /** 该角色全部成员 userId(轻量;批量面板算已持有重叠 / 单个添加去重) */
+  listUserIds: (id: string) =>
+    api.get<{ total: number; ids: string[] }>(`/roles/${id}/users/ids`).then((r) => r.data),
+  /** 给角色直接添加/更新一名成员(返回成员列表首页)。仅系统管理员(admin:role:write)。 */
   addUser: (id: string, input: AssignRoleUserInput) =>
-    api.post<RoleUserItem[]>(`/roles/${id}/users`, input).then((r) => r.data),
-  /** 解除某用户的此角色(返回更新后的成员列表)。 */
+    api.post<RoleUsersPage>(`/roles/${id}/users`, input).then((r) => r.data),
+  /** 解除某用户的此角色(返回成员列表首页)。 */
   removeUser: (id: string, userId: string) =>
-    api.delete<RoleUserItem[]>(`/roles/${id}/users/${userId}`).then((r) => r.data),
+    api.delete<RoleUsersPage>(`/roles/${id}/users/${userId}`).then((r) => r.data),
   /** 批量添加成员(幂等:已持有者覆盖更新数据范围)。仅系统管理员(admin:role:write)。 */
   batchAddUsers: (id: string, input: BatchAssignRoleUsersInput) =>
     api.post<BatchAssignRoleUsersResult>(`/roles/${id}/users/batch`, input).then((r) => r.data),

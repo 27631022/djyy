@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { authApi, readStoredToken, storeToken, type AuthMe } from "@/features/auth";
 
 interface AuthContextValue {
@@ -15,6 +16,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const qc = useQueryClient();
   // 无 token 直接以「未登录」起步(不闪加载态);有 token 的由挂载 effect 拉 /auth/me
   const [me, setMe] = useState<AuthMe | null | undefined>(() => (readStoredToken() ? undefined : null));
 
@@ -36,15 +38,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (username: string) => {
       const resp = await authApi.devLogin(username);
       storeToken(resp.token);
+      // 换账号先清缓存,再拉新用户 —— 否则上一个用户的 react-query 缓存(角色/用户/组织树等)
+      // 在同浏览器切换时会残留(SPA 内切换不 reload),新用户可能瞬间看到旧用户的数据
+      qc.clear();
       await refresh();
     },
-    [refresh],
+    [refresh, qc],
   );
 
   const logout = useCallback(() => {
     storeToken(null);
     setMe(null);
-  }, []);
+    qc.clear(); // 登出即清缓存,不把上一个用户的敏感数据留在内存
+  }, [qc]);
 
   // 启动时有 token 才拉一次 /auth/me;setState 全在请求回调里(不在 effect 体内同步调)
   useEffect(() => {

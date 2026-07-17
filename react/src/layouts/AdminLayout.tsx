@@ -237,21 +237,39 @@ function evictLRU(list: Tab[], keep: string, recency: Map<string, number>): Tab[
     ★ 活动页用「真实 location(含 ?query)」渲染:标签的 pathname 快照会把 search 吞掉,
     页内 useSearchParams 永远读到空、setSearchParams 也不触发重渲(体检单切单位、?leaf/?ref 深链全失效)。
     非活动页保持 pathname 快照(隐藏中,无需跟随 URL)。 */
+/** 无权访问面板:菜单里的功能页,当前账号无权限时替代页面渲染 */
+function NoAccessPanel() {
+  return (
+    <div className="h-full flex flex-col items-center justify-center gap-2 text-center px-6">
+      <div className="text-sm font-semibold text-[#4B5563]">无权访问此页面</div>
+      <div className="text-xs text-[#9CA3AF] max-w-xs leading-relaxed">
+        你的账号没有查看该功能的权限。如需访问请联系系统管理员。
+      </div>
+    </div>
+  );
+}
+
 function KeepAliveRoutes({
   routes,
   alivePaths,
   currentPath,
   search,
+  me,
 }: {
   routes: RouteObject[];
   alivePaths: string[];
   currentPath: string;
   search: string;
+  me: AuthMe | null | undefined;
 }) {
   return (
     <div className="flex-1 min-h-0 relative">
       {alivePaths.map((p) => {
         const active = p === currentPath;
+        // 路由级越权防护:菜单项只「藏」不「拦」,URL 直链/浏览器后退/切换账号残留都能到达无权页面;
+        // 命中菜单项且当前用户无权 → 渲染无权面板而非页面组件(后端读接口另有 @Permission 兜底数据)。
+        const menuHit = findMenuItem(p);
+        const denied = !!menuHit && !canSeeItem(menuHit.item, me);
         return (
           <div
             key={p}
@@ -269,7 +287,11 @@ function KeepAliveRoutes({
                 </div>
               }
             >
-              <RouteSlot routes={routes} path={active ? p + search : p} />
+              {denied ? (
+                <NoAccessPanel />
+              ) : (
+                <RouteSlot routes={routes} path={active ? p + search : p} />
+              )}
             </Suspense>
           </div>
         );
@@ -383,7 +405,8 @@ function AdminLayoutInner({ uid, routes }: { uid: string; routes: RouteObject[] 
     // 记录访问时序(供 LRU 挤出最久未访问的标签)
     seqRef.current += 1;
     recencyRef.current.set(currentPath, seqRef.current);
-    if (!found) return;
+    // 越权防护:无权菜单页(URL 直链/切换账号残留)不进标签、不落 localStorage(与 tab 恢复的 visiblePathSet 过滤同口径)
+    if (!found || !canSeeItem(found.item, me)) return;
     // URL(外部系统)→ 状态:tab 是逐次累计的「访问历史」,直链/后退也要进 tab,
     // 无法渲染期派生 —— useLocation 的变化就是订阅回调,此处 setState 属合法同步。
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -393,7 +416,7 @@ function AdminLayoutInner({ uid, routes }: { uid: string; routes: RouteObject[] 
       const next = [...prev, { path: currentPath, label: found.item.label, icon: found.item.icon }];
       return next.length > MAX_TABS ? evictLRU(next, currentPath, recencyRef.current) : next;
     });
-  }, [currentPath]);
+  }, [currentPath, me]);
 
   /* 标签溢出检测(显隐 ‹ › 滚动按钮);标签增减 + 容器尺寸变化时重测 */
   useEffect(() => {
@@ -699,7 +722,7 @@ function AdminLayoutInner({ uid, routes }: { uid: string; routes: RouteObject[] 
           </div>
 
           {/* 内容区(多标签 keep-alive) */}
-          <KeepAliveRoutes routes={routes} alivePaths={alivePaths} currentPath={currentPath} search={location.search} />
+          <KeepAliveRoutes routes={routes} alivePaths={alivePaths} currentPath={currentPath} search={location.search} me={me} />
         </main>
       </div>
 

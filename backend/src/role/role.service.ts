@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma';
 import { AuditService } from '../audit';
 import { CreateRoleDto } from './dto/create-role.dto';
@@ -99,34 +100,75 @@ export class RoleService {
     };
   }
 
-  /** 持有该角色的用户列表 */
-  async listUsers(id: string) {
+  /**
+   * 持有该角色的用户列表(分页 + 姓名/员工编号搜索)。
+   * member 角色 2 万+成员,全量返回(20k 行 include + 10MB 载荷 + 全量渲染)点开即卡死 —— 必须分页。
+   * id 副键:批量授权在同一事务里 createMany,PG 里 now() 整批同值 → grantedAt 大量并列,
+   * 无副键翻页会重复/漏人(同 user.list 的 createdAt 副键教训)。
+   */
+  async listUsers(id: string, query?: { take?: number; skip?: number; search?: string }) {
     const role = await this.prisma.role.findUnique({ where: { id } });
     if (!role) throw new NotFoundException('角色不存在');
 
-    const userRoles = await this.prisma.userRole.findMany({
-      where: { roleId: id },
-      include: {
-        user: true,
-        scopeOrgs: { include: { org: true } },
-      },
-      orderBy: [{ grantedAt: 'desc' }],
-    });
+    const take = Math.min(Math.max(query?.take ?? 50, 1), 200);
+    const skip = Math.max(query?.skip ?? 0, 0);
+    const search = query?.search?.trim();
+    const where: Prisma.UserRoleWhereInput = {
+      roleId: id,
+      ...(search
+        ? {
+            user: {
+              OR: [
+                { name: { contains: search, mode: 'insensitive' } },
+                { username: { contains: search, mode: 'insensitive' } },
+              ],
+            },
+          }
+        : {}),
+    };
 
-    return userRoles.map((ur) => ({
-      userId: ur.userId,
-      username: ur.user.username,
-      name: ur.user.name,
-      avatarUrl: ur.user.avatarUrl,
-      active: ur.user.active,
-      scope: ur.scope,
-      scopeOrgs: ur.scopeOrgs.map((s) => ({
-        id: s.org.id,
-        name: s.org.name,
-        kind: s.org.kind,
+    const [total, userRoles] = await Promise.all([
+      this.prisma.userRole.count({ where }),
+      this.prisma.userRole.findMany({
+        where,
+        include: {
+          user: true,
+          scopeOrgs: { include: { org: true } },
+        },
+        orderBy: [{ grantedAt: 'desc' }, { id: 'asc' }],
+        take,
+        skip,
+      }),
+    ]);
+
+    return {
+      total,
+      items: userRoles.map((ur) => ({
+        userId: ur.userId,
+        username: ur.user.username,
+        name: ur.user.name,
+        avatarUrl: ur.user.avatarUrl,
+        active: ur.user.active,
+        scope: ur.scope,
+        scopeOrgs: ur.scopeOrgs.map((s) => ({
+          id: s.org.id,
+          name: s.org.name,
+          kind: s.org.kind,
+        })),
+        grantedAt: ur.grantedAt,
       })),
-      grantedAt: ur.grantedAt,
-    }));
+    };
+  }
+
+  /** 该角色全部成员的 userId(轻量 select,批量面板算已持有重叠 / 单个添加去重用)。 */
+  async listUserIds(id: string) {
+    const role = await this.prisma.role.findUnique({ where: { id } });
+    if (!role) throw new NotFoundException('角色不存在');
+    const rows = await this.prisma.userRole.findMany({
+      where: { roleId: id },
+      select: { userId: true },
+    });
+    return { total: rows.length, ids: rows.map((r) => r.userId) };
   }
 
   /**

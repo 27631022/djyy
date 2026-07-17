@@ -24,6 +24,7 @@ import {
   ScopeOrgSelector,
   buildOrgIndex,
   UserFilterPanel,
+  PaginationBar,
   buildQueryFromFilters,
   countActiveFilters,
   type ScopeValue,
@@ -683,14 +684,30 @@ function UsersTab({
   const canWrite = !!me?.isPlatformAdmin || (me?.permissions ?? []).includes("admin:role:write");
   const [panel, setPanel] = useState<"single" | "batch" | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [take, setTake] = useState(50);
+  const [skip, setSkip] = useState(0);
+  const [searchInput, setSearchInput] = useState("");
+  const debounced = useDebouncedValue(searchInput.trim(), 300);
+  const search = debounced || undefined;
 
+  // 服务端分页 + 搜索:member 角色 2 万+成员,全量拉取/渲染点开即卡死
   const usersQuery = useQuery({
-    queryKey: ["role-users", roleId],
-    queryFn: () => rolesApi.listUsers(roleId),
+    queryKey: ["role-users", roleId, { take, skip, search }],
+    queryFn: () => rolesApi.listUsers(roleId, { take, skip, search }),
+    placeholderData: (prev) => prev, // 翻页/搜索时保留上一页,避免列表闪空
+  });
+
+  // 全部成员 id(轻量 select):批量面板算已持有重叠 / 单个添加去重 —— 仅面板打开时拉
+  const memberIdsQuery = useQuery({
+    queryKey: ["role-user-ids", roleId],
+    queryFn: () => rolesApi.listUserIds(roleId),
+    enabled: panel !== null,
+    staleTime: 15_000,
   });
 
   function afterChange() {
     qc.invalidateQueries({ queryKey: ["role-users", roleId] });
+    qc.invalidateQueries({ queryKey: ["role-user-ids", roleId] });
     // 用户管理页(keep-alive 常驻 + 全局不随焦点重取)的角色数/角色筛选也要跟上
     qc.invalidateQueries({ queryKey: ["users"] });
     onChanged();
@@ -722,22 +739,48 @@ function UsersTab({
     onError: (err) => toast.error(errMsg(err, "批量移除失败")),
   });
 
-  const users = useMemo(() => usersQuery.data ?? [], [usersQuery.data]);
-  const existingIds = useMemo(() => new Set(users.map((u) => u.userId)), [users]);
-  // 勾选集与当前成员求交派生(成员列表变化后不残留已移除的 id)
+  const users = useMemo(() => usersQuery.data?.items ?? [], [usersQuery.data]);
+  const total = usersQuery.data?.total ?? 0;
+  const existingIds = useMemo(
+    () => new Set(memberIdsQuery.data?.ids ?? []),
+    [memberIdsQuery.data],
+  );
+  // 勾选集与本页成员求交派生(翻页/搜索时勾选已清,这里兜移除后的残留)
   const selectedIds = useMemo(
     () => users.filter((u) => checked.has(u.userId)).map((u) => u.userId),
     [users, checked],
   );
   const allChecked = users.length > 0 && selectedIds.length === users.length;
 
+  /* 渲染期对账(幂等收敛,同 Users.tsx 范式):搜索词变化 → 回第 1 页并清勾选;
+     skip 超出 total(末页成员被批量移除清空)→ 钳回末页。
+     isPlaceholderData 时 data 属旧 queryKey,不能拿来钳。 */
+  const [searchSnap, setSearchSnap] = useState("");
+  const freshData = usersQuery.isPlaceholderData ? undefined : usersQuery.data;
+  if (searchSnap !== debounced) {
+    setSearchSnap(debounced);
+    setSkip(0);
+    setChecked(new Set());
+  } else if (freshData && skip > 0 && skip >= freshData.total) {
+    setSkip(freshData.total === 0 ? 0 : Math.floor((freshData.total - 1) / take) * take);
+  }
+
   return (
     <div className="p-5 space-y-3">
-      {/* 顶部:成员数 + 添加 */}
-      <div className="flex items-center gap-2">
+      {/* 顶部:成员数 + 搜索 + 添加 */}
+      <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-[#6B7280]">
-          共 <strong className="text-[#1A1A1A]">{users.length}</strong> 名成员
+          共 <strong className="text-[#1A1A1A]">{total}</strong> 名成员
         </span>
+        <div className="relative">
+          <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="搜索姓名 / 员工编号"
+            className="pl-7 pr-2 py-1 text-xs rounded-md border border-[#E9E9E9] focus:outline-none focus:border-[var(--party-primary)] w-44"
+          />
+        </div>
         <div className="flex-1" />
         {canWrite ? (
           <>
@@ -805,7 +848,7 @@ function UsersTab({
             onChange={(v) => setChecked(v ? new Set(users.map((u) => u.userId)) : new Set())}
           />
           <span className="text-[10px] text-[#6B7280]">
-            {selectedIds.length > 0 ? `已选 ${selectedIds.length} 人` : "全选"}
+            {selectedIds.length > 0 ? `已选 ${selectedIds.length} 人` : "全选本页"}
           </span>
           <div className="flex-1" />
           <button
@@ -829,10 +872,17 @@ function UsersTab({
         <div className="p-8 text-center text-sm text-[#9CA3AF]">加载中…</div>
       ) : users.length === 0 ? (
         <div className="p-8 text-center text-sm text-[#9CA3AF]">
-          还没有成员。{canWrite ? "点「添加成员」直接分配。" : "在用户管理页为用户分配此角色。"}
+          {debounced ? (
+            "无匹配成员(按姓名 / 员工编号搜索)"
+          ) : (
+            <>还没有成员。{canWrite ? "点「添加成员」直接分配。" : "在用户管理页为用户分配此角色。"}</>
+          )}
         </div>
       ) : (
-        <div className="space-y-1">
+        <div
+          className="space-y-1 transition-opacity"
+          style={{ opacity: usersQuery.isFetching && !usersQuery.isLoading ? 0.6 : 1 }}
+        >
           {users.map((u) => (
             <div
               key={u.userId}
@@ -891,6 +941,24 @@ function UsersTab({
             </div>
           ))}
         </div>
+      )}
+
+      {/* 分页 */}
+      {!usersQuery.isLoading && total > 0 && (
+        <PaginationBar
+          total={total}
+          skip={skip}
+          take={take}
+          onPageChange={(s) => {
+            setSkip(s);
+            setChecked(new Set()); // 勾选只对本页有意义,翻页即清防跨页误移除
+          }}
+          onTakeChange={(t) => {
+            setTake(t);
+            setSkip(0);
+            setChecked(new Set());
+          }}
+        />
       )}
     </div>
   );
