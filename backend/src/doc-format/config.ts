@@ -85,6 +85,8 @@ export function normalizeConfig(input: unknown, base?: DocFormatConfig): DocForm
   const fb = (o.fontFallback ?? {}) as Record<string, unknown>;
   const el = (o.elements ?? {}) as Record<string, unknown>;
   const ar = (o.articleRule ?? {}) as Record<string, unknown>;
+  const tr = (o.textRules ?? {}) as Record<string, unknown>;
+  const md = (o.markdown ?? {}) as Record<string, unknown>;
   const pn = (o.pageNumber ?? {}) as Record<string, unknown>;
   const ow = (o.orphanWarn ?? {}) as Record<string, unknown>;
 
@@ -135,6 +137,8 @@ export function normalizeConfig(input: unknown, base?: DocFormatConfig): DocForm
       inlineRole: role(ar.inlineRole, d.articleRule.inlineRole),
       standaloneRole: role(ar.standaloneRole, d.articleRule.standaloneRole),
     },
+    textRules: { curlyQuotes: bool(tr.curlyQuotes, d.textRules.curlyQuotes) },
+    markdown: { autoNumber: bool(md.autoNumber, d.markdown.autoNumber) },
     pageNumber: {
       enabled: bool(pn.enabled, d.pageNumber.enabled),
       // 破折号只留 1~4 个字符,且不能是会破坏 XML 的东西

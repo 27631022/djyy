@@ -171,6 +171,8 @@ function baseConfig(charsPerLine: number): DocFormatConfig {
       inlineRole: 'body',
       standaloneRole: 'heading',
     },
+    textRules: { curlyQuotes: true },
+    markdown: { autoNumber: true },
     pageNumber: {
       enabled: true,
       dash: '—', // em dash。注:U+2014,不是 ASCII 的 -

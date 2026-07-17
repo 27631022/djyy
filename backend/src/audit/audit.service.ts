@@ -50,6 +50,19 @@ export class AuditService {
   }
 
   /**
+   * 数某个 action 发生了多少次(精确匹配,走 AuditLog 的 action 索引)。
+   *
+   * 给业务模块拿「累计干了多少次」这类计数用(如公文排版的「已转换 N 份」)——
+   * 审计里本来就有,不必为一个计数器再建表,而且功能上线即有真实历史数据、不用从 0 爬。
+   * ⚠ 别绕过本方法直查 AuditLog:conventions.md 的「AuditLog 例外」只豁免了 auth.controller 直**写**。
+   */
+  async countByAction(action: string, since?: Date): Promise<number> {
+    return this.prisma.auditLog.count({
+      where: { action, ...(since ? { createdAt: { gte: since } } : {}) },
+    });
+  }
+
+  /**
    * 分页查询审计日志,新到旧排序。
    * detail 字段反序列化回对象,前端无需自行 JSON.parse。
    */

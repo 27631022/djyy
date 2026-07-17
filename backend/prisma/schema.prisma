@@ -1791,3 +1791,69 @@ model DocFormatTemplate {
 
   @@index([isDefault])
 }
+
+/// 收藏「公文排版」这个工具。
+/// 照 DirectoryFavorite 的窄表范式,不套 knowledge/showcase 的多态 Reaction ——
+/// 那套的每一行是「用户 × 一个内容实例」,而这里的对象是单例工具页,targetId 恒定,
+/// 多态的 @@unique([userId,targetType,targetId,type]) 会退化成 @@unique([userId])。
+// @module: doc-format
+model DocFormatFavorite {
+  userId    String   @id // 松引用 User.id
+  createdAt DateTime @default(now())
+}
+
+/// 浏览日志。浏览量 = 本表行数(同人同 30 分钟窗口只有一行)。
+///
+/// ⚠ 去重**靠唯一约束而不是 FOR UPDATE 行锁**:knowledge/showcase 锁的是「被浏览的那条内容」,
+/// 而公文排版是单例工具页,锁只能加在一行统计行上 —— 那就成了全站访问都要排队的热点锁。
+/// 改成把 30 分钟窗口起点算进 bucket 列 + upsert:同人同窗口重复进入自然幂等,无锁、无竞态。
+/// 副作用是同窗口重复进入复用同一行(时长取 max)—— 这比每次新建一条更贴近「一次会话」的语义。
+// @module: doc-format
+model DocFormatViewLog {
+  id          String   @id @default(cuid())
+  userId      String // 松引用 User.id
+  /// 30 分钟去重窗口的起点(向下取整到窗口边界)
+  bucket      DateTime
+  /// 离开页面时由 beacon 回填,取 max,封顶 4h
+  durationSec Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, bucket])
+  @@index([createdAt])
+}
+
+/// 吐槽反馈。本模块的反馈**专收转换失败的问题**,所以允许带上原始文件(全站首个带附件的反馈)。
+/// userId 始终存(防刷/审计),anonymous 只影响展示。仅管理员可见并回复(工具页没有「作者」)。
+// @module: doc-format
+model DocFormatFeedback {
+  id        String   @id @default(cuid())
+  userId    String // 松引用 User.id
+  userName  String // 快照
+  anonymous Boolean  @default(false)
+  content   String
+  /// 转换失败的原始文件,JSON string[] of StoredFile.id(照 TaskSubmission.fileIds 范式)。
+  /// ⚠ 这是 doc-format 唯一需要长期留存的文件引用 —— 必须进 collectInUseFileIds(),
+  /// 否则 30 天后被孤儿 GC 清掉,而它正是用来复现问题的样本。
+  fileIds   String? // JSON string[]
+  status    String   @default("open") // open | replied | closed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  replies DocFormatFeedbackReply[]
+
+  @@index([status, createdAt])
+}
+
+/// 反馈回复(管理员,实名)
+// @module: doc-format
+model DocFormatFeedbackReply {
+  id         String            @id @default(cuid())
+  feedbackId String
+  feedback   DocFormatFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  userId     String // 松引用 User.id
+  userName   String // 快照
+  content    String
+  createdAt  DateTime          @default(now())
+
+  @@index([feedbackId])
+}

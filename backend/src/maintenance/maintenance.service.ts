@@ -11,6 +11,7 @@ import { KnowledgeService } from '../knowledge';
 import { ShowcaseService } from '../showcase';
 import { InteractiveService } from '../interactive';
 import { AvatarLibraryService } from '../avatar';
+import { DocFormatInteractionService } from '../doc-format';
 
 /** 上传超过这么多天仍无人引用,才算孤儿(宽限,避免误删「正在走向导、还没提交」的上传)。 */
 const ORPHAN_GRACE_DAYS = 30;
@@ -46,11 +47,12 @@ export class MaintenanceService {
     private readonly showcase: ShowcaseService,
     private readonly interactive: InteractiveService,
     private readonly avatarLibrary: AvatarLibraryService,
+    private readonly docFormat: DocFormatInteractionService,
   ) {}
 
   /** 聚合所有业务模块「在用」的 storage fileId。漏一个消费方都可能误删 —— 新增引用文件的模块要在这里加。 */
   private async inUseFileIds(): Promise<Set<string>> {
-    const [cert, task, hall, report, know, show, inter, avatarLib] = await Promise.all([
+    const [cert, task, hall, report, know, show, inter, avatarLib, docFmt] = await Promise.all([
       this.certificates.collectInUseFileIds(),
       this.tasks.collectInUseFileIds(),
       this.exhibitions.collectInUseFileIds(),
@@ -59,6 +61,9 @@ export class MaintenanceService {
       this.showcase.collectInUseFileIds(),
       this.interactive.collectInUseFileIds(),
       this.avatarLibrary.collectInUseFileIds(),
+      // ⚠ 只含反馈里的「转换失败样本」—— 排版的原件/产物**故意不报**(一次性加工,30 天后
+      //   被回收正是要的,见 doc-format/README「孤儿 GC:本模块故意不注册」)。
+      this.docFormat.collectInUseFileIds(),
     ]);
     return new Set<string>([
       ...cert,
@@ -69,6 +74,7 @@ export class MaintenanceService {
       ...show,
       ...inter,
       ...avatarLib,
+      ...docFmt,
     ]);
   }
 

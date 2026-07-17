@@ -1,16 +1,6 @@
-import { useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Check,
-  Download,
-  FileText,
-  Loader2,
-  Upload,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, ArrowLeft, Check, Download, FileText, Loader2, ZoomIn, ZoomOut } from "lucide-react";
 import { storageApi } from "@/features/storage";
 import { downloadBlob } from "@/shared/lib/download";
 import {
@@ -23,105 +13,14 @@ import {
   type ElementType,
 } from "../api";
 import { GridPreview } from "../components/GridPreview";
-
-const PAGE_BG = "min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50";
-
-/** 上传面板 */
-function UploadPanel({ onDone }: { onDone: (r: AnalyzeResult) => void }) {
-  const [dragging, setDragging] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  const analyze = useMutation({
-    mutationFn: docFormatApi.analyze,
-    onSuccess: onDone,
-    onError: (e: unknown) => {
-      const msg =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        "解析失败,请确认是 Word 公文";
-      setErr(msg);
-    },
-  });
-
-  const pick = (f: File | undefined) => {
-    if (!f) return;
-    setErr(null);
-    if (!/\.(doc|docx)$/i.test(f.name)) {
-      setErr("只支持 .doc / .docx");
-      return;
-    }
-    analyze.mutate(f);
-  };
-
-  return (
-    <div className="mx-auto max-w-3xl px-4 py-16">
-      <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold text-slate-800">公文排版</h1>
-        <p className="mt-2 text-slate-500">
-          上传公文 → 核对结构 → 按规范排好版下载。原文一个字都不会改。
-        </p>
-      </div>
-
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragging(false);
-          pick(e.dataTransfer.files[0]);
-        }}
-        onClick={() => inputRef.current?.click()}
-        className={`cursor-pointer rounded-2xl border-2 border-dashed p-16 text-center transition ${
-          dragging
-            ? "border-[var(--party-primary)] bg-party-soft"
-            : "border-slate-300 bg-white/80 hover:border-slate-400"
-        }`}
-      >
-        {analyze.isPending ? (
-          <>
-            <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-[var(--party-primary)]" />
-            <p className="text-slate-600">正在解析结构…</p>
-          </>
-        ) : (
-          <>
-            <Upload className="mx-auto mb-4 h-10 w-10 text-slate-400" />
-            <p className="text-lg text-slate-700">把公文拖进来,或点击选择</p>
-            <p className="mt-2 text-sm text-slate-400">支持 .doc / .docx</p>
-          </>
-        )}
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".doc,.docx"
-          className="hidden"
-          onChange={(e) => pick(e.target.files?.[0])}
-        />
-      </div>
-
-      {err && (
-        <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{err}</p>
-      )}
-
-      <div className="mt-10 rounded-xl bg-white/70 p-5 text-sm text-slate-500 ring-1 ring-slate-200">
-        <p className="mb-2 font-medium text-slate-700">说明</p>
-        <ul className="list-inside list-disc space-y-1">
-          <li>只排正文。版头(红头)与版记(抄送/印发)不在排版范围,请在 OA 里套红或用现成模板。</li>
-          <li>结构靠公文层次序数识别(一、/(一)/1./(1)/第X章/第X条),识别不准的可以在下一步改。</li>
-          <li>
-            孤行/寡行由 Word 自己避;「孤字」会给出<b className="font-medium text-slate-700">疑似</b>
-            提示,请人工核对。
-          </li>
-        </ul>
-      </div>
-    </div>
-  );
-}
+import { DocFormatShell, WB_CARD } from "../components/DocFormatShell";
+import { UploadPanel } from "../components/UploadPanel";
+import { FeedbackDialog } from "../components/FeedbackDialog";
+import { useViewTracking } from "../useViewTracking";
 
 /** 排版工作台:左边逐段核对,右边实时预览 */
 function Workbench({ initial, onReset }: { initial: AnalyzeResult; onReset: () => void }) {
+  const qc = useQueryClient();
   const [templateId, setTemplateId] = useState(initial.templateId);
   const [overrides, setOverrides] = useState<Record<number, ElementType>>({});
   const [zoom, setZoom] = useState(0.7);
@@ -159,6 +58,8 @@ function Workbench({ initial, onReset }: { initial: AnalyzeResult; onReset: () =
     onSuccess: async (r) => {
       const blob = await storageApi.fetchBlob(r.fileId);
       downloadBlob(blob, r.fileName);
+      // 转换量是后端从审计里数的 —— 刚转完这份要让它即时涨,否则用户看不到自己那一份
+      qc.invalidateQueries({ queryKey: ["doc-format", "stats"] });
     },
     // 没有 onError 的话:点了按钮转一圈,什么都不发生、也没有任何提示
     onError: (e: unknown) =>
@@ -174,7 +75,7 @@ function Workbench({ initial, onReset }: { initial: AnalyzeResult; onReset: () =
   const lowCount = shown.filter((e) => e.confidence === "low" && e.type !== "skip").length;
 
   return (
-    <div className="mx-auto max-w-[1600px] px-4 py-6">
+    <div>
       {/* 头 */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <button
@@ -217,7 +118,7 @@ function Workbench({ initial, onReset }: { initial: AnalyzeResult; onReset: () =
       </div>
 
       {/* 版面摘要 */}
-      <div className="mb-4 flex flex-wrap gap-x-6 gap-y-1 rounded-lg bg-white/80 px-4 py-2 text-xs text-slate-500 ring-1 ring-slate-200">
+      <div className={`mb-4 flex flex-wrap gap-x-6 gap-y-1 ${WB_CARD} px-4 py-2 text-xs text-[#667085]`}>
         <span>
           每行 <b className="text-slate-700">{cfg?.grid.charsPerLine ?? "—"}</b> 字
         </span>
@@ -279,7 +180,7 @@ function Workbench({ initial, onReset }: { initial: AnalyzeResult; onReset: () =
 
       <div className="grid gap-4 lg:grid-cols-[minmax(360px,440px)_1fr]">
         {/* 左:逐段核对 */}
-        <div className="rounded-xl bg-white/85 ring-1 ring-slate-200">
+        <div className={WB_CARD}>
           <div className="border-b border-slate-100 px-4 py-3">
             <p className="text-sm font-medium text-slate-700">
               结构核对 · {shown.length} 段
@@ -347,7 +248,7 @@ function Workbench({ initial, onReset }: { initial: AnalyzeResult; onReset: () =
         </div>
 
         {/* 右:版面预览 */}
-        <div className="rounded-xl bg-slate-100/70 ring-1 ring-slate-200">
+        <div className={WB_CARD}>
           <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-2">
             <p className="text-sm font-medium text-slate-700">版面预览</p>
             <div className="ml-auto flex items-center gap-1">
@@ -384,14 +285,19 @@ function Workbench({ initial, onReset }: { initial: AnalyzeResult; onReset: () =
 /** 公文排版(/doc-format):前台工具,登录即可用 */
 export default function DocFormatPage() {
   const [result, setResult] = useState<AnalyzeResult | null>(null);
+  const [feedback, setFeedback] = useState(false);
+  // 浏览埋点:进页面打一次,离开时 beacon 回填可见时长
+  useViewTracking();
+
   return (
-    <div className={PAGE_BG}>
+    <DocFormatShell onFeedback={() => setFeedback(true)}>
       {result ? (
         // key 重挂载:换一份文件时工作台状态(改判/缩放/模板)全部重置,不用 effect 同步
         <Workbench key={result.fileId} initial={result} onReset={() => setResult(null)} />
       ) : (
         <UploadPanel onDone={setResult} />
       )}
-    </div>
+      {feedback && <FeedbackDialog onClose={() => setFeedback(false)} />}
+    </DocFormatShell>
   );
 }

@@ -1,6 +1,41 @@
 # doc-format · 公文排版
 
-上传 `.doc/.docx` → 按规则重排版 → 下载 `.docx`。后台可配多套排版模板。
+上传 `.doc/.docx/.md` → 按规则重排版 → 下载 `.docx`。后台可配多套排版模板。
+门户页带收藏 / 转换问题反馈(可带失败样本) / 浏览量 / 转换量统计。
+
+## 三条输入管线,判据方向不同
+
+| 输入 | 本质 | 层级判据 | 正文 |
+|---|---|---|---|
+| `.doc` | 重排已定稿的公文 | 正文里的序号(`一、`/`（一）`) | 一字不改(直引号→弯引号除外) |
+| `.docx` | 同上 | 同上(jszip+saxes 直读 OOXML) | 同上 |
+| `.md` | **把草稿转成公文** | **`#` 的层级**(正文里没有序号可认) | 会补序号(`## 总体要求`→`一、总体要求`) |
+
+`.md` 与另两条**判据方向相反**:md 的层级写在 `#` 里,所以 `mdHeading` 是权威判据而不是提示;
+而 .doc/.docx 恰恰相反(源里的字体/加粗不可信,只信正文正则)。见 `parse/md-parser.ts` 头注释。
+
+### md 解析:走 marked 的 token 树,不用正则剥标记
+
+正文里残留一个 `*` 或 `&quot;` 就是公文错字。`marked` 的 lexer 给的 token 树能精确抽纯文本,
+字段选择是实测定的(`md-parser.ts` 有表):`text`→**raw**(text 被 HTML 转义过)、`escape`→**text**、
+`html`→**丢弃**。别图省事用正则。多镜头对抗审查抓到的坑,都在 `_v.ts` 式回归里守着:
+
+- **codespan 必须从 `raw` 去反引号,不能用 `text`** —— `` `a < b` `` 的 text 是 `a &lt; b`,
+  那些 `&lt;/&amp;/&quot;` 会原样进公文正文。
+- **嵌套列表**:`item.tokens` 里夹着子 `list` token,`plain()` 会把它当行内文本揉进来(父项和
+  子项标记黏成一段)。要在 item 里把块级子节点(list/blockquote)分出来各自成段。
+- **块级 HTML**(`<!-- 批注 -->`、`<div>`、`<table>`)整块丢弃 —— 和行内 html 一致。原先
+  `blockToParas` 没有 html 分支,它落到 default 被 `push` 进正文(作者的私人批注变成可见正文)。
+- **段内软换行 `\n`** 折成空格(`push` 里统一折叠段内空白)—— 裸 `\n` 留到网格里会被当整格字符。
+- **md 不能套用 .doc 的「版头残片 / 版记 / 发文字号」规则** —— 那些是从二进制文档提取时的产物,
+  md 里不存在。不隔离的话 md 的短正文(列表项「甲」)会被当成红头残片 skip 掉。`classifyOne(p, text, fromMd)`。
+
+### 会改动正文字符的两条规则(默认开,可关,改动在确认页可见)
+
+本模块默认「一字不改」,所以这两条单拎进 `config.textRules` / `config.markdown`,模板里可关:
+- `curlyQuotes`:直引号 `"` → 弯引号 `“”`(段内成对切换)。公文规范用弯引号,源里的直引号本来就是错的。
+- `markdown.autoNumber`:md 无序号的标题自动补层次序号。这是本模块**唯一凭空生成文字**的地方。
+  空格照真实公文:`一、`/`（一）`/`（1）` 不加空格,只有 `1. ` 点号后跟一个空格。
 
 ```
 上传 → 解析(parse/) → 结构识别(recognize.ts) → 【人工确认】→ 排版(render/) → 下载
@@ -139,11 +174,33 @@ $doc.NoLineBreakAfter    # 行尾禁则 19 字符
 红头在源文件里是图片/文本框,纯文本提取只能抠出一个「件」字,留着也是垃圾;它们归 `skip`。
 实测样本里的表格全是版头/版记的排版家具,「表彰名单」是普通段落不是表格。
 
-## 孤儿 GC:本模块故意不注册
+## 互动(收藏 / 反馈 / 浏览量 / 转换量)
 
-排版是「上传 → 下载 → 结束」的一次性加工,文件没有任何业务表引用。让它们在 30 天宽限期后
-自然被清掉正是要的行为。⚠ 以后若加「我的排版历史」这类要长期留存的功能,必须回来给
-`MaintenanceService.inUseFileIds()` 补注册,否则会被清掉。
+自建三张表(`DocFormatFavorite` / `DocFormatViewLog` / `DocFormatFeedback`+`Reply`),照
+knowledge/showcase 的**范式**但表是自己的(复用别人的表破 conventions 约束 #1,走对方 Service
+又语义荒谬 —— 它们每个方法第一步都是 requireVisibleArticle,而这里没有「内容实例」)。
+
+**与那两家的根本不同:这是单例工具页,不是内容实例。** 所以两处不能照抄:
+- **浏览量去重不用 `FOR UPDATE` 行锁** —— 它们锁「被浏览的那条内容」,这里只能锁一行统计行,
+  那就成了全站访问都排队的热点锁。改用 `(userId, 30分钟窗口)` 唯一约束 + upsert,无锁幂等。
+- **收藏不套多态 Reaction** —— targetId 恒定会让 `@@unique` 退化。照 `DirectoryFavorite` 的窄表
+  (`@id userId` 一行到底)。
+
+**转换量不建计数表**:`doc-format.render` 成功本来就打审计,`AuditService.countByAction('doc-format.render')`
+一句就有,而且功能上线即有真实历史数据、不用从 0 爬。⚠ 别绕过它直查 AuditLog(conventions 的
+「AuditLog 例外」只豁免 auth.controller 直**写**)。
+
+**反馈可带失败样本**(全站首个带附件的反馈):`fileIds` JSON string[](照 `TaskSubmission.fileIds`)。
+用户先经 storage 传好拿 fileId 再随 JSON 提交(dialog 不改 multipart)。附件必须在本模块 feedback
+文件夹下(`assertOwnFeedbackFiles`),否则任意 fileId 都能被引用进反馈、既拿别人的文件又永不回收。
+
+## 孤儿 GC:排版件不注册,反馈样本要注册
+
+- **排版的原件/产物故意不注册** —— 一次性加工(上传→下载→结束),没有业务表引用,30 天后被清掉
+  正是要的。⚠ 以后若加「我的排版历史」这类长期留存功能,必须回来补注册。
+- **反馈里的失败样本必须注册**(`DocFormatInteractionService.collectInUseFileIds`)—— 它是长期留存的
+  引用(用来复现问题),不注册就会 30 天后被 purge 掉。已接进 `MaintenanceService`。
+  ⚠ 别把排版件也塞进 collectInUseFileIds,那会让它们永不回收。
 
 ## 加东西怎么加
 

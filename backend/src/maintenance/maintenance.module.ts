@@ -9,6 +9,7 @@ import { KnowledgeModule } from '../knowledge';
 import { ShowcaseModule } from '../showcase';
 import { InteractiveModule } from '../interactive';
 import { AvatarModule } from '../avatar';
+import { DocFormatModule } from '../doc-format';
 import { MaintenanceController } from './maintenance.controller';
 import { MaintenanceService } from './maintenance.service';
 
@@ -17,7 +18,7 @@ import { MaintenanceService } from './maintenance.service';
  * 无人依赖本模块 → 依赖图仍是 DAG(GC 编排放这里,避免 storage→cert/task 成环)。
  */
 @Module({
-  imports: [StorageModule, CertificateModule, TaskModule, RoleModule, ExhibitionModule, ReportModule, KnowledgeModule, ShowcaseModule, InteractiveModule, AvatarModule],
+  imports: [StorageModule, CertificateModule, TaskModule, RoleModule, ExhibitionModule, ReportModule, KnowledgeModule, ShowcaseModule, InteractiveModule, AvatarModule, DocFormatModule],
   controllers: [MaintenanceController],
   providers: [MaintenanceService],
 })

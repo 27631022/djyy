@@ -11,6 +11,7 @@
  * 请示稿里 9 个「(N)」用楷体而第 10 个「(四)」错用仿宋)。所以一律以正文正则为主判据 ——
  * 这恰恰是本功能的价值:它能修掉源文件里的这类错。
  */
+import { MdNumbering, typeOfMdHeading } from './md-structure';
 import type { DocElement, DocFormatConfig, DocRun, ElementType } from './types';
 
 /** 解析器给出的原始段落。align/bold/sizePt 仅 .docx 有,只作辅助提示,不作判据 */
@@ -22,6 +23,12 @@ export type RawParagraph = {
   sizePt?: number;
   fontEA?: string;
   isTable?: boolean;
+  /**
+   * markdown 的标题层级(1-6)。**只有 .md 输入才有,且它是权威判据而非提示** ——
+   * md 的层级写在 `#` 里,正文里没有「一、」可认;而 .doc/.docx 恰恰相反(层级只在正文序号里,
+   * 源里的字体/加粗不可信)。两条管线的判据方向是反的。
+   */
+  mdHeading?: number;
 };
 
 const CN_NUM = '一二三四五六七八九十百零〇';
@@ -103,18 +110,27 @@ export function cleanText(raw: string): string {
   return noMark.replace(/^[\s\u3000]+|[\s\u3000]+$/gu, '');
 }
 
-/** 第一趟:逐段按字形打型(不含需要位置信息的 title/signature) */
-function classifyOne(p: RawParagraph, text: string): { type: ElementType; note?: string } | null {
+/**
+ * 第一趟:逐段按字形打型(不含需要位置信息的 title/signature)。
+ * @param fromMd md 输入 —— 版头残片/版记表格/发文字号这些都是「从二进制文档提取」的产物,
+ *   md 里根本不存在,不能拿这些规则去误伤 md 的短正文(如列表项「甲」会被当成红头残片 skip 掉)。
+ */
+function classifyOne(
+  p: RawParagraph,
+  text: string,
+  fromMd: boolean,
+): { type: ElementType; note?: string } | null {
   if (!text || !text.trim()) return { type: 'skip' };
 
-  // 版记(抄送/印发)——源文件里是表格,提取出来带制表符
-  if (text.includes('\t') && RE_VERSION_NOTE.test(text)) {
+  // 版记(抄送/印发)——源文件里是表格,提取出来带制表符。md 没有这回事
+  if (!fromMd && text.includes('\t') && RE_VERSION_NOTE.test(text)) {
     return { type: 'skip', note: '版记(抄送/印发),不在排版范围' };
   }
 
   const t = text.replace(/\t/g, ' ').trim();
 
-  if (RE_DOC_NUMBER.test(t)) return { type: 'docNumber', note: '版头元素,默认不输出' };
+  // 发文字号是版头元素,md 里不该有;跳过它免得误伤 md 里恰好像文号的正文
+  if (!fromMd && RE_DOC_NUMBER.test(t)) return { type: 'docNumber', note: '版头元素,默认不输出' };
   if (RE_CHAPTER.test(t)) return { type: 'chapter' };
   if (RE_ARTICLE.test(t)) return { type: 'article' };
   if (RE_LEVEL1.test(t)) return { type: 'level1' };
@@ -125,8 +141,8 @@ function classifyOne(p: RawParagraph, text: string): { type: ElementType; note?:
   if (RE_ATTACHMENT_NOTE.test(t)) return { type: 'attachmentNote' };
   if (RE_DATE.test(t)) return { type: 'date' };
 
-  // 版头残片:红头是图片/文本框,纯文本提取常常只漏出一两个字
-  if (p.index < HEADER_SCAN_PARAS && t.length <= HEADER_FRAGMENT_LEN) {
+  // 版头残片:红头是图片/文本框,纯文本提取常常只漏出一两个字。md 无红头,短句就是短正文
+  if (!fromMd && p.index < HEADER_SCAN_PARAS && t.length <= HEADER_FRAGMENT_LEN) {
     return { type: 'skip', note: '疑似版头残片(红头是图片,提取不到)' };
   }
 
@@ -202,17 +218,46 @@ function splitArticle(text: string, cfg: DocFormatConfig): DocRun[] | null {
   ];
 }
 
+/**
+ * 直引号 → 弯引号(段内成对切换:奇数个开、偶数个关)。
+ * 公文规范用弯引号,源里的直引号本来就是错的。逐段独立配对 —— 跨段配对会被一个漏打的引号带偏整篇。
+ */
+export function curlyQuotes(text: string): string {
+  let open = true;
+  return text.replace(/"/g, () => {
+    open = !open;
+    return open ? '”' : '“';
+  });
+}
+
 /** 主入口 */
 export function recognize(paragraphs: RawParagraph[], cfg: DocFormatConfig): DocElement[] {
+  const fromMd = paragraphs.some((p) => p.mdHeading);
   const items = paragraphs.map((p) => {
-    const text = cleanText(p.text);
-    const hit = classifyOne(p, text);
+    const cleaned = cleanText(p.text);
+    const text = cfg.textRules.curlyQuotes ? curlyQuotes(cleaned) : cleaned;
+    // md 的层级是权威判据(写在 `#` 里,正文里没有序号可认);.doc/.docx 走正文正则
+    const byHeading = p.mdHeading ? typeOfMdHeading(p.mdHeading) : null;
+    const hit = byHeading ? { type: byHeading } : classifyOne(p, text, fromMd);
     return { type: hit?.type ?? null, note: hit?.note, text, raw: p };
   });
 
-  markTitle(items);
+  // md 的标题已由 `#` 定死,不能再让 markTitle 按位置猜 —— 它会把 h1 之后的短句也认成标题。
+  // 但 markRecipient / markSignature 只动「未定型」的段,不会覆盖 `#` 的判定,md 照样需要它们
+  // (md 里的「各单位党委:」「落款」「成文日期」一样要顶格/右对齐)。
+  if (!fromMd) markTitle(items);
   markRecipient(items);
   const sigIdx = new Set(markSignature(items));
+
+  // md → 公文:给没有序号的层次标题补上「一、」「（一）」…(见 md-structure.ts 的取舍说明)
+  if (fromMd && cfg.markdown.autoNumber) {
+    const numbering = new MdNumbering();
+    for (const it of items) {
+      if (!it.type) continue;
+      const prefix = numbering.next(it.type, it.text);
+      if (prefix) it.text = prefix + it.text;
+    }
+  }
 
   // 附件标记之后的第一个实体段 = 附件标题
   items.forEach((it, i) => {

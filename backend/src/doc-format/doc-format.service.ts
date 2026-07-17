@@ -6,6 +6,7 @@ import { normalizeConfig } from './config';
 import { findOrphans, metricsOf, paginate } from './grid';
 import { parseDoc } from './parse/doc-parser';
 import { parseDocx } from './parse/docx-parser';
+import { parseMd } from './parse/md-parser';
 import { recognize } from './recognize';
 import { renderDocx } from './render/docx-renderer';
 import { BUILTIN_PRESETS, BUILTIN_PRESET_MAP, DEFAULT_PRESET_KEY } from './presets';
@@ -289,15 +290,19 @@ export class DocFormatService {
    */
   private async parseBuffer(name: string, buf: Buffer) {
     const ext = name.toLowerCase().split('.').pop() ?? '';
-    if (ext !== 'doc' && ext !== 'docx') throw new BadRequestException('只支持 .doc / .docx');
+    if (!['doc', 'docx', 'md'].includes(ext)) throw new BadRequestException('只支持 .doc / .docx / .md');
     try {
-      return ext === 'docx' ? await parseDocx(buf) : await parseDoc(buf);
+      if (ext === 'docx') return await parseDocx(buf);
+      if (ext === 'md') return parseMd(buf);
+      return await parseDoc(buf);
     } catch (e) {
       if (e instanceof BadRequestException) throw e;
       const hint =
         ext === 'docx'
           ? '这个文件不是有效的 .docx。如果是从 OA 下载的,它多半其实是 .doc —— 请改回 .doc 扩展名,或用 Word 另存为 .docx'
-          : '这个文件不是有效的 .doc,读不出内容';
+          : ext === 'md'
+            ? '这个 .md 读不出内容(要求 UTF-8 编码)'
+            : '这个文件不是有效的 .doc,读不出内容';
       throw new BadRequestException(`${hint}(${(e as Error).message})`);
     }
   }
@@ -408,7 +413,7 @@ export class DocFormatService {
     const meta = await this.storage.getMeta(fileId);
     const buf = await renderDocx(els, config);
 
-    const base = meta.originalName.replace(/\.(doc|docx)$/i, '');
+    const base = meta.originalName.replace(/\.(doc|docx|md)$/i, '');
     const fileName = `${base}-已排版.docx`;
     const stored = await this.storage.put(
       { buffer: buf, originalName: fileName, ownerModule: OWNER, folder: FOLDER_OUTPUT },

@@ -180,6 +180,26 @@ export type DocFormatConfig = {
   fontFallback: Partial<Record<FontRole, string>>;
   elements: Record<ElementType, ElementStyle>;
   articleRule: ArticleRule;
+  /**
+   * 会**改动正文字符**的规则。本模块默认「一字不改」,所以这些单拎出来、可关、且改动在确认页可见。
+   */
+  textRules: {
+    /**
+     * ASCII 直引号 " → 弯引号 “”(段内成对切换)。
+     * 公文规范用弯引号,源文件里的直引号本来就是错的 —— 修掉它正是本功能的价值
+     * (同「源文档字体不自洽」那条)。用户 2026-07-17 定案:全部输入都改,不只 md。
+     */
+    curlyQuotes: boolean;
+  };
+  /** md → 公文 的转换规则(只对 .md 输入生效) */
+  markdown: {
+    /**
+     * 无序号的标题自动补层次序号:`## 总体要求` → `一、总体要求`。
+     * md 的层级写在 `#` 里,而公文的层次序数写在正文里 —— 不补的话输出就不是公文。
+     * 已自带序号的标题不重复加。这是本模块唯一凭空生成文字的地方,故可关。
+     */
+    autoNumber: boolean;
+  };
   pageNumber: PageNumberConfig;
   /**
    * 打开 Word/WPS 自带的孤行控制。

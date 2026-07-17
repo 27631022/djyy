@@ -135,6 +135,10 @@ export type DocFormatConfig = {
     inlineRole: FontRole;
     standaloneRole: FontRole;
   };
+  /** 会改动正文字符的规则(默认「一字不改」,这些单拎出来可关) */
+  textRules: { curlyQuotes: boolean };
+  /** md → 公文 的转换规则(只对 .md 输入生效) */
+  markdown: { autoNumber: boolean };
   pageNumber: {
     enabled: boolean;
     dash: string;
@@ -268,3 +272,84 @@ export const docFormatApi = {
   removeTemplate: (id: string) =>
     api.delete<{ ok: true }>(`/doc-format/templates/${id}`).then((r) => r.data),
 };
+
+
+// ----------------------------------------------------------------- 互动
+
+export type DocStats = {
+  /** 累计排版的文档份数 —— 显眼处要的那个数 */
+  converted: number;
+  /** 浏览量(同人 30 分钟内算一次) */
+  viewCount: number;
+  favoriteCount: number;
+  favorited: boolean;
+  totalDurationSec: number;
+  feedbackOpen: number;
+};
+
+export type FavoriteState = { favorited: boolean; favoriteCount: number };
+
+export type DocFeedback = {
+  id: string;
+  content: string;
+  userName: string;
+  anonymous: boolean;
+  /** 用户上传的「转换失败的原始文件」—— 本模块反馈的核心 */
+  files: { id: string; name: string }[];
+  status: "open" | "replied" | "closed" | string;
+  createdAt: string;
+  replies: { id: string; userName: string; content: string; createdAt: string }[];
+};
+
+export const FEEDBACK_STATUS_LABEL: Record<string, string> = {
+  open: "待处理",
+  replied: "已回复",
+  closed: "已关闭",
+};
+
+export const FEEDBACK_STATUS_TONE: Record<string, string> = {
+  open: "bg-amber-100 text-amber-800",
+  replied: "bg-emerald-100 text-emerald-800",
+  closed: "bg-slate-100 text-slate-500",
+};
+
+/** 单次浏览时长上限,与后端 DTO 的 @Max 对齐 —— 超了 beacon 会被 400 拒收、时长直接丢失 */
+export const VIEW_DURATION_MAX_SEC = 14400;
+
+export const docInteractionApi = {
+  stats: () => api.get<DocStats>("/doc-format/stats").then((r) => r.data),
+
+  setFavorite: (on: boolean) =>
+    api.post<FavoriteState>("/doc-format/favorite", { on }).then((r) => r.data),
+
+  recordView: () =>
+    api.post<{ viewLogId: string }>("/doc-format/view").then((r) => r.data),
+
+  /** 先传失败样本拿 fileId,再把 id 带进反馈(与 knowledge/showcase 的 JSON 反馈形状一致) */
+  uploadSample: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api
+      .post<{ fileId: string; fileName: string }>("/doc-format/feedback/sample", fd, { timeout: 120_000 })
+      .then((r) => r.data);
+  },
+
+  addFeedback: (body: { content: string; anonymous?: boolean; fileIds?: string[] }) =>
+    api.post<{ ok: true; id: string }>("/doc-format/feedback", body).then((r) => r.data),
+
+  listFeedback: (scope: "all" | "mine", status?: string) =>
+    api
+      .get<DocFeedback[]>("/doc-format/feedback", { params: { scope, ...(status ? { status } : {}) } })
+      .then((r) => r.data),
+
+  replyFeedback: (id: string, content: string) =>
+    api.post<{ ok: true }>(`/doc-format/feedback/${id}/reply`, { content }).then((r) => r.data),
+
+  closeFeedback: (id: string) =>
+    api.post<{ ok: true }>(`/doc-format/feedback/${id}/close`, {}).then((r) => r.data),
+};
+
+/** 浏览时长上报 URL —— useViewTracking 用 navigator.sendBeacon 发,公开口(带不了 auth 头) */
+export function docViewBeaconUrl(): string {
+  return `${api.defaults.baseURL}/public/doc-format/view-beacon`;
+}

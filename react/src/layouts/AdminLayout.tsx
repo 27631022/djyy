@@ -74,6 +74,7 @@ const CATEGORIES: Category[] = [
       // 头像工坊(avatar):公共头像库(上传件与编辑器产物同库)+ 头像编辑器(部件组合/随机/导出/存库)
       { path: "/admin/avatar-library",           label: "头像库",          icon: CircleUserRoundIcon, group: "头像工坊", perm: "avatar:manage" },
       { path: "/admin/doc-format/templates",     label: "排版模板",        icon: FileTextIcon,       group: "公文排版", perm: "doc-format:manage" },
+      { path: "/admin/doc-format/feedback",      label: "转换问题反馈",    icon: MessageSquareIcon,  group: "公文排版", perm: "doc-format:manage" },
       { path: "/admin/avatar-studio",            label: "头像编辑器",      icon: SparklesIcon,        group: "头像工坊", perm: "avatar:manage" },
     ],
   },

@@ -1,5 +1,6 @@
 // 公文排版模块 barrel。注意:Module 导出放最后(barrel 加载顺序约定)。
 export { DocFormatService } from './doc-format.service';
+export { DocFormatInteractionService } from './doc-format-interaction.service';
 export type { TemplateView, AnalyzeResult } from './doc-format.service';
 export { BUILTIN_PRESETS, BUILTIN_PRESET_MAP, DEFAULT_PRESET_KEY, SIZE_PT } from './presets';
 export type { BuiltinPreset } from './presets';

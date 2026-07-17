@@ -99,6 +99,7 @@ const ShowcaseFeedbackPage = lazy(() => import("@/features/showcase").then((m) =
 const SearchPage = lazy(() => import("@/features/search").then((m) => ({ default: m.SearchPage })));
 const DocFormatPage = lazy(() => import("@/features/doc-format").then((m) => ({ default: m.DocFormatPage })));
 const DocFormatTemplatesPage = lazy(() => import("@/features/doc-format").then((m) => ({ default: m.DocFormatTemplatesPage })));
+const DocFormatFeedbackPage = lazy(() => import("@/features/doc-format").then((m) => ({ default: m.DocFormatFeedbackPage })));
 const InteractiveConsolePage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractiveConsolePage })));
 const InteractiveScreenPage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractiveScreenPage })));
 const InteractivePlayPage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractivePlayPage })));
@@ -227,6 +228,7 @@ const ADMIN_ROUTES: RouteObject[] = [
   // 先锋晒场(showcase)后台管理
   // 公文排版模板(排版规则参数)
   { path: "doc-format/templates", element: <DocFormatTemplatesPage /> },
+  { path: "doc-format/feedback", element: <DocFormatFeedbackPage /> },
   { path: "showcase/stages", element: <ShowcaseStageReviewPage /> },
   { path: "showcase/entries", element: <ShowcaseEntryReviewPage /> },
   { path: "showcase/categories", element: <ShowcaseCategoriesPage /> },

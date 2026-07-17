@@ -350,6 +350,31 @@ function Editor({ tpl, onSaved }: { tpl: DocTemplate; onSaved: () => void }) {
 
         {tab === "misc" && (
           <>
+            <div className="mb-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
+              下面两条会<b>改动正文字符</b>,与本工具「一字不改」的默认立场是例外,所以单拎出来可关。
+              改动在确认页都看得见。
+            </div>
+            <Row label="规范化引号" hint="直引号 → 弯引号">
+              <input
+                type="checkbox"
+                checked={cfg.textRules.curlyQuotes}
+                onChange={(e) => patch((c) => ((c.textRules.curlyQuotes = e.target.checked), c))}
+              />
+              <span className="text-xs text-slate-400">
+                {'"这样"'} → “这样”。公文规范用弯引号,源文件里的直引号本来就是错的
+              </span>
+            </Row>
+            <Row label="md 自动补序号" hint="只对 .md 生效">
+              <input
+                type="checkbox"
+                checked={cfg.markdown.autoNumber}
+                onChange={(e) => patch((c) => ((c.markdown.autoNumber = e.target.checked), c))}
+              />
+              <span className="text-xs text-slate-400">
+                <code>## 总体要求</code> → 一、总体要求。关掉则只套字体、不加序号(输出就不像公文)
+              </span>
+            </Row>
+            <hr className="my-3 border-slate-100" />
             <Row label="显示页码">
               <input
                 type="checkbox"
