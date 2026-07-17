@@ -264,11 +264,14 @@ function Workbench({ initial, onReset }: { initial: AnalyzeResult; onReset: () =
           <ul className="mt-2 space-y-1 text-amber-800">
             {data.orphans.map((o) => (
               <li key={o.index}>
-                第 {o.index + 1} 段末行只剩「{o.tailText}」(共 {o.lines} 行)—— 建议增删几个字
+                {o.pageNo ? `第 ${o.pageNo} 页` : "预览中"}
+                <span className="mx-1 text-amber-600">·</span>
+                末行只剩「<b>{o.tailText}</b>」(该段共 {o.lines} 行)—— 建议增删几个字
               </li>
             ))}
           </ul>
           <p className="mt-2 text-xs text-amber-700">
+            右侧预览里这些行已<span className="mx-0.5 bg-yellow-300/60 px-1">标黄</span>,照着找即可。
             断行是按网格推算的,与 Word 实际排版可能差一个字;孤行/寡行已交给 Word 自动避免。
           </p>
         </div>

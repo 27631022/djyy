@@ -39,6 +39,7 @@ export const FONT_ROLE_LABEL: Record<FontRole, string> = {
  */
 export type ElementType =
   | 'title' // 公文大标题(可跨多段,作者手工断行,保留原断行)
+  | 'subtitle' // 副标题:正题下方、多以破折号引出,如「——在全公司党建会上的讲话」
   | 'docNumber' // 发文字号「物流党发〔2026〕24号」
   | 'recipient' // 主送机关「各单位党委……:」
   | 'chapter' // 第X章(条例体)
@@ -57,6 +58,7 @@ export type ElementType =
 
 export const ELEMENT_TYPES: readonly ElementType[] = [
   'title',
+  'subtitle',
   'docNumber',
   'recipient',
   'chapter',
@@ -76,6 +78,7 @@ export const ELEMENT_TYPES: readonly ElementType[] = [
 
 export const ELEMENT_TYPE_LABEL: Record<ElementType, string> = {
   title: '大标题',
+  subtitle: '副标题',
   docNumber: '发文字号',
   recipient: '主送机关',
   chapter: '章(第X章)',

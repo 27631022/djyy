@@ -56,13 +56,21 @@ function style(s: Partial<ElementStyle> & Pick<ElementStyle, 'font' | 'sizePt'>)
  */
 function elements(): Record<ElementType, ElementStyle> {
   return {
-    // 公文大标题:居中、不缩进(实测真实公文 jc=center 且完全没有 w:ind)
+    // 公文大标题:居中、不缩进(实测真实公文 jc=center 且完全没有 w:ind)。
+    // 段后不空行(用户 2026-07-17 定案)—— 标题与下方的间距由版式本身给,不靠段后空行撑。
     title: style({
       font: 'title',
       sizePt: SIZE_PT.二号,
       align: 'center',
       firstLineChars: 0,
-      spaceAfterLines: 1,
+      keepNext: true,
+    }),
+    // 副标题:正题下方,楷体三号(比正题小一号),居中不缩进
+    subtitle: style({
+      font: 'subheading',
+      sizePt: SIZE_PT.三号,
+      align: 'center',
+      firstLineChars: 0,
       keepNext: true,
     }),
     // 版头元素,「只排正文」定位下默认不输出

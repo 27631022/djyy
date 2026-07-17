@@ -123,6 +123,14 @@ export class DocFormatService {
     return { id: '', config: BUILTIN_PRESET_MAP[DEFAULT_PRESET_KEY].config };
   }
 
+  /** 这套配置是否偏离了它对应的内置默认值。自建模板恒 false(它没有「默认值」这回事) */
+  private differsFromPreset(builtinKey: string | null, config: DocFormatConfig): boolean {
+    if (!builtinKey) return false;
+    const preset = BUILTIN_PRESET_MAP[builtinKey];
+    if (!preset) return false;
+    return JSON.stringify(config) !== JSON.stringify(normalizeConfig(preset.config));
+  }
+
   /** 同一时刻只能有一个默认模板 */
   private async clearOtherDefaults(keepId: string): Promise<void> {
     await this.prisma.docFormatTemplate.updateMany({
@@ -157,6 +165,9 @@ export class DocFormatService {
         name: dto.name.trim(),
         description: dto.description?.trim() || null,
         configJson: JSON.stringify(config),
+        // 「用户改过」按参数是否真的偏离代码默认值判,而不是「点过保存」——
+        // 光是「设为默认」也走这里,不该因此就把它钉死在旧默认值上
+        userEdited: this.differsFromPreset(cur.builtinKey, config),
         ...(dto.isDefault === undefined ? {} : { isDefault: dto.isDefault }),
       },
     });
@@ -205,6 +216,7 @@ export class DocFormatService {
         name: preset.name,
         description: preset.description,
         configJson: JSON.stringify(preset.config),
+        userEdited: false, // 恢复默认 = 回到「跟随代码默认值」的状态
       },
     });
     await this.audit.log({ action: 'doc-format.template.reset', detail: preset.name, ...ctx });
@@ -226,11 +238,28 @@ export class DocFormatService {
     return this.view(row);
   }
 
-  /** 启动时把内置预设种进库(缺哪套补哪套,已有的不动 —— 用户改过的不能被覆盖) */
+  /**
+   * 启动时同步内置预设:缺的补上;已有但**用户没改过**的,跟着 presets.ts 的默认值刷新。
+   *
+   * ⚠ 曾经是「已有的一概不动」—— 结果改了 presets.ts 的默认值对已种进库的内置模板毫无效果,
+   *   悄悄地不生效(实测:把 title 的段后空行去掉后,库里那份仍是旧值,预览照旧多一个空行)。
+   *   注意 normalizeConfig 会用代码默认值补**缺失的键**,所以「新增的元素类型」本来就能自动到位,
+   *   容易让人误以为整套默认值都会跟着走 —— 已存在的键的**值**是不会的。
+   * 用户自己调过参数的(userEdited)不碰 —— 想回到默认让他点「恢复默认」。
+   */
   async ensureBuiltins(): Promise<void> {
     for (const p of BUILTIN_PRESETS) {
       const exists = await this.prisma.docFormatTemplate.findUnique({ where: { builtinKey: p.key } });
-      if (exists) continue;
+      if (exists) {
+        if (exists.userEdited) continue;
+        const want = JSON.stringify(p.config);
+        if (exists.configJson === want) continue;
+        await this.prisma.docFormatTemplate.update({
+          where: { id: exists.id },
+          data: { name: p.name, description: p.description, configJson: want },
+        });
+        continue;
+      }
       try {
         await this.prisma.docFormatTemplate.create({
           data: {
@@ -274,10 +303,18 @@ export class DocFormatService {
   }
 
   private compose(els: DocElement[], config: DocFormatConfig) {
+    const pages = paginate(els, config);
+    // 给孤字补上页码 —— 只报「第 N 段」用户数不出来,得给能在预览里找到的坐标
+    const pageOf = new Map<number, number>();
+    for (const pg of pages) {
+      for (const ln of pg.lines) {
+        if (ln.orphan && ln.index !== undefined) pageOf.set(ln.index, pg.pageNo);
+      }
+    }
     return {
       elements: els,
-      orphans: findOrphans(els, config),
-      pages: paginate(els, config),
+      orphans: findOrphans(els, config).map((o) => ({ ...o, pageNo: pageOf.get(o.index) })),
+      pages,
       metrics: metricsOf(config),
     };
   }

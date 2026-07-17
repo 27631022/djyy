@@ -41,10 +41,29 @@ export function metricsOf(cfg: DocFormatConfig): PageMetrics {
   };
 }
 
-/** 行首禁则:这些字符不能出现在行首,溢出时挂在上一行行尾 */
+/**
+ * 避头尾字符表 —— **照抄 Word/WPS 自己的**,不是照抄国标。
+ *
+ * 理由:断行是渲染端做的,我们的模型要预测它的行为,那就该镜像它的表。
+ * 来源可复现(简体中文 zh-CN / FarEastLineBreakLevel=0「标准」):
+ *   $doc = (New-Object -ComObject Word.Application).Documents.Add()
+ *   $doc.NoLineBreakBefore   # 45 字符
+ *   $doc.NoLineBreakAfter    # 19 字符
+ *
+ * ⚠ 别按印象手写。原先手写的版本两个方向都错:多了 —(U+2014,Word 用的是 ―U+2015)和 %‰℃,
+ *   漏了 ¨ˇˉ‖∶〃々〗＂＇．｀｜￠ 与全角 ！），．：；？］～。
+ * ⚠ GB/T 15834-2011 只零散规定了省略号/连接号/间隔号/分隔号不出现在行首,没有完整字符表,
+ *   且它管的是「标点用法」不是「排版断行」—— 拿它当断行依据会与 Word 实际行为对不上。
+ * ⚠ 这是「标准」级。用户若把 Word 改成「严格」级,表会变大、断行随之不同 —— 我们不写
+ *   settings.xml 的 kinsoku 设置,所以跟随用户本机默认(简体中文出厂就是标准级)。
+ *   这也是孤字只能报「疑似」的原因之一。
+ */
 const NO_LINE_START = new Set(
-  '，。、；：？！）〉》」』】〕”’…—～·%‰℃!),.:;?]}｝、',
+  '!),.:;?]}¨·ˇˉ―‖’”…∶、。〃々〉》」』】〕〗！＂＇），．：；？］｀｜｝～￠',
 );
+
+/** 行尾禁则:这些字符不能收尾(如「《」),否则整个连它一起推到下一行 */
+const NO_LINE_END = new Set('([{·‘“〈《「『【〔〖（．［｛￡￥');
 
 /** 一个字符占几格。朴素模型:汉字/全角 = 1,半角 = 0.5 */
 function cellWidth(ch: string): number {
@@ -92,6 +111,7 @@ export function layoutRuns(
   const lines: LaidLine[] = [];
   let cur: { ch: string; role?: FontRole }[] = [];
   let cells = firstIndentCells;
+  const cellsOf = (arr: { ch: string }[]) => arr.reduce((s, x) => s + cellWidth(x.ch), 0);
   const flush = () => {
     lines.push({ segs: packSegs(cur), text: cur.map((c) => c.ch).join(''), cells });
   };
@@ -99,16 +119,20 @@ export function layoutRuns(
   for (const c of chars) {
     const w = cellWidth(c.ch);
     if (cells + w > capacity + 1e-9) {
-      // 行首禁则:标点不另起一行,挂在本行行尾
+      // 行首禁则:标点不另起一行,挂在本行行尾。
       // (Word 的真实机制是压缩整行标点把它塞进版心,净效果与悬挂一致 —— 都是不换行)
       if (NO_LINE_START.has(c.ch)) {
         cur.push(c);
         cells += w;
         continue;
       }
+      // 行尾禁则:本行末尾若是「《」这类不能收尾的字符,把它(们)一起带到下一行
+      const carry: { ch: string; role?: FontRole }[] = [];
+      while (cur.length > 1 && NO_LINE_END.has(cur[cur.length - 1].ch)) carry.unshift(cur.pop()!);
+      cells = cellsOf(cur) + (lines.length === 0 ? firstIndentCells : 0);
       flush();
-      cur = [c];
-      cells = w;
+      cur = [...carry, c];
+      cells = cellsOf(cur);
     } else {
       cur.push(c);
       cells += w;
@@ -116,6 +140,17 @@ export function layoutRuns(
   }
   flush();
   return lines;
+}
+
+/**
+ * 段末行是否「孤」。findOrphans(告警)与 paginate(预览标黄)共用同一判据 ——
+ * 两处分别实现的话,告警说有、画面不标黄,用户就更找不到了。
+ * @returns 孤字所在行的下标;不孤则 null
+ */
+function orphanTailIndex(lines: LaidLine[], cfg: DocFormatConfig): number | null {
+  if (!cfg.orphanWarn.enabled || lines.length < 2) return null;
+  const tail = lines[lines.length - 1];
+  return tail.cells > 0 && tail.cells <= cfg.orphanWarn.maxTailCells ? lines.length - 1 : null;
 }
 
 /** 单段纯文本铺网格(不关心字体的调用方用它) */
@@ -132,6 +167,8 @@ export type OrphanHit = {
   lines: number;
   tailCells: number;
   tailText: string;
+  /** 在预览的第几页 —— 光说「第 N 段」用户数不出来,得给能找得到的坐标 */
+  pageNo?: number;
 };
 
 /**
@@ -139,22 +176,19 @@ export type OrphanHit = {
  * 阈值默认 2(一个字 + 一个句号)是**故意放宽**的 —— 模型误差双向 ±1 字,收紧会漏报。
  */
 export function findOrphans(els: DocElement[], cfg: DocFormatConfig): OrphanHit[] {
-  if (!cfg.orphanWarn.enabled) return [];
   const hits: OrphanHit[] = [];
   for (const el of els) {
     const style = cfg.elements[el.type];
     if (!style.emit) continue;
     const lines = layoutRuns(el.runs, cfg.grid.charsPerLine, style.firstLineChars / 100);
-    if (lines.length < 2) continue;
-    const tail = lines[lines.length - 1];
-    if (tail.cells > 0 && tail.cells <= cfg.orphanWarn.maxTailCells) {
-      hits.push({
-        index: el.index,
-        lines: lines.length,
-        tailCells: tail.cells,
-        tailText: tail.text,
-      });
-    }
+    const at = orphanTailIndex(lines, cfg);
+    if (at === null) continue;
+    hits.push({
+      index: el.index,
+      lines: lines.length,
+      tailCells: lines[at].cells,
+      tailText: lines[at].text,
+    });
   }
   return hits;
 }
@@ -166,6 +200,10 @@ export type PreviewLine = {
   type: ElementType;
   first: boolean;
   indentCells: number;
+  /** 疑似孤字的那一行 —— 预览标黄。光在告警里说「第 N 段」用户数不出来 */
+  orphan?: boolean;
+  /** 所属段落号(标黄的行要能和上方告警列表对上) */
+  index?: number;
 };
 export type PreviewPage = { pageNo: number; lines: PreviewLine[] };
 
@@ -200,13 +238,17 @@ export function paginate(els: DocElement[], cfg: DocFormatConfig): PreviewPage[]
     for (let i = 0; i < (style.spaceBeforeLines ?? 0); i++) push({ ...blank });
     const indent = style.firstLineChars / 100;
     // 走 runs 不走 text:「第X条」的序号与正文字体不同,预览要如实画出来
-    layoutRuns(el.runs, cfg.grid.charsPerLine, indent).forEach((ln, i) => {
+    const laid = layoutRuns(el.runs, cfg.grid.charsPerLine, indent);
+    const orphanAt = orphanTailIndex(laid, cfg);
+    laid.forEach((ln, i) => {
       push({
         segs: ln.segs,
         text: ln.text,
         type: el.type,
         first: i === 0,
         indentCells: i === 0 ? indent : 0,
+        orphan: i === orphanAt || undefined,
+        index: el.index,
       });
     });
     for (let i = 0; i < (style.spaceAfterLines ?? 0); i++) push({ ...blank });

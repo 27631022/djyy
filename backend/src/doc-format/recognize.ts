@@ -55,6 +55,11 @@ const RE_RECIPIENT = /[:：]$/;
 const RE_ORG_HINT = /(委员会|党委|党组|党总支|党支部|公司|政府|办公室|部$|局$|厅$|处$)/;
 /** 句末标点 */
 const RE_SENTENCE_END = /[。！？；]$/;
+/**
+ * 副标题:以破折号引出。国标口径「公文如果有副标题,副标题应当随破折号另起一行」,
+ * 排三号楷体(比正题小一号)。破折号是两个 U+2014「——」,也兼容 U+2015 与单个。
+ */
+const RE_SUBTITLE = /^[—―]{1,2}\s*\S/;
 
 /** 版头/版记里出现的标记词 */
 const RE_VERSION_NOTE = /(抄送|印发)/;
@@ -139,7 +144,8 @@ function markTitle(items: { type: ElementType | null; text: string }[]): void {
     if (t.length > BODY_LEN_HINT || RE_SENTENCE_END.test(t)) break;
     // 冒号结尾 = 主送机关,标题区到此为止(它紧跟在标题后面,不判会被当成标题的最后一行)
     if (RE_RECIPIENT.test(t)) break;
-    it.type = 'title';
+    // 破折号引出的是副标题(楷体三号),不是正题的又一行
+    it.type = RE_SUBTITLE.test(t) ? 'subtitle' : 'title';
     if (++taken >= MAX_TITLE_PARAS) break;
   }
 }
@@ -147,7 +153,8 @@ function markTitle(items: { type: ElementType | null; text: string }[]): void {
 /** 主送机关:标题之后、正文之前,以冒号结尾的那一段 */
 function markRecipient(items: { type: ElementType | null; text: string }[]): void {
   for (const it of items) {
-    if (it.type === 'skip' || it.type === 'docNumber' || it.type === 'title') continue;
+    if (it.type === 'skip' || it.type === 'docNumber' || it.type === 'title' || it.type === 'subtitle')
+      continue;
     if (it.type !== null) break; // 已定型(章/条/层次…)→ 这篇没有主送
     if (RE_RECIPIENT.test(it.text.trim())) it.type = 'recipient';
     break; // 只看标题后的第一个未定型段
@@ -221,14 +228,15 @@ export function recognize(paragraphs: RawParagraph[], cfg: DocFormatConfig): Doc
     const type: ElementType = it.type ?? 'body';
     const runs = (type === 'article' && splitArticle(it.text, cfg)) || [{ text: it.text }];
     // 低置信:落款靠启发式;版头残片是猜的;标题靠位置推断
-    const low = sigIdx.has(i) || (it.note?.startsWith('疑似') ?? false) || type === 'title';
+    const titleish = type === 'title' || type === 'subtitle';
+    const low = sigIdx.has(i) || (it.note?.startsWith('疑似') ?? false) || titleish;
     return {
       index: it.raw.index,
       type,
       runs,
       text: it.text,
       confidence: low ? 'low' : 'high',
-      note: it.note ?? (type === 'title' ? '按位置推断为标题,请核对' : undefined),
+      note: it.note ?? (titleish ? '按位置推断为标题,请核对' : undefined),
     } satisfies DocElement;
   });
 }

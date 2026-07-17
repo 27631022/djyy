@@ -1780,6 +1780,11 @@ model DocFormatTemplate {
   configJson  String
   /// 新建排版任务时默认选中的那套
   isDefault   Boolean  @default(false)
+  /// 内置模板:用户是否改过它的参数。
+  /// false = 跟随代码里的默认值(启动时 ensureBuiltins 会把 presets.ts 的改动同步进来);
+  /// true  = 用户自己调过,不再被覆盖(想回到默认点「恢复默认」)。
+  /// 没有它的话,改了 presets.ts 的默认值对已种进库的内置模板毫无效果 —— 悄悄地不生效。
+  userEdited  Boolean  @default(false)
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -85,6 +85,8 @@ export function GridPreview({
               return (
                 <div
                   key={i}
+                  // 疑似孤字标黄 —— 告警里只说「第 N 段」的话,几百段的公文根本数不出来是哪段
+                  title={ln.orphan ? "疑似孤字:这一行只剩这么几个字,建议增删几个字调一调" : undefined}
                   style={{
                     height: geo.lineH,
                     lineHeight: `${geo.lineH}px`,
@@ -96,6 +98,9 @@ export function GridPreview({
                     paddingRight: rightIndent,
                     whiteSpace: "pre",
                     wordBreak: "normal",
+                    // 用背景色而不是改字色:字色会和「按 run 画字体」的语义打架,背景更醒目
+                    backgroundColor: ln.orphan ? "rgba(250, 204, 21, 0.45)" : undefined,
+                    boxShadow: ln.orphan ? "inset 2px 0 0 #ca8a04" : undefined,
                   }}
                 >
                   {/*

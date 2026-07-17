@@ -14,6 +14,7 @@ export const FONT_ROLE_LABEL: Record<FontRole, string> = {
 /** 元素类型。与后端 types.ts 的 ElementType 同步 */
 export type ElementType =
   | "title"
+  | "subtitle"
   | "docNumber"
   | "recipient"
   | "chapter"
@@ -32,6 +33,7 @@ export type ElementType =
 
 export const ELEMENT_TYPE_LABEL: Record<ElementType, string> = {
   title: "大标题",
+  subtitle: "副标题",
   docNumber: "发文字号",
   recipient: "主送机关",
   chapter: "章(第X章)",
@@ -53,6 +55,7 @@ export const ELEMENT_TYPE_LABEL: Record<ElementType, string> = {
 export const ELEMENT_TYPE_OPTIONS: ElementType[] = [
   "body",
   "title",
+  "subtitle",
   "chapter",
   "article",
   "level1",
@@ -72,6 +75,7 @@ export const ELEMENT_TYPE_OPTIONS: ElementType[] = [
 /** 每种元素在确认页/预览里的色标 */
 export const ELEMENT_TYPE_TONE: Record<ElementType, string> = {
   title: "bg-[var(--party-primary)]/12 text-[var(--party-primary)]",
+  subtitle: "bg-[var(--party-primary)]/10 text-[var(--party-primary)]",
   chapter: "bg-[var(--party-primary)]/10 text-[var(--party-primary)]",
   article: "bg-amber-100 text-amber-800",
   level1: "bg-amber-100 text-amber-800",
@@ -167,7 +171,14 @@ export type DocElement = {
   note?: string;
 };
 
-export type OrphanHit = { index: number; lines: number; tailCells: number; tailText: string };
+export type OrphanHit = {
+  index: number;
+  lines: number;
+  tailCells: number;
+  tailText: string;
+  /** 在预览的第几页 —— 光说「第 N 段」用户数不出来 */
+  pageNo?: number;
+};
 
 /** 行内的一截:同一字体角色的连续字符。一行可跨多截(「第X条」序号黑体 + 正文仿宋) */
 export type LaidSeg = { text: string; role?: FontRole };
@@ -177,6 +188,10 @@ export type PreviewLine = {
   type: ElementType;
   first: boolean;
   indentCells: number;
+  /** 疑似孤字的那一行 —— 预览标黄 */
+  orphan?: boolean;
+  /** 所属段落号(与上方告警列表对上) */
+  index?: number;
 };
 export type PreviewPage = { pageNo: number; lines: PreviewLine[] };
 
