@@ -341,6 +341,7 @@ async function seedRolesAndPermissions() {
     { code: 'interactive:manage',        name: '现场互动(创建活动/主持)', category: 'operation' },
     // 公共头像库(avatar)— 管理端维护全平台共享头像资产(入库/改名/删除);查看不设权限点(登录即可)。
     { code: 'avatar:manage',             name: '头像库管理',              category: 'operation' },
+    { code: 'doc-format:manage',         name: '公文排版模板配置',        category: 'operation' },
   ];
   for (const p of permissions) {
     await prisma.permission.upsert({
@@ -355,7 +356,7 @@ async function seedRolesAndPermissions() {
     // 企业管理员:全套企业管理权限(不含 角色授权 admin:role:write / 插件 / 删除证书 / 删除文件 等高危权限,留 platform_admin)。
     // 一级 vs 二级 = 同角色不同 scope:分配时 scope=all(一级,全集团)或 scope=subtree(二级,自动锚到派发人所在单位的子树)。
     // 任务域已按 scope 强制;组织/用户管理的范围限制后续按需加。
-    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage', 'assessment:manage', 'assessment:score', 'assessment:view', 'assessment:export', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:manage', 'knowledge:publish', 'showcase:publish', 'showcase:manage', 'interactive:manage', 'directory:manage', 'avatar:manage'] },
+    { code: 'enterprise_admin', name: '企业管理员', perms: ['portal:view', 'admin:menu', 'admin:org:read', 'admin:org:write', 'admin:user:read', 'admin:user:write', 'admin:role:read', 'certificate:issue', 'certificate:revoke', 'certificate:bulk-download', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'exhibition:manage', 'venue:manage', 'assessment:manage', 'assessment:score', 'assessment:view', 'assessment:export', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:manage', 'knowledge:publish', 'showcase:publish', 'showcase:manage', 'interactive:manage', 'directory:manage', 'avatar:manage', 'doc-format:manage'] },
     { code: 'party_secretary', name: '党支部书记',   perms: ['portal:view', 'admin:org:read', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:manage', 'knowledge:publish', 'showcase:publish', 'showcase:manage', 'interactive:manage'] },
     { code: 'dept_manager',    name: '部门经理',     perms: ['portal:view', 'admin:user:read', 'task:manage', 'task:review', 'task:reception', 'task:fill', 'file:upload', 'report:manage', 'report:review', 'report:reception', 'report:fill', 'knowledge:publish', 'showcase:publish', 'interactive:manage'] },
     // 任务派发:给各级机关部门的派发人;配合 UserRole.scope(本组织+下级 / 自定义单位)限定派发范围

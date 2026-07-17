@@ -97,6 +97,8 @@ const ShowcaseEntryReviewPage = lazy(() => import("@/features/showcase").then((m
 const ShowcaseCategoriesPage = lazy(() => import("@/features/showcase").then((m) => ({ default: m.ShowcaseCategoriesPage })));
 const ShowcaseFeedbackPage = lazy(() => import("@/features/showcase").then((m) => ({ default: m.ShowcaseFeedbackPage })));
 const SearchPage = lazy(() => import("@/features/search").then((m) => ({ default: m.SearchPage })));
+const DocFormatPage = lazy(() => import("@/features/doc-format").then((m) => ({ default: m.DocFormatPage })));
+const DocFormatTemplatesPage = lazy(() => import("@/features/doc-format").then((m) => ({ default: m.DocFormatTemplatesPage })));
 const InteractiveConsolePage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractiveConsolePage })));
 const InteractiveScreenPage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractiveScreenPage })));
 const InteractivePlayPage = lazy(() => import("@/features/interactive").then((m) => ({ default: m.InteractivePlayPage })));
@@ -223,6 +225,8 @@ const ADMIN_ROUTES: RouteObject[] = [
   { path: "stats/likes", element: <KnowledgeStatsLikesPage /> },
   { path: "feedback", element: <KnowledgeFeedbackPage /> },
   // 先锋晒场(showcase)后台管理
+  // 公文排版模板(排版规则参数)
+  { path: "doc-format/templates", element: <DocFormatTemplatesPage /> },
   { path: "showcase/stages", element: <ShowcaseStageReviewPage /> },
   { path: "showcase/entries", element: <ShowcaseEntryReviewPage /> },
   { path: "showcase/categories", element: <ShowcaseCategoriesPage /> },
@@ -267,6 +271,8 @@ const App = () => (
           <Route path="/knowledge/edit/:id" element={<ProtectedRoute><KnowledgeEditorPage /></ProtectedRoute>} />
           <Route path="/knowledge/archive" element={<ProtectedRoute><KnowledgeArchivePage /></ProtectedRoute>} />
           {/* 先锋晒场前台(擂台型晒实绩;new 路由须排在 :id 前) */}
+          {/* 公文排版:前台工具,登录即可用(配模板才要 doc-format:manage) */}
+          <Route path="/doc-format" element={<ProtectedRoute><DocFormatPage /></ProtectedRoute>} />
           <Route path="/showcase" element={<ProtectedRoute><ShowcasePortalPage /></ProtectedRoute>} />
           <Route path="/showcase/mine" element={<ProtectedRoute><ShowcaseMinePage /></ProtectedRoute>} />
           <Route path="/showcase/stages/new" element={<ProtectedRoute><StageEditorPage /></ProtectedRoute>} />

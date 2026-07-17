@@ -1761,3 +1761,28 @@ model AvatarPopCutout {
   popFileId String // 抠像 StoredFile.id;'none'=已判不适用(不再重试)
   createdAt DateTime @default(now())
 }
+
+// ---------------------------------------------------------------------------
+// 公文排版
+// ---------------------------------------------------------------------------
+
+/// 公文排版模板(页边距/行距/每行字数/各级字体字号/页码…)。
+/// 内置模板的默认值在 src/doc-format/presets.ts,本表存用户模板 + 对内置模板的覆盖 ——
+/// 照 prompt 模块「代码注册表存默认 + DB 存覆盖 + 一键恢复默认」范式。
+// @module: doc-format
+model DocFormatTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  /// 非空 = 覆盖 presets.ts 里同 key 的内置模板(可恢复默认);null = 用户自建
+  builtinKey  String?  @unique
+  /// DocFormatConfig 的 JSON
+  configJson  String
+  /// 新建排版任务时默认选中的那套
+  isDefault   Boolean  @default(false)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isDefault])
+}

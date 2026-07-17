@@ -10,7 +10,7 @@ import {
   PanelLeftCloseIcon, PanelLeftOpenIcon,
   ChevronDownIcon, ChevronRightIcon, SparklesIcon, ImageIcon, BoxIcon, MessageSquareTextIcon, MoreHorizontalIcon,
   ArmchairIcon, PlusIcon, LandmarkIcon, PackageIcon, LibraryIcon,
-  BookOpenIcon, FolderTreeIcon, TrophyIcon, FileCheckIcon, Gamepad2Icon, PencilRulerIcon,
+  BookOpenIcon, FolderTreeIcon, TrophyIcon, FileCheckIcon, FileTextIcon, Gamepad2Icon, PencilRulerIcon,
   CircleUserRoundIcon,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
@@ -73,6 +73,7 @@ const CATEGORIES: Category[] = [
       { path: "/admin/interactive/designs",      label: "自制游戏",        icon: PencilRulerIcon,    group: "现场互动", perm: "interactive:manage" },
       // 头像工坊(avatar):公共头像库(上传件与编辑器产物同库)+ 头像编辑器(部件组合/随机/导出/存库)
       { path: "/admin/avatar-library",           label: "头像库",          icon: CircleUserRoundIcon, group: "头像工坊", perm: "avatar:manage" },
+      { path: "/admin/doc-format/templates",     label: "排版模板",        icon: FileTextIcon,       group: "公文排版", perm: "doc-format:manage" },
       { path: "/admin/avatar-studio",            label: "头像编辑器",      icon: SparklesIcon,        group: "头像工坊", perm: "avatar:manage" },
     ],
   },

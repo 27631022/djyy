@@ -43,6 +43,7 @@
     "class-validator": "^0.14.1",
     "clipper-lib": "^6.4.2",
     "compression": "^1.8.1",
+    "docx": "^9.7.1",
     "jszip": "^3.10.1",
     "mammoth": "^1.12.0",
     "meshoptimizer": "^1.1.1",
@@ -51,8 +52,10 @@
     "pdf-parse": "^2.4.5",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "saxes": "^5.0.1",
     "sharp": "^0.34.5",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "word-extractor": "^1.0.4"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

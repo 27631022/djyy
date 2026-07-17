@@ -33,6 +33,7 @@ import { KnowledgeModule } from './knowledge';
 import { ShowcaseModule } from './showcase';
 import { SearchModule } from './search';
 import { InteractiveModule } from './interactive';
+import { DocFormatModule } from './doc-format';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { InteractiveModule } from './interactive';
     ShowcaseModule,
     SearchModule,
     InteractiveModule,
+    DocFormatModule,
   ],
   providers: [
     // 全局权限守卫:仅 @Permission() 装饰的接口实际校验,其他不影响
