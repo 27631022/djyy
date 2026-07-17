@@ -82,7 +82,9 @@ const PARTS = [
   { id: 'male/eyes/closed', base: 'base-male', prompt: `${KEEP_FACE}只把他的眼睛改成安静闭上的眼睛(两条平滑的闭眼弧线),眼睑皮肤干净光滑、不要泪光高光杂点,眉毛保持原样${STYLE}` },
   { id: 'male/eyes/single-lid', base: 'base-male', prompt: `${KEEP_FACE}只把他的眼睛改成细长的单眼皮眼睛,眉毛保持原样${STYLE}` },
   // 眼睛新维度(P2.5 用户定案:不用闭眼,按 大小/睫毛/瞳色 调):
-  { id: 'male/eyes/big-round', base: 'base-male', prompt: `${KEEP_FACE}只把他的眼睛改成更大更圆的有神大眼睛(睁开直视前方),眉毛保持原样${STYLE}` },
+  // ⚠ 首版 i2i 把整个眉眼区连眉毛一起重画(y330 盒顶即 96px/行 变化,还波及脸颊),
+  //   变化跨越眼窗盒边界 → 二值化硬切留矩形缝。改动过大属生成期病灶,只能重生成
+  { id: 'male/eyes/big-round', base: 'base-male', prompt: `${KEEP_FACE}只把他的眼睛画得更大更圆(睁开直视前方),眼睛以外的一切完全不变:眉毛、眉毛周围的皮肤、额头、脸颊、鼻子都保持原样一个像素都不要动${STYLE}` },
   { id: 'male/eyes/black-pupil', base: 'base-male', prompt: `${KEEP_FACE}只把他的瞳孔虹膜颜色改成深黑色,眼睛形状大小完全不变,眉毛保持原样${STYLE}` },
   { id: 'male/eyes/amber-pupil', base: 'base-male', prompt: `${KEEP_FACE}只把他的瞳孔虹膜颜色改成浅琥珀棕色,眼睛形状大小完全不变,眉毛保持原样${STYLE}` },
   { id: 'male/mouth/laugh', base: 'base-male', prompt: `${KEEP_FACE}只把他的嘴巴改成开心大笑张开的嘴(露出上排牙齿)${STYLE}` },
@@ -137,7 +139,7 @@ const PARTS = [
   { id: 'female/eyes/single-lid', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成细长的单眼皮眼睛,眉毛保持原样${STYLE}` },
   { id: 'female/eyes/wink', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成俏皮的单眼眨眼(一只睁开一只闭上),眉毛保持原样${STYLE}` },
   // 眼睛新维度(P2.5;大圆杏眼描述取自用户的苗绣提示词"浅棕色大圆杏眼,浓密长睫毛"):
-  { id: 'female/eyes/big-round', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛改成浅棕色的大圆杏眼(更大更圆,睁开直视前方,浓密长睫毛),眉毛保持原样${STYLE}` },
+  { id: 'female/eyes/big-round', base: 'base-female', prompt: `${KEEP_FACE}只把她的眼睛画成浅棕色的大圆杏眼(更大更圆,睁开直视前方,浓密长睫毛),眼睛以外的一切完全不变:眉毛、眉毛周围的皮肤、额头、脸颊、鼻子都保持原样一个像素都不要动${STYLE}` },
   { id: 'female/eyes/long-lash', base: 'base-female', prompt: `${KEEP_FACE}只给她的眼睛加上浓密纤长的卷翘睫毛,眼睛形状大小和瞳色完全不变,眉毛保持原样${STYLE}` },
   { id: 'female/eyes/black-pupil', base: 'base-female', prompt: `${KEEP_FACE}只把她的瞳孔虹膜颜色改成深黑色,眼睛形状大小完全不变,眉毛保持原样${STYLE}` },
   { id: 'female/eyes/amber-pupil', base: 'base-female', prompt: `${KEEP_FACE}只把她的瞳孔虹膜颜色改成浅琥珀棕色,眼睛形状大小完全不变,眉毛保持原样${STYLE}` },
@@ -453,6 +455,13 @@ function removeThinBrightHalo(data, w, h, { radius = 2, lumTh = 140, exemptBoxes
  * i2i 顺带动到的衣领阴影/锁骨高光等散斑一律裁掉(全组合叠加时会露成色斑)。
  * 加物类(发型/眼镜/衣服/饰品)不钳 —— 发梢/衣摆本来就到处都是。
  */
+/**
+ * 替换类部件的合法变化区(x 范围,1024 画布):眼睛件只该动两眼区 —— i2i 把眼睛画大时
+ * 必然连带调整眼眶/脸颊结构(big-round 实测左脸颊 3018px 残留、平均 d=56),两次重生成
+ * 都压不住,属该需求的固有代价 → 管线按结构兜底裁掉。边缘 12px 渐隐防竖切线。
+ */
+const X_CLAMP = [['/eyes/', [320, 735]]];
+
 const Y_CLAMP = [
   // 眼上限 385(原 250):眉毛(350~390)不属于眼睛件 —— 眼 z 抬到发型上(35)后,
   // 捕到的眉区重画碎屑会浮在眉毛/刘海阴影上显"皮屑"(P2.4);睑褶(≥392)/眼睛本体不受影响
@@ -705,9 +714,14 @@ async function extract(part) {
     // 苗银冠:银流苏合法垂入眼区,烤死的重画大眼经流苏连到主体、孤岛判据抓不住
     // (用户实报配眼睛变体时新旧眼叠影)→ 眼区只留"亮+冷调"的银饰(银=中性偏冷高亮;
     // 眼白/皮肤/虹膜=暖调、睫毛=暗,全出局)
-    'female/hair/miao-silver': { eyeBoxSilverOnly: true },
+    'female/hair/miao-silver': { eyeBoxSilverOnly: true, headwear: true },
+    // 头饰件(见 headwear 分支:浅色头饰盖额头与肤色"同亮",暗化门会把本体杀出破洞)
+    'male/hair/shaanbei-towel': { headwear: true },
+    'male/hair/kazakh-hat': { headwear: true },
+    'female/hair/kazakh-hat': { headwear: true },
+    'female/hair/uyghur-cap': { headwear: true },
     // 男花帽:i2i 两版都顺手重画脸;帽子只住头顶 → 钳制区硬裁一切脸部私货
-    'male/hair/uyghur-cap': { clampY: [40, 380] },
+    'male/hair/uyghur-cap': { clampY: [40, 380], headwear: true },
     // 男蒙古袍:i2i 会顺手重画头部(脸颊补丁/耳周白晕,分层实锤在袍件不在帽件)→ 钳制兜底
     'male/clothes/mongol-robe': { clampY: [555, 1023] },
     // 大笑:下颌重画鬼影(旧笑纹/颌线的弱差分半透糊在下巴和脖子上,a≈197 双重曝光);
@@ -726,6 +740,7 @@ async function extract(part) {
   const ptune = PART_TUNE[part.id];
   const [FE_LO, FE_HI] = ptune?.feather ?? FEATHER[part.id.split('/')[1]] ?? [40, 90];
   const clamp = ptune?.clampY ?? Y_CLAMP.find(([pre]) => part.id.includes(pre))?.[1];
+  const xclamp = X_CLAMP.find(([pre]) => part.id.includes(pre))?.[1];
   const W = v.info.width;
   for (let i = 0; i < v.data.length; i += 4) {
     const d =
@@ -746,7 +761,16 @@ async function extract(part) {
     } else if (
       part.id.includes('/hair/') &&
       (py >= 620 || (py >= 290 && px >= 250 && px <= 790)) &&
-      !(ptune?.chestFeather === false)
+      ptune?.headwear
+    ) {
+      // 头饰件(毛巾/毡帽/银冠/花帽)豁免暗化门:浅色头饰盖额头时与肤色**同亮**甚至更亮
+      // (羊肚巾实测额头带 14664px 落"同亮±28"=毛巾本体,被暗化门杀掉 95% → 额头矩形破洞
+      // + 毛巾左缘锯齿,用户实报"毛巾穿模")—— 与头发正相反(大波浪胸区"变亮"仅 1px)。
+      // 改中等羽化:弱纱(实测 d≈18)进不来,头饰本体(布/银 vs 肤色 d>100)全进
+      lo = 30; hi = 80;
+    } else if (
+      part.id.includes('/hair/') &&
+      (py >= 620 || (py >= 290 && px >= 250 && px <= 790))
     ) {
       // 发件面部区(y 290~620, x 250~790)+颈胸肩区(y≥620 全宽):
       // i2i 画发型时会把整脸"重打光"一层弱纱(d 20~105)+重画发丝周围的T恤/颈影 ——
@@ -771,17 +795,31 @@ async function extract(part) {
         lo = 105; hi = 150;
       }
     }
-    const a = d <= lo ? 0 : d >= hi ? 255 : Math.round(((d - lo) / (hi - lo)) * 255);
+    // 眼睛件 · 眼窗盒内二值化(P2.5.2 用户实报"男的除了原始眼睛其他都不对劲"):
+    // **盒内绝不允许半透明** —— 眼白→皮肤的过渡带 d 25~105 被羽化成 alpha 42~161,
+    // 与底下基准眼双重曝光 = 那圈"椭圆虚线残影"(实测 d 55~105 有 1914px @avgA=161)。
+    // 阈 25:i2i 整脸重打光弱纱实测 d≈18(脸颊采样),25 留余量 —— 纱不进、过渡带全进且实心。
+    // ⚠ 必须在此(羽化循环内)做,好让下方 clamp 照常裁掉眉区 —— 写在清理链里会覆盖
+    // clamp,把眉区重画实心复活成矩形色块(P2.5.2 第一版的 bug)。盒外脸颊保持槽位羽化。
+    const inEyeBox = part.id.includes('/eyes/') && EYE_BOXES.some((bx) => inBox(px, py, bx));
+    const a = inEyeBox
+      ? d > 25 ? 255 : 0
+      : d <= lo ? 0 : d >= hi ? 255 : Math.round(((d - lo) / (hi - lo)) * 255);
     out[i + 3] = Math.min(out[i + 3], a);
     if (clamp) {
       if (py < clamp[0] || py > clamp[1]) out[i + 3] = 0;
       else if (py > clamp[1] - 25) {
         // 钳制下缘渐隐:硬切会留一条水平切线(胡子下摆压在衣领上的细金线)
         out[i + 3] = Math.round(out[i + 3] * ((clamp[1] - py) / 25));
-      } else if (py < clamp[0] + 12) {
-        // 上缘同理渐入(眼睛件上限收到 385 后,硬切在睑褶处留水平缝)
+      } else if (py < clamp[0] + 12 && !inEyeBox) {
+        // 上缘同理渐入;眼窗盒内跳过 —— 二值化是硬边哲学,渐入会造半透明残影
         out[i + 3] = Math.round(out[i + 3] * ((py - clamp[0]) / 12));
       }
+    }
+    if (xclamp) {
+      if (px < xclamp[0] || px > xclamp[1]) out[i + 3] = 0;
+      else if (px < xclamp[0] + 12) out[i + 3] = Math.round(out[i + 3] * ((px - xclamp[0]) / 12));
+      else if (px > xclamp[1] - 12) out[i + 3] = Math.round(out[i + 3] * ((xclamp[1] - px) / 12));
     }
   }
   // 红色主导门(丝巾等单色饰品):非红主导像素一律裁掉(见 PART_TUNE 注释)
@@ -833,13 +871,8 @@ async function extract(part) {
   if (/\/(mouth|nose|eyes|brows)\//.test(part.id) || part.eyeMode === 'cover') {
     morphClose(out, v.info.width, v.info.height, 5);
   }
-  // 眼睛替换件:只做 alpha 去尘(游离噪尘/针孔)。
-  // ⚠ 曾走过"眼窗强捕获+实心化""眼窗整盒 verbatim(+渐变坡/色偏校正)"两条路,P2.4 反复
-  // 实测全部回退:i2i 整脸重打光的弱纱(d 12~40)会被强捕获收进来、被实心化钉成不透明,
-  // 在浅色背景 256 缩图上显出"淡色盒块";当年立机制针对的"闭眼白色残角"实为 raw 烤的
-  // 杂块(已重生成根治)。用户所见"眼周虚线点"的真凶是发件带的眼妆私货(见发型眼区清除)
   if (part.id.includes('/eyes/')) {
-    denoiseAlpha(out, v.info.width, v.info.height);
+    denoiseAlpha(out, v.info.width, v.info.height); // 游离噪尘/针孔(二值化在羽化循环内做)
   }
   // 衣服内部实心化:治"半透糊透基准T恤"(女西装米色胸口/卫衣领口蓝线/白衬衫肩缝蓝条)
   if (part.id.includes('/clothes/')) {
